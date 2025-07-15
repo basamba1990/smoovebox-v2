@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button.jsx';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card.jsx';
 import { Progress } from '@/components/ui/progress.jsx';
 import { Upload, Video, CheckCircle, AlertCircle } from 'lucide-react';
-import { uploadVideo, getTranscription } from "../../lib/supabase.js";
+import { uploadVideo, getTranscription } from "../lib/supabase.js";
 
 const UploadVideoMobile = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
