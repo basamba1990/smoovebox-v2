@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button.jsx';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card.jsx';
 import { Progress } from '@/components/ui/progress.jsx';
 import { Upload, Video, CheckCircle, AlertCircle } from 'lucide-react';
+import { uploadVideo, getTranscription } from "../../lib/supabase.js";
 
 const UploadVideoMobile = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -30,27 +31,35 @@ const UploadVideoMobile = () => {
     }
   };
 
-  const simulateUpload = async () => {
-    setIsUploading(true);
-    setUploadStatus('uploading');
-    setUploadProgress(0);
 
-    // Simulation de l'upload avec compression
-    for (let i = 0; i <= 100; i += 10) {
-      await new Promise(resolve => setTimeout(resolve, 200));
-      setUploadProgress(i);
-    }
-
-    setIsUploading(false);
-    setUploadStatus('success');
-  };
 
   const handleUpload = async () => {
     if (!videoFile) return;
 
     try {
       // Ici on intégrerait la compression avec FFmpeg et l'upload vers Supabase
-      await simulateUpload();
+      const userId = "test_user_id"; // Remplacez par l'ID utilisateur réel
+      const { success, error } = await uploadVideo(videoFile, userId);
+
+      if (success) {
+        setUploadStatus("success");
+        // Call transcription after successful upload
+        setIsUploading(true);
+        setUploadStatus("uploading"); // Indicate transcription is in progress
+        const { success: transcriptionSuccess, data: transcriptionData, error: transcriptionError } = await getTranscription(videoFile);
+        setIsUploading(false);
+
+        if (transcriptionSuccess) {
+          console.log("Transcription réussie:", transcriptionData);
+          // Here you would typically pass the transcription to the next component or state
+          setUploadStatus("success"); // Or a new status like 'transcription_success'
+        } else {
+          console.error("Erreur de transcription:", transcriptionError);
+          setUploadStatus("error");
+        }
+      } else {
+        throw new Error(error);
+      }
     } catch (error) {
       setUploadStatus('error');
       setIsUploading(false);
