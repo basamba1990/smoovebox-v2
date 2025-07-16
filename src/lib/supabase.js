@@ -1,9 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
+import OpenAI from 'openai';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const openaiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const openai = new OpenAI({ apiKey: openaiApiKey });
 
 // Fonctions utilitaires pour l'upload de vidéos
 export const uploadVideo = async (file, userId) => {
@@ -41,21 +44,13 @@ export const uploadVideo = async (file, userId) => {
 };
 
 // Fonction pour obtenir la transcription via Whisper
-export const getTranscription = async (videoPath) => {
+export const getTranscription = async (file) => {
   try {
-    // Simulation d'appel à l'API Whisper
-    console.log("Transcription de:", videoPath);
-    
-    // En production, ceci ferait un appel à l'API OpenAI Whisper
-    const mockTranscription = {
-      text: "Bonjour, je m'appelle Marie et je vous présente notre startup...",
-      segments: [
-        { start: 0, end: 5, text: "Bonjour, je m'appelle Marie" },
-        { start: 5, end: 10, text: "et je vous présente notre startup" },
-      ],
-    };
-
-    return { success: true, data: mockTranscription };
+    const response = await openai.audio.transcriptions.create({
+      file: file,
+      model: "whisper-1",
+    });
+    return { success: true, data: response };
   } catch (error) {
     console.error("Erreur transcription:", error);
     return { success: false, error: error.message };
@@ -65,23 +60,19 @@ export const getTranscription = async (videoPath) => {
 // Fonction pour l'analyse NLP via GPT-4
 export const analyzePitch = async (transcription) => {
   try {
-    console.log("Analyse NLP de:", transcription.substring(0, 50) + "...");
-    
-    // Simulation d'analyse GPT-4
-    const mockAnalysis = {
-      suggestions: [
-        {
-          type: "amélioration",
-          title: "Rythme de parole",
-          description: "Ralentissez légèrement pour améliorer la compréhension",
-        },
-      ],
-      sentiment: "positif",
-      confidence: 85,
-      keywords: ["startup", "innovation", "technologie"],
-    };
+    const chatCompletion = await openai.chat.completions.create({
+      messages: [{
+        role: "user",
+        content: `Analyze the following video pitch transcription and provide suggestions for improvement, sentiment, confidence score (0-100), and keywords. Format the output as a JSON object with 'suggestions' (array of objects with type, title, description), 'sentiment' (string), 'confidence' (number), and 'keywords' (array of strings).
 
-    return { success: true, data: mockAnalysis };
+Transcription: ${transcription}`,
+      }],
+      model: "gpt-4o",
+      response_format: { type: "json_object" },
+    });
+
+    const analysis = JSON.parse(chatCompletion.choices[0].message.content);
+    return { success: true, data: analysis };
   } catch (error) {
     console.error("Erreur analyse:", error);
     return { success: false, error: error.message };
