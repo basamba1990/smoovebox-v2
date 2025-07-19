@@ -5,8 +5,30 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const openaiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-export const openai = new OpenAI({ apiKey: openaiApiKey });
+// Créer un client Supabase factice si les variables ne sont pas configurées
+export const supabase = supabaseUrl && supabaseAnonKey && supabaseUrl !== 'https://test.supabase.co' 
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : {
+      auth: {
+        getSession: () => Promise.resolve({ data: { session: null } }),
+        onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+        signUp: () => Promise.resolve({ data: null, error: new Error('Configuration manquante') }),
+        signInWithPassword: () => Promise.resolve({ data: null, error: new Error('Configuration manquante') }),
+        signOut: () => Promise.resolve({ error: null })
+      },
+      storage: {
+        from: () => ({
+          upload: () => Promise.resolve({ data: null, error: new Error('Configuration manquante') })
+        })
+      },
+      from: () => ({
+        insert: () => Promise.resolve({ data: null, error: new Error('Configuration manquante') })
+      })
+    };
+
+export const openai = openaiApiKey && openaiApiKey !== 'test_key' 
+  ? new OpenAI({ apiKey: openaiApiKey })
+  : null;
 
 // Fonctions utilitaires pour l'upload de vidéos
 export const uploadVideo = async (file, userId) => {
