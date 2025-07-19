@@ -4,21 +4,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.j
 import UploadVideoMobile from './components/UploadVideoMobile.jsx';
 import TranscriptionViewer from './components/TranscriptionViewer.jsx';
 import Dashboard from './components/Dashboard.jsx';
-import AuthModal from '../AuthModal.jsx';
-import { AuthProvider, useAuth } from '../AuthContext.jsx';
+import AuthModal from './AuthModal.jsx';
+import { AuthProvider, useAuth } from './AuthContext.jsx';
 import { Video, Upload, BarChart3, FileText, LogOut, AlertTriangle } from 'lucide-react';
 import './App.css';
 
-// Composant d'erreur pour afficher les problèmes de configuration
-function ErrorBoundary({ children }) {
-  const [hasError, setHasError] = useState(false);
-  const [error, setError] = useState(null);
-
+function AppContent() {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  
   // Vérifier les variables d'environnement
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
   const openaiKey = import.meta.env.VITE_OPENAI_API_KEY;
 
+  // Si les variables d'environnement sont manquantes, afficher un message d'erreur
   if (!supabaseUrl || !supabaseKey || !openaiKey) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -45,45 +45,6 @@ function ErrorBoundary({ children }) {
     );
   }
 
-  if (hasError) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="max-w-md mx-auto bg-white p-8 rounded-lg shadow-lg border border-red-200">
-          <div className="flex items-center gap-3 mb-4">
-            <AlertTriangle className="h-8 w-8 text-red-600" />
-            <h2 className="text-xl font-bold text-red-800">Erreur de l'application</h2>
-          </div>
-          <p className="text-sm text-gray-700 mb-4">
-            Une erreur s'est produite lors du chargement de l'application.
-          </p>
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded text-xs text-red-700 mb-4">
-              {error.toString()}
-            </div>
-          )}
-          <Button 
-            onClick={() => window.location.reload()} 
-            className="w-full"
-          >
-            Recharger la page
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  try {
-    return children;
-  } catch (err) {
-    setHasError(true);
-    setError(err);
-    return null;
-  }
-}
-
-function AppContent() {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const { user, loading, signOut } = useAuth();
 
   const handleAuthSuccess = (user) => {
@@ -358,11 +319,9 @@ function AppContent() {
 
 function App() {
   return (
-    <ErrorBoundary>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </ErrorBoundary>
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 
