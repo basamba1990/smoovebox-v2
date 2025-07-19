@@ -1,286 +1,252 @@
 import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card.jsx';
-import { Button } from '@/components/ui/button.jsx';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.jsx';
-import { Badge } from '@/components/ui/badge.jsx';
-import { 
-  FileText, 
-  Brain, 
-  Clock, 
-  TrendingUp, 
-  AlertTriangle,
-  CheckCircle,
-  Play,
-  Pause
-} from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card.jsx';
+import { Button } from './ui/button.jsx';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.jsx';
+import { FileText, Brain, Play, Pause, RotateCcw } from 'lucide-react';
 
 const TranscriptionViewer = () => {
-  const [activeTab, setActiveTab] = useState('transcription');
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [hasAnalysis, setHasAnalysis] = useState(false);
 
-  // Données de démonstration
-  const transcriptionData = {
-    duration: 180, // 3 minutes
-    segments: [
-      {
-        id: 1,
-        start: 0,
-        end: 15,
-        text: "Bonjour, je suis ravi de vous présenter notre startup innovante dans le domaine de la technologie verte.",
-        confidence: 0.95
-      },
-      {
-        id: 2,
-        start: 15,
-        end: 35,
-        text: "Notre solution révolutionnaire permet de réduire la consommation énergétique des bâtiments de 40%.",
-        confidence: 0.92
-      },
-      {
-        id: 3,
-        start: 35,
-        end: 60,
-        text: "Nous avons développé un algorithme d'intelligence artificielle qui optimise automatiquement les systèmes de chauffage et de climatisation.",
-        confidence: 0.88
-      },
-      {
-        id: 4,
-        start: 60,
-        end: 90,
-        text: "Notre équipe est composée d'ingénieurs expérimentés et nous avons déjà sécurisé un financement de 500 000 euros.",
-        confidence: 0.94
-      },
-      {
-        id: 5,
-        start: 90,
-        end: 120,
-        text: "Nous recherchons maintenant des partenaires stratégiques pour accélérer notre croissance sur le marché européen.",
-        confidence: 0.91
-      },
-      {
-        id: 6,
-        start: 120,
-        end: 150,
-        text: "Notre objectif est d'atteindre 1 million d'euros de chiffre d'affaires d'ici la fin de l'année prochaine.",
-        confidence: 0.89
-      },
-      {
-        id: 7,
-        start: 150,
-        end: 180,
-        text: "Merci pour votre attention, je serais ravi de répondre à vos questions.",
-        confidence: 0.96
-      }
-    ]
-  };
+  const mockTranscription = `Bonjour, je m'appelle Marie et je suis la fondatrice de EcoTech Solutions. Notre startup développe des solutions innovantes pour réduire l'empreinte carbone des entreprises. 
 
-  const aiAnalysis = {
-    overallScore: 8.2,
+Nous avons identifié un problème majeur : 80% des PME ne savent pas comment mesurer et réduire efficacement leur impact environnemental. Notre plateforme utilise l'intelligence artificielle pour analyser les données de consommation et proposer des actions concrètes.
+
+En seulement 6 mois, nous avons aidé 50 entreprises à réduire leurs émissions de 25% en moyenne. Nous recherchons 500k€ pour accélérer notre développement et conquérir le marché européen.`;
+
+  const mockAnalysis = {
+    score: 8.2,
     strengths: [
-      "Présentation claire et structurée",
-      "Données chiffrées convaincantes",
-      "Équipe expérimentée mise en avant"
+      "Introduction claire et personnelle",
+      "Problème bien identifié avec des chiffres",
+      "Solution concrète et différenciante",
+      "Résultats mesurables présentés"
     ],
     improvements: [
-      "Ajouter plus de détails sur la concurrence",
-      "Préciser le modèle économique",
-      "Mentionner les premiers clients"
+      "Améliorer le contact visuel avec la caméra",
+      "Ralentir légèrement le débit de parole",
+      "Ajouter plus d'émotion dans la voix",
+      "Structurer davantage la conclusion"
     ],
-    keywords: [
-      { word: "innovation", count: 3, sentiment: "positive" },
-      { word: "technologie", count: 4, sentiment: "positive" },
-      { word: "croissance", count: 2, sentiment: "positive" },
-      { word: "financement", count: 2, sentiment: "neutral" }
-    ]
+    keywords: ["EcoTech", "intelligence artificielle", "empreinte carbone", "PME", "500k€"],
+    sentiment: "Positif et confiant",
+    duration: "2:34"
   };
 
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const getConfidenceColor = (confidence) => {
-    if (confidence >= 0.9) return 'text-green-600';
-    if (confidence >= 0.8) return 'text-yellow-600';
-    return 'text-red-600';
+  const handleAnalyze = () => {
+    setIsAnalyzing(true);
+    setTimeout(() => {
+      setIsAnalyzing(false);
+      setHasAnalysis(true);
+    }, 3000);
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-6">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="transcription" className="flex items-center gap-2">
-            <FileText className="h-4 w-4" />
-            Transcription
-          </TabsTrigger>
-          <TabsTrigger value="analysis" className="flex items-center gap-2">
-            <Brain className="h-4 w-4" />
-            Analyse IA
-          </TabsTrigger>
-          <TabsTrigger value="keywords" className="flex items-center gap-2">
-            <TrendingUp className="h-4 w-4" />
-            Mots-clés
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="transcription" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Transcription automatique</span>
-                <Badge variant="outline">
-                  Durée: {formatTime(transcriptionData.duration)}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Contrôles de lecture */}
-              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                <Button
-                  size="sm"
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  className="flex items-center gap-2"
-                >
-                  {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                  {isPlaying ? 'Pause' : 'Lecture'}
-                </Button>
-                <div className="flex-1">
-                  <div className="text-sm text-gray-600 mb-1">
-                    {formatTime(currentTime)} / {formatTime(transcriptionData.duration)}
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-blue-600 h-2 rounded-full"
-                      style={{ width: `${(currentTime / transcriptionData.duration) * 100}%` }}
-                    ></div>
-                  </div>
-                </div>
+    <div className="space-y-6">
+      {/* Sélection de vidéo */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Sélectionner une vidéo à analyser
+          </CardTitle>
+          <CardDescription>
+            Choisissez une vidéo uploadée pour obtenir la transcription et l'analyse IA
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition-colors">
+              <div className="aspect-video bg-gray-200 rounded mb-3 flex items-center justify-center">
+                <Play className="h-8 w-8 text-gray-400" />
               </div>
-
-              {/* Segments de transcription */}
-              <div className="space-y-3">
-                {transcriptionData.segments.map((segment) => (
-                  <div 
-                    key={segment.id} 
-                    className={`p-4 rounded-lg border ${
-                      currentTime >= segment.start && currentTime < segment.end 
-                        ? 'bg-blue-50 border-blue-200' 
-                        : 'bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-gray-500" />
-                        <span className="text-sm text-gray-600">
-                          {formatTime(segment.start)} - {formatTime(segment.end)}
-                        </span>
-                      </div>
-                      <Badge 
-                        variant="outline" 
-                        className={getConfidenceColor(segment.confidence)}
-                      >
-                        {Math.round(segment.confidence * 100)}% confiance
-                      </Badge>
-                    </div>
-                    <p className="text-gray-800">{segment.text}</p>
-                  </div>
-                ))}
+              <h4 className="font-medium">Pitch Startup EcoTech</h4>
+              <p className="text-sm text-gray-500">Uploadé il y a 2h • 2:34</p>
+            </div>
+            
+            <div className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition-colors opacity-50">
+              <div className="aspect-video bg-gray-200 rounded mb-3 flex items-center justify-center">
+                <Play className="h-8 w-8 text-gray-400" />
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="analysis" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Brain className="h-5 w-5" />
-                  Score global
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center">
-                  <div className="text-4xl font-bold text-blue-600 mb-2">
-                    {aiAnalysis.overallScore}/10
-                  </div>
-                  <p className="text-sm text-gray-600">
-                    Votre pitch est bien structuré avec des points d'amélioration identifiés
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  Points forts
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {aiAnalysis.strengths.map((strength, index) => (
-                    <li key={index} className="flex items-start gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                      <span className="text-sm">{strength}</span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-
-            <Card className="md:col-span-2">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-orange-600" />
-                  Suggestions d'amélioration
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {aiAnalysis.improvements.map((improvement, index) => (
-                    <li key={index} className="flex items-start gap-2">
-                      <AlertTriangle className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" />
-                      <span className="text-sm">{improvement}</span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
+              <h4 className="font-medium">Présentation Produit</h4>
+              <p className="text-sm text-gray-500">Uploadé hier • 3:12</p>
+            </div>
+            
+            <div className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition-colors opacity-50">
+              <div className="aspect-video bg-gray-200 rounded mb-3 flex items-center justify-center">
+                <Play className="h-8 w-8 text-gray-400" />
+              </div>
+              <h4 className="font-medium">Demo Technique</h4>
+              <p className="text-sm text-gray-500">Uploadé il y a 3 jours • 4:45</p>
+            </div>
           </div>
-        </TabsContent>
+          
+          <div className="mt-6 flex gap-3">
+            <Button 
+              onClick={handleAnalyze}
+              disabled={isAnalyzing}
+              className="flex items-center gap-2"
+            >
+              {isAnalyzing ? (
+                <>
+                  <RotateCcw className="h-4 w-4 animate-spin" />
+                  Analyse en cours...
+                </>
+              ) : (
+                <>
+                  <Brain className="h-4 w-4" />
+                  Analyser avec l'IA
+                </>
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
-        <TabsContent value="keywords" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Analyse des mots-clés</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {aiAnalysis.keywords.map((keyword, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <span className="font-medium">{keyword.word}</span>
-                      <Badge 
-                        variant={keyword.sentiment === 'positive' ? 'default' : 'outline'}
-                        className="ml-2"
-                      >
-                        {keyword.sentiment}
-                      </Badge>
-                    </div>
-                    <span className="text-sm text-gray-600">
-                      {keyword.count} occurrences
-                    </span>
-                  </div>
-                ))}
+      {/* Résultats d'analyse */}
+      {(hasAnalysis || isAnalyzing) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Résultats de l'analyse</CardTitle>
+            <CardDescription>
+              Transcription automatique et suggestions d'amélioration par IA
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isAnalyzing ? (
+              <div className="text-center py-8">
+                <RotateCcw className="h-12 w-12 text-blue-600 mx-auto mb-4 animate-spin" />
+                <p className="text-lg font-medium">Analyse en cours...</p>
+                <p className="text-gray-500">Transcription et analyse IA de votre pitch</p>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+            ) : (
+              <Tabs defaultValue="transcription" className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="transcription">Transcription</TabsTrigger>
+                  <TabsTrigger value="analysis">Analyse IA</TabsTrigger>
+                  <TabsTrigger value="metrics">Métriques</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="transcription" className="space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <h4 className="font-medium mb-3">Transcription automatique</h4>
+                    <div className="prose prose-sm max-w-none">
+                      <p className="whitespace-pre-line text-gray-700">{mockTranscription}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm">
+                      <FileText className="h-4 w-4 mr-2" />
+                      Exporter en PDF
+                    </Button>
+                    <Button variant="outline" size="sm">
+                      Copier le texte
+                    </Button>
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="analysis" className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg text-green-600">Points forts</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ul className="space-y-2">
+                          {mockAnalysis.strengths.map((strength, index) => (
+                            <li key={index} className="flex items-start gap-2">
+                              <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
+                              <span className="text-sm">{strength}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg text-orange-600">Améliorations</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ul className="space-y-2">
+                          {mockAnalysis.improvements.map((improvement, index) => (
+                            <li key={index} className="flex items-start gap-2">
+                              <div className="w-2 h-2 bg-orange-500 rounded-full mt-2"></div>
+                              <span className="text-sm">{improvement}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </CardContent>
+                    </Card>
+                  </div>
+                  
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Mots-clés détectés</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-wrap gap-2">
+                        {mockAnalysis.keywords.map((keyword, index) => (
+                          <span key={index} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                            {keyword}
+                          </span>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+                
+                <TabsContent value="metrics" className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Score global</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-center">
+                          <div className="text-4xl font-bold text-blue-600 mb-2">
+                            {mockAnalysis.score}/10
+                          </div>
+                          <p className="text-sm text-gray-500">Très bon pitch</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Sentiment</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-green-600 mb-2">
+                            {mockAnalysis.sentiment}
+                          </div>
+                          <p className="text-sm text-gray-500">Ton général</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                    
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Durée</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-purple-600 mb-2">
+                            {mockAnalysis.duration}
+                          </div>
+                          <p className="text-sm text-gray-500">Durée optimale</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
