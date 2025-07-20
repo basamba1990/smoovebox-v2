@@ -1,252 +1,211 @@
-import React, { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card.jsx';
-import { Button } from './ui/button.jsx';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.jsx';
-import { FileText, Brain, Play, Pause, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button.jsx';
+import { FileText, Play, Download, RefreshCw } from 'lucide-react';
+import { supabase } from '../lib/supabase.js';
+import { useAuth } from '../AuthContext.jsx';
 
 const TranscriptionViewer = () => {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [hasAnalysis, setHasAnalysis] = useState(false);
+  const { user } = useAuth();
+  const [transcriptions, setTranscriptions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedTranscription, setSelectedTranscription] = useState(null);
 
-  const mockTranscription = `Bonjour, je m'appelle Marie et je suis la fondatrice de EcoTech Solutions. Notre startup développe des solutions innovantes pour réduire l'empreinte carbone des entreprises. 
+  useEffect(() => {
+    fetchTranscriptions();
+  }, [user]);
 
-Nous avons identifié un problème majeur : 80% des PME ne savent pas comment mesurer et réduire efficacement leur impact environnemental. Notre plateforme utilise l'intelligence artificielle pour analyser les données de consommation et proposer des actions concrètes.
+  const fetchTranscriptions = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('transcriptions')
+        .select(`
+          *,
+          videos (
+            file_name,
+            upload_date
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
 
-En seulement 6 mois, nous avons aidé 50 entreprises à réduire leurs émissions de 25% en moyenne. Nous recherchons 500k€ pour accélérer notre développement et conquérir le marché européen.`;
-
-  const mockAnalysis = {
-    score: 8.2,
-    strengths: [
-      "Introduction claire et personnelle",
-      "Problème bien identifié avec des chiffres",
-      "Solution concrète et différenciante",
-      "Résultats mesurables présentés"
-    ],
-    improvements: [
-      "Améliorer le contact visuel avec la caméra",
-      "Ralentir légèrement le débit de parole",
-      "Ajouter plus d'émotion dans la voix",
-      "Structurer davantage la conclusion"
-    ],
-    keywords: ["EcoTech", "intelligence artificielle", "empreinte carbone", "PME", "500k€"],
-    sentiment: "Positif et confiant",
-    duration: "2:34"
+      if (error) throw error;
+      setTranscriptions(data || []);
+    } catch (error) {
+      console.error('Erreur lors du chargement des transcriptions:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleAnalyze = () => {
-    setIsAnalyzing(true);
-    setTimeout(() => {
-      setIsAnalyzing(false);
-      setHasAnalysis(true);
-    }, 3000);
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('fr-FR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
+
+  const getScoreColor = (score) => {
+    if (score >= 80) return 'text-green-600 bg-green-100';
+    if (score >= 60) return 'text-yellow-600 bg-yellow-100';
+    return 'text-red-600 bg-red-100';
+  };
+
+  const downloadTranscription = (transcription) => {
+    const content = `
+Transcription - ${transcription.videos?.file_name || 'Vidéo'}
+Date: ${formatDate(transcription.created_at)}
+Score de confiance: ${transcription.confidence_score}%
+
+TRANSCRIPTION:
+${transcription.transcription_text}
+
+ANALYSE IA:
+${JSON.stringify(transcription.analysis_result, null, 2)}
+    `.trim();
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `transcription-${transcription.id}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center mb-8">
+          <h2 className="text-2xl font-bold mb-2">Analyse IA de Pitch</h2>
+          <p className="text-gray-600">Chargement de vos transcriptions...</p>
+        </div>
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-white p-6 rounded-lg shadow-sm border animate-pulse">
+              <div className="h-4 bg-gray-200 rounded mb-4"></div>
+              <div className="h-20 bg-gray-200 rounded"></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (transcriptions.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-white p-8 rounded-lg shadow-sm border text-center">
+          <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Aucune transcription disponible</h3>
+          <p className="text-gray-600 mb-4">
+            Uploadez une vidéo pour voir apparaître ici l'analyse automatique de votre pitch par l'IA
+          </p>
+          <Button variant="outline">
+            Aller à l'upload
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Sélection de vidéo */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Sélectionner une vidéo à analyser
-          </CardTitle>
-          <CardDescription>
-            Choisissez une vidéo uploadée pour obtenir la transcription et l'analyse IA
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition-colors">
-              <div className="aspect-video bg-gray-200 rounded mb-3 flex items-center justify-center">
-                <Play className="h-8 w-8 text-gray-400" />
-              </div>
-              <h4 className="font-medium">Pitch Startup EcoTech</h4>
-              <p className="text-sm text-gray-500">Uploadé il y a 2h • 2:34</p>
-            </div>
-            
-            <div className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition-colors opacity-50">
-              <div className="aspect-video bg-gray-200 rounded mb-3 flex items-center justify-center">
-                <Play className="h-8 w-8 text-gray-400" />
-              </div>
-              <h4 className="font-medium">Présentation Produit</h4>
-              <p className="text-sm text-gray-500">Uploadé hier • 3:12</p>
-            </div>
-            
-            <div className="border rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition-colors opacity-50">
-              <div className="aspect-video bg-gray-200 rounded mb-3 flex items-center justify-center">
-                <Play className="h-8 w-8 text-gray-400" />
-              </div>
-              <h4 className="font-medium">Demo Technique</h4>
-              <p className="text-sm text-gray-500">Uploadé il y a 3 jours • 4:45</p>
-            </div>
-          </div>
-          
-          <div className="mt-6 flex gap-3">
-            <Button 
-              onClick={handleAnalyze}
-              disabled={isAnalyzing}
-              className="flex items-center gap-2"
-            >
-              {isAnalyzing ? (
-                <>
-                  <RotateCcw className="h-4 w-4 animate-spin" />
-                  Analyse en cours...
-                </>
-              ) : (
-                <>
-                  <Brain className="h-4 w-4" />
-                  Analyser avec l'IA
-                </>
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex justify-between items-center">
+        <div>
+          <h3 className="text-lg font-semibold">Vos analyses IA</h3>
+          <p className="text-gray-600">{transcriptions.length} transcription(s) disponible(s)</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={fetchTranscriptions}>
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Actualiser
+        </Button>
+      </div>
 
-      {/* Résultats d'analyse */}
-      {(hasAnalysis || isAnalyzing) && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Résultats de l'analyse</CardTitle>
-            <CardDescription>
-              Transcription automatique et suggestions d'amélioration par IA
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isAnalyzing ? (
-              <div className="text-center py-8">
-                <RotateCcw className="h-12 w-12 text-blue-600 mx-auto mb-4 animate-spin" />
-                <p className="text-lg font-medium">Analyse en cours...</p>
-                <p className="text-gray-500">Transcription et analyse IA de votre pitch</p>
+      <div className="grid gap-6">
+        {transcriptions.map((transcription) => (
+          <div key={transcription.id} className="bg-white p-6 rounded-lg shadow-sm border">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h4 className="font-semibold text-lg">
+                  {transcription.videos?.file_name || 'Vidéo sans nom'}
+                </h4>
+                <p className="text-sm text-gray-500">
+                  {formatDate(transcription.created_at)}
+                </p>
               </div>
-            ) : (
-              <Tabs defaultValue="transcription" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="transcription">Transcription</TabsTrigger>
-                  <TabsTrigger value="analysis">Analyse IA</TabsTrigger>
-                  <TabsTrigger value="metrics">Métriques</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="transcription" className="space-y-4">
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h4 className="font-medium mb-3">Transcription automatique</h4>
-                    <div className="prose prose-sm max-w-none">
-                      <p className="whitespace-pre-line text-gray-700">{mockTranscription}</p>
+              <div className="flex items-center gap-2">
+                {transcription.confidence_score && (
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getScoreColor(transcription.confidence_score)}`}>
+                    {transcription.confidence_score}% confiance
+                  </span>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => downloadTranscription(transcription)}
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <h5 className="font-medium mb-2">Transcription:</h5>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <p className="text-sm text-gray-700 leading-relaxed">
+                    {transcription.transcription_text || 'Transcription non disponible'}
+                  </p>
+                </div>
+              </div>
+
+              {transcription.analysis_result && (
+                <div>
+                  <h5 className="font-medium mb-2">Analyse IA:</h5>
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <div className="space-y-2">
+                      {transcription.analysis_result.suggestions && (
+                        <div>
+                          <h6 className="font-medium text-sm text-blue-900">Suggestions d'amélioration:</h6>
+                          <ul className="list-disc list-inside text-sm text-blue-800 space-y-1">
+                            {transcription.analysis_result.suggestions.slice(0, 3).map((suggestion, index) => (
+                              <li key={index}>{suggestion.description || suggestion}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {transcription.analysis_result.sentiment && (
+                        <div>
+                          <span className="font-medium text-sm text-blue-900">Sentiment: </span>
+                          <span className="text-sm text-blue-800">{transcription.analysis_result.sentiment}</span>
+                        </div>
+                      )}
+
+                      {transcription.analysis_result.keywords && (
+                        <div>
+                          <span className="font-medium text-sm text-blue-900">Mots-clés: </span>
+                          <span className="text-sm text-blue-800">
+                            {transcription.analysis_result.keywords.slice(0, 5).join(', ')}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm">
-                      <FileText className="h-4 w-4 mr-2" />
-                      Exporter en PDF
-                    </Button>
-                    <Button variant="outline" size="sm">
-                      Copier le texte
-                    </Button>
-                  </div>
-                </TabsContent>
-                
-                <TabsContent value="analysis" className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg text-green-600">Points forts</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <ul className="space-y-2">
-                          {mockAnalysis.strengths.map((strength, index) => (
-                            <li key={index} className="flex items-start gap-2">
-                              <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
-                              <span className="text-sm">{strength}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </CardContent>
-                    </Card>
-                    
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg text-orange-600">Améliorations</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <ul className="space-y-2">
-                          {mockAnalysis.improvements.map((improvement, index) => (
-                            <li key={index} className="flex items-start gap-2">
-                              <div className="w-2 h-2 bg-orange-500 rounded-full mt-2"></div>
-                              <span className="text-sm">{improvement}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </CardContent>
-                    </Card>
-                  </div>
-                  
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Mots-clés détectés</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex flex-wrap gap-2">
-                        {mockAnalysis.keywords.map((keyword, index) => (
-                          <span key={index} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                            {keyword}
-                          </span>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-                
-                <TabsContent value="metrics" className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg">Score global</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-center">
-                          <div className="text-4xl font-bold text-blue-600 mb-2">
-                            {mockAnalysis.score}/10
-                          </div>
-                          <p className="text-sm text-gray-500">Très bon pitch</p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                    
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg">Sentiment</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-green-600 mb-2">
-                            {mockAnalysis.sentiment}
-                          </div>
-                          <p className="text-sm text-gray-500">Ton général</p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                    
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg">Durée</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-purple-600 mb-2">
-                            {mockAnalysis.duration}
-                          </div>
-                          <p className="text-sm text-gray-500">Durée optimale</p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            )}
-          </CardContent>
-        </Card>
-      )}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };

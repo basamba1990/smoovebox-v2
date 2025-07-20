@@ -1,158 +1,220 @@
-import React, { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card.jsx';
-import { Button } from './ui/button.jsx';
-import { Upload, Video, CheckCircle, AlertCircle } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Button } from '@/components/ui/button.jsx';
+import { Upload, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { uploadVideo, getTranscription, analyzePitch } from '../lib/supabase.js';
+import { useAuth } from '../AuthContext.jsx';
 
 const UploadVideoMobile = () => {
-  const [uploadStatus, setUploadStatus] = useState('idle'); // idle, uploading, success, error
-  const [selectedFile, setSelectedFile] = useState(null);
+  const { user } = useAuth();
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState('idle'); // idle, uploading, processing, success, error
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const fileInputRef = useRef(null);
 
-  const handleFileSelect = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      setSelectedFile(file);
-      setUploadStatus('idle');
+  const handleFileSelect = (file) => {
+    if (!file) return;
+
+    // Vérifier le type de fichier
+    const allowedTypes = ['video/mp4', 'video/mov', 'video/avi', 'video/quicktime'];
+    if (!allowedTypes.includes(file.type)) {
+      setErrorMessage('Format de fichier non supporté. Utilisez MP4, MOV ou AVI.');
+      setUploadStatus('error');
+      return;
+    }
+
+    // Vérifier la taille (100MB max)
+    const maxSize = 100 * 1024 * 1024; // 100MB
+    if (file.size > maxSize) {
+      setErrorMessage('Le fichier est trop volumineux. Taille maximum: 100MB.');
+      setUploadStatus('error');
+      return;
+    }
+
+    processVideo(file);
+  };
+
+  const processVideo = async (file) => {
+    if (!user) {
+      setErrorMessage('Vous devez être connecté pour uploader une vidéo.');
+      setUploadStatus('error');
+      return;
+    }
+
+    setUploadStatus('uploading');
+    setUploadProgress(0);
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    try {
+      // Étape 1: Upload de la vidéo
+      setUploadProgress(25);
+      const uploadResult = await uploadVideo(file, user.id);
+      
+      if (!uploadResult.success) {
+        throw new Error(uploadResult.error);
+      }
+
+      // Étape 2: Transcription
+      setUploadStatus('processing');
+      setUploadProgress(50);
+      
+      const transcriptionResult = await getTranscription(file);
+      
+      if (!transcriptionResult.success) {
+        throw new Error(transcriptionResult.error);
+      }
+
+      // Étape 3: Analyse IA
+      setUploadProgress(75);
+      
+      const analysisResult = await analyzePitch(transcriptionResult.data.text);
+      
+      if (!analysisResult.success) {
+        throw new Error(analysisResult.error);
+      }
+
+      // Étape 4: Sauvegarde des résultats
+      setUploadProgress(100);
+      
+      // Ici vous pourriez sauvegarder la transcription et l'analyse en base
+      // const { data, error } = await supabase.from('transcriptions').insert({...})
+
+      setUploadStatus('success');
+      setSuccessMessage('Vidéo uploadée et analysée avec succès !');
+      
+      // Reset après 3 secondes
+      setTimeout(() => {
+        setUploadStatus('idle');
+        setUploadProgress(0);
+        setSuccessMessage('');
+      }, 3000);
+
+    } catch (error) {
+      console.error('Erreur lors du traitement:', error);
+      setUploadStatus('error');
+      setErrorMessage(error.message || 'Une erreur est survenue lors du traitement.');
     }
   };
 
-  const handleUpload = () => {
-    if (!selectedFile) return;
-    
-    setUploadStatus('uploading');
-    
-    // Simulation d'upload
-    setTimeout(() => {
-      setUploadStatus('success');
-    }, 3000);
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      handleFileSelect(files[0]);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleFileInputChange = (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length > 0) {
+      handleFileSelect(files[0]);
+    }
+  };
+
+  const openFileDialog = () => {
+    fileInputRef.current?.click();
+  };
+
+  const getStatusIcon = () => {
+    switch (uploadStatus) {
+      case 'uploading':
+      case 'processing':
+        return <Loader2 className="h-12 w-12 text-blue-500 animate-spin" />;
+      case 'success':
+        return <CheckCircle className="h-12 w-12 text-green-500" />;
+      case 'error':
+        return <AlertCircle className="h-12 w-12 text-red-500" />;
+      default:
+        return <Upload className="h-12 w-12 text-gray-400" />;
+    }
+  };
+
+  const getStatusText = () => {
+    switch (uploadStatus) {
+      case 'uploading':
+        return 'Upload en cours...';
+      case 'processing':
+        return 'Analyse IA en cours...';
+      case 'success':
+        return 'Traitement terminé !';
+      case 'error':
+        return 'Erreur';
+      default:
+        return 'Glissez votre vidéo ici';
+    }
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Video className="h-5 w-5" />
-            Upload Vidéo Mobile
-          </CardTitle>
-          <CardDescription>
-            Uploadez vos pitchs vidéo avec compression automatique et optimisation mobile
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Zone de drop */}
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors">
-            <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <div className="space-y-2">
-              <p className="text-lg font-medium text-gray-900">
-                Glissez votre vidéo ici ou cliquez pour sélectionner
-              </p>
-              <p className="text-sm text-gray-500">
-                Formats supportés: MP4, MOV, AVI (max 100 Mo)
-              </p>
-            </div>
-            <input
-              type="file"
-              accept="video/*"
-              onChange={handleFileSelect}
-              className="hidden"
-              id="video-upload"
-            />
-            <label
-              htmlFor="video-upload"
-              className="inline-block mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700 transition-colors"
-            >
-              Sélectionner une vidéo
-            </label>
-          </div>
-
-          {/* Fichier sélectionné */}
-          {selectedFile && (
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Video className="h-8 w-8 text-blue-600" />
-                  <div>
-                    <p className="font-medium text-gray-900">{selectedFile.name}</p>
-                    <p className="text-sm text-gray-500">
-                      {(selectedFile.size / (1024 * 1024)).toFixed(2)} Mo
-                    </p>
-                  </div>
-                </div>
-                {uploadStatus === 'success' && (
-                  <CheckCircle className="h-6 w-6 text-green-600" />
-                )}
-                {uploadStatus === 'error' && (
-                  <AlertCircle className="h-6 w-6 text-red-600" />
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Statut d'upload */}
-          {uploadStatus === 'uploading' && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span>Upload en cours...</span>
-                <span>65%</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div className="bg-blue-600 h-2 rounded-full w-2/3 transition-all duration-300"></div>
-              </div>
-            </div>
-          )}
-
-          {uploadStatus === 'success' && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <p className="text-green-800 font-medium">Upload réussi !</p>
-              </div>
-              <p className="text-green-700 text-sm mt-1">
-                Votre vidéo a été uploadée et compressée avec succès.
-              </p>
-            </div>
-          )}
-
-          {uploadStatus === 'error' && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="h-5 w-5 text-red-600" />
-                <p className="text-red-800 font-medium">Erreur d'upload</p>
-              </div>
-              <p className="text-red-700 text-sm mt-1">
-                Une erreur s'est produite lors de l'upload. Veuillez réessayer.
-              </p>
-            </div>
-          )}
-
-          {/* Boutons d'action */}
-          <div className="flex gap-3">
-            <Button
-              onClick={handleUpload}
-              disabled={!selectedFile || uploadStatus === 'uploading'}
-              className="flex-1"
-            >
-              {uploadStatus === 'uploading' ? 'Upload en cours...' : 'Uploader la vidéo'}
+    <div className="max-w-md mx-auto">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="video/mp4,video/mov,video/avi,video/quicktime"
+        onChange={handleFileInputChange}
+        className="hidden"
+      />
+      
+      <div 
+        className={`border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 ${
+          isDragging ? 'border-blue-500 bg-blue-50' : 
+          uploadStatus === 'success' ? 'border-green-500 bg-green-50' :
+          uploadStatus === 'error' ? 'border-red-500 bg-red-50' :
+          'border-gray-300 hover:border-gray-400'
+        }`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <div className="mb-4">
+          {getStatusIcon()}
+        </div>
+        
+        <h3 className="text-lg font-semibold mb-2">{getStatusText()}</h3>
+        
+        {uploadStatus === 'idle' && (
+          <>
+            <p className="text-gray-600 mb-4">ou cliquez pour sélectionner</p>
+            <Button onClick={openFileDialog} disabled={uploadStatus !== 'idle'}>
+              Sélectionner un fichier
             </Button>
-            {uploadStatus === 'success' && (
-              <Button variant="outline" className="flex-1">
-                Analyser avec l'IA
-              </Button>
-            )}
-          </div>
+          </>
+        )}
 
-          {/* Informations techniques */}
-          <div className="bg-blue-50 rounded-lg p-4">
-            <h4 className="font-medium text-blue-900 mb-2">Optimisations automatiques</h4>
-            <ul className="text-sm text-blue-800 space-y-1">
-              <li>• Compression H.264 pour une qualité optimale</li>
-              <li>• Résolution adaptée aux appareils mobiles</li>
-              <li>• Réduction de la taille de fichier jusqu'à 70%</li>
-              <li>• Préservation de la qualité audio</li>
-            </ul>
+        {(uploadStatus === 'uploading' || uploadStatus === 'processing') && (
+          <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
+            <div 
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${uploadProgress}%` }}
+            ></div>
           </div>
-        </CardContent>
-      </Card>
+        )}
+
+        {successMessage && (
+          <p className="text-green-600 text-sm mt-4">{successMessage}</p>
+        )}
+
+        {errorMessage && (
+          <p className="text-red-600 text-sm mt-4">{errorMessage}</p>
+        )}
+
+        {uploadStatus === 'idle' && (
+          <p className="text-xs text-gray-500 mt-4">
+            Formats supportés: MP4, MOV, AVI (max 100MB)
+          </p>
+        )}
+      </div>
     </div>
   );
 };
