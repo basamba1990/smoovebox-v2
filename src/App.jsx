@@ -1,203 +1,58 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button.jsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.jsx';
-import { Video, Upload, BarChart3, FileText, LogOut, AlertTriangle, User } from 'lucide-react';
+import UploadVideoMobile from './components/UploadVideoMobile.jsx';
+import TranscriptionViewer from './components/TranscriptionViewer.jsx';
+import Dashboard from './components/Dashboard.jsx';
+import AuthModal from './AuthModal.jsx';
+import { AuthProvider, useAuth } from './AuthContext.jsx';
+import { Video, Upload, BarChart3, FileText, LogOut, AlertTriangle } from 'lucide-react';
 import './App.css';
 
-// Composant Dashboard simplifié
-function Dashboard() {
-  return (
-    <div className="space-y-6">
-      <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold mb-2">Dashboard</h2>
-        <p className="text-gray-600">
-          Aperçu de vos activités et statistiques
-        </p>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Video className="h-6 w-6 text-blue-600" />
-            </div>
-            <h3 className="font-semibold">Vidéos uploadées</h3>
-          </div>
-          <p className="text-2xl font-bold text-gray-900">0</p>
-          <p className="text-sm text-gray-500">Cette semaine</p>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <FileText className="h-6 w-6 text-green-600" />
-            </div>
-            <h3 className="font-semibold">Analyses IA</h3>
-          </div>
-          <p className="text-2xl font-bold text-gray-900">0</p>
-          <p className="text-sm text-gray-500">Transcriptions</p>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <BarChart3 className="h-6 w-6 text-purple-600" />
-            </div>
-            <h3 className="font-semibold">Score moyen</h3>
-          </div>
-          <p className="text-2xl font-bold text-gray-900">-</p>
-          <p className="text-sm text-gray-500">Évaluation IA</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Composant Upload simplifié
-function UploadVideoMobile() {
-  const [isDragging, setIsDragging] = useState(false);
-
-  return (
-    <div className="max-w-md mx-auto">
-      <div 
-        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-          isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
-        }`}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragging(true);
-        }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setIsDragging(false);
-          // Logique d'upload ici
-        }}
-      >
-        <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-        <h3 className="text-lg font-semibold mb-2">Glissez votre vidéo ici</h3>
-        <p className="text-gray-600 mb-4">ou cliquez pour sélectionner</p>
-        <Button>
-          Sélectionner un fichier
-        </Button>
-        <p className="text-xs text-gray-500 mt-4">
-          Formats supportés: MP4, MOV, AVI (max 100MB)
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// Composant Transcription simplifié
-function TranscriptionViewer() {
-  return (
-    <div className="space-y-6">
-      <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold mb-2">Analyse IA de Pitch</h2>
-        <p className="text-gray-600">
-          Aucune transcription disponible pour le moment
-        </p>
-      </div>
-      
-      <div className="bg-white p-8 rounded-lg shadow-sm border text-center">
-        <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-        <h3 className="text-lg font-semibold mb-2">Uploadez une vidéo pour commencer</h3>
-        <p className="text-gray-600 mb-4">
-          L'IA analysera automatiquement votre pitch et vous fournira des suggestions d'amélioration
-        </p>
-        <Button variant="outline">
-          Aller à l'upload
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// Modal d'authentification simplifié
-function AuthModal({ isOpen, onClose, onAuthSuccess }) {
-  const [isLogin, setIsLogin] = useState(true);
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white p-8 rounded-lg shadow-lg max-w-md w-full mx-4">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">
-            {isLogin ? 'Connexion' : 'Inscription'}
-          </h2>
-          <Button variant="ghost" onClick={onClose}>
-            ×
-          </Button>
-        </div>
-        
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Email</label>
-            <input 
-              type="email" 
-              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="votre@email.com"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium mb-2">Mot de passe</label>
-            <input 
-              type="password" 
-              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="••••••••"
-            />
-          </div>
-          
-          <Button className="w-full" onClick={onAuthSuccess}>
-            {isLogin ? 'Se connecter' : 'S\'inscrire'}
-          </Button>
-          
-          <div className="text-center">
-            <button 
-              className="text-blue-600 hover:underline text-sm"
-              onClick={() => setIsLogin(!isLogin)}
-            >
-              {isLogin ? 'Pas de compte ? S\'inscrire' : 'Déjà un compte ? Se connecter'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function App() {
+function AppContent() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(false);
   
   // Vérifier les variables d'environnement
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
   const openaiKey = import.meta.env.VITE_OPENAI_API_KEY;
 
-  // Dans un environnement de production, vous utiliseriez ici la logique d'authentification réelle
-  // Pour l'instant, nous allons simuler un utilisateur connecté si les clés sont présentes
-  useEffect(() => {
-    if (supabaseUrl && supabaseKey && openaiKey) {
-      // Simuler un utilisateur connecté pour la démo de l'interface
-      setUser({ email: 'user@example.com', user_metadata: { first_name: 'Utilisateur' } });
-    } else {
-      setUser(null);
-    }
-  }, [supabaseUrl, supabaseKey, openaiKey]);
+  // Si les variables d'environnement sont manquantes, afficher un message d'erreur
+  if (!supabaseUrl || !supabaseKey || !openaiKey) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="max-w-md mx-auto bg-white p-8 rounded-lg shadow-lg border border-red-200">
+          <div className="flex items-center gap-3 mb-4">
+            <AlertTriangle className="h-8 w-8 text-red-600" />
+            <h2 className="text-xl font-bold text-red-800">Configuration manquante</h2>
+          </div>
+          <div className="space-y-3 text-sm text-gray-700">
+            <p>Les variables d'environnement suivantes sont manquantes :</p>
+            <ul className="list-disc list-inside space-y-1 text-red-600">
+              {!supabaseUrl && <li>VITE_SUPABASE_URL</li>}
+              {!supabaseKey && <li>VITE_SUPABASE_ANON_KEY</li>}
+              {!openaiKey && <li>VITE_OPENAI_API_KEY</li>}
+            </ul>
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+              <p className="text-yellow-800 text-xs">
+                <strong>Solution :</strong> Configurez ces variables dans les paramètres de votre plateforme de déploiement (Vercel, Netlify, etc.)
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const handleAuthSuccess = () => {
-    // Logique d'authentification réelle ici
-    setUser({ email: 'authenticated@example.com', user_metadata: { first_name: 'Authentifié' } });
-    setIsAuthModalOpen(false);
+  const { user, loading, signOut } = useAuth();
+
+  const handleAuthSuccess = (user) => {
+    console.log('User authenticated:', user);
   };
 
-  const handleSignOut = () => {
-    setUser(null);
+  const handleSignOut = async () => {
+    await signOut();
   };
 
   if (loading) {
@@ -291,6 +146,12 @@ function App() {
             </TabsContent>
 
             <TabsContent value="transcription" className="space-y-6">
+              <div className="text-center mb-8">
+                <h2 className="text-2xl font-bold mb-2">Analyse IA de Pitch</h2>
+                <p className="text-gray-600">
+                  Transcription automatique et suggestions d'amélioration par intelligence artificielle
+                </p>
+              </div>
               <TranscriptionViewer />
             </TabsContent>
           </Tabs>
@@ -339,6 +200,13 @@ function App() {
   );
 }
 
-export default App;
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+}
 
+export default App;
 
