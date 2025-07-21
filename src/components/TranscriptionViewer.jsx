@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button.jsx';
 import { FileText, Play, Download, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
-import { useAuth } from '../AuthContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 
 const TranscriptionViewer = () => {
   const { user } = useAuth();
