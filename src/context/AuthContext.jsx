@@ -140,9 +140,15 @@ export const AuthProvider = ({ children }) => {
         password,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erreur de connexion:', error);
+        throw error;
+      }
+      
+      console.log('Connexion réussie:', data);
       return data;
     } catch (error) {
+      console.error('Erreur dans signIn:', error);
       setError(error.message);
       throw error;
     } finally {
