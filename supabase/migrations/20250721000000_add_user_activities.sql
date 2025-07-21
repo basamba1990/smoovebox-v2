@@ -22,3 +22,4 @@ USING (auth.uid() = user_id);
 CREATE POLICY IF NOT EXISTS "System can insert activities" 
 ON public.user_activities FOR INSERT 
 WITH CHECK (true);
+
