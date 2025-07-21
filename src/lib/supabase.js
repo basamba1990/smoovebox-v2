@@ -25,11 +25,18 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true
+    detectSessionInUrl: true,
+    storageKey: 'smoovebox-auth-token',
+    storage: window.localStorage
   },
   global: {
     headers: {
       'X-Client-Info': 'smoovebox-v2'
+    }
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10
     }
   }
 });
@@ -132,6 +139,32 @@ const getProfileId = async (userId) => {
       if (error.code === 'PGRST116') {
         throw new Error("Table profiles non trouvée");
       }
+      
+      // Si le profil n'existe pas, essayer de le créer
+      if (error.code === 'PGRST301') {
+        console.warn("Profil non trouvé, tentative de création...");
+        
+        const { data: userData } = await supabase.auth.getUser();
+        if (!userData?.user) {
+          throw new Error("Utilisateur non authentifié");
+        }
+        
+        const { data: newProfile, error: createError } = await supabase
+          .from('profiles')
+          .insert({
+            user_id: userId,
+            email: userData.user.email,
+            username: userData.user.email.split('@')[0],
+            full_name: userData.user.user_metadata?.full_name || 
+                      `${userData.user.user_metadata?.first_name || ''} ${userData.user.user_metadata?.last_name || ''}`.trim()
+          })
+          .select()
+          .single();
+          
+        if (createError) throw createError;
+        return newProfile.id;
+      }
+      
       throw error;
     }
     
@@ -251,7 +284,7 @@ const testConnection = async () => {
     if (error) {
       console.error('Erreur de test de connexion Supabase:', error.message);
     } else {
-      console.log('Connexion Supabase OK');
+      console.log('Connexion Supabase OK', data.session ? 'Session active' : 'Pas de session');
     }
   } catch (error) {
     console.error('Erreur de test de connexion:', error.message);
