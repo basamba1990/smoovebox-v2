@@ -20,6 +20,8 @@ export const AuthProvider = ({ children }) => {
   // Récupérer le profil utilisateur avec gestion d'erreur améliorée
   const fetchUserProfile = async (userId) => {
     try {
+      console.log('Récupération du profil pour userId:', userId);
+      
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -30,11 +32,38 @@ export const AuthProvider = ({ children }) => {
         // Si la table profiles n'existe pas ou l'utilisateur n'a pas de profil
         if (error.code === 'PGRST116' || error.code === 'PGRST301') {
           console.warn('Table profiles non trouvée ou profil inexistant:', error.message);
-          setProfile(null);
-          return;
+          
+          // Tentative de création du profil si manquant
+          try {
+            const currentUser = await supabase.auth.getUser();
+            const userData = currentUser?.data?.user;
+            
+            if (userData) {
+              const { data: newProfile, error: createError } = await supabase
+                .from('profiles')
+                .insert({
+                  user_id: userId,
+                  email: userData.email,
+                  username: userData.email.split('@')[0],
+                  full_name: userData.user_metadata?.full_name || 
+                            `${userData.user_metadata?.first_name || ''} ${userData.user_metadata?.last_name || ''}`.trim()
+                })
+                .select()
+                .single();
+                
+              if (createError) throw createError;
+              console.log('Profil créé avec succès:', newProfile);
+              setProfile(newProfile);
+              return;
+            }
+          } catch (createError) {
+            console.error('Erreur lors de la création du profil:', createError.message);
+          }
         }
         throw error;
       }
+      
+      console.log('Profil récupéré avec succès:', data);
       setProfile(data);
     } catch (error) {
       console.error('Erreur lors de la récupération du profil:', error.message);
@@ -61,9 +90,14 @@ export const AuthProvider = ({ children }) => {
         }
         
         if (mounted) {
-          setUser(session?.user ?? null);
           if (session?.user) {
+            console.log('Session utilisateur trouvée:', session.user.id);
+            setUser(session.user);
             await fetchUserProfile(session.user.id);
+          } else {
+            console.log('Aucune session utilisateur trouvée');
+            setUser(null);
+            setProfile(null);
           }
           setLoading(false);
         }
@@ -83,11 +117,14 @@ export const AuthProvider = ({ children }) => {
       async (event, session) => {
         if (!mounted) return;
         
+        console.log('Événement d\'authentification:', event, session?.user?.id);
+        
         try {
-          setUser(session?.user ?? null);
           if (session?.user) {
+            setUser(session.user);
             await fetchUserProfile(session.user.id);
           } else {
+            setUser(null);
             setProfile(null);
           }
           setLoading(false);
@@ -122,8 +159,21 @@ export const AuthProvider = ({ children }) => {
       });
 
       if (error) throw error;
+      
+      // Vérifier si l'inscription a réussi et si l'utilisateur est créé
+      if (data?.user) {
+        console.log('Utilisateur créé avec succès:', data.user.id);
+        
+        // Attendre un peu pour que les triggers de base de données s'exécutent
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Vérifier si le profil a été créé automatiquement
+        await fetchUserProfile(data.user.id);
+      }
+      
       return data;
     } catch (error) {
+      console.error('Erreur lors de l\'inscription:', error);
       setError(error.message);
       throw error;
     } finally {
@@ -146,6 +196,13 @@ export const AuthProvider = ({ children }) => {
       }
       
       console.log('Connexion réussie:', data);
+      
+      // Vérifier explicitement si la session est établie
+      if (data?.session) {
+        // Forcer le rafraîchissement de la session
+        await supabase.auth.refreshSession();
+      }
+      
       return data;
     } catch (error) {
       console.error('Erreur dans signIn:', error);
@@ -163,6 +220,7 @@ export const AuthProvider = ({ children }) => {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       setProfile(null);
+      setUser(null);
     } catch (error) {
       setError(error.message);
       throw error;
