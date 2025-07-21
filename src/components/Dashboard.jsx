@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Video, FileText, BarChart3 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
-import { useAuth } from '../AuthContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 
 const Dashboard = () => {
   const { user } = useAuth();
