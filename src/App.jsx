@@ -6,6 +6,7 @@ import TranscriptionViewer from './components/TranscriptionViewer.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import AuthModal from './AuthModal.jsx';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
+import { supabase } from './lib/supabase.js';
 import { Video, Upload, BarChart3, FileText, LogOut, AlertTriangle } from 'lucide-react';
 import './App.css';
 
