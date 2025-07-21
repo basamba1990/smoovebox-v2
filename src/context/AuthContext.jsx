@@ -17,7 +17,6 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Récupérer le profil utilisateur avec gestion d'erreur améliorée
   const fetchUserProfile = async (userId) => {
     try {
       console.log('Récupération du profil pour userId:', userId);
@@ -29,10 +28,8 @@ export const AuthProvider = ({ children }) => {
         .single();
 
       if (error) {
-        // Si la table profiles n'existe pas ou l'utilisateur n'a pas de profil
         if (error.code === 'PGRST116' || error.code === 'PGRST301') {
           console.warn('Table profiles non trouvée ou profil inexistant:', error.message);
-          
           // Tentative de création du profil si manquant
           try {
             const currentUser = await supabase.auth.getUser();
@@ -68,14 +65,12 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Erreur lors de la récupération du profil:', error.message);
       setProfile(null);
-      // Ne pas bloquer l'application pour les erreurs de profil
     }
   };
 
   useEffect(() => {
     let mounted = true;
 
-    // Get initial session
     const getSession = async () => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
@@ -112,7 +107,6 @@ export const AuthProvider = ({ children }) => {
 
     getSession();
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
@@ -160,14 +154,9 @@ export const AuthProvider = ({ children }) => {
 
       if (error) throw error;
       
-      // Vérifier si l'inscription a réussi et si l'utilisateur est créé
       if (data?.user) {
         console.log('Utilisateur créé avec succès:', data.user.id);
-        
-        // Attendre un peu pour que les triggers de base de données s'exécutent
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Vérifier si le profil a été créé automatiquement
         await fetchUserProfile(data.user.id);
       }
       
@@ -197,11 +186,7 @@ export const AuthProvider = ({ children }) => {
       
       console.log('Connexion réussie:', data);
       
-      // Vérifier explicitement si la session est établie
-      if (data?.session) {
-        // Forcer le rafraîchissement de la session
-        await supabase.auth.refreshSession();
-      }
+      // La session est gérée par onAuthStateChange, pas besoin de refreshSession ici
       
       return data;
     } catch (error) {
@@ -245,4 +230,5 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   );
 };
+
 
