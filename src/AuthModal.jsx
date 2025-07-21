@@ -43,16 +43,27 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
     }
 
     try {
+      let result;
       if (isLogin) {
-        await signIn(email, password);
+        result = await signIn(email, password);
+        console.log('Résultat de connexion:', result);
       } else {
-        await signUp(email, password, firstName, lastName);
+        result = await signUp(email, password, firstName, lastName);
+        console.log('Résultat d\'inscription:', result);
       }
-      onAuthSuccess();
-      onClose();
-      resetForm();
+      
+      // Vérifier si la connexion/inscription a réussi
+      if (result && (result.user || result.session)) {
+        console.log('Authentification réussie, fermeture du modal');
+        onAuthSuccess(result.user || result.session?.user);
+        onClose();
+        resetForm();
+      } else {
+        setError('Erreur d\'authentification - Veuillez réessayer');
+      }
     } catch (err) {
-      setError(err.message || "Une erreur s'est produite");
+      console.error('Erreur d\'authentification:', err);
+      setError(err.message || "Une erreur s'est produite lors de l'authentification");
     } finally {
       setLoading(false);
     }
