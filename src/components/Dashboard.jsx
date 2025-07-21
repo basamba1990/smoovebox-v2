@@ -17,11 +17,22 @@ const Dashboard = () => {
       if (!user) return;
       
       try {
-        // Récupérer le nombre de vidéos
+        // D'abord récupérer le profil de l'utilisateur
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('user_id', user.id)
+          .single();
+          
+        if (profileError) throw profileError;
+        
+        const profileId = profileData.id;
+        
+        // Récupérer le nombre de vidéos avec le profile_id
         const { data: videos, error: videosError } = await supabase
           .from('videos')
           .select('id')
-          .eq('user_id', user.id);
+          .eq('profile_id', profileId);
 
         if (videosError) throw videosError;
 
@@ -29,7 +40,7 @@ const Dashboard = () => {
         const { data: transcriptions, error: transcriptionsError } = await supabase
           .from('transcriptions')
           .select('id, confidence_score')
-          .eq('user_id', user.id);
+          .in('video_id', videos.map(v => v.id) || []);
 
         if (transcriptionsError) throw transcriptionsError;
 
