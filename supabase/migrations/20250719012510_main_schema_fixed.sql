@@ -1,6 +1,6 @@
 /* 
-  SMOOVEBOX DATABASE SCHEMA - VERSION 1.1
-  Full schema for Supabase PostgreSQL with idempotent commands
+  SMOOVEBOX DATABASE SCHEMA - VERSION 1.2
+  Full schema for Supabase PostgreSQL with complete RLS policies
 */
 
 -- Enable essential extensions
@@ -41,8 +41,8 @@ CREATE TABLE IF NOT EXISTS public.videos (
     duration_seconds INT,
     tags TEXT[],
     category TEXT,
-    status TEXT DEFAULT 'processing' 
-        CHECK (status IN ('processing', 'published', 'draft', 'failed')),
+    status TEXT DEFAULT 'uploaded' 
+        CHECK (status IN ('uploaded', 'transcribing', 'transcribed', 'analyzing', 'analyzed', 'published', 'draft', 'failed')),
     views_count INT DEFAULT 0,
     likes_count INT DEFAULT 0,
     comments_count INT DEFAULT 0,
@@ -169,7 +169,7 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_comments_modtime') THEN
         CREATE TRIGGER update_comments_modtime
         BEFORE UPDATE ON public.comments
-        FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
+        FOR Each ROW EXECUTE FUNCTION public.update_modified_column();
     END IF;
 END $$;
 
@@ -184,7 +184,7 @@ ALTER TABLE IF EXISTS public.followers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.likes ENABLE ROW LEVEL SECURITY;
 
--- Sample Policies with conditional creation
+-- Complete RLS Policies
 DO $$
 BEGIN
     -- Profiles
@@ -204,5 +204,99 @@ BEGIN
         FOR SELECT USING (status = 'published');
     END IF;
     
-    -- Add more policies as needed...
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'User full access to own videos') THEN
+        CREATE POLICY "User full access to own videos" ON public.videos
+        FOR ALL USING (
+            auth.uid() = (SELECT user_id FROM public.profiles WHERE id = profile_id)
+        );
+    END IF;
+    
+    -- Transcriptions
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Transcription access by video owner') THEN
+        CREATE POLICY "Transcription access by video owner" ON public.transcriptions
+        FOR ALL USING (
+            EXISTS (
+                SELECT 1 FROM public.videos v
+                WHERE v.id = video_id
+                AND auth.uid() = (SELECT user_id FROM public.profiles p WHERE p.id = v.profile_id)
+            )
+        );
+    END IF;
+    
+    -- AI Suggestions
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'AI suggestions access by owner') THEN
+        CREATE POLICY "AI suggestions access by owner" ON public.ai_suggestions
+        FOR ALL USING (
+            EXISTS (
+                SELECT 1 FROM public.transcriptions t
+                JOIN public.videos v ON t.video_id = v.id
+                WHERE t.id = transcription_id
+                AND auth.uid() = (SELECT user_id FROM public.profiles p WHERE p.id = v.profile_id)
+            )
+        );
+    END IF;
+    
+    -- Quiz Results
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'User access to own quiz results') THEN
+        CREATE POLICY "User access to own quiz results" ON public.quiz_results
+        FOR ALL USING (
+            auth.uid() = (SELECT user_id FROM public.profiles WHERE id = profile_id)
+        );
+    END IF;
+    
+    -- Followers
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Users can manage own follows') THEN
+        CREATE POLICY "Users can manage own follows" ON public.followers
+        FOR ALL USING (
+            auth.uid() = (SELECT user_id FROM public.profiles WHERE id = follower_id)
+        );
+    END IF;
+    
+    -- Comments
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'User manage own comments') THEN
+        CREATE POLICY "User manage own comments" ON public.comments
+        FOR ALL USING (
+            auth.uid() = (SELECT user_id FROM public.profiles WHERE id = profile_id)
+        );
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public comments on published videos') THEN
+        CREATE POLICY "Public comments on published videos" ON public.comments
+        FOR SELECT USING (
+            EXISTS (
+                SELECT 1 FROM public.videos
+                WHERE id = video_id AND status = 'published'
+            )
+        );
+    END IF;
+    
+    -- Likes
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'User manage own likes') THEN
+        CREATE POLICY "User manage own likes" ON public.likes
+        FOR ALL USING (
+            auth.uid() = (SELECT user_id FROM public.profiles WHERE id = profile_id)
+        );
+    END IF;
+    
+    -- Quizzes (public read access)
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Public quizzes are viewable') THEN
+        CREATE POLICY "Public quizzes are viewable" ON public.quizzes
+        FOR SELECT USING (true);
+    END IF;
 END $$;
+
+-- Function for auth hooks
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (user_id, email, username)
+  VALUES (NEW.id, NEW.email, NEW.raw_user_meta_data->>'username');
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger for user creation
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+AFTER INSERT ON auth.users
+FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
