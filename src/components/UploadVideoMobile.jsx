@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button.jsx';
 import { Upload, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { uploadVideo, getTranscription, analyzePitch } from '../lib/supabase.js';
-import { useAuth } from '../AuthContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 
 const UploadVideoMobile = () => {
   const { user } = useAuth();
