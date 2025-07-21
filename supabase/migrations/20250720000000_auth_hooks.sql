@@ -1,10 +1,16 @@
--- Fonction pour le hook before_user_created
-CREATE OR REPLACE FUNCTION auth.before_user_created()
+-- Supprimer les anciens triggers qui pourraient causer des conflits
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS before_user_created_trigger ON auth.users;
+DROP TRIGGER IF EXISTS after_user_created_trigger ON auth.users;
+
+-- Fonction unifiée pour la création d'utilisateur
+CREATE OR REPLACE FUNCTION auth.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
     username_base TEXT;
     username_suffix INT := 1;
     new_username TEXT;
+    profile_id UUID;
 BEGIN
     -- Générer un nom d'utilisateur unique
     username_base := LOWER(SPLIT_PART(NEW.email, '@', 1));
@@ -15,8 +21,13 @@ BEGIN
         username_suffix := username_suffix + 1;
     END LOOP;
     
-    -- Créer le profil utilisateur
-    INSERT INTO public.profiles (user_id, email, username, full_name)
+    -- Créer le profil utilisateur avec toutes les informations nécessaires
+    INSERT INTO public.profiles (
+        user_id, 
+        email, 
+        username, 
+        full_name
+    )
     VALUES (
         NEW.id, 
         NEW.email,
@@ -29,45 +40,23 @@ BEGIN
                 NEW.raw_user_meta_data->>'last_name'
             )
         )
-    );
+    )
+    RETURNING id INTO profile_id;
+    
+    -- Log de l'activité si la table existe
+    BEGIN
+        INSERT INTO public.user_activities (user_id, activity_type)
+        VALUES (NEW.id, 'signup');
+    EXCEPTION WHEN undefined_table THEN
+        -- La table n'existe pas, ignorer silencieusement
+        NULL;
+    END;
     
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Fonction pour le hook after_user_created
-CREATE OR REPLACE FUNCTION auth.after_user_created()
-RETURNS TRIGGER AS $$
-BEGIN
-    -- Envoyer un email de bienvenue
-    PERFORM net.http_post(
-        url := 'https://your-api.com/send-welcome-email',
-        body := jsonb_build_object(
-            'email', NEW.email,
-            'name', COALESCE(
-                NEW.raw_user_meta_data->>'full_name',
-                CONCAT(
-                    NEW.raw_user_meta_data->>'first_name', 
-                    ' ', 
-                    NEW.raw_user_meta_data->>'last_name'
-                )
-            )
-        )
-    );
-    
-    -- Autres actions post-création
-    INSERT INTO public.user_activities (user_id, activity_type)
-    VALUES (NEW.id, 'signup');
-    
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Déclencheurs pour les hooks
-CREATE TRIGGER before_user_created_trigger
-BEFORE INSERT ON auth.users
-FOR EACH ROW EXECUTE FUNCTION auth.before_user_created();
-
-CREATE TRIGGER after_user_created_trigger
+-- Un seul trigger pour gérer la création d'utilisateur
+CREATE TRIGGER on_auth_user_created
 AFTER INSERT ON auth.users
-FOR EACH ROW EXECUTE FUNCTION auth.after_user_created();
+FOR EACH ROW EXECUTE FUNCTION auth.handle_new_user();
