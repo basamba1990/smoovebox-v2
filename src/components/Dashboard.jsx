@@ -24,7 +24,16 @@ const Dashboard = () => {
           .eq('user_id', user.id)
           .single();
           
-        if (profileError) throw profileError;
+        if (profileError) {
+          console.warn('Profil non trouvé:', profileError.message);
+          setStats({
+            videosCount: 0,
+            transcriptionsCount: 0,
+            averageScore: null
+          });
+          setLoading(false);
+          return;
+        }
         
         const profileId = profileData.id;
         
@@ -34,18 +43,22 @@ const Dashboard = () => {
           .select('id')
           .eq('profile_id', profileId);
 
-        if (videosError) throw videosError;
+        if (videosError) {
+          console.warn('Erreur lors de la récupération des vidéos:', videosError.message);
+        }
 
         // Récupérer le nombre de transcriptions
         const { data: transcriptions, error: transcriptionsError } = await supabase
           .from('transcriptions')
           .select('id, confidence_score')
-          .in('video_id', videos.map(v => v.id) || []);
+          .in('video_id', videos?.map(v => v.id) || []);
 
-        if (transcriptionsError) throw transcriptionsError;
+        if (transcriptionsError) {
+          console.warn('Erreur lors de la récupération des transcriptions:', transcriptionsError.message);
+        }
 
         // Calculer le score moyen
-        const averageScore = transcriptions.length > 0 
+        const averageScore = transcriptions && transcriptions.length > 0 
           ? transcriptions.reduce((sum, t) => sum + (t.confidence_score || 0), 0) / transcriptions.length
           : null;
 
@@ -56,6 +69,11 @@ const Dashboard = () => {
         });
       } catch (error) {
         console.error('Erreur lors du chargement des statistiques:', error);
+        setStats({
+          videosCount: 0,
+          transcriptionsCount: 0,
+          averageScore: null
+        });
       } finally {
         setLoading(false);
       }
