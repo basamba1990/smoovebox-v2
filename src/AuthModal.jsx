@@ -3,8 +3,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from './components/ui/button.jsx';
 import { Input } from './components/ui/input.jsx';
 import { Label } from './components/ui/label.jsx';
-// Correction du chemin d'import
 import { useAuth } from './context/AuthContext.jsx';
+import { supabase } from './lib/supabase.js';
 
 const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -50,14 +50,34 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
       } else {
         result = await signUp(email, password, firstName, lastName);
         console.log('Résultat d\'inscription:', result);
+        
+        // Pour l'inscription, vérifier si l'email de confirmation est nécessaire
+        if (result?.user?.identities?.length === 0) {
+          setError('Un email de confirmation a été envoyé. Veuillez vérifier votre boîte de réception.');
+          setLoading(false);
+          return;
+        }
       }
       
       // Vérifier si la connexion/inscription a réussi
-      if (result && (result.user || result.session)) {
+      if (result && result.user) {
         console.log('Authentification réussie, fermeture du modal');
-        onAuthSuccess(result.user || result.session?.user);
-        onClose();
-        resetForm();
+        
+        // Vérifier explicitement la session
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session) {
+          // Forcer un rafraîchissement de la session
+          await supabase.auth.refreshSession();
+          
+          // Attendre un peu pour que les triggers de base de données s'exécutent
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          onAuthSuccess(result.user);
+          onClose();
+          resetForm();
+        } else {
+          setError('Session non établie. Veuillez réessayer.');
+        }
       } else {
         setError('Erreur d\'authentification - Veuillez réessayer');
       }
@@ -160,3 +180,4 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
 };
 
 export default AuthModal;
+
