@@ -117,8 +117,22 @@ export const uploadVideo = async (file, userId) => {
     }
 
   } catch (error) {
-    console.error('Erreur lors du téléversement de la vidéo:', error.message);
-    return { success: false, error: error.message };
+    console.error('Erreur lors du téléversement de la vidéo:', error);
+    
+    // Messages d'erreur plus explicites selon le type d'erreur
+    let errorMessage = error.message;
+    
+    if (error.message.includes('storage')) {
+      errorMessage = 'Erreur de stockage : Le bucket "videos" n\'existe pas ou n\'est pas accessible. Vérifiez la configuration Supabase.';
+    } else if (error.message.includes('permission') || error.message.includes('unauthorized')) {
+      errorMessage = 'Permissions insuffisantes : Vérifiez les politiques RLS du bucket "videos".';
+    } else if (error.message.includes('size') || error.message.includes('too large')) {
+      errorMessage = 'Fichier trop volumineux : La taille maximum autorisée est de 100MB.';
+    } else if (error.message.includes('network') || error.message.includes('fetch')) {
+      errorMessage = 'Erreur de connexion : Vérifiez votre connexion internet et réessayez.';
+    }
+    
+    return { success: false, error: errorMessage };
   }
 };
 
