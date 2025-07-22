@@ -633,10 +633,11 @@ export async function uploadVideo(file, metadata = {}, onProgress = () => {}) {
       const { data: videoData, error: videoError } = await supabase
         .from("videos")
         .insert({
-          user_id: user.id,
+          profile_id: metadata.profile_id || user.id, // Utiliser profile_id si fourni, sinon user_id
           title: metadata.title || file.name || "Sans titre",
           description: metadata.description || "",
           file_path: filePath,
+          file_name: file.name,
           thumbnail_url: thumbnailUrl,
           status: VIDEO_STATUS.DRAFT,
           is_public: metadata.isPublic || false,
