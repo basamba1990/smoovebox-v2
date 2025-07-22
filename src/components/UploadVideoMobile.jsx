@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button.jsx';
 import { Upload, CheckCircle, AlertCircle, Loader2, FileVideo, X } from 'lucide-react';
-import { uploadVideo, getTranscription, analyzePitch } from '../lib/supabase.js';
+import { uploadVideo, getTranscription, analyzePitch, supabase } from '../lib/supabase.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { VIDEO_STATUS } from '../constants/videoStatus.js';
 
 const UploadVideoMobile = () => {
   const { user } = useAuth();
@@ -69,6 +70,12 @@ const UploadVideoMobile = () => {
         throw new Error(uploadResult.error);
       }
 
+      // Mise à jour du statut pour le traitement
+      await supabase
+        .from("videos")
+        .update({ status: VIDEO_STATUS.PROCESSING })
+        .eq('id', uploadResult.video.id);
+
       // Étape 2: Transcription
       setUploadStatus('processing');
       setUploadProgress(50);
@@ -76,25 +83,41 @@ const UploadVideoMobile = () => {
       const transcriptionResult = await getTranscription(uploadResult.video.file_path);
       
       if (!transcriptionResult.success) {
+        // En cas d'échec, marquer comme failed
+        await supabase
+          .from("videos")
+          .update({ status: VIDEO_STATUS.FAILED })
+          .eq('id', uploadResult.video.id);
+          
         console.warn('Transcription échouée:', transcriptionResult.error);
-        // Continuer même si la transcription échoue
+        throw new Error(transcriptionResult.error); // Propager l'erreur pour la gestion globale
       }
 
-      // Étape 3: Analyse IA (seulement si transcription réussie)
-      if (transcriptionResult.success) {
-        setUploadProgress(75);
-        
-        const analysisResult = await analyzePitch(transcriptionResult.data);
-        
-        if (!analysisResult.success) {
-          console.warn('Analyse IA échouée:', analysisResult.error);
-        }
+      // Étape 3: Analyse IA
+      setUploadProgress(75);
+      
+      const analysisResult = await analyzePitch(transcriptionResult.data);
+      
+      if (!analysisResult.success) {
+        // En cas d'échec, marquer comme failed
+        await supabase
+          .from("videos")
+          .update({ status: VIDEO_STATUS.FAILED })
+          .eq('id', uploadResult.video.id);
+          
+        console.warn('Analyse IA échouée:', analysisResult.error);
+        throw new Error(analysisResult.error); // Propager l'erreur pour la gestion globale
       }
 
-      // Étape 4: Finalisation
+      // Étape 4: Finalisation - marquer comme publié
+      await supabase
+        .from("videos")
+        .update({ status: VIDEO_STATUS.PUBLISHED })
+        .eq('id', uploadResult.video.id);
+
       setUploadProgress(100);
       setUploadStatus('success');
-      setSuccessMessage('Vidéo uploadée avec succès !');
+      setSuccessMessage('Vidéo uploadée et analysée avec succès !');
       
       // Reset après 5 secondes
       setTimeout(() => {
@@ -114,7 +137,9 @@ const UploadVideoMobile = () => {
       // Messages d'erreur plus explicites
       let errorMessage = 'Une erreur est survenue lors du traitement.';
       
-      if (error.message.includes('storage') || error.message.includes('bucket')) {
+      if (error.message.includes('videos_status_check')) {
+        errorMessage = 'Erreur de statut vidéo : Configuration de base de données incorrecte.';
+      } else if (error.message.includes('storage') || error.message.includes('bucket')) {
         errorMessage = 'Erreur de stockage : Vérifiez la configuration Supabase Storage.';
       } else if (error.message.includes('profiles') || error.message.includes('user')) {
         errorMessage = 'Erreur de profil utilisateur : Problème d\'authentification.';
