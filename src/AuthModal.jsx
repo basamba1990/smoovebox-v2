@@ -52,7 +52,7 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
         
         // Pour l'inscription, vérifier si l'email de confirmation est nécessaire
         if (result?.user?.identities?.length === 0) {
-          setError('Un email de confirmation a été envoyé. Veuillez vérifier votre boîte de réception.');
+          setError('✅ Inscription réussie ! Un email de confirmation a été envoyé à votre adresse. Veuillez vérifier votre boîte de réception et cliquer sur le lien de confirmation pour activer votre compte.');
           setLoading(false);
           return;
         }
@@ -149,7 +149,15 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
               minLength={6}
             />
           </div>
-          {error && <p className="text-red-500 text-sm">{error}</p>}
+          {error && (
+            <div className={`text-sm p-3 rounded-md ${
+              error.startsWith('✅') 
+                ? 'text-green-700 bg-green-50 border border-green-200' 
+                : 'text-red-500'
+            }`}>
+              {error}
+            </div>
+          )}
           <Button type="submit" className="w-full" disabled={loading || authLoading}>
             {loading ? 'Chargement...' : (isLogin ? 'Connexion' : 'Inscription')}
           </Button>

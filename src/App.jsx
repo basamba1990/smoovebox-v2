@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button.jsx';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.jsx';
+import React, { useState, useEffect } from 'react';
+import { AuthProvider } from './context/AuthContext.jsx';
+import AuthModal from './AuthModal.jsx';
+import Dashboard from './components/Dashboard.jsx';
 import UploadVideoMobile from './components/UploadVideoMobile.jsx';
 import TranscriptionViewer from './components/TranscriptionViewer.jsx';
-import Dashboard from './components/Dashboard.jsx';
-import AuthModal from './AuthModal.jsx';
-import { AuthProvider, useAuth } from './context/AuthContext.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
+import { useAuth } from './context/AuthContext.jsx';
+import { Button } from './components/ui/button.jsx';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs.jsx';
 import { supabase } from './lib/supabase.js';
 import { Video, Upload, BarChart3, FileText, LogOut, AlertTriangle } from 'lucide-react';
 import './App.css';
@@ -130,7 +132,7 @@ function AppContent() {
               {user ? (
                 <div className="flex items-center gap-4">
                   <span className="text-sm text-gray-600">
-                    Bonjour, {profile?.first_name || user.email}
+                    Bonjour, {profile?.full_name || user.email}
                   </span>
                   <Button variant="outline" size="sm" onClick={handleSignOut}>
                     <LogOut className="h-4 w-4 mr-2" />
@@ -256,9 +258,11 @@ function AppContent() {
 
 function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 
