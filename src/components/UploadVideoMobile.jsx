@@ -66,13 +66,27 @@ const UploadVideoMobile = () => {
     setProcessingStep('Préparation de l\'upload...');
 
     try {
+      // Récupérer le profile_id de l'utilisateur
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+        
+      if (profileError) {
+        throw new Error('Profil utilisateur non trouvé. Veuillez vous reconnecter.');
+      }
+      
+      const profileId = profileData.id;
+
       // Étape 1: Upload de la vidéo avec callback de progression
       setProcessingStep('Upload de la vidéo en cours...');
       const uploadResult = await uploadVideo(selectedFile, {
         title: selectedFile.name,
         description: '',
         generateThumbnail: true,
-        isPublic: false
+        isPublic: false,
+        profile_id: profileId // Ajouter le profile_id
       }, (progress) => {
         if (progress.phase === 'video') {
           setUploadProgress(Math.min(progress.progress * 0.4, 40)); // 40% pour l'upload
@@ -113,7 +127,6 @@ const UploadVideoMobile = () => {
             .from('transcriptions')
             .insert({
               video_id: uploadResult.video.id,
-              user_id: user.id,
               transcription_text: basicTranscription,
               confidence_score: 50,
               analysis_result: basicAnalysis.data,
@@ -147,7 +160,6 @@ const UploadVideoMobile = () => {
         if (!transcriptionResult.success) {
           // En cas d'échec de transcription, essayer le mode dégradé
           console.warn('Transcription échouée, passage en mode dégradé:', transcriptionResult.error);
-          
           const basicAnalysis = getBasicAnalysis(`Erreur de transcription - Fichier: ${selectedFile.name}`);
           
           if (basicAnalysis.success) {
@@ -155,7 +167,6 @@ const UploadVideoMobile = () => {
               .from('transcriptions')
               .insert({
                 video_id: uploadResult.video.id,
-                user_id: user.id,
                 transcription_text: 'Transcription échouée',
                 confidence_score: 25,
                 analysis_result: basicAnalysis.data,
@@ -193,7 +204,6 @@ const UploadVideoMobile = () => {
                 .from('transcriptions')
                 .insert({
                   video_id: uploadResult.video.id,
-                  user_id: user.id,
                   transcription_text: transcriptionResult.data,
                   confidence_score: 75,
                   analysis_result: basicAnalysis.data,
@@ -219,7 +229,6 @@ const UploadVideoMobile = () => {
               .from('transcriptions')
               .insert({
                 video_id: uploadResult.video.id,
-                user_id: user.id,
                 transcription_text: transcriptionResult.data,
                 confidence_score: 90,
                 analysis_result: analysisResult.data,
@@ -249,32 +258,13 @@ const UploadVideoMobile = () => {
           fileInputRef.current.value = '';
         }
       }, 5000);
-
+      
     } catch (error) {
-      console.error('Erreur lors du traitement:', error);
+      console.error('Erreur lors du traitement de la vidéo:', error);
+      setErrorMessage(error.message || 'Une erreur est survenue lors du traitement de la vidéo.');
       setUploadStatus('error');
+      setUploadProgress(0);
       setProcessingStep('');
-      
-      // Messages d'erreur plus explicites
-      let errorMessage = 'Une erreur est survenue lors du traitement.';
-      
-      if (error.message.includes('videos_status_check')) {
-        errorMessage = 'Erreur de statut vidéo : Configuration de base de données incorrecte.';
-      } else if (error.message.includes('storage') || error.message.includes('bucket')) {
-        errorMessage = 'Erreur de stockage : Vérifiez la configuration Supabase Storage.';
-      } else if (error.message.includes('profiles') || error.message.includes('user')) {
-        errorMessage = 'Erreur de profil utilisateur : Problème d\'authentification.';
-      } else if (error.message.includes('OpenAI') || error.message.includes('API')) {
-        errorMessage = 'Service d\'analyse IA temporairement indisponible.';
-      } else if (error.message.includes('network') || error.message.includes('fetch')) {
-        errorMessage = 'Erreur de connexion : Vérifiez votre connexion internet.';
-      } else if (error.message.includes('size') || error.message.includes('large')) {
-        errorMessage = 'Fichier trop volumineux ou format non supporté.';
-      } else if (error.message) {
-        errorMessage = `Erreur : ${error.message}`;
-      }
-      
-      setErrorMessage(errorMessage);
     }
   };
 

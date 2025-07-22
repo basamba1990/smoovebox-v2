@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Video, FileText, BarChart3 } from 'lucide-react';
+import { Video, FileText, BarChart3, Play, Calendar } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { useAuth } from '../context/AuthContext.jsx';
 
@@ -10,6 +10,7 @@ const Dashboard = () => {
     transcriptionsCount: 0,
     averageScore: null
   });
+  const [recentVideos, setRecentVideos] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -31,6 +32,7 @@ const Dashboard = () => {
             transcriptionsCount: 0,
             averageScore: null
           });
+          setRecentVideos([]);
           setLoading(false);
           return;
         }
@@ -40,8 +42,9 @@ const Dashboard = () => {
         // Récupérer le nombre de vidéos avec le profile_id
         const { data: videos, error: videosError } = await supabase
           .from('videos')
-          .select('id')
-          .eq('profile_id', profileId);
+          .select('id, title, file_name, created_at, thumbnail_url')
+          .eq('profile_id', profileId)
+          .order('created_at', { ascending: false });
 
         if (videosError) {
           console.warn('Erreur lors de la récupération des vidéos:', videosError.message);
@@ -67,6 +70,9 @@ const Dashboard = () => {
           transcriptionsCount: transcriptions?.length || 0,
           averageScore: averageScore ? Math.round(averageScore) : null
         });
+
+        // Garder les 3 vidéos les plus récentes pour l'affichage
+        setRecentVideos(videos?.slice(0, 3) || []);
       } catch (error) {
         console.error('Erreur lors du chargement des statistiques:', error);
         setStats({
@@ -74,6 +80,7 @@ const Dashboard = () => {
           transcriptionsCount: 0,
           averageScore: null
         });
+        setRecentVideos([]);
       } finally {
         setLoading(false);
       }
@@ -81,6 +88,14 @@ const Dashboard = () => {
 
     fetchStats();
   }, [user]);
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('fr-FR', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
 
   if (loading) {
     return (
@@ -147,6 +162,33 @@ const Dashboard = () => {
           <p className="text-sm text-gray-500">Évaluation IA</p>
         </div>
       </div>
+
+      {/* Section des vidéos récentes */}
+      {recentVideos.length > 0 && (
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <h3 className="text-lg font-semibold mb-4">Vidéos récentes</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {recentVideos.map((video) => (
+              <div key={video.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Play className="h-4 w-4 text-blue-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-medium text-sm truncate">
+                      {video.title || video.file_name || 'Sans titre'}
+                    </h4>
+                    <div className="flex items-center gap-1 text-xs text-gray-500">
+                      <Calendar className="h-3 w-3" />
+                      {formatDate(video.created_at)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {stats.videosCount === 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">

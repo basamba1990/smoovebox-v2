@@ -19,22 +19,60 @@ const TranscriptionViewer = () => {
     
     setLoading(true);
     try {
+      // D'abord récupérer le profil de l'utilisateur
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+        
+      if (profileError) {
+        console.warn('Profil non trouvé:', profileError.message);
+        setTranscriptions([]);
+        setLoading(false);
+        return;
+      }
+      
+      const profileId = profileData.id;
+      
+      // Récupérer les vidéos de l'utilisateur
+      const { data: videos, error: videosError } = await supabase
+        .from('videos')
+        .select('id, file_name, upload_date, created_at')
+        .eq('profile_id', profileId);
+
+      if (videosError) {
+        console.warn('Erreur lors de la récupération des vidéos:', videosError.message);
+        setTranscriptions([]);
+        setLoading(false);
+        return;
+      }
+
+      if (!videos || videos.length === 0) {
+        setTranscriptions([]);
+        setLoading(false);
+        return;
+      }
+
+      // Récupérer les transcriptions pour ces vidéos
       const { data, error } = await supabase
         .from('transcriptions')
         .select(`
           *,
           videos (
             file_name,
-            upload_date
+            upload_date,
+            created_at
           )
         `)
-        .eq('user_id', user.id)
+        .in('video_id', videos.map(v => v.id))
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       setTranscriptions(data || []);
     } catch (error) {
       console.error('Erreur lors du chargement des transcriptions:', error);
+      setTranscriptions([]);
     } finally {
       setLoading(false);
     }
