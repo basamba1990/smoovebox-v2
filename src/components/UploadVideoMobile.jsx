@@ -94,7 +94,23 @@ const UploadVideoMobile = () => {
     } catch (error) {
       console.error('Erreur lors du traitement:', error);
       setUploadStatus('error');
-      setErrorMessage(error.message || 'Une erreur est survenue lors du traitement.');
+      
+      // Messages d'erreur plus explicites
+      let errorMessage = 'Une erreur est survenue lors du traitement.';
+      
+      if (error.message.includes('storage')) {
+        errorMessage = 'Erreur de stockage : Vérifiez que le bucket Supabase est configuré correctement.';
+      } else if (error.message.includes('profiles')) {
+        errorMessage = 'Erreur de profil utilisateur : Impossible de créer ou récupérer votre profil.';
+      } else if (error.message.includes('OpenAI')) {
+        errorMessage = 'Service d\'analyse IA temporairement indisponible. Réessayez plus tard.';
+      } else if (error.message.includes('network') || error.message.includes('fetch')) {
+        errorMessage = 'Erreur de connexion : Vérifiez votre connexion internet.';
+      } else if (error.message) {
+        errorMessage = `Erreur : ${error.message}`;
+      }
+      
+      setErrorMessage(errorMessage);
     }
   };
 
