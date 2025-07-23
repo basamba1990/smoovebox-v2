@@ -385,12 +385,6 @@ const UploadVideoMobile = () => {
       handleFileSelect(files[0]);
     }
   };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
   const handleDragLeave = (e) => {
     e.preventDefault();
     setIsDragging(false);
@@ -406,7 +400,6 @@ const UploadVideoMobile = () => {
   const openFileDialog = () => {
     fileInputRef.current?.click();
   };
-
   const removeSelectedFile = () => {
     setSelectedFile(null);
     setErrorMessage('');
