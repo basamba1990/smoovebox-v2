@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
+import { VIDEO_STATUS } from '../constants/videoStatus.js';
 
 // Vérification des variables d'environnement avec messages d'erreur détaillés
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -417,7 +418,7 @@ export async function uploadVideo(file, metadata = {}, onProgress = () => {}) {
           description: metadata.description || "",
           file_path: filePath,
           thumbnail_url: thumbnailUrl,
-          status: "uploaded",
+          status: VIDEO_STATUS.DRAFT,
           is_public: metadata.isPublic || false,
           tags: metadata.tags || []
         })
