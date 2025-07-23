@@ -139,6 +139,26 @@ const Dashboard = () => {
     };
 
     fetchStats();
+
+    // Écouter les événements de rafraîchissement
+    const handleVideoUploaded = () => {
+      console.log('Vidéo uploadée, rafraîchissement du dashboard...');
+      fetchStats();
+    };
+
+    const handleRefreshDashboard = () => {
+      console.log('Rafraîchissement manuel du dashboard...');
+      fetchStats();
+    };
+
+    window.addEventListener('videoUploaded', handleVideoUploaded);
+    window.addEventListener('refreshDashboard', handleRefreshDashboard);
+
+    // Nettoyer les écouteurs d'événements
+    return () => {
+      window.removeEventListener('videoUploaded', handleVideoUploaded);
+      window.removeEventListener('refreshDashboard', handleRefreshDashboard);
+    };
   }, [user]);
 
   const formatDate = (dateString) => {

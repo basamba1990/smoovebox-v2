@@ -330,6 +330,11 @@ const UploadVideoMobile = () => {
         }
       }
       
+      // Déclencher un événement pour rafraîchir le dashboard
+      window.dispatchEvent(new CustomEvent('videoUploaded', {
+        detail: { videoId: uploadResult.video.id }
+      }));
+      
       // Reset après 5 secondes
       setTimeout(() => {
         setUploadStatus('idle');
@@ -340,6 +345,9 @@ const UploadVideoMobile = () => {
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
+        
+        // Déclencher un autre événement pour s'assurer que les données sont rafraîchies
+        window.dispatchEvent(new CustomEvent('refreshDashboard'));
       }, 5000);
       
     } catch (error) {

@@ -13,6 +13,28 @@ const TranscriptionViewer = () => {
 
   useEffect(() => {
     fetchTranscriptions();
+
+    // Écouter les événements de rafraîchissement
+    const handleVideoUploaded = () => {
+      console.log('Vidéo uploadée, rafraîchissement des transcriptions...');
+      setTimeout(() => {
+        fetchTranscriptions();
+      }, 2000); // Attendre 2 secondes pour que le traitement soit terminé
+    };
+
+    const handleRefreshDashboard = () => {
+      console.log('Rafraîchissement des transcriptions...');
+      fetchTranscriptions();
+    };
+
+    window.addEventListener('videoUploaded', handleVideoUploaded);
+    window.addEventListener('refreshDashboard', handleRefreshDashboard);
+
+    // Nettoyer les écouteurs d'événements
+    return () => {
+      window.removeEventListener('videoUploaded', handleVideoUploaded);
+      window.removeEventListener('refreshDashboard', handleRefreshDashboard);
+    };
   }, [user]);
 
   const fetchTranscriptions = async () => {
