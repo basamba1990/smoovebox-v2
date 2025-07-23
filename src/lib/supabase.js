@@ -634,7 +634,7 @@ export async function uploadVideo(file, metadata = {}, onProgress = () => {}) {
         .from("videos")
         .insert({
           profile_id: metadata.profile_id || user.id, // Utiliser profile_id si fourni, sinon user_id
-          title: metadata.title || file.name || "Sans titre",
+          title: metadata.title || file.name.split(".").slice(0, -1).join(".") || "Sans titre",
           description: metadata.description || "",
           file_path: filePath,
           file_name: file.name,
