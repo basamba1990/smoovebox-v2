@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button.jsx';
 import { Upload, CheckCircle, AlertCircle, Loader2, FileVideo, X, Info } from 'lucide-react';
-import { uploadVideo, getTranscription, analyzePitch, getBasicAnalysis, checkOpenAIAvailability, supabase } from '../lib/supabase-fixed.js';
+import { uploadVideo, getTranscription, analyzePitch, getBasicAnalysis, checkOpenAIAvailability, supabase } from '../lib/supabase.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { VIDEO_STATUS } from '../constants/videoStatus.js';
 
