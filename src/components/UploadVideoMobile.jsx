@@ -377,6 +377,11 @@ const UploadVideoMobile = () => {
     }
   };
 
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
   const handleDrop = (e) => {
     e.preventDefault();
     setIsDragging(false);
@@ -385,6 +390,7 @@ const UploadVideoMobile = () => {
       handleFileSelect(files[0]);
     }
   };
+
   const handleDragLeave = (e) => {
     e.preventDefault();
     setIsDragging(false);
