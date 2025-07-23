@@ -4,18 +4,21 @@ import AuthModal from './AuthModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import UploadVideoMobile from './components/UploadVideoMobile.jsx';
 import TranscriptionViewer from './components/TranscriptionViewer.jsx';
+import DatabaseSetup from './components/DatabaseSetup.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { Button } from './components/ui/button.jsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs.jsx';
 import { supabase } from './lib/supabase.js';
-import { Video, Upload, BarChart3, FileText, LogOut, AlertTriangle } from 'lucide-react';
+import { Video, Upload, BarChart3, FileText, LogOut, AlertTriangle, Settings } from 'lucide-react';
 import './App.css';
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [supabaseError, setSupabaseError] = useState(null);
+  const [showDatabaseSetup, setShowDatabaseSetup] = useState(false);
+  const [databaseConfigured, setDatabaseConfigured] = useState(null);
   const { user, loading, signOut, profile } = useAuth();
 
   // Vérifier la connexion à Supabase avec gestion d'erreur améliorée
@@ -32,19 +35,26 @@ function AppContent() {
             return;
           }
 
-          // Test de connexion à la base de données (optionnel)
-          try {
-            const { data: testData, error: testError } = await supabase
-              .from('profiles')
-              .select('count')
-              .limit(1);
-            
-            if (testError && testError.code !== 'PGRST116') { // PGRST116 = table not found, acceptable
-              console.warn("Avertissement base de données:", testError);
+          // Test de connexion à la base de données pour vérifier la configuration
+          if (user) {
+            try {
+              const { data: testData, error: testError } = await supabase
+                .from('profiles')
+                .select('count')
+                .limit(1);
+              
+              if (testError && testError.code === 'PGRST116') {
+                // Tables manquantes - proposer la configuration
+                setDatabaseConfigured(false);
+                setShowDatabaseSetup(true);
+              } else if (!testError) {
+                setDatabaseConfigured(true);
+              }
+            } catch (dbError) {
+              console.warn("Base de données non accessible:", dbError);
+              setDatabaseConfigured(false);
+              setShowDatabaseSetup(true);
             }
-          } catch (dbError) {
-            console.warn("Base de données non accessible:", dbError);
-            // Ne pas bloquer l'application pour les erreurs de DB
           }
           
         } catch (error) {
@@ -55,11 +65,16 @@ function AppContent() {
       
       checkSupabaseConnection();
     }
-  }, [loading]);
+  }, [loading, user]);
 
   const handleAuthSuccess = (user) => {
     console.log('User authenticated:', user);
     setIsAuthModalOpen(false);
+  };
+
+  const handleSetupComplete = () => {
+    setShowDatabaseSetup(false);
+    setDatabaseConfigured(true);
   };
 
   const handleSignOut = async () => {
@@ -104,6 +119,11 @@ function AppContent() {
     );
   }
 
+  // Affichage de la configuration de base de données si nécessaire
+  if (user && showDatabaseSetup && databaseConfigured === false) {
+    return <DatabaseSetup onSetupComplete={handleSetupComplete} />;
+  }
+
   // Écran de chargement amélioré
   if (loading) {
     return (
@@ -134,6 +154,16 @@ function AppContent() {
                   <span className="text-sm text-gray-600">
                     Bonjour, {profile?.full_name || user.email}
                   </span>
+                  {databaseConfigured === false && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setShowDatabaseSetup(true)}
+                    >
+                      <Settings className="h-4 w-4 mr-2" />
+                      Configuration
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" onClick={handleSignOut}>
                     <LogOut className="h-4 w-4 mr-2" />
                     Déconnexion
