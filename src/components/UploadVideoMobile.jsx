@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button.jsx';
-import { Upload, CheckCircle, AlertCircle, Loader2, FileVideo, X, Info } from 'lucide-react';
+import { Upload, CheckCircle, AlertCircle, Loader2, FileVideo, X, Info, Database } from 'lucide-react';
 import { uploadVideo, getTranscription, analyzePitch, getBasicAnalysis, checkOpenAIAvailability, supabase } from '../lib/supabase.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { VIDEO_STATUS } from '../constants/videoStatus.js';
@@ -15,13 +15,19 @@ const UploadVideoMobile = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [aiAvailable, setAiAvailable] = useState(null);
   const [processingStep, setProcessingStep] = useState('');
+  const [dbError, setDbError] = useState(null);
   const fileInputRef = useRef(null);
 
   // Vérifier la disponibilité de l'IA au chargement
   React.useEffect(() => {
     const checkAI = async () => {
-      const availability = await checkOpenAIAvailability();
-      setAiAvailable(availability.available);
+      try {
+        const availability = await checkOpenAIAvailability();
+        setAiAvailable(availability.available);
+      } catch (error) {
+        console.warn('Erreur lors de la vérification de l\'IA:', error);
+        setAiAvailable(false);
+      }
     };
     checkAI();
   }, []);
@@ -30,9 +36,9 @@ const UploadVideoMobile = () => {
     if (!file) return;
 
     // Vérifier le type de fichier
-    const allowedTypes = ['video/mp4', 'video/mov', 'video/avi', 'video/quicktime'];
+    const allowedTypes = ['video/mp4', 'video/mov', 'video/avi', 'video/quicktime', 'video/webm'];
     if (!allowedTypes.includes(file.type)) {
-      setErrorMessage('Format de fichier non supporté. Utilisez MP4, MOV ou AVI.');
+      setErrorMessage('Format de fichier non supporté. Utilisez MP4, MOV, AVI ou WebM.');
       setUploadStatus('error');
       return;
     }
@@ -48,6 +54,7 @@ const UploadVideoMobile = () => {
     setSelectedFile(file);
     setErrorMessage('');
     setUploadStatus('idle');
+    setDbError(null);
   };
 
   const processVideo = async () => {
@@ -64,8 +71,26 @@ const UploadVideoMobile = () => {
     setErrorMessage('');
     setSuccessMessage('');
     setProcessingStep('Préparation de l\'upload...');
+    setDbError(null);
 
     try {
+      // Test de connexion à la base de données
+      const { data: testConnection, error: connectionError } = await supabase
+        .from('profiles')
+        .select('count')
+        .limit(1);
+        
+      if (connectionError && connectionError.code === 'PGRST116') {
+        setDbError({
+          type: 'missing_tables',
+          message: 'Les tables de base de données ne sont pas configurées',
+          details: 'Il semble que les tables Supabase (profiles, videos, transcriptions) ne soient pas créées.'
+        });
+        setUploadStatus('error');
+        setErrorMessage('Base de données non configurée. Contactez l\'administrateur.');
+        return;
+      }
+
       // Récupérer le profile_id de l'utilisateur
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
@@ -74,10 +99,31 @@ const UploadVideoMobile = () => {
         .single();
         
       if (profileError) {
-        throw new Error('Profil utilisateur non trouvé. Veuillez vous reconnecter.');
+        if (profileError.code === 'PGRST301') {
+          // Profil n'existe pas, essayer de le créer
+          setProcessingStep('Création du profil utilisateur...');
+          const { data: newProfile, error: createError } = await supabase
+            .from('profiles')
+            .insert({
+              user_id: user.id,
+              email: user.email,
+              username: user.email.split('@')[0],
+              full_name: user.user_metadata?.full_name || user.email.split('@')[0]
+            })
+            .select()
+            .single();
+            
+          if (createError) {
+            throw new Error(`Erreur lors de la création du profil: ${createError.message}`);
+          }
+          
+          const profileId = newProfile.id;
+        } else {
+          throw new Error(`Profil utilisateur non trouvé: ${profileError.message}`);
+        }
       }
       
-      const profileId = profileData.id;
+      const profileId = profileData?.id;
 
       // Étape 1: Upload de la vidéo avec callback de progression
       setProcessingStep('Upload de la vidéo en cours...');
@@ -98,10 +144,15 @@ const UploadVideoMobile = () => {
       }
 
       // Mise à jour du statut pour le traitement
-      await supabase
-        .from("videos")
-        .update({ status: VIDEO_STATUS.PROCESSING })
-        .eq('id', uploadResult.video.id);
+      try {
+        await supabase
+          .from("videos")
+          .update({ status: VIDEO_STATUS.PROCESSING })
+          .eq('id', uploadResult.video.id);
+      } catch (updateError) {
+        console.warn('Erreur lors de la mise à jour du statut:', updateError);
+        // Continuer même si la mise à jour échoue
+      }
 
       // Étape 2: Vérifier la disponibilité de l'IA
       setUploadStatus('processing');
@@ -123,29 +174,37 @@ const UploadVideoMobile = () => {
         
         if (basicAnalysis.success) {
           // Enregistrer l'analyse basique
-          const { error: transcriptionError } = await supabase
-            .from('transcriptions')
-            .insert({
-              video_id: uploadResult.video.id,
-              transcription_text: basicTranscription,
-              confidence_score: 50,
-              analysis_result: basicAnalysis.data,
-              processing_status: 'completed_basic'
-            });
+          try {
+            const { error: transcriptionError } = await supabase
+              .from('transcriptions')
+              .insert({
+                video_id: uploadResult.video.id,
+                transcription_text: basicTranscription,
+                confidence_score: 50,
+                analysis_result: basicAnalysis.data,
+                processing_status: 'completed_basic'
+              });
 
-          if (transcriptionError) {
-            console.warn('Erreur lors de l\'enregistrement de l\'analyse basique:', transcriptionError);
+            if (transcriptionError) {
+              console.warn('Erreur lors de l\'enregistrement de l\'analyse basique:', transcriptionError);
+            }
+          } catch (dbInsertError) {
+            console.warn('Table transcriptions non disponible:', dbInsertError);
           }
         }
         
         // Marquer comme publié avec analyse basique
-        await supabase
-          .from("videos")
-          .update({ 
-            status: VIDEO_STATUS.PUBLISHED,
-            processing_notes: 'Analyse basique - IA indisponible'
-          })
-          .eq('id', uploadResult.video.id);
+        try {
+          await supabase
+            .from("videos")
+            .update({ 
+              status: VIDEO_STATUS.PUBLISHED,
+              processing_notes: 'Analyse basique - IA indisponible'
+            })
+            .eq('id', uploadResult.video.id);
+        } catch (updateError) {
+          console.warn('Erreur lors de la mise à jour finale:', updateError);
+        }
 
         setUploadProgress(100);
         setUploadStatus('success');
@@ -163,24 +222,32 @@ const UploadVideoMobile = () => {
           const basicAnalysis = getBasicAnalysis(`Erreur de transcription - Fichier: ${selectedFile.name}`);
           
           if (basicAnalysis.success) {
-            await supabase
-              .from('transcriptions')
-              .insert({
-                video_id: uploadResult.video.id,
-                transcription_text: 'Transcription échouée',
-                confidence_score: 25,
-                analysis_result: basicAnalysis.data,
-                processing_status: 'failed_transcription'
-              });
+            try {
+              await supabase
+                .from('transcriptions')
+                .insert({
+                  video_id: uploadResult.video.id,
+                  transcription_text: 'Transcription échouée',
+                  confidence_score: 25,
+                  analysis_result: basicAnalysis.data,
+                  processing_status: 'failed_transcription'
+                });
+            } catch (dbInsertError) {
+              console.warn('Erreur d\'insertion transcription:', dbInsertError);
+            }
           }
           
-          await supabase
-            .from("videos")
-            .update({ 
-              status: VIDEO_STATUS.PUBLISHED,
-              processing_notes: 'Transcription échouée - Analyse basique'
-            })
-            .eq('id', uploadResult.video.id);
+          try {
+            await supabase
+              .from("videos")
+              .update({ 
+                status: VIDEO_STATUS.PUBLISHED,
+                processing_notes: 'Transcription échouée - Analyse basique'
+              })
+              .eq('id', uploadResult.video.id);
+          } catch (updateError) {
+            console.warn('Erreur de mise à jour:', updateError);
+          }
 
           setUploadProgress(100);
           setUploadStatus('success');
@@ -200,24 +267,32 @@ const UploadVideoMobile = () => {
             const basicAnalysis = getBasicAnalysis(transcriptionResult.data);
             
             if (basicAnalysis.success) {
-              await supabase
-                .from('transcriptions')
-                .insert({
-                  video_id: uploadResult.video.id,
-                  transcription_text: transcriptionResult.data,
-                  confidence_score: 75,
-                  analysis_result: basicAnalysis.data,
-                  processing_status: 'transcription_only'
-                });
+              try {
+                await supabase
+                  .from('transcriptions')
+                  .insert({
+                    video_id: uploadResult.video.id,
+                    transcription_text: transcriptionResult.data,
+                    confidence_score: 75,
+                    analysis_result: basicAnalysis.data,
+                    processing_status: 'transcription_only'
+                  });
+              } catch (dbInsertError) {
+                console.warn('Erreur d\'insertion transcription:', dbInsertError);
+              }
             }
             
-            await supabase
-              .from("videos")
-              .update({ 
-                status: VIDEO_STATUS.PUBLISHED,
-                processing_notes: 'Transcription OK - Analyse IA échouée'
-              })
-              .eq('id', uploadResult.video.id);
+            try {
+              await supabase
+                .from("videos")
+                .update({ 
+                  status: VIDEO_STATUS.PUBLISHED,
+                  processing_notes: 'Transcription OK - Analyse IA échouée'
+                })
+                .eq('id', uploadResult.video.id);
+            } catch (updateError) {
+              console.warn('Erreur de mise à jour:', updateError);
+            }
 
             setUploadProgress(100);
             setUploadStatus('success');
@@ -225,20 +300,28 @@ const UploadVideoMobile = () => {
             
           } else {
             // Succès complet
-            await supabase
-              .from('transcriptions')
-              .insert({
-                video_id: uploadResult.video.id,
-                transcription_text: transcriptionResult.data,
-                confidence_score: 90,
-                analysis_result: analysisResult.data,
-                processing_status: 'completed_full'
-              });
+            try {
+              await supabase
+                .from('transcriptions')
+                .insert({
+                  video_id: uploadResult.video.id,
+                  transcription_text: transcriptionResult.data,
+                  confidence_score: 90,
+                  analysis_result: analysisResult.data,
+                  processing_status: 'completed_full'
+                });
+            } catch (dbInsertError) {
+              console.warn('Erreur d\'insertion transcription:', dbInsertError);
+            }
 
-            await supabase
-              .from("videos")
-              .update({ status: VIDEO_STATUS.PUBLISHED })
-              .eq('id', uploadResult.video.id);
+            try {
+              await supabase
+                .from("videos")
+                .update({ status: VIDEO_STATUS.PUBLISHED })
+                .eq('id', uploadResult.video.id);
+            } catch (updateError) {
+              console.warn('Erreur de mise à jour finale:', updateError);
+            }
 
             setUploadProgress(100);
             setUploadStatus('success');
@@ -261,7 +344,25 @@ const UploadVideoMobile = () => {
       
     } catch (error) {
       console.error('Erreur lors du traitement de la vidéo:', error);
-      setErrorMessage(error.message || 'Une erreur est survenue lors du traitement de la vidéo.');
+      
+      let userMessage = 'Une erreur est survenue lors du traitement de la vidéo.';
+      
+      if (error.message.includes('not found') || error.message.includes('PGRST116')) {
+        userMessage = 'Configuration de base de données incomplète. Contactez l\'administrateur.';
+        setDbError({
+          type: 'missing_tables',
+          message: 'Tables de base de données manquantes',
+          details: error.message
+        });
+      } else if (error.message.includes('permission') || error.message.includes('RLS')) {
+        userMessage = 'Permissions insuffisantes. Vérifiez votre connexion.';
+      } else if (error.message.includes('storage') || error.message.includes('bucket')) {
+        userMessage = 'Erreur de stockage. Vérifiez la configuration Supabase Storage.';
+      } else if (error.message.includes('network') || error.message.includes('fetch')) {
+        userMessage = 'Problème de connexion réseau. Vérifiez votre connexion internet.';
+      }
+      
+      setErrorMessage(userMessage);
       setUploadStatus('error');
       setUploadProgress(0);
       setProcessingStep('');
@@ -303,6 +404,7 @@ const UploadVideoMobile = () => {
     setErrorMessage('');
     setUploadStatus('idle');
     setProcessingStep('');
+    setDbError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -324,7 +426,7 @@ const UploadVideoMobile = () => {
       case 'success':
         return <CheckCircle className="h-12 w-12 text-green-500" />;
       case 'error':
-        return <AlertCircle className="h-12 w-12 text-red-500" />;
+        return dbError ? <Database className="h-12 w-12 text-yellow-500" /> : <AlertCircle className="h-12 w-12 text-red-500" />;
       default:
         return selectedFile ? <FileVideo className="h-12 w-12 text-blue-500" /> : <Upload className="h-12 w-12 text-gray-400" />;
     }
@@ -339,7 +441,7 @@ const UploadVideoMobile = () => {
       case 'success':
         return 'Traitement terminé !';
       case 'error':
-        return 'Erreur';
+        return dbError ? 'Problème de configuration' : 'Erreur';
       default:
         return selectedFile ? 'Fichier sélectionné' : 'Glissez votre vidéo ici';
     }
@@ -362,11 +464,32 @@ const UploadVideoMobile = () => {
         </div>
       )}
 
+      {/* Erreur de base de données */}
+      {dbError && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <Database className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-semibold text-yellow-800 text-sm">{dbError.message}</h4>
+              <p className="text-yellow-700 text-xs mt-1">{dbError.details}</p>
+              <Button 
+                onClick={() => window.open('https://supabase.com/docs/guides/database', '_blank')}
+                variant="outline" 
+                size="sm" 
+                className="mt-2 text-xs"
+              >
+                Documentation
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Input file caché mais accessible pour les tests */}
       <input
         ref={fileInputRef}
         type="file"
-        accept="video/mp4,video/mov,video/avi,video/quicktime"
+        accept="video/mp4,video/mov,video/avi,video/quicktime,video/webm"
         onChange={handleFileInputChange}
         className="sr-only"
         data-testid="file-input"
@@ -377,7 +500,7 @@ const UploadVideoMobile = () => {
         className={`border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 ${
           isDragging ? 'border-blue-500 bg-blue-50' : 
           uploadStatus === 'success' ? 'border-green-500 bg-green-50' :
-          uploadStatus === 'error' ? 'border-red-500 bg-red-50' :
+          uploadStatus === 'error' ? (dbError ? 'border-yellow-500 bg-yellow-50' : 'border-red-500 bg-red-50') :
           selectedFile ? 'border-blue-500 bg-blue-50' :
           'border-gray-300 hover:border-gray-400'
         }`}
@@ -424,7 +547,7 @@ const UploadVideoMobile = () => {
           </>
         )}
 
-        {uploadStatus === 'idle' && selectedFile && (
+        {uploadStatus === 'idle' && selectedFile && !dbError && (
           <div className="space-y-2">
             <Button onClick={processVideo} className="w-full">
               Uploader et analyser
@@ -461,6 +584,7 @@ const UploadVideoMobile = () => {
                     setUploadStatus('idle');
                     setErrorMessage('');
                     setProcessingStep('');
+                    setDbError(null);
                   }} 
                   variant="outline" 
                   size="sm" 
@@ -482,7 +606,7 @@ const UploadVideoMobile = () => {
         {uploadStatus === 'idle' && (
           <div className="space-y-2">
             <p className="text-xs text-gray-500">
-              Formats supportés: MP4, MOV, AVI (max 100MB)
+              Formats supportés: MP4, MOV, AVI, WebM (max 100MB)
             </p>
             {!aiAvailable && (
               <p className="text-xs text-yellow-600">
