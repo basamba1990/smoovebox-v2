@@ -42,86 +42,14 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
-// Validation et initialisation du client OpenAI avec gestion d'erreur améliorée
-let openaiClient = null;
-let openaiAvailable = false;
-
-const validateOpenAIKey = (key) => {
-  if (!key) return false;
-  // Vérifier le format de la clé OpenAI
-  if (!key.startsWith('sk-')) return false;
-  // Vérifier la longueur minimale
-  if (key.length < 50) return false;
-  return true;
-};
-
-if (openaiApiKey && validateOpenAIKey(openaiApiKey)) {
-  try {
-    openaiClient = new OpenAI({ 
-      apiKey: openaiApiKey,
-      dangerouslyAllowBrowser: true
-    });
-    openaiAvailable = true;
-    console.log('Client OpenAI initialisé avec succès');
-  } catch (error) {
-    console.error('Erreur lors de l\'initialisation d\'OpenAI:', error);
-    openaiAvailable = false;
-  }
-} else {
-  console.warn("Clé OpenAI manquante ou invalide - Les fonctionnalités IA seront désactivées");
-  openaiAvailable = false;
+// Initialisation du client OpenAI
+if (!openaiApiKey) {
+  console.warn("Clé OpenAI manquante - Les fonctionnalités IA seront désactivées");
 }
-
-export const openai = openaiClient;
-
-// Fonction utilitaire pour les tentatives avec retry
-const retryOperation = async (operation, maxRetries = 3, delay = 1000) => {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await operation();
-    } catch (error) {
-      console.warn(`Tentative ${attempt}/${maxRetries} échouée:`, error.message);
-      
-      if (attempt === maxRetries) {
-        throw error;
-      }
-      
-      // Attendre avant la prochaine tentative
-      await new Promise(resolve => setTimeout(resolve, delay * attempt));
-    }
-  }
-};
-
-/**
- * Vérifie la disponibilité du service OpenAI
- * @returns {Promise<{available: boolean, error?: string}>}
- */
-export const checkOpenAIAvailability = async () => {
-  if (!openaiAvailable || !openaiClient) {
-    return { 
-      available: false, 
-      error: "Service OpenAI non configuré ou clé API invalide" 
-    };
-  }
-
-  try {
-    // Test simple avec l'API OpenAI
-    await retryOperation(async () => {
-      const response = await openaiClient.models.list();
-      if (!response || !response.data) {
-        throw new Error("Réponse invalide de l'API OpenAI");
-      }
-    }, 2, 500);
-    
-    return { available: true };
-  } catch (error) {
-    console.error('Test de disponibilité OpenAI échoué:', error);
-    return { 
-      available: false, 
-      error: `Service OpenAI indisponible: ${error.message}` 
-    };
-  }
-};
+export const openai = openaiApiKey ? new OpenAI({ 
+  apiKey: openaiApiKey,
+  dangerouslyAllowBrowser: true // Nécessaire pour les applications frontend
+}) : null;
 
 /**
  * Récupère l'ID du profil associé à un user_id (auth)
@@ -181,218 +109,79 @@ const getProfileId = async (userId) => {
 };
 
 /**
- * Obtient la transcription d'une vidéo via Whisper - VERSION CORRIGÉE
+ * Obtient la transcription d'une vidéo via Whisper
  * @param {string} filePath - Chemin du fichier dans le bucket
  * @returns {Promise<{success: boolean, data?: string, error?: string}>}
  */
 export const getTranscription = async (filePath) => {
   try {
-    // Vérifier la disponibilité d'OpenAI avant de continuer
-    const availability = await checkOpenAIAvailability();
-    if (!availability.available) {
-      return { 
-        success: false, 
-        error: availability.error || "Service d'analyse IA temporairement indisponible" 
-      };
+    if (!openai) {
+      throw new Error("Service OpenAI non disponible - Vérifiez VITE_OPENAI_API_KEY");
     }
 
-    // Télécharger le fichier depuis Supabase Storage avec retry
-    const { data: fileBlob, error: downloadError } = await retryOperation(async () => {
-      return await supabase.storage
-        .from('videos')
-        .download(filePath);
-    });
+    // Télécharger le fichier depuis Supabase Storage
+    const { data: fileBlob, error: downloadError } = await supabase.storage
+      .from('videos')
+      .download(filePath);
 
     if (downloadError) {
-      throw new Error(`Erreur de téléchargement: ${downloadError.message}`);
-    }
-
-    if (!fileBlob || fileBlob.size === 0) {
-      throw new Error("Fichier vidéo vide ou non trouvé");
+      throw downloadError;
     }
 
     // Créer un objet File pour l'API OpenAI
     const file = new File([fileBlob], 'audio.mp4', { type: fileBlob.type });
 
-    // Appeler l'API Whisper avec retry
-    const transcription = await retryOperation(async () => {
-      return await openaiClient.audio.transcriptions.create({
-        file: file,
-        model: "whisper-1",
-        response_format: "text",
-        language: "fr" // Forcer le français pour de meilleurs résultats
-      });
+    // Appeler l'API Whisper
+    const transcription = await openai.audio.transcriptions.create({
+      file: file,
+      model: "whisper-1",
+      response_format: "text"
     });
-
-    if (!transcription || typeof transcription !== 'string') {
-      throw new Error("Transcription invalide reçue de l'API");
-    }
 
     return { success: true, data: transcription };
 
   } catch (error) {
-    console.error('Erreur de transcription:', error);
-    
-    // Messages d'erreur plus spécifiques pour l'utilisateur
-    let userMessage = "Service d'analyse IA temporairement indisponible";
-    
-    if (error.message.includes('quota') || error.message.includes('billing')) {
-      userMessage = "Quota API dépassé. Veuillez réessayer plus tard.";
-    } else if (error.message.includes('network') || error.message.includes('timeout')) {
-      userMessage = "Problème de connexion. Veuillez vérifier votre connexion internet.";
-    } else if (error.message.includes('file') || error.message.includes('format')) {
-      userMessage = "Format de fichier non supporté pour la transcription.";
-    } else if (error.message.includes('size')) {
-      userMessage = "Fichier trop volumineux pour la transcription.";
-    }
-    
-    return { success: false, error: userMessage };
+    console.error('Erreur de transcription:', error.message);
+    return { success: false, error: error.message };
   }
 };
 
 /**
- * Analyse un pitch avec GPT-4 - VERSION CORRIGÉE
+ * Analyse un pitch avec GPT-4
  * @param {string} transcription 
  * @returns {Promise<{success: boolean, data?: object, error?: string}>}
  */
 export const analyzePitch = async (transcription) => {
   try {
-    // Vérifier la disponibilité d'OpenAI
-    const availability = await checkOpenAIAvailability();
-    if (!availability.available) {
-      return { 
-        success: false, 
-        error: availability.error || "Service d'analyse IA temporairement indisponible" 
-      };
+    if (!openai) {
+      throw new Error("Service OpenAI non disponible - Vérifiez VITE_OPENAI_API_KEY");
     }
 
-    if (!transcription || transcription.trim().length === 0) {
-      throw new Error("Transcription vide - impossible d'analyser");
-    }
-
-    const chatCompletion = await retryOperation(async () => {
-      return await openaiClient.chat.completions.create({
-        model: "gpt-4o",
-        messages: [{
-          role: "user",
-          content: `Analyse la transcription suivante d'un pitch vidéo et fournis des suggestions structurées en JSON:
-          
-          Format de réponse attendu:
-          {
-            "suggestions": [
-              {
-                "type": "structure|contenu|presentation|technique",
-                "titre": "Titre court de la suggestion",
-                "description": "Description détaillée",
-                "priorite": "haute|moyenne|basse"
-              }
-            ],
-            "sentiment": "positif|neutre|negatif",
-            "score_confiance": 85,
-            "mots_cles": ["mot1", "mot2", "mot3"],
-            "resume": "Résumé en une phrase du pitch",
-            "points_forts": ["Point fort 1", "Point fort 2"],
-            "points_amelioration": ["Amélioration 1", "Amélioration 2"]
-          }
-          
-          Transcription: ${transcription}`
-        }],
-        response_format: { type: "json_object" },
-        temperature: 0.7,
-        max_tokens: 1500
-      });
+    const chatCompletion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{
+        role: "user",
+        content: `Analyse la transcription suivante d'un pitch vidéo et fournis des suggestions structurées en JSON:
+        - suggestions (liste d'objets avec: type, titre, description, priorité)
+        - sentiment (positif, neutre, négatif)
+        - score_confiance (0-100)
+        - mots_cles (liste de chaînes)
+        
+        Transcription: ${transcription}`
+      }],
+      response_format: { type: "json_object" }
     });
 
-    if (!chatCompletion?.choices?.[0]?.message?.content) {
-      throw new Error("Réponse invalide de l'API d'analyse");
-    }
-
-    const result = JSON.parse(chatCompletion.choices[0].message.content);
-    
-    // Validation du format de réponse
-    if (!result.suggestions || !Array.isArray(result.suggestions)) {
-      throw new Error("Format de réponse d'analyse invalide");
-    }
-
-    return { success: true, data: result };
+    const result = chatCompletion.choices[0].message.content;
+    return { success: true, data: JSON.parse(result) };
 
   } catch (error) {
     console.error('Erreur dans l\'analyse du pitch:', error);
-    
-    // Messages d'erreur spécifiques
-    let userMessage = "Service d'analyse IA temporairement indisponible";
-    
-    if (error.message.includes('quota') || error.message.includes('billing')) {
-      userMessage = "Quota API dépassé. Veuillez réessayer plus tard.";
-    } else if (error.message.includes('JSON') || error.message.includes('parse')) {
-      userMessage = "Erreur de traitement de l'analyse. Veuillez réessayer.";
-    } else if (error.message.includes('vide')) {
-      userMessage = "Transcription vide - impossible d'analyser le contenu.";
-    }
-    
-    return { success: false, error: userMessage };
+    return { success: false, error: error.message };
   }
 };
 
-// Mode dégradé : analyse basique sans IA
-export const getBasicAnalysis = (transcription) => {
-  if (!transcription || transcription.trim().length === 0) {
-    return {
-      success: false,
-      error: "Aucun contenu à analyser"
-    };
-  }
-
-  const words = transcription.split(/\s+/).filter(word => word.length > 0);
-  const sentences = transcription.split(/[.!?]+/).filter(s => s.trim().length > 0);
-  
-  // Analyse basique
-  const wordCount = words.length;
-  const avgWordsPerSentence = sentences.length > 0 ? Math.round(wordCount / sentences.length) : 0;
-  const estimatedDuration = Math.round(wordCount / 150); // ~150 mots par minute
-  
-  // Mots-clés simples (mots de plus de 5 caractères, fréquents)
-  const longWords = words.filter(word => word.length > 5);
-  const wordFreq = {};
-  longWords.forEach(word => {
-    const cleanWord = word.toLowerCase().replace(/[^\w]/g, '');
-    wordFreq[cleanWord] = (wordFreq[cleanWord] || 0) + 1;
-  });
-  
-  const keywords = Object.entries(wordFreq)
-    .filter(([word, freq]) => freq > 1)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([word]) => word);
-
-  return {
-    success: true,
-    data: {
-      suggestions: [
-        {
-          type: "analyse",
-          titre: "Analyse basique disponible",
-          description: "L'analyse IA complète n'est pas disponible. Voici une analyse basique de votre pitch.",
-          priorite: "moyenne"
-        }
-      ],
-      sentiment: "neutre",
-      score_confiance: 50,
-      mots_cles: keywords,
-      resume: `Pitch de ${wordCount} mots en ${sentences.length} phrases`,
-      statistiques: {
-        nombre_mots: wordCount,
-        nombre_phrases: sentences.length,
-        mots_par_phrase: avgWordsPerSentence,
-        duree_estimee: `${estimatedDuration} minute${estimatedDuration > 1 ? 's' : ''}`
-      },
-      points_forts: ["Contenu transcrit avec succès"],
-      points_amelioration: ["Analyse IA complète recommandée"]
-    }
-  };
-};
-
-// Test de connexion au démarrage avec gestion d'erreur améliorée
+// Test de connexion au démarrage
 const testConnection = async () => {
   try {
     const { data, error } = await supabase.auth.getSession();
@@ -400,15 +189,6 @@ const testConnection = async () => {
       console.error('Erreur de test de connexion Supabase:', error.message);
     } else {
       console.log('Connexion Supabase OK', data.session ? 'Session active' : 'Pas de session');
-    }
-    
-    // Test OpenAI
-    if (openaiAvailable) {
-      const availability = await checkOpenAIAvailability();
-      console.log('OpenAI disponible:', availability.available);
-      if (!availability.available) {
-        console.warn('OpenAI indisponible:', availability.error);
-      }
     }
   } catch (error) {
     console.error('Erreur de test de connexion:', error.message);
@@ -420,7 +200,7 @@ testConnection();
 
 export default supabase;
 
-// Fonctions de videoService.js améliorées (reste du code identique...)
+// Fonctions de videoService.js améliorées
 
 /**
  * Vérifie si l'utilisateur est connecté
@@ -633,11 +413,10 @@ export async function uploadVideo(file, metadata = {}, onProgress = () => {}) {
       const { data: videoData, error: videoError } = await supabase
         .from("videos")
         .insert({
-          profile_id: metadata.profile_id || user.id, // Utiliser profile_id si fourni, sinon user_id
-          title: metadata.title || file.name.split(".").slice(0, -1).join(".") || "Sans titre",
+          user_id: user.id,
+          title: metadata.title || file.name || "Sans titre",
           description: metadata.description || "",
           file_path: filePath,
-          file_name: file.name,
           thumbnail_url: thumbnailUrl,
           status: VIDEO_STATUS.DRAFT,
           is_public: metadata.isPublic || false,
@@ -752,8 +531,7 @@ export async function debugStoragePermissions() {
     buckets: null,
     policies: null,
     testUpload: null,
-    environment: null,
-    openai: null
+    environment: null
   }
   
   try {
@@ -767,19 +545,6 @@ export async function debugStoragePermissions() {
         // Ne pas exposer les clés complètes
         supabaseKeyPrefix: supabaseAnonKey ? supabaseAnonKey.substring(0, 10) + '...' : null
       }
-    }
-    
-    // Test OpenAI
-    results.openai = {
-      configured: openaiAvailable,
-      keyValid: validateOpenAIKey(openaiApiKey),
-      available: false
-    }
-    
-    if (openaiAvailable) {
-      const availability = await checkOpenAIAvailability();
-      results.openai.available = availability.available;
-      results.openai.error = availability.error;
     }
     
     // 1. Vérifier l'authentification
