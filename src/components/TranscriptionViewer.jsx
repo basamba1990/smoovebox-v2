@@ -79,7 +79,7 @@ const TranscriptionViewer = () => {
       // Récupérer les vidéos de l'utilisateur
       const { data: videos, error: videosError } = await supabase
         .from('videos')
-        .select('id, file_name, upload_date, created_at, title')
+        .select('id, file_path, upload_date, created_at, title')
         .eq('profile_id', profileId);
 
       if (videosError) {
@@ -110,7 +110,7 @@ const TranscriptionViewer = () => {
         .select(`
           *,
           videos (
-            file_name,
+            file_path,
             upload_date,
             created_at,
             title
@@ -163,7 +163,7 @@ const TranscriptionViewer = () => {
 
   const downloadTranscription = (transcription) => {
     const content = `
-Transcription - ${transcription.videos?.file_name || transcription.videos?.title || 'Vidéo'}
+Transcription - ${transcription.videos?.file_path || transcription.videos?.title || 'Vidéo'}
 Date: ${formatDate(transcription.created_at)}
 Score de confiance: ${transcription.confidence_score}%
 
@@ -315,7 +315,7 @@ ${JSON.stringify(transcription.analysis_result, null, 2)}
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h4 className="font-semibold text-lg">
-                  {transcription.videos?.title || transcription.videos?.file_name || 'Vidéo sans nom'}
+                  {transcription.videos?.title || transcription.videos?.file_path || 'Vidéo sans nom'}
                 </h4>
                 <p className="text-sm text-gray-500">
                   {formatDate(transcription.created_at)}

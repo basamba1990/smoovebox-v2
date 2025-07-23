@@ -85,7 +85,7 @@ const Dashboard = () => {
         // Récupérer le nombre de vidéos avec le profile_id
         const { data: videos, error: videosError } = await supabase
           .from('videos')
-          .select('id, title, file_name, created_at, thumbnail_url, status')
+          .select('id, title, file_path, created_at, thumbnail_url, status')
           .eq('profile_id', profileId)
           .order('created_at', { ascending: false });
 
@@ -323,7 +323,7 @@ const Dashboard = () => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-medium text-sm truncate">
-                      {video.title || video.file_name || 'Sans titre'}
+                      {video.title || video.file_path || 'Sans titre'}
                     </h4>
                     <div className="flex items-center gap-1 text-xs text-gray-500">
                       <Calendar className="h-3 w-3" />
