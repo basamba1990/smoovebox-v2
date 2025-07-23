@@ -88,7 +88,8 @@ export const AuthProvider = ({ children }) => {
           if (session?.user) {
             console.log('Session utilisateur trouvée:', session.user.id);
             setUser(session.user);
-            await fetchUserProfile(session.user.id);
+            // Ne pas récupérer le profil automatiquement pour éviter les erreurs de DB
+            setProfile(null);
           } else {
             console.log('Aucune session utilisateur trouvée');
             setUser(null);
@@ -116,7 +117,10 @@ export const AuthProvider = ({ children }) => {
         try {
           if (session?.user) {
             setUser(session.user);
-            await fetchUserProfile(session.user.id);
+            // Récupérer le profil seulement après une connexion réussie
+            if (event === 'SIGNED_IN') {
+              await fetchUserProfile(session.user.id);
+            }
           } else {
             setUser(null);
             setProfile(null);
