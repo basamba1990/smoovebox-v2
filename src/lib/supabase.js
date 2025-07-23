@@ -46,16 +46,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 let openaiClient = null;
 let openaiAvailable = false;
 
-const validateOpenAIKey = (key) => {
-  if (!key) return false;
-  // Vérifier le format de la clé OpenAI
-  if (!key.startsWith('sk-')) return false;
-  // Vérifier la longueur minimale
-  if (key.length < 50) return false;
-  return true;
-};
 
-if (openaiApiKey && validateOpenAIKey(openaiApiKey)) {
+
+if (openaiApiKey && openaiApiKey.startsWith('sk-proj-')) {
   try {
     openaiClient = new OpenAI({ 
       apiKey: openaiApiKey,
