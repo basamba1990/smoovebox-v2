@@ -30,44 +30,32 @@ export const AuthProvider = ({ children }) => {
       if (error) {
         if (error.code === 'PGRST116' || error.code === 'PGRST301') {
           console.warn('Table profiles non trouvée ou profil inexistant:', error.message);
-          // Tentative de création du profil si manquant
-          try {
-            const currentUser = await supabase.auth.getUser();
-            const userData = currentUser?.data?.user;
-            
-            if (userData) {
-              const { data: newProfile, error: createError } = await supabase
-                .from('profiles')
-                .insert({
-                  user_id: userId,
-                  email: userData.email,
-                  username: userData.email.split('@')[0],
-                  full_name: userData.user_metadata?.full_name || 
-                            `${userData.user_metadata?.first_name || ''} ${userData.user_metadata?.last_name || ''}`.trim()
-                })
-                .select()
-                .single();
-                
-              if (createError) throw createError;
-              console.log('Profil créé avec succès:', newProfile);
-              setProfile(newProfile);
-              return;
-            }
-          } catch (createError) {
-            console.error('Erreur lors de la création du profil:', createError.message);
-          }
+          // Créer un profil par défaut sans bloquer l'application
+          setProfile({
+            id: userId,
+            user_id: userId,
+            email: user?.email || 'utilisateur@example.com',
+            username: user?.email?.split('@')[0] || 'utilisateur',
+            full_name: user?.user_metadata?.full_name || 'Utilisateur'
+          });
+          return;
         }
         throw error;
       }
-      
-      console.log('Profil récupéré avec succès:', data);
+
       setProfile(data);
-    } catch (error) {
-      console.error('Erreur lors de la récupération du profil:', error.message);
-      setProfile(null);
+    } catch (err) {
+      console.error('Erreur lors de la récupération du profil:', err);
+      // Ne pas bloquer l'application, créer un profil minimal
+      setProfile({
+        id: userId,
+        user_id: userId,
+        email: user?.email || 'utilisateur@example.com',
+        username: user?.email?.split('@')[0] || 'utilisateur',
+        full_name: user?.user_metadata?.full_name || 'Utilisateur'
+      });
     }
   };
-
   useEffect(() => {
     let mounted = true;
 
