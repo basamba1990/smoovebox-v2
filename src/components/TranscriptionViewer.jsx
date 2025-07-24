@@ -19,22 +19,46 @@ const TranscriptionViewer = () => {
     
     setLoading(true);
     try {
+      // D'abord récupérer le profil de l'utilisateur
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+        
+      if (profileError) {
+        console.warn('Profil non trouvé:', profileError.message);
+        setTranscriptions([]);
+        setLoading(false);
+        return;
+      }
+      
+      const profileId = profileData.id;
+      
+      // Récupérer les transcriptions via les vidéos du profil
       const { data, error } = await supabase
         .from('transcriptions')
         .select(`
           *,
-          videos (
-            file_name,
-            upload_date
+          videos!inner (
+            title,
+            file_path,
+            created_at,
+            profile_id
           )
         `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .eq('videos.profile_id', profileId)
+        .order('processed_at', { ascending: false });
 
-      if (error) throw error;
-      setTranscriptions(data || []);
+      if (error) {
+        console.error('Erreur lors du chargement des transcriptions:', error);
+        setTranscriptions([]);
+      } else {
+        setTranscriptions(data || []);
+      }
     } catch (error) {
       console.error('Erreur lors du chargement des transcriptions:', error);
+      setTranscriptions([]);
     } finally {
       setLoading(false);
     }
@@ -58,12 +82,12 @@ const TranscriptionViewer = () => {
 
   const downloadTranscription = (transcription) => {
     const content = `
-Transcription - ${transcription.videos?.file_name || 'Vidéo'}
-Date: ${formatDate(transcription.created_at)}
-Score de confiance: ${transcription.confidence_score}%
+Transcription - ${transcription.videos?.title || 'Vidéo'}
+Date: ${formatDate(transcription.processed_at)}
+Score de confiance: ${transcription.confidence_score || 'N/A'}%
 
 TRANSCRIPTION:
-${transcription.transcription_text}
+${transcription.full_text}
 
 ANALYSE IA:
 ${JSON.stringify(transcription.analysis_result, null, 2)}
@@ -135,10 +159,10 @@ ${JSON.stringify(transcription.analysis_result, null, 2)}
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h4 className="font-semibold text-lg">
-                  {transcription.videos?.file_name || 'Vidéo sans nom'}
+                  {transcription.videos?.title || 'Vidéo sans nom'}
                 </h4>
                 <p className="text-sm text-gray-500">
-                  {formatDate(transcription.created_at)}
+                  {formatDate(transcription.processed_at)}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -162,7 +186,7 @@ ${JSON.stringify(transcription.analysis_result, null, 2)}
                 <h5 className="font-medium mb-2">Transcription:</h5>
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <p className="text-sm text-gray-700 leading-relaxed">
-                    {transcription.transcription_text || 'Transcription non disponible'}
+                    {transcription.full_text || 'Transcription non disponible'}
                   </p>
                 </div>
               </div>
