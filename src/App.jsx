@@ -110,7 +110,7 @@ function AppContent() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Chargement de Smoovebox...</p>
+          <p className="text-gray-600">Chargement de SpotBulle...</p>
           <p className="text-gray-400 text-sm mt-2">Connexion à la base de données</p>
         </div>
       </div>
@@ -240,7 +240,7 @@ function AppContent() {
               SpotBulle avec analyse IA - Plateforme moderne de pitch vidéo avec IA
             </p>
             <p className="text-xs mt-2">
-              Stack: outils innovants pour notre jeunesse de demain 
+              Stack: Outils Innovants Pour Notre Jeunesse de Demain 
             </p>
           </div>
         </div>
