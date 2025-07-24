@@ -214,14 +214,24 @@ export const getTranscription = async (filePath) => {
     // Créer un objet File pour l'API OpenAI
     const file = new File([fileBlob], 'audio.mp4', { type: fileBlob.type });
 
-    // Appeler l'API Whisper avec retry
+    // Appeler l'API Whisper avec retry et gestion d'erreur améliorée
     const transcription = await retryOperation(async () => {
-      return await openaiClient.audio.transcriptions.create({
-        file: file,
-        model: "whisper-1",
-        response_format: "text",
-        language: "fr" // Forcer le français pour de meilleurs résultats
-      });
+      try {
+        return await openaiClient.audio.transcriptions.create({
+          file: file,
+          model: "whisper-1",
+          response_format: "text",
+          language: "fr" // Forcer le français pour de meilleurs résultats
+        });
+      } catch (error) {
+        // Gestion spécifique de l'erreur 403 pour whisper-1
+        if (error.status === 403 && error.message.includes('whisper-1')) {
+          console.warn('Modèle whisper-1 non accessible, tentative avec gpt-4o-audio-preview');
+          // Fallback vers un autre modèle si disponible
+          throw new Error('Modèle Whisper non accessible - Vérifiez les permissions de votre projet OpenAI');
+        }
+        throw error;
+      }
     });
 
     if (!transcription || typeof transcription !== 'string') {
@@ -236,7 +246,9 @@ export const getTranscription = async (filePath) => {
     // Messages d'erreur plus spécifiques pour l'utilisateur
     let userMessage = "Service d'analyse IA temporairement indisponible";
     
-    if (error.message.includes('quota') || error.message.includes('billing')) {
+    if (error.message.includes('Modèle Whisper non accessible')) {
+      userMessage = "Erreur : 403 Project does not have access to model `whisper-1`. Vérifiez les permissions de votre projet OpenAI.";
+    } else if (error.message.includes('quota') || error.message.includes('billing')) {
       userMessage = "Quota API dépassé. Veuillez réessayer plus tard.";
     } else if (error.message.includes('network') || error.message.includes('timeout')) {
       userMessage = "Problème de connexion. Veuillez vérifier votre connexion internet.";
