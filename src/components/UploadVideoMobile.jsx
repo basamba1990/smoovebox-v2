@@ -155,7 +155,7 @@ const UploadVideoMobile = () => {
               .from('transcriptions')
               .insert({
                 video_id: uploadResult.video.id,
-                user_id: user.id,
+                profile_id: uploadResult.video.profile_id,  // Utiliser profile_id
                 transcription_text: 'Transcription échouée',
                 confidence_score: 25,
                 analysis_result: basicAnalysis.data,
@@ -193,7 +193,7 @@ const UploadVideoMobile = () => {
                 .from('transcriptions')
                 .insert({
                   video_id: uploadResult.video.id,
-                  user_id: user.id,
+                  profile_id: uploadResult.video.profile_id,  // Utiliser profile_id
                   transcription_text: transcriptionResult.data,
                   confidence_score: 75,
                   analysis_result: basicAnalysis.data,
@@ -219,7 +219,7 @@ const UploadVideoMobile = () => {
               .from('transcriptions')
               .insert({
                 video_id: uploadResult.video.id,
-                user_id: user.id,
+                profile_id: uploadResult.video.profile_id,  // Utiliser profile_id
                 transcription_text: transcriptionResult.data,
                 confidence_score: 90,
                 analysis_result: analysisResult.data,
