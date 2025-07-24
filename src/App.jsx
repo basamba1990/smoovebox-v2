@@ -210,7 +210,7 @@ function AppContent() {
           <div className="text-center py-16">
             <Video className="h-16 w-16 text-blue-600 mx-auto mb-6" />
             <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              Bienvenue sur Smoovebox v2.0
+              Bienvenue sur SpotBulle avec analyse IA
             </h2>
             <p className="text-lg text-gray-600 mb-8 max-w-2xl mx-auto">
               La plateforme moderne de pitch vidéo avec intelligence artificielle. 
@@ -237,10 +237,10 @@ function AppContent() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="text-center text-gray-500">
             <p className="text-sm">
-              Smoovebox v2.0 - Plateforme moderne de pitch vidéo avec IA
+              SpotBulle avec analyse IA - Plateforme moderne de pitch vidéo avec IA
             </p>
             <p className="text-xs mt-2">
-              Stack: React + Vite + Tailwind + Supabase + OpenAI
+              Stack: outils innovants pour notre jeunesse de demain 
             </p>
           </div>
         </div>
