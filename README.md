@@ -1,8 +1,8 @@
-# Smoovebox v2.0 - Plateforme de Pitch Vidéo Moderne
+# SpotBulle avec analyse IA - Plateforme de Pitch Vidéo Moderne
 
 ## 🎯 Vue d'ensemble
 
-Smoovebox v2.0 est une plateforme moderne de pitch vidéo intégrant l'intelligence artificielle pour l'analyse et l'amélioration des présentations. Cette version repense complètement l'architecture avec des technologies modernes et des fonctionnalités avancées.
+SpotBulle avec analyse IA est une plateforme moderne de pitch vidéo intégrant l'intelligence artificielle pour l'analyse et l'amélioration des présentations. Cette version repense complètement l'architecture avec des technologies modernes et des fonctionnalités avancées.
 
 ## ✨ Fonctionnalités Principales
 
@@ -58,7 +58,7 @@ Smoovebox v2.0 est une plateforme moderne de pitch vidéo intégrant l'intellige
 
 ### Installation
 ```bash
-cd smoovebox-v2
+cd SpotBulle avec analyse IA
 pnpm install
 ```
 
@@ -77,7 +77,7 @@ pnpm run preview
 ## 📁 Structure du Projet
 
 ```
-smoovebox-v2/
+SpotBulle avec analyse IA/
 ├── src/
 │   ├── components/           # Composants React
 │   │   ├── ui/              # Composants UI (shadcn)
@@ -225,11 +225,11 @@ Ce projet est sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
 
 ## 📞 Support
 
-- **Email**: support@smoovebox.com
-- **Documentation**: [docs.smoovebox.com](https://docs.smoovebox.com)
-- **Issues**: [GitHub Issues](https://github.com/smoovebox/smoovebox-v2/issues)
+- **Email**: support@spotbulle.analyseIA.fr
+- **Documentation**: [docs.spotBulle.analyseIA.fr](https://docs.smoovebox.com)
+- **Issues**: [GitHub Issues](https://github.com/basamba1990/SpotBulle avec analyse IA/issues)
 
 ---
 
-**Smoovebox v2.0** - Révolutionnez vos pitchs avec l'IA 🚀
+**SpotBulle avec analyse IA** - Révolutionnez vos pitchs avec l'IA 🚀
 
