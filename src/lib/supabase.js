@@ -630,10 +630,13 @@ export async function uploadVideo(file, metadata = {}, onProgress = () => {}) {
     
     // 7. Créer l'entrée dans la table videos avec gestion d'erreur
     try {
+      // Récupérer le profile_id de l'utilisateur
+      const profileId = await getProfileId(user.id);
+      
       const { data: videoData, error: videoError } = await supabase
         .from("videos")
         .insert({
-          user_id: user.id,
+          profile_id: profileId,  // Utiliser profile_id au lieu de user_id
           title: metadata.title || file.name || "Sans titre",
           description: metadata.description || "",
           file_path: filePath,
