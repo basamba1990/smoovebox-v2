@@ -113,7 +113,7 @@ const UploadVideoMobile = () => {
             .from('transcriptions')
             .insert({
               video_id: uploadResult.video.id,
-              user_id: user.id,
+              profile_id: uploadResult.video.profile_id,  // Utiliser profile_id
               transcription_text: basicTranscription,
               confidence_score: 50,
               analysis_result: basicAnalysis.data,
