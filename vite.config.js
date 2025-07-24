@@ -44,6 +44,6 @@ export default defineConfig({
     strictPort: true,
     open: true,
     host: '0.0.0.0',
-    allowedHosts: ['5173-imjva8fwthw73d8exhtk1-2bff9589.manusvm.computer'],
+    allowedHosts: ["5173-ia0l5a0bh8bmangq74uvp-0d1a0436.manusvm.computer", "5173-imjva8fwthw73d8exhtk1-2bff9589.manusvm.computer"],
   },
 });
