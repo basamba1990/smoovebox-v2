@@ -17,25 +17,99 @@ const Dashboard = () => {
       if (!user) return;
       
       try {
-        // D'abord récupérer le profil de l'utilisateur
+        let profileId = null;
+        
+        // D'abord essayer de récupérer le profil de l'utilisateur
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .select('id')
           .eq('user_id', user.id)
           .single();
           
-        if (profileError) {
-          console.warn('Profil non trouvé:', profileError.message);
+        if (profileError && profileError.code === 'PGRST116') {
+          // Si la table profiles n'existe pas, utiliser directement user_id
+          console.warn('Table profiles non trouvée, utilisation de user_id directement');
+          
+          // Récupérer les vidéos directement avec user_id
+          const { data: videos, error: videosError } = await supabase
+            .from('videos')
+            .select('id')
+            .eq('user_id', user.id);
+
+          if (videosError) {
+            console.warn('Erreur lors de la récupération des vidéos:', videosError.message);
+          }
+
+          // Récupérer les transcriptions
+          const { data: transcriptions, error: transcriptionsError } = await supabase
+            .from('transcriptions')
+            .select('id, confidence_score')
+            .in('video_id', videos?.map(v => v.id) || []);
+
+          if (transcriptionsError) {
+            console.warn('Erreur lors de la récupération des transcriptions:', transcriptionsError.message);
+          }
+
+          // Calculer le score moyen
+          const averageScore = transcriptions && transcriptions.length > 0 
+            ? transcriptions.reduce((sum, t) => sum + (t.confidence_score || 0), 0) / transcriptions.length
+            : null;
+
           setStats({
-            videosCount: 0,
-            transcriptionsCount: 0,
-            averageScore: null
+            videosCount: videos?.length || 0,
+            transcriptionsCount: transcriptions?.length || 0,
+            averageScore: averageScore ? Math.round(averageScore) : null
           });
           setLoading(false);
           return;
+        } else if (profileError && profileError.code === 'PGRST301') {
+          // Si le profil n'existe pas, essayer de le créer
+          console.warn('Profil non trouvé, tentative de création...');
+          
+          const { data: newProfile, error: createError } = await supabase
+            .from('profiles')
+            .insert({
+              user_id: user.id,
+              email: user.email,
+              username: user.email?.split('@')[0] || 'user',
+              full_name: user.user_metadata?.full_name || 
+                        `${user.user_metadata?.first_name || ''} ${user.user_metadata?.last_name || ''}`.trim() || null
+            })
+            .select()
+            .single();
+            
+          if (createError) {
+            console.error('Erreur lors de la création du profil:', createError);
+            // Fallback: utiliser user_id directement
+            const { data: videos, error: videosError } = await supabase
+              .from('videos')
+              .select('id')
+              .eq('user_id', user.id);
+
+            const { data: transcriptions, error: transcriptionsError } = await supabase
+              .from('transcriptions')
+              .select('id, confidence_score')
+              .in('video_id', videos?.map(v => v.id) || []);
+
+            const averageScore = transcriptions && transcriptions.length > 0 
+              ? transcriptions.reduce((sum, t) => sum + (t.confidence_score || 0), 0) / transcriptions.length
+              : null;
+
+            setStats({
+              videosCount: videos?.length || 0,
+              transcriptionsCount: transcriptions?.length || 0,
+              averageScore: averageScore ? Math.round(averageScore) : null
+            });
+            setLoading(false);
+            return;
+          }
+          
+          profileId = newProfile.id;
+        } else if (profileError) {
+          throw profileError;
+        } else {
+          profileId = profileData.id;
         }
-        
-        const profileId = profileData.id;
         
         // Récupérer le nombre de vidéos avec le profile_id
         const { data: videos, error: videosError } = await supabase

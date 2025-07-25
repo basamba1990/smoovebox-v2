@@ -19,21 +19,91 @@ const TranscriptionViewer = () => {
     
     setLoading(true);
     try {
-      // D'abord récupérer le profil de l'utilisateur
+      let profileId = null;
+      
+      // D'abord essayer de récupérer le profil de l'utilisateur
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('id')
         .eq('user_id', user.id)
         .single();
         
-      if (profileError) {
-        console.warn('Profil non trouvé:', profileError.message);
-        setTranscriptions([]);
+      if (profileError && profileError.code === 'PGRST116') {
+        // Si la table profiles n'existe pas, utiliser directement user_id
+        console.warn('Table profiles non trouvée, utilisation de user_id directement');
+        
+        // Récupérer les transcriptions via les vidéos de l'utilisateur directement
+        const { data, error } = await supabase
+          .from('transcriptions')
+          .select(`
+            *,
+            videos!inner (
+              title,
+              file_path,
+              created_at,
+              user_id
+            )
+          `)
+          .eq('videos.user_id', user.id)
+          .order('processed_at', { ascending: false });
+
+        if (error) {
+          console.error('Erreur lors du chargement des transcriptions:', error);
+          setTranscriptions([]);
+        } else {
+          setTranscriptions(data || []);
+        }
         setLoading(false);
         return;
+      } else if (profileError && profileError.code === 'PGRST301') {
+        // Si le profil n'existe pas, essayer de le créer
+        console.warn('Profil non trouvé, tentative de création...');
+        
+        const { data: newProfile, error: createError } = await supabase
+          .from('profiles')
+          .insert({
+            user_id: user.id,
+            email: user.email,
+            username: user.email?.split('@')[0] || 'user',
+            full_name: user.user_metadata?.full_name || 
+                      `${user.user_metadata?.first_name || ''} ${user.user_metadata?.last_name || ''}`.trim() || null
+          })
+          .select()
+          .single();
+          
+        if (createError) {
+          console.error('Erreur lors de la création du profil:', createError);
+          // Fallback: utiliser user_id directement
+          const { data, error } = await supabase
+            .from('transcriptions')
+            .select(`
+              *,
+              videos!inner (
+                title,
+                file_path,
+                created_at,
+                user_id
+              )
+            `)
+            .eq('videos.user_id', user.id)
+            .order('processed_at', { ascending: false });
+
+          if (error) {
+            console.error('Erreur lors du chargement des transcriptions:', error);
+            setTranscriptions([]);
+          } else {
+            setTranscriptions(data || []);
+          }
+          setLoading(false);
+          return;
+        }
+        
+        profileId = newProfile.id;
+      } else if (profileError) {
+        throw profileError;
+      } else {
+        profileId = profileData.id;
       }
-      
-      const profileId = profileData.id;
       
       // Récupérer les transcriptions via les vidéos du profil
       const { data, error } = await supabase
