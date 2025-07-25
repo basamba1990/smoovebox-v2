@@ -138,7 +138,9 @@ const getProfileId = async (userId) => {
 
     if (error) {
       if (error.code === 'PGRST116') {
-        throw new Error("Table profiles non trouvée");
+        // Table profiles non trouvée, retourner user_id directement
+        console.warn("Table profiles non trouvée, utilisation de user_id directement");
+        return userId;
       }
       
       // Si le profil n'existe pas, essayer de le créer
@@ -155,14 +157,18 @@ const getProfileId = async (userId) => {
           .insert({
             user_id: userId,
             email: userData.user.email,
-            username: userData.user.email.split('@')[0],
+            username: userData.user.email?.split('@')[0] || 'user',
             full_name: userData.user.user_metadata?.full_name || 
-                      `${userData.user.user_metadata?.first_name || ''} ${userData.user.user_metadata?.last_name || ''}`.trim()
+                      `${userData.user.user_metadata?.first_name || ''} ${userData.user.user_metadata?.last_name || ''}`.trim() || null
           })
           .select()
           .single();
           
-        if (createError) throw createError;
+        if (createError) {
+          console.error('Erreur lors de la création du profil:', createError);
+          // En cas d'échec, retourner user_id directement
+          return userId;
+        }
         return newProfile.id;
       }
       
@@ -170,13 +176,15 @@ const getProfileId = async (userId) => {
     }
     
     if (!data) {
-      throw new Error("Profil non trouvé pour l'utilisateur");
+      console.warn("Profil non trouvé pour l'utilisateur, utilisation de user_id directement");
+      return userId;
     }
     
     return data.id;
   } catch (error) {
     console.error('Erreur lors de la récupération du profil:', error.message);
-    throw error;
+    // En cas d'erreur, retourner user_id comme fallback
+    return userId;
   }
 };
 
@@ -630,23 +638,75 @@ export async function uploadVideo(file, metadata = {}, onProgress = () => {}) {
     
     // 7. Créer l'entrée dans la table videos avec gestion d'erreur
     try {
-      // Récupérer le profile_id de l'utilisateur
-      const profileId = await getProfileId(user.id);
+      // Essayer d'abord avec le système de profils
+      let videoData = null;
+      let videoError = null;
       
-      const { data: videoData, error: videoError } = await supabase
-        .from("videos")
-        .insert({
-          profile_id: profileId,  // Utiliser profile_id au lieu de user_id
-          title: metadata.title || file.name || "Sans titre",
-          description: metadata.description || "",
-          file_path: filePath,
-          thumbnail_url: thumbnailUrl,
-          status: VIDEO_STATUS.DRAFT,
-          is_public: metadata.isPublic || false,
-          tags: metadata.tags || []
-        })
-        .select()
-        .single()
+      try {
+        const profileId = await getProfileId(user.id);
+        
+        // Si profileId === user.id, cela signifie qu'on utilise le fallback
+        if (profileId === user.id) {
+          // Utiliser user_id directement
+          const result = await supabase
+            .from("videos")
+            .insert({
+              user_id: user.id,
+              title: metadata.title || file.name || "Sans titre",
+              description: metadata.description || "",
+              file_path: filePath,
+              thumbnail_url: thumbnailUrl,
+              status: VIDEO_STATUS.DRAFT,
+              is_public: metadata.isPublic || false,
+              tags: metadata.tags || []
+            })
+            .select()
+            .single();
+            
+          videoData = result.data;
+          videoError = result.error;
+        } else {
+          // Utiliser profile_id
+          const result = await supabase
+            .from("videos")
+            .insert({
+              profile_id: profileId,
+              title: metadata.title || file.name || "Sans titre",
+              description: metadata.description || "",
+              file_path: filePath,
+              thumbnail_url: thumbnailUrl,
+              status: VIDEO_STATUS.DRAFT,
+              is_public: metadata.isPublic || false,
+              tags: metadata.tags || []
+            })
+            .select()
+            .single();
+            
+          videoData = result.data;
+          videoError = result.error;
+        }
+      } catch (profileError) {
+        console.warn('Erreur avec le système de profils, utilisation de user_id:', profileError);
+        
+        // Fallback: utiliser user_id directement
+        const result = await supabase
+          .from("videos")
+          .insert({
+            user_id: user.id,
+            title: metadata.title || file.name || "Sans titre",
+            description: metadata.description || "",
+            file_path: filePath,
+            thumbnail_url: thumbnailUrl,
+            status: VIDEO_STATUS.DRAFT,
+            is_public: metadata.isPublic || false,
+            tags: metadata.tags || []
+          })
+          .select()
+          .single();
+          
+        videoData = result.data;
+        videoError = result.error;
+      }
       
       if (videoError) {
         console.error("Erreur d'insertion dans la table videos:", videoError)
