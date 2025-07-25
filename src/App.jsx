@@ -9,13 +9,19 @@ import { useAuth } from './context/AuthContext.jsx';
 import { Button } from './components/ui/button.jsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs.jsx';
 import { supabase } from './lib/supabase.js';
-import { Video, Upload, BarChart3, FileText, LogOut, AlertTriangle } from 'lucide-react';
+import { Video, Upload, BarChart3, FileText, LogOut, AlertTriangle, RefreshCw } from 'lucide-react';
 import './App.css';
+
+// Configuration de l'URL de l'Edge Function
+const EDGE_FUNCTION_URL = 'https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/dashboard-data';
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [supabaseError, setSupabaseError] = useState(null);
+  const [dashboardData, setDashboardData] = useState(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardError, setDashboardError] = useState(null);
   const { user, loading, signOut, profile } = useAuth();
 
   // Vérifier la connexion à Supabase avec gestion d'erreur améliorée
@@ -57,14 +63,64 @@ function AppContent() {
     }
   }, [loading]);
 
+  // Récupérer les données du dashboard via l'Edge Function
+  const fetchDashboardData = async () => {
+    if (!user) return;
+    
+    try {
+      setDashboardLoading(true);
+      setDashboardError(null);
+      
+      // Récupérer la session active
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('Aucune session active');
+      }
+      
+      // Appeler l'Edge Function avec le token d'authentification
+      const response = await fetch(EDGE_FUNCTION_URL, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Erreur lors de la récupération des données');
+      }
+      
+      const data = await response.json();
+      setDashboardData(data);
+    } catch (err) {
+      console.error('Erreur dashboard:', err);
+      setDashboardError(err.message);
+    } finally {
+      setDashboardLoading(false);
+    }
+  };
+
+  // Charger les données du dashboard quand l'utilisateur est connecté ou change d'onglet
+  useEffect(() => {
+    if (user && activeTab === 'dashboard') {
+      fetchDashboardData();
+    }
+  }, [user, activeTab]);
+
   const handleAuthSuccess = (user) => {
     console.log('User authenticated:', user);
     setIsAuthModalOpen(false);
+    // Charger les données du dashboard après connexion réussie
+    if (activeTab === 'dashboard') {
+      fetchDashboardData();
+    }
   };
 
   const handleSignOut = async () => {
     try {
       await signOut();
+      // Réinitialiser les données du dashboard
+      setDashboardData(null);
     } catch (error) {
       console.error('Erreur de déconnexion:', error);
     }
@@ -181,7 +237,32 @@ function AppContent() {
             </TabsList>
 
             <TabsContent value="dashboard">
-              <Dashboard />
+              {dashboardLoading ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Chargement des données du dashboard...</p>
+                </div>
+              ) : dashboardError ? (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+                  <AlertTriangle className="h-10 w-10 text-red-600 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-red-800 mb-2">
+                    Erreur de chargement
+                  </h3>
+                  <p className="text-red-700 mb-4">
+                    {dashboardError}
+                  </p>
+                  <Button 
+                    variant="outline" 
+                    onClick={fetchDashboardData}
+                    className="flex items-center gap-2"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Réessayer
+                  </Button>
+                </div>
+              ) : (
+                <Dashboard dashboardData={dashboardData} />
+              )}
             </TabsContent>
 
             <TabsContent value="upload" className="space-y-6">
@@ -267,4 +348,3 @@ function App() {
 }
 
 export default App;
-
