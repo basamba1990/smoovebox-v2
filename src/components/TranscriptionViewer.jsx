@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button.jsx';
+import { Button } from '../components/ui/button.jsx';
 import { FileText, Play, Download, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { useAuth } from '../context/AuthContext.jsx';
