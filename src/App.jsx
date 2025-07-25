@@ -13,7 +13,7 @@ import { Video, Upload, BarChart3, FileText, LogOut, AlertTriangle, RefreshCw } 
 import './App.css';
 
 // Configuration de l'URL de l'Edge Function
-const EDGE_FUNCTION_URL = 'https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/dashboard-data';
+const EDGE_FUNCTION_URL = 'https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/smooth-endpoint';
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState('dashboard');
