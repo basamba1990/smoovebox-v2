@@ -1,180 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import { Video, FileText, BarChart3 } from 'lucide-react';
-import { supabase } from '../lib/supabase.js';
+import React from 'react';
+import { Video, FileText, BarChart3, Clock, Lightbulb } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
+import { supabase } from '../lib/supabase.js';
 
-const Dashboard = () => {
+const Dashboard = ({ dashboardData }) => {
   const { user } = useAuth();
-  const [stats, setStats] = useState({
-    videosCount: 0,
-    transcriptionsCount: 0,
-    averageScore: null
-  });
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchStats = async () => {
-      if (!user) return;
-      
-      try {
-        let profileId = null;
-        
-        // D'abord essayer de récupérer le profil de l'utilisateur
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('user_id', user.id)
-          .single();
-          
-        if (profileError && profileError.code === 'PGRST116') {
-          // Si la table profiles n'existe pas, utiliser directement user_id
-          console.warn('Table profiles non trouvée, utilisation de user_id directement');
-          
-          // Récupérer les vidéos directement avec user_id
-          const { data: videos, error: videosError } = await supabase
-            .from('videos')
-            .select('id')
-            .eq('user_id', user.id);
-
-          if (videosError) {
-            console.warn('Erreur lors de la récupération des vidéos:', videosError.message);
-          }
-
-          // Récupérer les transcriptions
-          const { data: transcriptions, error: transcriptionsError } = await supabase
-            .from('transcriptions')
-            .select('id, confidence_score')
-            .in('video_id', videos?.map(v => v.id) || []);
-
-          if (transcriptionsError) {
-            console.warn('Erreur lors de la récupération des transcriptions:', transcriptionsError.message);
-          }
-
-          // Calculer le score moyen
-          const averageScore = transcriptions && transcriptions.length > 0 
-            ? transcriptions.reduce((sum, t) => sum + (t.confidence_score || 0), 0) / transcriptions.length
-            : null;
-
-          setStats({
-            videosCount: videos?.length || 0,
-            transcriptionsCount: transcriptions?.length || 0,
-            averageScore: averageScore ? Math.round(averageScore) : null
-          });
-          setLoading(false);
-          return;
-        } else if (profileError && profileError.code === 'PGRST301') {
-          // Si le profil n'existe pas, essayer de le créer
-          console.warn('Profil non trouvé, tentative de création...');
-          
-          const { data: newProfile, error: createError } = await supabase
-            .from('profiles')
-            .insert({
-              user_id: user.id,
-              email: user.email,
-              username: user.email?.split('@')[0] || 'user',
-              full_name: user.user_metadata?.full_name || 
-                        `${user.user_metadata?.first_name || ''} ${user.user_metadata?.last_name || ''}`.trim() || null
-            })
-            .select()
-            .single();
-            
-          if (createError) {
-            console.error('Erreur lors de la création du profil:', createError);
-            // Fallback: utiliser user_id directement
-            const { data: videos, error: videosError } = await supabase
-              .from('videos')
-              .select('id')
-              .eq('user_id', user.id);
-
-            const { data: transcriptions, error: transcriptionsError } = await supabase
-              .from('transcriptions')
-              .select('id, confidence_score')
-              .in('video_id', videos?.map(v => v.id) || []);
-
-            const averageScore = transcriptions && transcriptions.length > 0 
-              ? transcriptions.reduce((sum, t) => sum + (t.confidence_score || 0), 0) / transcriptions.length
-              : null;
-
-            setStats({
-              videosCount: videos?.length || 0,
-              transcriptionsCount: transcriptions?.length || 0,
-              averageScore: averageScore ? Math.round(averageScore) : null
-            });
-            setLoading(false);
-            return;
-          }
-          
-          profileId = newProfile.id;
-        } else if (profileError) {
-          throw profileError;
-        } else {
-          profileId = profileData.id;
-        }
-        
-        // Récupérer le nombre de vidéos avec le profile_id
-        const { data: videos, error: videosError } = await supabase
-          .from('videos')
-          .select('id')
-          .eq('profile_id', profileId);
-
-        if (videosError) {
-          console.warn('Erreur lors de la récupération des vidéos:', videosError.message);
-        }
-
-        // Récupérer le nombre de transcriptions
-        const { data: transcriptions, error: transcriptionsError } = await supabase
-          .from('transcriptions')
-          .select('id, confidence_score')
-          .in('video_id', videos?.map(v => v.id) || []);
-
-        if (transcriptionsError) {
-          console.warn('Erreur lors de la récupération des transcriptions:', transcriptionsError.message);
-        }
-
-        // Calculer le score moyen
-        const averageScore = transcriptions && transcriptions.length > 0 
-          ? transcriptions.reduce((sum, t) => sum + (t.confidence_score || 0), 0) / transcriptions.length
-          : null;
-
-        setStats({
-          videosCount: videos?.length || 0,
-          transcriptionsCount: transcriptions?.length || 0,
-          averageScore: averageScore ? Math.round(averageScore) : null
-        });
-      } catch (error) {
-        console.error('Erreur lors du chargement des statistiques:', error);
-        setStats({
-          videosCount: 0,
-          transcriptionsCount: 0,
-          averageScore: null
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchStats();
-  }, [user]);
-
-  if (loading) {
+  
+  // Si aucune donnée n'est fournie, afficher un message
+  if (!dashboardData) {
     return (
       <div className="space-y-6">
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold mb-2">Dashboard</h2>
-          <p className="text-gray-600">Chargement de vos statistiques...</p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-white p-6 rounded-lg shadow-sm border animate-pulse">
-              <div className="h-4 bg-gray-200 rounded mb-4"></div>
-              <div className="h-8 bg-gray-200 rounded mb-2"></div>
-              <div className="h-3 bg-gray-200 rounded"></div>
-            </div>
-          ))}
+          <p className="text-gray-600">Aucune donnée disponible</p>
         </div>
       </div>
     );
   }
+
+  const { stats, recentVideos } = dashboardData;
 
   return (
     <div className="space-y-6">
@@ -222,7 +66,41 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {stats.videosCount === 0 && (
+      {/* Vidéos récentes */}
+      {recentVideos && recentVideos.length > 0 ? (
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <h3 className="text-lg font-semibold mb-4">Vidéos récentes</h3>
+          <div className="space-y-4">
+            {recentVideos.map((video) => (
+              <div key={video.id} className="flex items-center gap-4 p-3 border rounded-lg hover:bg-gray-50">
+                <div className="flex-shrink-0 w-16 h-16 bg-gray-200 rounded overflow-hidden">
+                  {video.thumbnail_url ? (
+                    <img 
+                      src={video.thumbnail_url} 
+                      alt={video.title} 
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Video className="h-8 w-8 text-gray-400" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-grow min-w-0">
+                  <h4 className="font-medium text-gray-900 truncate">{video.title || 'Sans titre'}</h4>
+                  <p className="text-sm text-gray-500 truncate">{video.description || 'Aucune description'}</p>
+                  <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                    <span>{new Date(video.created_at).toLocaleDateString()}</span>
+                    <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full">
+                      {video.status || 'En attente'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : stats.videosCount === 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
           <Video className="h-12 w-12 text-blue-600 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-blue-900 mb-2">
@@ -233,9 +111,51 @@ const Dashboard = () => {
           </p>
         </div>
       )}
+
+      {/* Suggestions IA (si disponibles) */}
+      {dashboardData.aiSuggestions && dashboardData.aiSuggestions.length > 0 && (
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="flex items-center gap-2 mb-4">
+            <Lightbulb className="h-5 w-5 text-amber-500" />
+            <h3 className="text-lg font-semibold">Suggestions IA</h3>
+          </div>
+          <div className="space-y-3">
+            {dashboardData.aiSuggestions.map((suggestion) => (
+              <div key={suggestion.id} className="p-3 bg-amber-50 rounded-lg border border-amber-100">
+                <p className="text-gray-800">{suggestion.suggestion_text}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Pour: {suggestion.videos?.title || 'Vidéo inconnue'}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Activités récentes (si disponibles) */}
+      {dashboardData.recentActivities && dashboardData.recentActivities.length > 0 && (
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="flex items-center gap-2 mb-4">
+            <Clock className="h-5 w-5 text-indigo-500" />
+            <h3 className="text-lg font-semibold">Activités récentes</h3>
+          </div>
+          <div className="space-y-2">
+            {dashboardData.recentActivities.map((activity) => (
+              <div key={activity.id} className="flex items-center gap-3 py-2 border-b last:border-0">
+                <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                <div>
+                  <p className="text-sm text-gray-800">{activity.description || activity.activity_type}</p>
+                  <p className="text-xs text-gray-500">
+                    {new Date(activity.created_at).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default Dashboard;
-
