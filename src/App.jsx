@@ -12,9 +12,6 @@ import { supabase } from './lib/supabase.js';
 import { Video, Upload, BarChart3, FileText, LogOut, AlertTriangle, RefreshCw } from 'lucide-react';
 import './App.css';
 
-// Configuration de l'URL de l'Edge Function
-const EDGE_FUNCTION_URL = 'https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/smooth-endpoint';
-
 function AppContent() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -63,7 +60,7 @@ function AppContent() {
     }
   }, [loading]);
 
-  // Récupérer les données du dashboard via l'Edge Function
+  // Récupérer les données du dashboard directement depuis Supabase
   const fetchDashboardData = async () => {
     if (!user) return;
     
@@ -71,30 +68,59 @@ function AppContent() {
       setDashboardLoading(true);
       setDashboardError(null);
       
-      // Récupérer la session active
-      const { data: { session } } = await supabase.auth.getSession();
+      // Récupérer les statistiques des vidéos
+      const { data: videosData, error: videosError } = await supabase
+        .from('videos')
+        .select('id, title, description, created_at, status, thumbnail_url')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
       
-      if (!session) {
-        throw new Error('Aucune session active');
+      if (videosError && videosError.code !== 'PGRST116') {
+        console.error('Erreur vidéos:', videosError);
       }
       
-      // Appeler l'Edge Function avec le token d'authentification
-      const response = await fetch(EDGE_FUNCTION_URL, {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
+      // Récupérer les transcriptions
+      const { data: transcriptionsData, error: transcriptionsError } = await supabase
+        .from('transcriptions')
+        .select('id, confidence_score, created_at')
+        .eq('user_id', user.id);
+      
+      if (transcriptionsError && transcriptionsError.code !== 'PGRST116') {
+        console.error('Erreur transcriptions:', transcriptionsError);
+      }
+      
+      // Calculer les statistiques
+      const videosCount = videosData ? videosData.length : 0;
+      const transcriptionsCount = transcriptionsData ? transcriptionsData.length : 0;
+      
+      // Calculer le score moyen de confiance
+      let averageScore = null;
+      if (transcriptionsData && transcriptionsData.length > 0) {
+        const validScores = transcriptionsData
+          .filter(t => t.confidence_score !== null)
+          .map(t => t.confidence_score);
+        
+        if (validScores.length > 0) {
+          averageScore = Math.round(
+            validScores.reduce((sum, score) => sum + score, 0) / validScores.length
+          );
         }
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Erreur lors de la récupération des données');
       }
       
-      const data = await response.json();
-      setDashboardData(data);
+      // Préparer les données du dashboard
+      const dashboardData = {
+        stats: {
+          videosCount,
+          transcriptionsCount,
+          averageScore
+        },
+        recentVideos: videosData ? videosData.slice(0, 5) : []
+      };
+      
+      setDashboardData(dashboardData);
     } catch (err) {
       console.error('Erreur dashboard:', err);
-      setDashboardError(err.message);
+      setDashboardError(err.message || 'Erreur lors de la récupération des données');
     } finally {
       setDashboardLoading(false);
     }
