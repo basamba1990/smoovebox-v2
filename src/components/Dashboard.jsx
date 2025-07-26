@@ -1,256 +1,529 @@
-import React from 'react';
-import { Video, FileText, BarChart3, Clock, Lightbulb } from 'lucide-react';
-import { useAuth } from '../context/AuthContext.jsx';
+// src/components/Dashboard.jsx
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import { Button } from './ui/button.jsx';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/card.jsx';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.jsx';
+import { Upload, FileText, Video, RefreshCw, Trash2, AlertCircle } from 'lucide-react';
+import { VIDEO_STATUS, TRANSCRIPTION_STATUS } from '../constants/videoStatus.js';
+import VideoUploader from './VideoUploader.jsx';
+import TranscriptionViewer from './TranscriptionViewer.jsx';
+import VideoPlayer from './VideoPlayer.jsx';
 
-const Dashboard = ({ dashboardData }) => {
+const Dashboard = () => {
   const { user } = useAuth();
-  
-  // Si aucune donnée n'est fournie, afficher un message
-  if (!dashboardData) {
-    return (
-      <div className="space-y-6">
-        <div className="text-center mb-8">
-          <h2 className="text-2xl font-bold mb-2">Dashboard</h2>
-          <p className="text-gray-600">Aucune donnée disponible</p>
-        </div>
-      </div>
-    );
-  }
+  const [videos, setVideos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('videos');
+  const [selectedVideo, setSelectedVideo] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
-  const { stats, recentVideos } = dashboardData;
+  useEffect(() => {
+    if (user) {
+      fetchVideos();
+    }
+  }, [user]);
 
-  return (
-    <div className="space-y-8">
-      <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-          Dashboard
-        </h2>
-        <p className="text-gray-600 max-w-2xl mx-auto">
-          Aperçu de vos activités et statistiques en temps réel
-        </p>
-      </div>
+  const fetchVideos = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    try {
+      // Approche unifiée pour récupérer les vidéos
+      // Essayer d'abord avec la relation directe user_id
+      const { data: directData, error: directError } = await supabase
+        .from('videos')
+        .select(`
+          *,
+          transcriptions (
+            id,
+            status,
+            confidence_score,
+            processed_at,
+            analysis_result
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (!directError && directData && directData.length > 0) {
+        setVideos(directData);
+        setLoading(false);
+        return;
+      }
+
+      // Si la première approche échoue, essayer avec profile_id
+      // D'abord récupérer le profil de l'utilisateur
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+        
+      if (profileError) {
+        // Si le profil n'existe pas, essayer de le créer
+        if (profileError.code === 'PGRST116' || profileError.code === 'PGRST301') {
+          const { data: newProfile, error: createError } = await supabase
+            .from('profiles')
+            .insert({
+              user_id: user.id,
+              email: user.email,
+              username: user.email?.split('@')[0] || 'user',
+              full_name: user.user_metadata?.full_name || 
+                        `${user.user_metadata?.first_name || ''} ${user.user_metadata?.last_name || ''}`.trim() || null
+            })
+            .select()
+            .single();
+            
+          if (!createError && newProfile) {
+            // Récupérer les vidéos avec le nouveau profile_id
+            const { data, error } = await supabase
+              .from('videos')
+              .select(`
+                *,
+                transcriptions (
+                  id,
+                  status,
+                  confidence_score,
+                  processed_at,
+                  analysis_result
+                )
+              `)
+              .eq('profile_id', newProfile.id)
+              .order('created_at', { ascending: false });
+
+            if (!error) {
+              setVideos(data || []);
+            }
+          } else {
+            console.error('Erreur lors de la création du profil:', createError);
+            setVideos([]);
+          }
+        } else {
+          console.error('Erreur lors de la récupération du profil:', profileError);
+          setVideos([]);
+        }
+      } else if (profileData) {
+        // Récupérer les vidéos avec le profile_id existant
+        const { data, error } = await supabase
+          .from('videos')
+          .select(`
+            *,
+            transcriptions (
+              id,
+              status,
+              confidence_score,
+              processed_at,
+              analysis_result
+            )
+          `)
+          .eq('profile_id', profileData.id)
+          .order('created_at', { ascending: false });
+
+        if (!error) {
+          setVideos(data || []);
+        } else {
+          console.error('Erreur lors du chargement des vidéos:', error);
+          setVideos([]);
+        }
+      }
+    } catch (error) {
+      console.error('Erreur lors du chargement des vidéos:', error);
+      setVideos([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteVideo = async (videoId) => {
+    if (!videoId) return;
+    
+    try {
+      // Supprimer d'abord les transcriptions associées
+      const { error: transcriptionError } = await supabase
+        .from('transcriptions')
+        .delete()
+        .eq('video_id', videoId);
       
-      {/* Statistiques avec design moderne */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white/60 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-white/20 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl shadow-lg">
-              <Video className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-900">Vidéos uploadées</h3>
-              <p className="text-xs text-gray-500">Total des uploads</p>
-            </div>
-          </div>
-          <div className="flex items-end gap-2">
-            <p className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent">
-              {stats.videosCount}
-            </p>
-            <div className="flex items-center gap-1 text-green-600 text-sm mb-1">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span>Actif</span>
-            </div>
-          </div>
-        </div>
+      if (transcriptionError) {
+        console.error('Erreur lors de la suppression des transcriptions:', transcriptionError);
+      }
+      
+      // Puis supprimer la vidéo
+      const { error } = await supabase
+        .from('videos')
+        .delete()
+        .eq('id', videoId);
+      
+      if (error) {
+        console.error('Erreur lors de la suppression de la vidéo:', error);
+        return;
+      }
+      
+      // Mettre à jour l'état local
+      setVideos(videos.filter(video => video.id !== videoId));
+      setDeleteConfirm(null);
+      
+      // Si la vidéo supprimée était sélectionnée, désélectionner
+      if (selectedVideo && selectedVideo.id === videoId) {
+        setSelectedVideo(null);
+      }
+    } catch (error) {
+      console.error('Erreur lors de la suppression:', error);
+    }
+  };
 
-        <div className="bg-white/60 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-white/20 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl shadow-lg">
-              <FileText className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-900">Analyses IA</h3>
-              <p className="text-xs text-gray-500">Transcriptions complètes</p>
-            </div>
-          </div>
-          <div className="flex items-end gap-2">
-            <p className="text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-700 bg-clip-text text-transparent">
-              {stats.transcriptionsCount}
-            </p>
-            <div className="flex items-center gap-1 text-blue-600 text-sm mb-1">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-              <span>IA</span>
-            </div>
-          </div>
-        </div>
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Date inconnue';
+    
+    return new Date(dateString).toLocaleDateString('fr-FR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
 
-        <div className="bg-white/60 backdrop-blur-sm p-6 rounded-xl shadow-lg border border-white/20 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-gradient-to-r from-purple-500 to-pink-600 rounded-xl shadow-lg">
-              <BarChart3 className="h-6 w-6 text-white" />
+  const getStatusBadge = (status) => {
+    const statusMap = {
+      [VIDEO_STATUS.PENDING]: 'bg-yellow-100 text-yellow-800',
+      [VIDEO_STATUS.PROCESSING]: 'bg-blue-100 text-blue-800',
+      [VIDEO_STATUS.COMPLETED]: 'bg-green-100 text-green-800',
+      [VIDEO_STATUS.FAILED]: 'bg-red-100 text-red-800',
+      [TRANSCRIPTION_STATUS.PENDING]: 'bg-yellow-100 text-yellow-800',
+      [TRANSCRIPTION_STATUS.PROCESSING]: 'bg-blue-100 text-blue-800',
+      [TRANSCRIPTION_STATUS.COMPLETED]: 'bg-green-100 text-green-800',
+      [TRANSCRIPTION_STATUS.FAILED]: 'bg-red-100 text-red-800',
+    };
+    
+    return statusMap[status] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getStatusText = (status) => {
+    const statusTextMap = {
+      [VIDEO_STATUS.PENDING]: 'En attente',
+      [VIDEO_STATUS.PROCESSING]: 'En traitement',
+      [VIDEO_STATUS.COMPLETED]: 'Terminé',
+      [VIDEO_STATUS.FAILED]: 'Échec',
+      [TRANSCRIPTION_STATUS.PENDING]: 'En attente',
+      [TRANSCRIPTION_STATUS.PROCESSING]: 'En traitement',
+      [TRANSCRIPTION_STATUS.COMPLETED]: 'Terminé',
+      [TRANSCRIPTION_STATUS.FAILED]: 'Échec',
+    };
+    
+    return statusTextMap[status] || 'Inconnu';
+  };
+
+  const renderVideoList = () => {
+    if (loading) {
+      return (
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-white p-6 rounded-lg shadow-sm border animate-pulse">
+              <div className="h-4 bg-gray-200 rounded mb-4"></div>
+              <div className="h-20 bg-gray-200 rounded"></div>
             </div>
-            <div>
-              <h3 className="font-semibold text-gray-900">Score moyen</h3>
-              <p className="text-xs text-gray-500">Évaluation qualité IA</p>
+          ))}
+        </div>
+      );
+    }
+
+    if (videos.length === 0) {
+      return (
+        <div className="bg-white p-8 rounded-lg shadow-sm border text-center">
+          <Video className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Aucune vidéo disponible</h3>
+          <p className="text-gray-600 mb-4">
+            Commencez par uploader une vidéo pour l'analyser avec notre IA
+          </p>
+          <Button onClick={() => setActiveTab('upload')}>
+            Uploader une vidéo
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {videos.map((video) => (
+          <div 
+            key={video.id} 
+            className={`bg-white p-6 rounded-lg shadow-sm border cursor-pointer transition-all ${
+              selectedVideo?.id === video.id ? 'ring-2 ring-blue-500' : 'hover:bg-gray-50'
+            }`}
+            onClick={() => setSelectedVideo(video)}
+          >
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="font-semibold text-lg">{video.title || 'Vidéo sans nom'}</h3>
+                <p className="text-sm text-gray-500">{formatDate(video.created_at)}</p>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(video.status)}`}>
+                    {getStatusText(video.status)}
+                  </span>
+                  
+                  {video.transcriptions && video.transcriptions.length > 0 && (
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      getStatusBadge(video.transcriptions[0].status)
+                    }`}>
+                      Transcription: {getStatusText(video.transcriptions[0].status)}
+                    </span>
+                  )}
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                {deleteConfirm === video.id ? (
+                  <>
+                    <Button 
+                      variant="destructive" 
+                      size="sm" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteVideo(video.id);
+                      }}
+                    >
+                      Confirmer
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteConfirm(null);
+                      }}
+                    >
+                      Annuler
+                    </Button>
+                  </>
+                ) : (
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteConfirm(video.id);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4 text-red-500" />
+                  </Button>
+                )}
+              </div>
             </div>
-          </div>
-          <div className="flex items-end gap-2">
-            <p className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-700 bg-clip-text text-transparent">
-              {stats.averageScore !== null ? `${stats.averageScore}%` : '-'}
-            </p>
-            {stats.averageScore !== null && (
-              <div className="flex items-center gap-1 text-purple-600 text-sm mb-1">
-                <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                <span>Qualité</span>
+            
+            {video.status === VIDEO_STATUS.FAILED && (
+              <div className="mt-3 p-2 bg-red-50 rounded-md flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-red-700">
+                  {video.error_message || "Une erreur s'est produite lors du traitement de cette vidéo."}
+                </p>
+              </div>
+            )}
+            
+            {video.transcriptions && video.transcriptions.length > 0 && 
+             video.transcriptions[0].status === TRANSCRIPTION_STATUS.FAILED && (
+              <div className="mt-3 p-2 bg-red-50 rounded-md flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-red-700">
+                  {video.transcriptions[0].error_message || "Une erreur s'est produite lors de la transcription."}
+                </p>
               </div>
             )}
           </div>
-        </div>
+        ))}
       </div>
+    );
+  };
 
-      {/* Vidéos récentes avec design amélioré */}
-      {recentVideos && recentVideos.length > 0 ? (
-        <div className="bg-white/60 backdrop-blur-sm p-8 rounded-xl shadow-lg border border-white/20">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg">
-              <Video className="h-5 w-5 text-white" />
+  const renderVideoDetails = () => {
+    if (!selectedVideo) {
+      return (
+        <div className="bg-white p-8 rounded-lg shadow-sm border text-center">
+          <Video className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Aucune vidéo sélectionnée</h3>
+          <p className="text-gray-600">
+            Sélectionnez une vidéo dans la liste pour voir les détails
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-white rounded-lg shadow-sm border">
+        <div className="p-6">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h3 className="font-semibold text-xl">{selectedVideo.title || 'Vidéo sans nom'}</h3>
+              <p className="text-sm text-gray-500">{formatDate(selectedVideo.created_at)}</p>
             </div>
-            <h3 className="text-xl font-semibold text-gray-900">Vidéos récentes</h3>
+            <div className="flex items-center gap-2">
+              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(selectedVideo.status)}`}>
+                {getStatusText(selectedVideo.status)}
+              </span>
+            </div>
           </div>
-          <div className="grid gap-4">
-            {recentVideos.map((video, index) => (
-              <div 
-                key={video.id} 
-                className="group flex items-center gap-4 p-4 border border-gray-100 rounded-xl hover:bg-white/80 hover:shadow-md transition-all duration-300 hover:-translate-y-0.5"
-                style={{ animationDelay: `${index * 100}ms` }}
-              >
-                <div className="flex-shrink-0 w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl overflow-hidden shadow-md">
-                  {video.thumbnail_url ? (
-                    <img 
-                      src={video.thumbnail_url} 
-                      alt={video.title} 
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-purple-100">
-                      <Video className="h-8 w-8 text-blue-500" />
-                    </div>
+          
+          {selectedVideo.file_path && (
+            <div className="mb-6">
+              <VideoPlayer url={selectedVideo.file_path} />
+            </div>
+          )}
+          
+          <div className="space-y-4">
+            {selectedVideo.transcriptions && selectedVideo.transcriptions.length > 0 ? (
+              <div>
+                <h4 className="font-medium mb-2">Statut de la transcription:</h4>
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    getStatusBadge(selectedVideo.transcriptions[0].status)
+                  }`}>
+                    {getStatusText(selectedVideo.transcriptions[0].status)}
+                  </span>
+                  
+                  {selectedVideo.transcriptions[0].status === TRANSCRIPTION_STATUS.COMPLETED && (
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setActiveTab('transcriptions')}
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Voir l'analyse
+                    </Button>
                   )}
                 </div>
-                <div className="flex-grow min-w-0">
-                  <h4 className="font-semibold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
-                    {video.title || 'Sans titre'}
-                  </h4>
-                  <p className="text-sm text-gray-600 truncate mt-1">
-                    {video.description || 'Aucune description'}
-                  </p>
-                  <div className="flex items-center gap-4 mt-2 text-xs">
-                    <span className="text-gray-500">
-                      {new Date(video.created_at).toLocaleDateString('fr-FR', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric'
-                      })}
-                    </span>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      video.status === 'published' 
-                        ? 'bg-green-100 text-green-700 border border-green-200' 
-                        : video.status === 'processing'
-                        ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                        : 'bg-gray-100 text-gray-700 border border-gray-200'
-                    }`}>
-                      {video.status === 'published' ? 'Publié' : 
-                       video.status === 'processing' ? 'En cours' : 
-                       video.status || 'En attente'}
-                    </span>
-                  </div>
-                </div>
-                {video.file_path && (
-                  <div className="flex-shrink-0">
-                    <a 
-                      href={video.file_path} 
-                      target="_blank" 
-                      rel="noopener noreferrer" 
-                      className="inline-flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white text-sm font-medium rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all duration-200 shadow-md hover:shadow-lg"
-                    >
-                      <Video className="h-4 w-4" />
-                      <span className="hidden sm:inline">Voir</span>
-                    </a>
+                
+                {selectedVideo.transcriptions[0].status === TRANSCRIPTION_STATUS.FAILED && (
+                  <div className="mt-3 p-3 bg-red-50 rounded-md flex items-start gap-2">
+                    <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-red-800">Échec de la transcription</p>
+                      <p className="text-xs text-red-700 mt-1">
+                        {selectedVideo.transcriptions[0].error_message || 
+                         "Une erreur s'est produite lors de la transcription de cette vidéo."}
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>
-            ))}
-          </div>
-        </div>
-      ) : stats.videosCount === 0 && (
-        <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl p-8 text-center shadow-lg">
-          <div className="relative mb-6">
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-24 h-24 bg-gradient-to-r from-blue-400 to-purple-400 rounded-full opacity-20 animate-pulse"></div>
-            </div>
-            <Video className="h-16 w-16 text-blue-600 mx-auto relative z-10" />
-          </div>
-          <h3 className="text-xl font-semibold text-blue-900 mb-3">
-            Commencez votre première analyse
-          </h3>
-          <p className="text-blue-700 mb-6 max-w-md mx-auto">
-            Uploadez votre première vidéo de pitch pour voir vos statistiques apparaître ici et bénéficier de l'analyse IA.
-          </p>
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/60 rounded-lg border border-blue-200">
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-            <span className="text-blue-700 text-sm font-medium">Prêt pour l'upload</span>
-          </div>
-        </div>
-      )}
-
-      {/* Suggestions IA avec design moderne */}
-      {dashboardData.aiSuggestions && dashboardData.aiSuggestions.length > 0 && (
-        <div className="bg-white/60 backdrop-blur-sm p-8 rounded-xl shadow-lg border border-white/20">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-gradient-to-r from-amber-500 to-orange-500 rounded-lg">
-              <Lightbulb className="h-5 w-5 text-white" />
-            </div>
-            <h3 className="text-xl font-semibold text-gray-900">Suggestions IA</h3>
-          </div>
-          <div className="grid gap-4">
-            {dashboardData.aiSuggestions.map((suggestion, index) => (
-              <div 
-                key={suggestion.id} 
-                className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 hover:shadow-md transition-all duration-300"
-                style={{ animationDelay: `${index * 100}ms` }}
-              >
-                <p className="text-gray-800 font-medium">{suggestion.suggestion_text}</p>
-                <p className="text-xs text-amber-700 mt-2 flex items-center gap-1">
-                  <Video className="h-3 w-3" />
-                  Pour: {suggestion.videos?.title || 'Vidéo inconnue'}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Activités récentes avec design moderne */}
-      {dashboardData.recentActivities && dashboardData.recentActivities.length > 0 && (
-        <div className="bg-white/60 backdrop-blur-sm p-8 rounded-xl shadow-lg border border-white/20">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-gradient-to-r from-indigo-500 to-blue-500 rounded-lg">
-              <Clock className="h-5 w-5 text-white" />
-            </div>
-            <h3 className="text-xl font-semibold text-gray-900">Activités récentes</h3>
-          </div>
-          <div className="space-y-3">
-            {dashboardData.recentActivities.map((activity, index) => (
-              <div 
-                key={activity.id} 
-                className="flex items-center gap-4 py-3 px-4 rounded-lg hover:bg-white/60 transition-all duration-200"
-                style={{ animationDelay: `${index * 50}ms` }}
-              >
-                <div className="w-3 h-3 rounded-full bg-gradient-to-r from-indigo-500 to-blue-500 animate-pulse"></div>
-                <div className="flex-grow">
-                  <p className="text-sm text-gray-800 font-medium">
-                    {activity.description || activity.activity_type}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {new Date(activity.created_at).toLocaleString('fr-FR')}
+            ) : (
+              <div className="p-3 bg-yellow-50 rounded-md flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-yellow-800">Aucune transcription disponible</p>
+                  <p className="text-xs text-yellow-700 mt-1">
+                    La transcription n'a pas encore été initiée ou est en attente de traitement.
                   </p>
                 </div>
               </div>
-            ))}
+            )}
+            
+            <div>
+              <h4 className="font-medium mb-2">Détails:</h4>
+              <div className="bg-gray-50 p-3 rounded-md">
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="text-gray-600">ID:</div>
+                  <div>{selectedVideo.id}</div>
+                  <div className="text-gray-600">Durée:</div>
+                  <div>{selectedVideo.duration ? `${selectedVideo.duration}s` : 'Non disponible'}</div>
+                  <div className="text-gray-600">Format:</div>
+                  <div>{selectedVideo.format || 'Non disponible'}</div>
+                  <div className="text-gray-600">Taille:</div>
+                  <div>{selectedVideo.file_size ? `${(selectedVideo.file_size / (1024 * 1024)).toFixed(2)} MB` : 'Non disponible'}</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="container mx-auto py-8 px-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <div className="flex justify-between items-center mb-6">
+          <TabsList>
+            <TabsTrigger value="videos" className="flex items-center gap-2">
+              <Video className="h-4 w-4" />
+              <span>Mes Vidéos</span>
+            </TabsTrigger>
+            <TabsTrigger value="transcriptions" className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              <span>Analyses IA</span>
+            </TabsTrigger>
+            <TabsTrigger value="upload" className="flex items-center gap-2">
+              <Upload className="h-4 w-4" />
+              <span>Upload</span>
+            </TabsTrigger>
+          </TabsList>
+          
+          {activeTab === 'videos' && (
+            <Button variant="outline" size="sm" onClick={fetchVideos}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Actualiser
+            </Button>
+          )}
+        </div>
+
+        <TabsContent value="videos" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-1 space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Mes Vidéos</CardTitle>
+                  <CardDescription>
+                    {videos.length} vidéo(s) disponible(s)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {renderVideoList()}
+                </CardContent>
+              </Card>
+            </div>
+            
+            <div className="lg:col-span-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Détails de la vidéo</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {renderVideoDetails()}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+        
+        <TabsContent value="transcriptions">
+          <Card>
+            <CardHeader>
+              <CardTitle>Analyses IA</CardTitle>
+              <CardDescription>
+                Visualisez les transcriptions et analyses de vos vidéos
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TranscriptionViewer />
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="upload">
+          <Card>
+            <CardHeader>
+              <CardTitle>Upload de vidéo</CardTitle>
+              <CardDescription>
+                Uploadez une vidéo pour l'analyser avec notre IA
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <VideoUploader onUploadComplete={fetchVideos} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
