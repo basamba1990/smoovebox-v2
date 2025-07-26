@@ -68,7 +68,8 @@ function AppContent() {
       setDashboardLoading(true);
       setDashboardError(null);
       
-      // Récupérer les statistiques des vid      const { data: videosData, error: videosError } = await supabase
+      // Récupérer les statistiques des vidéos
+      const { data: videosData, error: videosError } = await supabase
         .from(\'videos\')
         .select(\'id, title, description, created_at, status, thumbnail_url, file_path\')
         .eq(\'user_id\', user.id)
