@@ -72,8 +72,9 @@ function AppContent() {
       const { data: videosData, error: videosError } = await supabase
         .from('videos')
         .select('id, title, description, created_at, status, thumbnail_url, file_path')
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });   
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+        
       if (videosError && videosError.code !== 'PGRST116') {
         console.error('Erreur vidéos:', videosError);
       }
@@ -191,6 +192,7 @@ function AppContent() {
               className="w-full mt-4"
               variant="outline"
             >
+              <RefreshCw className="h-4 w-4 mr-2" />
               Réessayer
             </Button>
           </div>
@@ -389,95 +391,4 @@ function AppContent() {
             </div>
             <h2 className="text-4xl font-bold text-gray-900 mb-4">
               Bienvenue sur{' '}
-              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                SpotBulle
-              </span>
-            </h2>
-            <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
-              La plateforme moderne de pitch vidéo avec intelligence artificielle. 
-              Créez, analysez et améliorez vos présentations avec l'aide de l'IA.
-            </p>
-            <div className="space-y-6">
-              <Button 
-                size="lg" 
-                onClick={() => setIsAuthModalOpen(true)}
-                className="px-10 py-4 text-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all duration-300 shadow-xl hover:shadow-2xl transform hover:-translate-y-1"
-              >
-                Commencer maintenant
-              </Button>
-              <p className="text-sm text-gray-500">
-                Aucun compte requis pour tester • Inscription gratuite
-              </p>
-              
-              {/* Features preview */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12 max-w-4xl mx-auto">
-                <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-                  <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg flex items-center justify-center mb-4">
-                    <Upload className="h-6 w-6 text-white" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900 mb-2">Upload Facile</h3>
-                  <p className="text-gray-600 text-sm">Uploadez vos vidéos en quelques clics avec compression automatique</p>
-                </div>
-                
-                <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-                  <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg flex items-center justify-center mb-4">
-                    <FileText className="h-6 w-6 text-white" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900 mb-2">Analyse IA</h3>
-                  <p className="text-gray-600 text-sm">Transcription automatique et suggestions d'amélioration intelligentes</p>
-                </div>
-                
-                <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-                  <div className="w-12 h-12 bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-lg flex items-center justify-center mb-4">
-                    <BarChart3 className="h-6 w-6 text-white" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900 mb-2">Statistiques</h3>
-                  <p className="text-gray-600 text-sm">Suivez vos progrès avec des métriques détaillées et des insights</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </main>
-
-      {/* Footer avec design moderne */}
-      <footer className="bg-white/60 backdrop-blur-sm border-t border-white/20 mt-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <Video className="h-6 w-6 text-blue-600" />
-              <span className="font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                SpotBulle
-              </span>
-            </div>
-            <p className="text-gray-600 mb-2">
-              Plateforme moderne de pitch vidéo avec analyse IA
-            </p>
-            <p className="text-xs text-gray-500">
-              Stack: Outils Innovants Pour Notre Jeunesse de Demain 
-            </p>
-          </div>
-        </div>
-      </footer>
-
-      {/* Auth Modal */}
-      <AuthModal 
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        onAuthSuccess={handleAuthSuccess}
-      />
-    </div>
-  );
-}
-
-function App() {
-  return (
-    <ErrorBoundary>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </ErrorBoundary>
-  );
-}
-
-export default App;
+              <span className="bg-gradient-to-r from-blue-600
