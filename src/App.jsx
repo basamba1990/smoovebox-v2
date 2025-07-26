@@ -206,8 +206,8 @@ function AppContent() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-2">
               <Video className="h-8 w-8 text-blue-600" />
-              <h1 className="text-xl font-bold text-gray-900">Smoovebox</h1>
-              <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">v2.0</span>
+              <h1 className="text-xl font-bold text-gray-900">SpotBulle</h1>
+              
             </div>
             <div className="flex items-center gap-4">
               {user ? (
