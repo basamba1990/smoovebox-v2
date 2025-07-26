@@ -44,6 +44,6 @@ export default defineConfig({
     strictPort: true,
     open: true,
     host: '0.0.0.0',
-    allowedHosts: ["smoovebox-v2-ok9i3pfat-samba-bas-projects.vercel.app", "smoovebox-v2-git-main-samba-bas-projects.vercel.app", "smoovebox-v2-samba-bas-projects.vercel.app", "https://smoovebox-v2.vercel.app", "smoovebox-*-v2-samba-bas-projects.vercel.app", "5173-ir4bik2dz2s9pd2z23v4c-8184e873.manusvm.computer"],
+    allowedHosts: ["smoovebox-v2-ok9i3pfat-samba-bas-projects.vercel.app", "smoovebox-v2-git-main-samba-bas-projects.vercel.app", "smoovebox-v2-samba-bas-projects.vercel.app", "https://smoovebox-v2.vercel.app", "smoovebox-*-v2-samba-bas-projects.vercel.app", "5173-i8wktuhtg6hd8ws2xry0r-dded83f9.manusvm.computer", "5173-in3r2nr2ki5dwrk1kwubp-0fe9f55f.manusvm.computer"],
   },
 });
