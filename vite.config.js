@@ -9,6 +9,9 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  optimizeDeps: {
+    include: ['uuid'],
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -47,3 +50,4 @@ export default defineConfig({
     allowedHosts: ["smoovebox-v2-ok9i3pfat-samba-bas-projects.vercel.app", "smoovebox-v2-git-main-samba-bas-projects.vercel.app", "smoovebox-v2-samba-bas-projects.vercel.app", "https://smoovebox-v2.vercel.app", "smoovebox-*-v2-samba-bas-projects.vercel.app", "5173-i8wktuhtg6hd8ws2xry0r-dded83f9.manusvm.computer", "5173-in3r2nr2ki5dwrk1kwubp-0fe9f55f.manusvm.computer"],
   },
 });
+
