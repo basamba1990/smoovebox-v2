@@ -70,10 +70,10 @@ function AppContent() {
       
       // Récupérer les statistiques des vidéos
       const { data: videosData, error: videosError } = await supabase
-        .from(\'videos\')
-        .select(\'id, title, description, created_at, status, thumbnail_url, file_path\')
-        .eq(\'user_id\', user.id)
-        .order(\'created_at\', { ascending: false });   
+        .from('videos')
+        .select('id, title, description, created_at, status, thumbnail_url, file_path')
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });   
       if (videosError && videosError.code !== 'PGRST116') {
         console.error('Erreur vidéos:', videosError);
       }
