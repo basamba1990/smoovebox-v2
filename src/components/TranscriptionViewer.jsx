@@ -1,8 +1,10 @@
+// src/components/TranscriptionViewer.jsx
 import React, { useState, useEffect } from 'react';
 import { Button } from '../components/ui/button.jsx';
 import { FileText, Play, Download, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { useAuth } from '../context/AuthContext.jsx';
+import { TRANSCRIPTION_STATUS } from '../constants/videoStatus.js';
 
 const TranscriptionViewer = () => {
   const { user } = useAuth();
@@ -11,7 +13,9 @@ const TranscriptionViewer = () => {
   const [selectedTranscription, setSelectedTranscription] = useState(null);
 
   useEffect(() => {
-    fetchTranscriptions();
+    if (user) {
+      fetchTranscriptions();
+    }
   }, [user]);
 
   const fetchTranscriptions = async () => {
@@ -19,112 +23,100 @@ const TranscriptionViewer = () => {
     
     setLoading(true);
     try {
-      let profileId = null;
-      
-      // D'abord essayer de récupérer le profil de l'utilisateur
+      // Approche unifiée pour récupérer les transcriptions
+      // Essayer d'abord avec la relation directe user_id
+      const { data: directData, error: directError } = await supabase
+        .from('transcriptions')
+        .select(`
+          *,
+          videos (
+            title,
+            file_path,
+            created_at,
+            user_id
+          )
+        `)
+        .eq('videos.user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (!directError && directData && directData.length > 0) {
+        setTranscriptions(directData);
+        setLoading(false);
+        return;
+      }
+
+      // Si la première approche échoue, essayer avec profile_id
+      // D'abord récupérer le profil de l'utilisateur
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('id')
         .eq('user_id', user.id)
         .single();
         
-      if (profileError && profileError.code === 'PGRST116') {
-        // Si la table profiles n'existe pas, utiliser directement user_id
-        console.warn('Table profiles non trouvée, utilisation de user_id directement');
-        
-        // Récupérer les transcriptions via les vidéos de l'utilisateur directement
+      if (profileError) {
+        // Si le profil n'existe pas, essayer de le créer
+        if (profileError.code === 'PGRST116' || profileError.code === 'PGRST301') {
+          const { data: newProfile, error: createError } = await supabase
+            .from('profiles')
+            .insert({
+              user_id: user.id,
+              email: user.email,
+              username: user.email?.split('@')[0] || 'user',
+              full_name: user.user_metadata?.full_name || 
+                        `${user.user_metadata?.first_name || ''} ${user.user_metadata?.last_name || ''}`.trim() || null
+            })
+            .select()
+            .single();
+            
+          if (!createError && newProfile) {
+            // Récupérer les transcriptions avec le nouveau profile_id
+            const { data, error } = await supabase
+              .from('transcriptions')
+              .select(`
+                *,
+                videos (
+                  title,
+                  file_path,
+                  created_at,
+                  profile_id
+                )
+              `)
+              .eq('videos.profile_id', newProfile.id)
+              .order('created_at', { ascending: false });
+
+            if (!error) {
+              setTranscriptions(data || []);
+            }
+          } else {
+            console.error('Erreur lors de la création du profil:', createError);
+            setTranscriptions([]);
+          }
+        } else {
+          console.error('Erreur lors de la récupération du profil:', profileError);
+          setTranscriptions([]);
+        }
+      } else if (profileData) {
+        // Récupérer les transcriptions avec le profile_id existant
         const { data, error } = await supabase
           .from('transcriptions')
           .select(`
             *,
-            videos!inner (
+            videos (
               title,
               file_path,
               created_at,
-              user_id
+              profile_id
             )
           `)
-          .eq('videos.user_id', user.id)
-          .order('processed_at', { ascending: false });
+          .eq('videos.profile_id', profileData.id)
+          .order('created_at', { ascending: false });
 
-        if (error) {
+        if (!error) {
+          setTranscriptions(data || []);
+        } else {
           console.error('Erreur lors du chargement des transcriptions:', error);
           setTranscriptions([]);
-        } else {
-          setTranscriptions(data || []);
         }
-        setLoading(false);
-        return;
-      } else if (profileError && profileError.code === 'PGRST301') {
-        // Si le profil n'existe pas, essayer de le créer
-        console.warn('Profil non trouvé, tentative de création...');
-        
-        const { data: newProfile, error: createError } = await supabase
-          .from('profiles')
-          .insert({
-            user_id: user.id,
-            email: user.email,
-            username: user.email?.split('@')[0] || 'user',
-            full_name: user.user_metadata?.full_name || 
-                      `${user.user_metadata?.first_name || ''} ${user.user_metadata?.last_name || ''}`.trim() || null
-          })
-          .select()
-          .single();
-          
-        if (createError) {
-          console.error('Erreur lors de la création du profil:', createError);
-          // Fallback: utiliser user_id directement
-          const { data, error } = await supabase
-            .from('transcriptions')
-            .select(`
-              *,
-              videos!inner (
-                title,
-                file_path,
-                created_at,
-                user_id
-              )
-            `)
-            .eq('videos.user_id', user.id)
-            .order('processed_at', { ascending: false });
-
-          if (error) {
-            console.error('Erreur lors du chargement des transcriptions:', error);
-            setTranscriptions([]);
-          } else {
-            setTranscriptions(data || []);
-          }
-          setLoading(false);
-          return;
-        }
-        
-        profileId = newProfile.id;
-      } else if (profileError) {
-        throw profileError;
-      } else {
-        profileId = profileData.id;
-      }
-      
-      // Récupérer les transcriptions via les vidéos du profil
-      const { data, error } = await supabase
-        .from('transcriptions')
-        .select(`
-          *,
-          videos!inner (
-            title,
-            file_path,
-            created_at,
-            profile_id
-          )
-        `)
-        .eq('videos.profile_id', profileId)
-        .order('processed_at', { ascending: false });
-
-      if (error) {
-        console.error('Erreur lors du chargement des transcriptions:', error);
-        setTranscriptions([]);
-      } else {
-        setTranscriptions(data || []);
       }
     } catch (error) {
       console.error('Erreur lors du chargement des transcriptions:', error);
@@ -135,6 +127,8 @@ const TranscriptionViewer = () => {
   };
 
   const formatDate = (dateString) => {
+    if (!dateString) return 'Date inconnue';
+    
     return new Date(dateString).toLocaleDateString('fr-FR', {
       year: 'numeric',
       month: 'long',
@@ -145,22 +139,25 @@ const TranscriptionViewer = () => {
   };
 
   const getScoreColor = (score) => {
+    if (!score && score !== 0) return 'text-gray-600 bg-gray-100';
     if (score >= 80) return 'text-green-600 bg-green-100';
     if (score >= 60) return 'text-yellow-600 bg-yellow-100';
     return 'text-red-600 bg-red-100';
   };
 
   const downloadTranscription = (transcription) => {
+    if (!transcription) return;
+    
     const content = `
 Transcription - ${transcription.videos?.title || 'Vidéo'}
-Date: ${formatDate(transcription.processed_at)}
+Date: ${formatDate(transcription.processed_at || transcription.created_at)}
 Score de confiance: ${transcription.confidence_score || 'N/A'}%
 
 TRANSCRIPTION:
-${transcription.full_text}
+${transcription.transcription_text || transcription.full_text || 'Transcription non disponible'}
 
 ANALYSE IA:
-${JSON.stringify(transcription.analysis_result, null, 2)}
+${JSON.stringify(transcription.analysis_result || {}, null, 2)}
     `.trim();
 
     const blob = new Blob([content], { type: 'text/plain' });
@@ -202,7 +199,7 @@ ${JSON.stringify(transcription.analysis_result, null, 2)}
           <p className="text-gray-600 mb-4">
             Uploadez une vidéo pour voir apparaître ici l'analyse automatique de votre pitch par l'IA
           </p>
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => window.location.hash = '#upload'}>
             Aller à l'upload
           </Button>
         </div>
@@ -232,7 +229,7 @@ ${JSON.stringify(transcription.analysis_result, null, 2)}
                       {transcription.videos?.title || 'Vidéo sans nom'}
                     </h4>
                     <p className="text-sm text-gray-500">
-                      {formatDate(transcription.processed_at)}
+                      {formatDate(transcription.processed_at || transcription.created_at)}
                     </p>
                     {transcription.videos?.file_path && (
                       <a 
@@ -246,7 +243,7 @@ ${JSON.stringify(transcription.analysis_result, null, 2)}
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    {transcription.confidence_score && (
+                    {transcription.confidence_score !== null && (
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${getScoreColor(transcription.confidence_score)}`}>
                         {transcription.confidence_score}% confiance
                       </span>
@@ -266,7 +263,7 @@ ${JSON.stringify(transcription.analysis_result, null, 2)}
                 <h5 className="font-medium mb-2">Transcription:</h5>
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <p className="text-sm text-gray-700 leading-relaxed">
-                    {transcription.full_text || 'Transcription non disponible'}
+                    {transcription.transcription_text || transcription.full_text || 'Transcription non disponible'}
                   </p>
                 </div>
               </div>
@@ -280,9 +277,12 @@ ${JSON.stringify(transcription.analysis_result, null, 2)}
                         <div>
                           <h6 className="font-medium text-sm text-blue-900">Suggestions d'amélioration:</h6>
                           <ul className="list-disc list-inside text-sm text-blue-800 space-y-1">
-                            {transcription.analysis_result.suggestions.slice(0, 3).map((suggestion, index) => (
-                              <li key={index}>{suggestion.description || suggestion}</li>
-                            ))}
+                            {Array.isArray(transcription.analysis_result.suggestions) ? 
+                              transcription.analysis_result.suggestions.slice(0, 3).map((suggestion, index) => (
+                                <li key={index}>{typeof suggestion === 'object' ? suggestion.description || JSON.stringify(suggestion) : suggestion}</li>
+                              )) : 
+                              <li>{transcription.analysis_result.suggestions || 'Aucune suggestion disponible'}</li>
+                            }
                           </ul>
                         </div>
                       )}
@@ -294,7 +294,7 @@ ${JSON.stringify(transcription.analysis_result, null, 2)}
                         </div>
                       )}
 
-                      {transcription.analysis_result.keywords && (
+                      {transcription.analysis_result.keywords && Array.isArray(transcription.analysis_result.keywords) && (
                         <div>
                           <span className="font-medium text-sm text-blue-900">Mots-clés: </span>
                           <span className="text-sm text-blue-800">
@@ -315,4 +315,3 @@ ${JSON.stringify(transcription.analysis_result, null, 2)}
 };
 
 export default TranscriptionViewer;
-
