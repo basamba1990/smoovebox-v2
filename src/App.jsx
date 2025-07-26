@@ -391,4 +391,43 @@ function AppContent() {
             </div>
             <h2 className="text-4xl font-bold text-gray-900 mb-4">
               Bienvenue sur{' '}
-              <span className="bg-gradient-to-r from-blue-600
+              <span className="bg-gradient-to-r from-blue-600 to-indigo-600 text-transparent bg-clip-text">
+                SmooveBox
+              </span>
+            </h2>
+            <p className="text-xl text-gray-600 mb-8">
+              Votre plateforme de gestion vidéo intelligente
+            </p>
+            <Button 
+              size="lg"
+              onClick={() => setIsAuthModalOpen(true)}
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl px-8 py-3"
+            >
+              Commencer maintenant
+            </Button>
+          </div>
+        )}
+      </main>
+
+      {/* Auth Modal */}
+      <AuthModal 
+        isOpen={isAuthModalOpen} 
+        onClose={() => setIsAuthModalOpen(false)}
+        onAuthSuccess={handleAuthSuccess}
+      />
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <ErrorBoundary>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ErrorBoundary>
+  );
+}
+
+export default App;
+
