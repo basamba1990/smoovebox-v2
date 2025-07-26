@@ -1,3 +1,5 @@
+// src/constants/videoStatus.js
+
 // Constantes pour les statuts des vidéos
 export const VIDEO_STATUS = {
   DRAFT: 'draft',
@@ -36,4 +38,3 @@ export const TRANSCRIPTION_MESSAGES = {
   [TRANSCRIPTION_STATUS.FAILED_TRANSCRIPTION]: 'Transcription échouée',
   [TRANSCRIPTION_STATUS.FAILED]: 'Échec de l\'analyse'
 };
-
