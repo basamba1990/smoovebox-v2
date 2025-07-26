@@ -129,6 +129,20 @@ function AppContent() {
   useEffect(() => {
     if (user && activeTab === 'dashboard') {
       fetchDashboardData();
+      
+      // Écouter les changements sur la table 'videos'
+      const videosChannel = supabase
+        .channel('videos_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'videos' }, payload => {
+          console.log('Changement détecté dans la table videos:', payload);
+          fetchDashboardData(); // Rafraîchir les données du dashboard
+        })
+        .subscribe();
+
+      // Nettoyage à la désinscription
+      return () => {
+        supabase.removeChannel(videosChannel);
+      };
     }
   }, [user, activeTab]);
 
@@ -199,153 +213,247 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+      {/* Header avec design moderne */}
+      <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-white/20 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-2">
-              <Video className="h-8 w-8 text-blue-600" />
-              <h1 className="text-xl font-bold text-gray-900">SpotBulle</h1>
-              
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Video className="h-8 w-8 text-blue-600" />
+                <div className="absolute -top-1 -right-1 w-3 h-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full animate-pulse"></div>
+              </div>
+              <div>
+                <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                  SpotBulle
+                </h1>
+                <p className="text-xs text-gray-500 -mt-1">Analyse IA</p>
+              </div>
             </div>
             <div className="flex items-center gap-4">
               {user ? (
                 <div className="flex items-center gap-4">
-                  <span className="text-sm text-gray-600">
-                    Bonjour, {profile?.full_name || user.email}
-                  </span>
-                  <Button variant="outline" size="sm" onClick={handleSignOut}>
+                  <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-50 to-purple-50 rounded-full border border-blue-100">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span className="text-sm text-gray-700 font-medium">
+                      {profile?.full_name || user.email?.split('@')[0] || 'Utilisateur'}
+                    </span>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleSignOut}
+                    className="hover:bg-red-50 hover:border-red-200 hover:text-red-600 transition-all duration-200"
+                  >
                     <LogOut className="h-4 w-4 mr-2" />
                     Déconnexion
                   </Button>
                 </div>
               ) : (
-                <>
+                <div className="flex items-center gap-3">
                   <Button 
                     variant="outline" 
                     size="sm"
                     onClick={() => setIsAuthModalOpen(true)}
+                    className="hover:bg-blue-50 hover:border-blue-200 transition-all duration-200"
                   >
                     Connexion
                   </Button>
                   <Button 
                     size="sm"
                     onClick={() => setIsAuthModalOpen(true)}
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl"
                   >
                     S'inscrire
                   </Button>
-                </>
+                </div>
               )}
             </div>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main Content avec design amélioré */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {user ? (
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-3 mb-8">
-              <TabsTrigger value="dashboard" className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" />
-                Dashboard
-              </TabsTrigger>
-              <TabsTrigger value="upload" className="flex items-center gap-2">
-                <Upload className="h-4 w-4" />
-                Upload
-              </TabsTrigger>
-              <TabsTrigger value="transcription" className="flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                Analyse IA
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="dashboard">
-              {dashboardLoading ? (
-                <div className="text-center py-12">
-                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                  <p className="text-gray-600">Chargement des données du dashboard...</p>
-                </div>
-              ) : dashboardError ? (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-                  <AlertTriangle className="h-10 w-10 text-red-600 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-red-800 mb-2">
-                    Erreur de chargement
-                  </h3>
-                  <p className="text-red-700 mb-4">
-                    {dashboardError}
-                  </p>
-                  <Button 
-                    variant="outline" 
-                    onClick={fetchDashboardData}
-                    className="flex items-center gap-2"
+          <div className="space-y-8">
+            {/* Tabs avec design moderne */}
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <div className="flex justify-center mb-8">
+                <TabsList className="grid grid-cols-3 bg-white/60 backdrop-blur-sm border border-white/20 shadow-lg rounded-xl p-1">
+                  <TabsTrigger 
+                    value="dashboard" 
+                    className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white transition-all duration-200 rounded-lg"
                   >
-                    <RefreshCw className="h-4 w-4" />
-                    Réessayer
-                  </Button>
+                    <BarChart3 className="h-4 w-4" />
+                    <span className="hidden sm:inline">Dashboard</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="upload" 
+                    className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white transition-all duration-200 rounded-lg"
+                  >
+                    <Upload className="h-4 w-4" />
+                    <span className="hidden sm:inline">Upload</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="transcription" 
+                    className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white transition-all duration-200 rounded-lg"
+                  >
+                    <FileText className="h-4 w-4" />
+                    <span className="hidden sm:inline">Analyse IA</span>
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+
+              <TabsContent value="dashboard" className="space-y-6">
+                {dashboardLoading ? (
+                  <div className="text-center py-16">
+                    <div className="relative mx-auto w-16 h-16 mb-6">
+                      <div className="absolute inset-0 rounded-full border-4 border-blue-200"></div>
+                      <div className="absolute inset-0 rounded-full border-4 border-blue-600 border-t-transparent animate-spin"></div>
+                    </div>
+                    <p className="text-gray-600 font-medium">Chargement des données du dashboard...</p>
+                    <p className="text-gray-400 text-sm mt-2">Synchronisation en cours</p>
+                  </div>
+                ) : dashboardError ? (
+                  <div className="bg-gradient-to-r from-red-50 to-pink-50 border border-red-200 rounded-xl p-8 text-center shadow-lg">
+                    <AlertTriangle className="h-12 w-12 text-red-600 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-red-800 mb-2">
+                      Erreur de chargement
+                    </h3>
+                    <p className="text-red-700 mb-6">
+                      {dashboardError}
+                    </p>
+                    <Button 
+                      variant="outline" 
+                      onClick={fetchDashboardData}
+                      className="flex items-center gap-2 hover:bg-red-50 hover:border-red-300 transition-all duration-200"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Réessayer
+                    </Button>
+                  </div>
+                ) : (
+                  <Dashboard dashboardData={dashboardData} />
+                )}
+              </TabsContent>
+
+              <TabsContent value="upload" className="space-y-8">
+                <div className="text-center mb-8">
+                  <div className="inline-flex items-center gap-3 mb-4">
+                    <div className="p-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl shadow-lg">
+                      <Upload className="h-6 w-6 text-white" />
+                    </div>
+                    <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                      Upload Vidéo
+                    </h2>
+                  </div>
+                  <p className="text-gray-600 max-w-2xl mx-auto leading-relaxed">
+                    Uploadez vos pitchs vidéo avec compression automatique et optimisation mobile. 
+                    Notre IA analysera automatiquement votre contenu pour vous fournir des suggestions d'amélioration.
+                  </p>
                 </div>
-              ) : (
-                <Dashboard dashboardData={dashboardData} />
-              )}
-            </TabsContent>
+                <div className="flex justify-center">
+                  <div className="w-full max-w-lg">
+                    <UploadVideoMobile />
+                  </div>
+                </div>
+              </TabsContent>
 
-            <TabsContent value="upload" className="space-y-6">
-              <div className="text-center mb-8">
-                <h2 className="text-2xl font-bold mb-2">Upload Vidéo Mobile</h2>
-                <p className="text-gray-600">
-                  Uploadez vos pitchs vidéo avec compression automatique et optimisation mobile
-                </p>
-              </div>
-              <div className="flex justify-center">
-                <UploadVideoMobile />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="transcription" className="space-y-6">
-              <div className="text-center mb-8">
-                <h2 className="text-2xl font-bold mb-2">Analyse IA de Pitch</h2>
-                <p className="text-gray-600">
-                  Transcription automatique et suggestions d'amélioration par intelligence artificielle
-                </p>
-              </div>
-              <TranscriptionViewer />
-            </TabsContent>
-          </Tabs>
+              <TabsContent value="transcription" className="space-y-8">
+                <div className="text-center mb-8">
+                  <div className="inline-flex items-center gap-3 mb-4">
+                    <div className="p-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl shadow-lg">
+                      <FileText className="h-6 w-6 text-white" />
+                    </div>
+                    <h2 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                      Analyse IA
+                    </h2>
+                  </div>
+                  <p className="text-gray-600 max-w-2xl mx-auto leading-relaxed">
+                    Transcription automatique et suggestions d'amélioration par intelligence artificielle. 
+                    Découvrez comment optimiser vos présentations grâce à notre analyse avancée.
+                  </p>
+                </div>
+                <TranscriptionViewer />
+              </TabsContent>
+            </Tabs>
+          </div>
         ) : (
-          <div className="text-center py-16">
-            <Video className="h-16 w-16 text-blue-600 mx-auto mb-6" />
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              Bienvenue sur SpotBulle avec analyse IA
+          <div className="text-center py-20">
+            <div className="relative mb-8">
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-32 h-32 bg-gradient-to-r from-blue-400 to-purple-400 rounded-full opacity-20 animate-pulse"></div>
+              </div>
+              <Video className="h-20 w-20 text-blue-600 mx-auto relative z-10" />
+            </div>
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+              Bienvenue sur{' '}
+              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                SpotBulle
+              </span>
             </h2>
-            <p className="text-lg text-gray-600 mb-8 max-w-2xl mx-auto">
+            <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
               La plateforme moderne de pitch vidéo avec intelligence artificielle. 
               Créez, analysez et améliorez vos présentations avec l'aide de l'IA.
             </p>
-            <div className="space-y-4">
+            <div className="space-y-6">
               <Button 
                 size="lg" 
                 onClick={() => setIsAuthModalOpen(true)}
-                className="px-8 py-3"
+                className="px-10 py-4 text-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all duration-300 shadow-xl hover:shadow-2xl transform hover:-translate-y-1"
               >
                 Commencer maintenant
               </Button>
               <p className="text-sm text-gray-500">
                 Aucun compte requis pour tester • Inscription gratuite
               </p>
+              
+              {/* Features preview */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12 max-w-4xl mx-auto">
+                <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                  <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg flex items-center justify-center mb-4">
+                    <Upload className="h-6 w-6 text-white" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900 mb-2">Upload Facile</h3>
+                  <p className="text-gray-600 text-sm">Uploadez vos vidéos en quelques clics avec compression automatique</p>
+                </div>
+                
+                <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                  <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg flex items-center justify-center mb-4">
+                    <FileText className="h-6 w-6 text-white" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900 mb-2">Analyse IA</h3>
+                  <p className="text-gray-600 text-sm">Transcription automatique et suggestions d'amélioration intelligentes</p>
+                </div>
+                
+                <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                  <div className="w-12 h-12 bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-lg flex items-center justify-center mb-4">
+                    <BarChart3 className="h-6 w-6 text-white" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900 mb-2">Statistiques</h3>
+                  <p className="text-gray-600 text-sm">Suivez vos progrès avec des métriques détaillées et des insights</p>
+                </div>
+              </div>
             </div>
           </div>
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="bg-white border-t mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center text-gray-500">
-            <p className="text-sm">
-              SpotBulle avec analyse IA - Plateforme moderne de pitch vidéo avec IA
+      {/* Footer avec design moderne */}
+      <footer className="bg-white/60 backdrop-blur-sm border-t border-white/20 mt-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <Video className="h-6 w-6 text-blue-600" />
+              <span className="font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                SpotBulle
+              </span>
+            </div>
+            <p className="text-gray-600 mb-2">
+              Plateforme moderne de pitch vidéo avec analyse IA
             </p>
-            <p className="text-xs mt-2">
+            <p className="text-xs text-gray-500">
               Stack: Outils Innovants Pour Notre Jeunesse de Demain 
             </p>
           </div>
