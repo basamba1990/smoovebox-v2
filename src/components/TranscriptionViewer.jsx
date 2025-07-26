@@ -226,30 +226,40 @@ ${JSON.stringify(transcription.analysis_result, null, 2)}
       <div className="grid gap-6">
         {transcriptions.map((transcription) => (
           <div key={transcription.id} className="bg-white p-6 rounded-lg shadow-sm border">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h4 className="font-semibold text-lg">
-                  {transcription.videos?.title || 'Vidéo sans nom'}
-                </h4>
-                <p className="text-sm text-gray-500">
-                  {formatDate(transcription.processed_at)}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {transcription.confidence_score && (
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getScoreColor(transcription.confidence_score)}`}>
-                    {transcription.confidence_score}% confiance
-                  </span>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => downloadTranscription(transcription)}
-                >
-                  <Download className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h4 className="font-semibold text-lg">
+                      {transcription.videos?.title || 'Vidéo sans nom'}
+                    </h4>
+                    <p className="text-sm text-gray-500">
+                      {formatDate(transcription.processed_at)}
+                    </p>
+                    {transcription.videos?.file_path && (
+                      <a 
+                        href={transcription.videos.file_path} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="text-blue-600 hover:underline text-sm mt-1 block"
+                      >
+                        Voir la vidéo
+                      </a>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {transcription.confidence_score && (
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getScoreColor(transcription.confidence_score)}`}>
+                        {transcription.confidence_score}% confiance
+                      </span>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => downloadTranscription(transcription)}
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
 
             <div className="space-y-4">
               <div>

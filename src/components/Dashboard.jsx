@@ -95,6 +95,16 @@ const Dashboard = ({ dashboardData }) => {
                       {video.status || 'En attente'}
                     </span>
                   </div>
+                  {video.file_path && (
+                    <a 
+                      href={video.file_path} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="text-blue-600 hover:underline text-sm mt-2 block"
+                    >
+                      Voir la vidéo
+                    </a>
+                  )}
                 </div>
               </div>
             ))}
