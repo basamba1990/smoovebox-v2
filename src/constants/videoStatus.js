@@ -4,7 +4,8 @@ export const VIDEO_STATUS = {
   UPLOADED: 'UPLOADED',
   PROCESSING: 'PROCESSING', 
   COMPLETED: 'COMPLETED',
-  ERROR: 'ERROR'
+  ERROR: 'ERROR',
+  TRANSCRIPTION_STATUS: 'TRANSCRIPTION_STATUS'
 };
 
 // Fonctions utilitaires pour vérifier les statuts
