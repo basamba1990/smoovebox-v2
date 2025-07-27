@@ -1,11 +1,19 @@
+// src/constants/videoStatus.js
 // Constantes pour les statuts des vidéos
 export const VIDEO_STATUS = {
   PENDING: 'PENDING',
   UPLOADED: 'UPLOADED',
   PROCESSING: 'PROCESSING', 
   COMPLETED: 'COMPLETED',
-  ERROR: 'ERROR',
-  TRANSCRIPTION_STATUS: 'TRANSCRIPTION_STATUS'
+  ERROR: 'ERROR'
+};
+
+// Constantes pour les statuts de transcription
+export const TRANSCRIPTION_STATUS = {
+  PENDING: 'PENDING',
+  PROCESSING: 'PROCESSING',
+  COMPLETED: 'COMPLETED',
+  ERROR: 'ERROR'
 };
 
 // Fonctions utilitaires pour vérifier les statuts
@@ -44,6 +52,5 @@ export const getStatusClass = (status) => {
     [VIDEO_STATUS.ERROR]: 'status-error'
   };
   
-  return classes[status] || 'sta';
+  return classes[status] || 'status-unknown';
 };
-
