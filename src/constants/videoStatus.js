@@ -1,40 +1,48 @@
-// src/constants/videoStatus.js
-
 // Constantes pour les statuts des vidéos
 export const VIDEO_STATUS = {
-  DRAFT: 'draft',
-  PROCESSING: 'processing', 
-  PUBLISHED: 'published',
-  FAILED: 'failed',
-  ARCHIVED: 'archived'
+  PENDING: 'PENDING',
+  UPLOADED: 'UPLOADED',
+  PROCESSING: 'PROCESSING', 
+  COMPLETED: 'COMPLETED',
+  ERROR: 'ERROR'
 };
 
-// Constantes pour les statuts de traitement des transcriptions
-export const TRANSCRIPTION_STATUS = {
-  PENDING: 'pending',
-  PROCESSING: 'processing',
-  COMPLETED_FULL: 'completed_full',
-  COMPLETED_BASIC: 'completed_basic',
-  TRANSCRIPTION_ONLY: 'transcription_only',
-  FAILED_TRANSCRIPTION: 'failed_transcription',
-  FAILED: 'failed'
+// Fonctions utilitaires pour vérifier les statuts
+export const isProcessingStatus = (status) => {
+  return status === VIDEO_STATUS.PROCESSING || status === VIDEO_STATUS.PENDING || status === VIDEO_STATUS.UPLOADED;
 };
 
-// Messages d'état pour l'interface utilisateur
-export const STATUS_MESSAGES = {
-  [VIDEO_STATUS.DRAFT]: 'Brouillon',
-  [VIDEO_STATUS.PROCESSING]: 'En cours de traitement',
-  [VIDEO_STATUS.PUBLISHED]: 'Publié',
-  [VIDEO_STATUS.FAILED]: 'Échec du traitement',
-  [VIDEO_STATUS.ARCHIVED]: 'Archivé'
+export const isCompletedStatus = (status) => {
+  return status === VIDEO_STATUS.COMPLETED;
 };
 
-export const TRANSCRIPTION_MESSAGES = {
-  [TRANSCRIPTION_STATUS.PENDING]: 'En attente',
-  [TRANSCRIPTION_STATUS.PROCESSING]: 'Traitement en cours',
-  [TRANSCRIPTION_STATUS.COMPLETED_FULL]: 'Analyse complète',
-  [TRANSCRIPTION_STATUS.COMPLETED_BASIC]: 'Analyse basique',
-  [TRANSCRIPTION_STATUS.TRANSCRIPTION_ONLY]: 'Transcription seule',
-  [TRANSCRIPTION_STATUS.FAILED_TRANSCRIPTION]: 'Transcription échouée',
-  [TRANSCRIPTION_STATUS.FAILED]: 'Échec de l\'analyse'
+export const isErrorStatus = (status) => {
+  return status === VIDEO_STATUS.ERROR;
 };
+
+// Obtenir le libellé d'un statut pour l'affichage
+export const getStatusLabel = (status) => {
+  const labels = {
+    [VIDEO_STATUS.PENDING]: 'En attente',
+    [VIDEO_STATUS.UPLOADED]: 'Téléchargée',
+    [VIDEO_STATUS.PROCESSING]: 'En traitement',
+    [VIDEO_STATUS.COMPLETED]: 'Analyse terminée',
+    [VIDEO_STATUS.ERROR]: 'Erreur'
+  };
+  
+  return labels[status] || status;
+};
+
+// Obtenir la classe CSS pour un statut
+export const getStatusClass = (status) => {
+  const classes = {
+    [VIDEO_STATUS.PENDING]: 'status-pending',
+    [VIDEO_STATUS.UPLOADED]: 'status-uploaded',
+    [VIDEO_STATUS.PROCESSING]: 'status-processing',
+    [VIDEO_STATUS.COMPLETED]: 'status-completed',
+    [VIDEO_STATUS.ERROR]: 'status-error'
+  };
+  
+  return classes[status] || 'sta';
+};
+
