@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider } from './context/AuthContext.jsx';
 import AuthModal from './AuthModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
-import UploadVideoMobile from './components/UploadVideoMobile.jsx';
+import UploadVideoMobile from './components/VideoUploader.jsx';
 import TranscriptionViewer from './components/TranscriptionViewer.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { useAuth } from './context/AuthContext.jsx';
