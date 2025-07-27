@@ -159,23 +159,28 @@ const VideoUploader = ({ onUploadComplete }) => {
       
       // 7. Déclencher l'Edge Function pour le traitement
       try {
-        const response = await fetch('/api/process-video', {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const accessToken = sessionData?.session?.access_token;
+        
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-video`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabase.auth.session()?.access_token}`
+            'Authorization': `Bearer ${accessToken}`
           },
           body: JSON.stringify({
             videoId: videoData.id,
-            videoUrl: publicUrlData.publicUrl
+            videoUrl: filePath
           })
         });
         
         if (!response.ok) {
           console.warn('Avertissement: La fonction de traitement vidéo n\'a pas répondu correctement. Le traitement pourrait être retardé.');
+          // Malgré l'erreur, on continue car la vidéo est uploadée
         }
       } catch (functionError) {
-        console.warn('Avertissement: Impossible de contacter la fonction de traitement vidéo. Le traitement sera effectué par le job planifié.');
+        console.warn('Avertissement: Impossible de contacter la fonction de traitement vidéo:', functionError);
+        // Malgré l'erreur, on continue car la vidéo est uploadée
       }
       
       setSuccess(true);
