@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.jsx';
 import { Upload, FileText, Video, RefreshCw, Trash2, AlertCircle } from 'lucide-react';
 import { VIDEO_STATUS, TRANSCRIPTION_STATUS } from '../constants/videoStatus.js';
-import VideoUploader from './UploadVideoMobile.jsx';
+import VideoUploader from './VideoUploader.jsx';
 import TranscriptionViewer from './TranscriptionViewer.jsx';
 import VideoPlayer from './VideoPlayer.jsx';
 

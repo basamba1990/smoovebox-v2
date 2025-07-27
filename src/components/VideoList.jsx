@@ -82,25 +82,26 @@ const VideoList = () => {
     setError(null);
     
     try {
-      const options = {
-        page: currentPage,
-        pageSize: PAGE_SIZE,
-        status: statusFilter,
-        orderBy: 'created_at',
-        orderDirection: 'desc'
-      };
+      console.log('Chargement des vidéos pour l\'utilisateur:', user.id);
       
-      const { videos: fetchedVideos, count, error } = await getUserVideos(user.id, options);
+      // Essayer d'abord une requête directe à la table videos
+      const { data: directVideos, error: directError } = await supabase
+        .from('videos')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
       
-      if (error) {
-        throw new Error(`Erreur lors du chargement des vidéos: ${error.message}`);
+      if (directError) {
+        console.error('Erreur lors de la requête directe:', directError);
+        throw new Error(`Erreur lors du chargement des vidéos: ${directError.message}`);
       }
       
-      setVideos(fetchedVideos);
-      setTotalCount(count || 0);
+      console.log('Vidéos trouvées:', directVideos);
+      setVideos(directVideos || []);
+      setTotalCount(directVideos?.length || 0);
       
       // Précharger les URLs pour les vidéos complétées
-      const completedVideos = fetchedVideos.filter(v => isCompletedStatus(v.status));
+      const completedVideos = (directVideos || []).filter(v => isCompletedStatus(v.status));
       if (completedVideos.length > 0) {
         loadVideoUrls(completedVideos);
       }
