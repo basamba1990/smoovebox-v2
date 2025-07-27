@@ -392,7 +392,7 @@ function AppContent() {
             <h2 className="text-4xl font-bold text-gray-900 mb-4">
               Bienvenue sur{' '}
               <span className="bg-gradient-to-r from-blue-600 to-indigo-600 text-transparent bg-clip-text">
-                SmooveBox
+                SpotBulle
               </span>
             </h2>
             <p className="text-xl text-gray-600 mb-8">
