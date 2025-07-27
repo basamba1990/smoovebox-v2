@@ -1,24 +1,22 @@
 // Setup type definitions for built-in Supabase Runtime APIs
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import OpenAI from "npm:openai@4.28.0";
 
 // Types
-interface StorageEvent {
-  schema: string;
-  table: string;
-  record: {
-    id: string;
-    bucket_id: string;
-    name: string;
-    owner: string;
-    path_tokens: string[];
-    last_accessed_at: string;
-    created_at: string;
-    updated_at: string;
-    metadata: Record<string, any>;
-  };
-  type: "INSERT" | "UPDATE" | "DELETE";
-  old_record: null | Record<string, any>;
+interface VideoProcessRequest {
+  videoId: string;
+  videoUrl: string;
+}
+
+interface AnalysisResult {
+  video_id: string;
+  pitch_analysis: string;
+  body_language_analysis: string;
+  voice_analysis: string;
+  overall_score: number;
+  strengths: string[];
+  areas_to_improve: string[];
 }
 
 Deno.serve(async (req: Request) => {
@@ -32,106 +30,124 @@ Deno.serve(async (req: Request) => {
     }
 
     // Récupérer les données de la requête
-    const payload = await req.json() as StorageEvent;
+    const { videoId, videoUrl } = await req.json() as VideoProcessRequest;
     
-    // Vérifier si c\u0027est un événement d\u0027insertion dans le bucket videos
-    if (payload.table !== "objects" || payload.type !== "INSERT" || 
-        payload.record.bucket_id !== "videos") {
-      return new Response(JSON.stringify({ message: "Event ignored" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      });
-    }
-
-    // Initialiser le client Supabase avec la clé de service
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL") || "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
-    );
-
-    // Extraire l\u0027ID utilisateur du chemin (format: userId/filename)
-    const userId = payload.record.path_tokens[0];
-    const filePath = payload.record.name;
-    
-    if (!userId) {
-      return new Response(JSON.stringify({ error: "Invalid file path format" }), {
+    if (!videoId || !videoUrl) {
+      return new Response(JSON.stringify({ error: "Missing required fields: videoId or videoUrl" }), {
         status: 400,
         headers: { "Content-Type": "application/json" }
       });
     }
 
-    // Rechercher la vidéo correspondante avec le statut PENDING
-    const { data: videos, error: queryError } = await supabaseAdmin
-      .from("videos")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("status", "PENDING")
-      .order("created_at", { ascending: false })
-      .limit(1);
+    // Initialiser les clients
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") || "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+    );
 
-    if (queryError || !videos || videos.length === 0) {
-      return new Response(JSON.stringify({ 
-        message: "No pending video found for this user",
-        error: queryError?.message
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      });
-    }
+    const openai = new OpenAI({
+      apiKey: Deno.env.get("OPENAI_API_KEY") || "",
+    });
 
-    const videoId = videos[0].id;
-
-    // Obtenir l\u0027URL publique
-    const { data: publicUrlData } = supabaseAdmin.storage
-      .from("videos")
-      .getPublicUrl(filePath);
-
-    // Mettre à jour l\u0027entrée vidéo avec le chemin du fichier
+    // 1. Mettre à jour le statut de la vidéo à "PROCESSING"
     const { error: updateError } = await supabaseAdmin
       .from("videos")
-      .update({
-        file_path: publicUrlData.publicUrl,
-        status: "PROCESSING" // Passer au statut "en traitement"
-      })
+      .update({ status: "PROCESSING" })
       .eq("id", videoId);
 
     if (updateError) {
-      return new Response(JSON.stringify({ 
-        error: "Failed to update video record",
-        details: updateError.message
-      }), {
+      console.error("Error updating video status:", updateError);
+      return new Response(JSON.stringify({ error: "Failed to update video status" }), {
         status: 500,
         headers: { "Content-Type": "application/json" }
       });
     }
 
-    // Appeler l\u0027Edge Function process-video
-    try {
-      const response = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/process-video`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`
-        },
-        body: JSON.stringify({
-          videoId: videoId,
-          videoUrl: publicUrlData.publicUrl
-        })
-      });
+    // 2. Simuler l\u0027analyse OpenAI (dans un environnement réel, vous utiliseriez l\u0027API Vision)
+    // Note: GPT-4 Vision ne peut pas réellement analyser des vidéos complètes, seulement des images
+    // Dans un cas réel, vous pourriez extraire des frames clés ou utiliser un service spécialisé
+    
+    // Simulation d\u0027analyse pour le développement
+    const mockAnalysis: AnalysisResult = {
+      video_id: videoId,
+      pitch_analysis: "Le pitch est bien structuré avec une introduction claire, un développement cohérent et une conclusion impactante. Le message principal est facilement identifiable.",
+      body_language_analysis: "Posture confiante et ouverte. Les gestes sont naturels et renforcent le discours. Le contact visuel est maintenu de façon constante.",
+      voice_analysis: "Voix claire et bien modulée. Le rythme est approprié avec des pauses stratégiques. Volume adéquat pour l\u0027environnement.",
+      overall_score: 85,
+      strengths: [
+        "Excellente structure du pitch",
+        "Contact visuel engageant",
+        "Utilisation efficace des pauses pour l\u0027impact"
+      ],
+      areas_to_improve: [
+        "Pourrait varier davantage le ton pour éviter la monotonie",
+        "Quelques hésitations dans la partie technique",
+        "Pourrait utiliser plus d\u0027exemples concrets"
+      ]
+    };
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Error calling process-video function:", errorText);
-      }
-    } catch (functionError) {
-      console.error("Failed to call process-video function:", functionError);
+    // Dans un environnement de production, vous utiliseriez:
+    /*
+    const response = await openai.chat.completions.create({
+      model: "gpt-4-vision-preview",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { 
+              type: "text", 
+              text: "Analysez cette vidéo de pitch et fournissez une évaluation détaillée sur: 1) Qualité du pitch, 2) Langage corporel, 3) Qualité vocale. Donnez un score global sur 100, 3 points forts et 3 domaines à améliorer." 
+            },
+            { 
+              type: "image_url", 
+              image_url: { url: videoUrl } 
+            }
+          ],
+        },
+      ],
+      max_tokens: 1000,
+    });
+
+    const analysisText = response.choices[0].message.content || "";
+    // Traiter la réponse pour extraire les informations structurées
+    // ...
+    */
+
+    // 3. Enregistrer les résultats dans la base de données
+    const { data: analysisData, error: analysisError } = await supabaseAdmin
+      .from("analyses")
+      .insert(mockAnalysis)
+      .select()
+      .single();
+
+    if (analysisError) {
+      console.error("Error saving analysis:", analysisError);
+      return new Response(JSON.stringify({ error: "Failed to save analysis results" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" }
+      });
     }
 
+    // 4. Mettre à jour le statut de la vidéo à "COMPLETED"
+    const { error: finalUpdateError } = await supabaseAdmin
+      .from("videos")
+      .update({ 
+        status: "COMPLETED",
+        file_path: videoUrl  // S\u0027assurer que file_path est défini
+      })
+      .eq("id", videoId);
+
+    if (finalUpdateError) {
+      console.error("Error updating final video status:", finalUpdateError);
+      // Continue despite error as analysis is already saved
+    }
+
+    // 5. Retourner les résultats
     return new Response(
       JSON.stringify({
         success: true,
-        message: "Video processing initiated",
-        videoId: videoId
+        message: "Video processed successfully",
+        analysis: analysisData
       }),
       {
         headers: { "Content-Type": "application/json" }
