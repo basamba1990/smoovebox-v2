@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import { toast } from 'react-hot-toast';
-import { useRouter } from 'react-router-dom';
+import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 const UploadPage = () => {
-  const { user } = useAuth();
-  const router = useRouter();
+  const navigate = useNavigate();
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -112,7 +111,7 @@ const UploadPage = () => {
       
       // Rediriger vers la page des vidéos après un court délai
       setTimeout(() => {
-        router.push('/videos');
+        navigate('/videos');
       }, 2000);
       
     } catch (err) {
