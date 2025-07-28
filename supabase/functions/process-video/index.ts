@@ -132,8 +132,7 @@ Deno.serve(async (req: Request) => {
     const { error: finalUpdateError } = await supabaseAdmin
       .from("videos")
       .update({ 
-        status: "COMPLETED",
-        file_path: videoUrl  // S\u0027assurer que file_path est défini
+        status: "COMPLETED"
       })
       .eq("id", videoId);
 
