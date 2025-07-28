@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import { toast } from 'react-hot-toast';
+import { toast } from 'sonner';
 
 const VideosPage = () => {
   const { user } = useAuth();
