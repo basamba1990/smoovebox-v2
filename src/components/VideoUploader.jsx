@@ -1,120 +1,75 @@
-// src/components/VideoUploader.jsx
-import React, { useState, useRef } from 'react';
-import { supabase } from '../lib/supabase.js';
-import { useAuth } from '../context/AuthContext.jsx';
-import { Button } from './ui/button.jsx';
-import { Input } from './ui/input.jsx';
-import { Label } from './ui/label.jsx';
-import { Progress } from './ui/progress.jsx';
-import { Upload, X, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { VIDEO_STATUS } from '../constants/videoStatus.js';
-import { v4 as uuidv4 } from 'uuid';
+import { useState } from 'react';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
+import { toast } from 'react-hot-toast';
+import { useRouter } from 'react-router-dom';
 
-const VideoUploader = ({ onUploadComplete }) => {
+const UploadPage = () => {
   const { user } = useAuth();
+  const router = useRouter();
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(false);
-  const fileInputRef = useRef(null);
-
+  const [uploadProgress, setUploadProgress] = useState(0);
+  
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
-    if (selectedFile) {
-      // Vérifier si c'est bien une vidéo
-      if (!selectedFile.type.startsWith('video/')) {
-        setError('Veuillez sélectionner un fichier vidéo valide.');
-        return;
-      }
-      
-      // Vérifier la taille (limite à 100MB)
-      const maxSize = 100 * 1024 * 1024; // 100MB en octets
-      if (selectedFile.size > maxSize) {
-        setError('La taille du fichier ne doit pas dépasser 100MB.');
-        return;
-      }
-      
-      setFile(selectedFile);
-      setTitle(selectedFile.name.split('.')[0]); // Utiliser le nom du fichier comme titre par défaut
-      setError(null);
-    }
-  };
-
-  const resetForm = () => {
-    setFile(null);
-    setTitle('');
-    setProgress(0);
-    setError(null);
-    setSuccess(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const handleUpload = async () => {
-    if (!file || !user) return;
     
-    setUploading(true);
-    setProgress(0);
-    setError(null);
+    if (!selectedFile) {
+      setFile(null);
+      return;
+    }
+    
+    // Vérifier le type de fichier
+    const validTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm'];
+    if (!validTypes.includes(selectedFile.type)) {
+      toast.error('Format de fichier non supporté. Veuillez utiliser MP4, MOV, AVI ou WebM.');
+      setFile(null);
+      e.target.value = null;
+      return;
+    }
+    
+    // Vérifier la taille du fichier (100MB max)
+    if (selectedFile.size > 100 * 1024 * 1024) {
+      toast.error('Le fichier est trop volumineux. La taille maximale est de 100MB.');
+      setFile(null);
+      e.target.value = null;
+      return;
+    }
+    
+    setFile(selectedFile);
+    
+    // Utiliser le nom du fichier comme titre par défaut si aucun titre n'est défini
+    if (!title) {
+      const fileName = selectedFile.name.replace(/\.[^/.]+$/, ''); // Enlever l'extension
+      setTitle(fileName);
+    }
+  };
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!user) {
+      toast.error('Vous devez être connecté pour uploader une vidéo');
+      return;
+    }
+    
+    if (!file) {
+      toast.error('Veuillez sélectionner une vidéo à uploader');
+      return;
+    }
     
     try {
-      console.log('Début de l\'upload pour l\'utilisateur:', user.id);
-      console.log('Fichier:', file.name, 'Taille:', file.size);
+      setUploading(true);
+      setUploadProgress(0);
       
-      // 1. D'abord, récupérer le profil de l'utilisateur
-      let profileId = null;
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
-      
-      if (profileError) {
-        console.log('Profil non trouvé, utilisation de user_id directement:', profileError.message);
-        profileId = user.id; // Utiliser user_id directement
-      } else {
-        profileId = profileData.id;
-        console.log('Profil trouvé:', profileId);
-      }
-      
-      // 2. Générer un nom de fichier unique
+      // Générer un nom de fichier unique
       const fileExt = file.name.split('.').pop();
-      const fileName = `${uuidv4()}.${fileExt}`;
+      const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
       const filePath = `${user.id}/${fileName}`;
       
-      console.log('Chemin du fichier:', filePath);
-      
-      // 3. Créer l'entrée dans la table videos
-      const videoData = {
-        title: title || file.name,
-        original_file_name: file.name,
-        file_path: null, // Sera mis à jour après l'upload
-        format: fileExt,
-        file_size: file.size,
-        status: VIDEO_STATUS.PENDING,
-        user_id: user.id,
-        profile_id: profileId
-      };
-      
-      console.log('Données vidéo à insérer:', videoData);
-      
-      const { data: insertedVideo, error: videoError } = await supabase
-        .from('videos')
-        .insert(videoData)
-        .select()
-        .single();
-      
-      if (videoError) {
-        console.error('Erreur lors de l\'insertion vidéo:', videoError);
-        throw new Error(`Erreur lors de la création de l'entrée vidéo: ${videoError.message}`);
-      }
-      
-      console.log('Vidéo insérée avec succès:', insertedVideo);
-      
-      // 4. Upload du fichier avec suivi de progression
+      // Uploader le fichier dans le bucket "videos"
       const { error: uploadError, data } = await supabase.storage
         .from('videos')
         .upload(filePath, file, {
@@ -122,185 +77,116 @@ const VideoUploader = ({ onUploadComplete }) => {
           upsert: false,
           onUploadProgress: (progress) => {
             const percent = Math.round((progress.loaded / progress.total) * 100);
-            setProgress(percent);
-            console.log('Progression upload:', percent + '%');
+            setUploadProgress(percent);
           },
         });
       
       if (uploadError) {
-        console.error('Erreur lors de l\'upload:', uploadError);
-        // En cas d'erreur, supprimer l'entrée vidéo
-        await supabase.from('videos').delete().eq('id', insertedVideo.id);
         throw new Error(`Erreur lors de l'upload: ${uploadError.message}`);
       }
       
-      console.log('Upload terminé avec succès');
-      
-      // 5. Obtenir l'URL publique
-      const { data: publicUrlData } = supabase.storage
+      // Enregistrer les informations de la vidéo dans la base de données
+      const { data: videoData, error: videoError } = await supabase
         .from('videos')
-        .getPublicUrl(filePath);
-      
-      console.log('URL publique:', publicUrlData.publicUrl);
-      
-      // 6. Mettre à jour l'entrée vidéo avec le chemin du fichier
-      const { error: updateError } = await supabase
-        .from('videos')
-        .update({
-          file_path: publicUrlData.publicUrl,
-          status: VIDEO_STATUS.PROCESSING // Passer au statut "en traitement"
+        .insert({
+          user_id: user.id,
+          title: title,
+          description: description,
+          storage_path: filePath, // Chemin du fichier dans le stockage Supabase
+          status: 'processing' // Statut initial
         })
-        .eq('id', insertedVideo.id);
-      
-      if (updateError) {
-        console.error('Erreur lors de la mise à jour:', updateError);
-        throw new Error(`Erreur lors de la mise à jour de l'entrée vidéo: ${updateError.message}`);
+        .select();
+        
+      if (videoError) {
+        throw new Error(`Erreur lors de l'enregistrement de la vidéo: ${videoError.message}`);
       }
       
-      console.log('Vidéo mise à jour avec succès');
+      toast.success('Vidéo uploadée avec succès et en cours de traitement!');
       
-      // 7. Déclencher l'Edge Function pour le traitement (optionnel)
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const accessToken = sessionData?.session?.access_token;
-        
-        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-video`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`
-          },
-          body: JSON.stringify({
-            videoId: insertedVideo.id,
-            videoUrl: filePath
-          })
-        });
-        
-        if (!response.ok) {
-          console.warn('Avertissement: La fonction de traitement vidéo n\'a pas répondu correctement. Le traitement pourrait être retardé.');
-          // Malgré l'erreur, on continue car la vidéo est uploadée
-        } else {
-          console.log('Fonction de traitement déclenchée avec succès');
-        }
-      } catch (functionError) {
-        console.warn('Avertissement: Impossible de contacter la fonction de traitement vidéo:', functionError);
-        // Malgré l'erreur, on continue car la vidéo est uploadée
-      }
+      // Réinitialiser le formulaire
+      setFile(null);
+      setTitle('');
+      setDescription('');
+      setUploadProgress(0);
+      setUploading(false);
       
-      setSuccess(true);
+      // Rediriger vers la page des vidéos après un court délai
       setTimeout(() => {
-        resetForm();
-        if (onUploadComplete) onUploadComplete();
+        router.push('/videos');
       }, 2000);
       
-    } catch (error) {
-      console.error('Erreur lors de l\'upload:', error);
-      setError(error.message);
-    } finally {
+    } catch (err) {
+      toast.error(`Erreur: ${err.message}`);
       setUploading(false);
     }
   };
-
+  
   return (
-    <div className="space-y-6">
-      {!file ? (
-        <div 
-          className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:bg-gray-50 transition-colors cursor-pointer"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Déposez votre fichier vidéo ici</h3>
-          <p className="text-gray-500 mb-4">ou cliquez pour sélectionner un fichier</p>
-          <p className="text-xs text-gray-400">MP4, MOV, AVI, WebM (max 100MB)</p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="video/*"
-            onChange={handleFileChange}
-            className="hidden"
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="text-2xl font-bold mb-6">Uploader une nouvelle vidéo</h1>
+      
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div>
+          <label htmlFor="file" className="block text-sm font-medium text-gray-700">Fichier vidéo</label>
+          <input 
+            type="file" 
+            id="file" 
+            accept="video/*" 
+            onChange={handleFileChange} 
+            className="mt-1 block w-full text-sm text-gray-500
+              file:mr-4 file:py-2 file:px-4
+              file:rounded-full file:border-0
+              file:text-sm file:font-semibold
+              file:bg-blue-50 file:text-blue-700
+              hover:file:bg-blue-100"
+            disabled={uploading}
           />
         </div>
-      ) : (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
-            <div className="flex items-center space-x-4">
-              <div className="bg-blue-100 p-2 rounded-md">
-                <video className="h-16 w-16 object-cover rounded" src={URL.createObjectURL(file)} />
-              </div>
-              <div>
-                <p className="font-medium">{file.name}</p>
-                <p className="text-sm text-gray-500">
-                  {(file.size / (1024 * 1024)).toFixed(2)} MB
-                </p>
-              </div>
-            </div>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={resetForm}
-              disabled={uploading}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-          
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="title">Titre de la vidéo</Label>
-              <Input
-                id="title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Entrez un titre pour votre vidéo"
-                disabled={uploading}
-              />
-            </div>
-            
-            {uploading && (
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Progression</span>
-                  <span>{progress}%</span>
-                </div>
-                <Progress value={progress} />
-              </div>
-            )}
-            
-            {error && (
-              <div className="bg-red-50 p-3 rounded-md flex items-start gap-2">
-                <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-red-800">Erreur</p>
-                  <p className="text-xs text-red-700 mt-1">{error}</p>
-                </div>
-              </div>
-            )}
-            
-            {success && (
-              <div className="bg-green-50 p-3 rounded-md flex items-start gap-2">
-                <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-green-800">Succès</p>
-                  <p className="text-xs text-green-700 mt-1">
-                    Votre vidéo a été uploadée avec succès et est en cours de traitement.
-                  </p>
-                </div>
-              </div>
-            )}
-            
-            <div className="flex justify-end">
-              <Button 
-                onClick={handleUpload} 
-                disabled={uploading || !file || success}
-              >
-                {uploading ? 'Upload en cours...' : 'Uploader la vidéo'}
-              </Button>
-            </div>
-          </div>
+        
+        <div>
+          <label htmlFor="title" className="block text-sm font-medium text-gray-700">Titre de la vidéo</label>
+          <input 
+            type="text" 
+            id="title" 
+            value={title} 
+            onChange={(e) => setTitle(e.target.value)} 
+            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            placeholder="Entrez un titre pour votre vidéo"
+            disabled={uploading}
+          />
         </div>
-      )}
+        
+        <div>
+          <label htmlFor="description" className="block text-sm font-medium text-gray-700">Description (optionnel)</label>
+          <textarea 
+            id="description" 
+            value={description} 
+            onChange={(e) => setDescription(e.target.value)} 
+            rows="3" 
+            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            placeholder="Ajoutez une description à votre vidéo"
+            disabled={uploading}
+          ></textarea>
+        </div>
+        
+        {uploading && (
+          <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+            <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${uploadProgress}%` }}></div>
+          </div>
+        )}
+        
+        <button 
+          type="submit" 
+          className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          disabled={uploading || !file}
+        >
+          {uploading ? `Upload en cours (${uploadProgress}%)` : 'Uploader la vidéo'}
+        </button>
+      </form>
     </div>
   );
 };
 
-export default VideoUploader;
+export default UploadPage;
+
+
