@@ -118,7 +118,7 @@ const VideosPage = () => {
         return;
       }
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/process-video`, {
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-video`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
