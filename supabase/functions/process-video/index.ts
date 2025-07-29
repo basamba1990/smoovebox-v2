@@ -128,11 +128,12 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // 4. Mettre à jour le statut de la vidéo à "COMPLETED"
+    // 4. Mettre à jour le statut de la vidéo à "COMPLETED" et ajouter les données d'analyse
     const { error: finalUpdateError } = await supabaseAdmin
       .from("videos")
       .update({ 
-        status: "COMPLETED"
+        status: "COMPLETED",
+        analysis: mockAnalysis // Ajout des données d'analyse
       })
       .eq("id", videoId);
 
@@ -167,4 +168,6 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+
+
 
