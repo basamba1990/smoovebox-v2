@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 
 const UploadPage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -92,7 +93,7 @@ const UploadPage = () => {
           title: title,
           description: description,
           storage_path: filePath, // Chemin du fichier dans le stockage Supabase
-          status: 'processing' // Statut initial
+          status: 'PENDING' // Statut initial
         })
         .select();
         
@@ -187,5 +188,6 @@ const UploadPage = () => {
 };
 
 export default UploadPage;
+
 
 
