@@ -1,4 +1,4 @@
-// src/lib/supabase-fixed.js
+// src/lib/supabase.js
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
 import { VIDEO_STATUS } from '../constants/videoStatus.js';
