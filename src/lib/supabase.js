@@ -4,9 +4,9 @@ import OpenAI from 'openai';
 import { VIDEO_STATUS } from '../constants/videoStatus.js';
 
 // Configuration avec gestion d'erreurs améliorée et fallbacks robustes
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://nyxtckjfaajhacboxojd.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im55eHRja2pmYWFqaGFjYm94b2pkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDYwMzY5OTIsImV4cCI6MjA2MTYxMjk5Mn0.9zpLjXat7L6TvfKQB93ef66bnQZgueAreyGZ8fjlPLA';
-const openaiApiKey = import.meta.env.VITE_OPENAI_API_KEY || '';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const openaiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
 
 console.log('Configuration Supabase (version corrigée):', {
   url: supabaseUrl ? 'Définie' : 'Manquante',
