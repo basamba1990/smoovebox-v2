@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { AuthProvider } from './context/AuthContext-fixed.jsx';
+import { AuthProvider } from './context/AuthContext.jsx';
 import AuthModal from './AuthModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import VideoManagement from './pages/VideoManagement.jsx';
 import UploadPage from './components/VideoUploader.jsx';
-import ErrorBoundary from './components/ErrorBoundary-fixed.jsx';
-import { useAuth } from './context/AuthContext-fixed.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
+import { useAuth } from './context/AuthContext.jsx';
 import { Button } from './components/ui/button.jsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs.jsx';
-import { supabase, fetchDashboardData, checkSupabaseConnection } from './lib/supabase-fixed.js';
+import { supabase, fetchDashboardData, checkSupabaseConnection } from './lib/supabase.js';
 import { Video, Upload, BarChart3, FileText, LogOut, AlertTriangle, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import './App.css';
 
