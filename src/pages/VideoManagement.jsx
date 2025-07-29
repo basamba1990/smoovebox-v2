@@ -87,7 +87,7 @@ const VideosPage = () => {
     try {
       const { data } = supabase.storage
         .from('videos')
-        .getPublicUrl(`${user.id}/${video.storage_path}`);
+        .getPublicUrl(video.storage_path);
       
       return data?.publicUrl;
     } catch (err) {
@@ -118,7 +118,7 @@ const VideosPage = () => {
         return;
       }
       
-        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-video`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-video`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -142,6 +142,38 @@ const VideosPage = () => {
     } catch (err) {
       console.error("Erreur lors du traitement de la vidéo:", err);
       toast.error(`Erreur: ${err.message}`);
+    }
+  };
+  
+  // Fonction pour obtenir le statut en français
+  const getStatusText = (status) => {
+    switch (status) {
+      case 'PENDING':
+        return 'En attente';
+      case 'PROCESSING':
+        return 'En traitement';
+      case 'COMPLETED':
+        return 'Terminé';
+      case 'FAILED':
+        return 'Échec';
+      default:
+        return status;
+    }
+  };
+  
+  // Fonction pour obtenir la couleur du statut
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'PENDING':
+        return 'bg-gray-100 text-gray-800';
+      case 'PROCESSING':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'COMPLETED':
+        return 'bg-green-100 text-green-800';
+      case 'FAILED':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
   
@@ -207,14 +239,8 @@ const VideosPage = () => {
                     {new Date(video.created_at).toLocaleDateString()}
                   </p>
                   <div className="mt-1">
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      video.status === 'published' ? 'bg-green-100 text-green-800' : 
-                      video.status === 'processing' ? 'bg-yellow-100 text-yellow-800' : 
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {video.status === 'published' ? 'Publié' : 
-                       video.status === 'processing' ? 'En traitement' : 
-                       'En attente'}
+                    <span className={`text-xs px-2 py-1 rounded ${getStatusColor(video.status)}`}>
+                      {getStatusText(video.status)}
                     </span>
                   </div>
                 </div>
@@ -254,26 +280,25 @@ const VideosPage = () => {
                   <div>
                     <p className="text-sm text-gray-500">Statut</p>
                     <p className={`${
-                      selectedVideo.status === 'published' ? 'text-green-600' : 
-                      selectedVideo.status === 'processing' ? 'text-yellow-600' : 
+                      selectedVideo.status === 'COMPLETED' ? 'text-green-600' : 
+                      selectedVideo.status === 'PROCESSING' ? 'text-yellow-600' : 
+                      selectedVideo.status === 'FAILED' ? 'text-red-600' :
                       'text-gray-600'
                     }`}>
-                      {selectedVideo.status === 'published' ? 'Publié' : 
-                       selectedVideo.status === 'processing' ? 'En traitement' : 
-                       'En attente'}
+                      {getStatusText(selectedVideo.status)}
                     </p>
                   </div>
                 </div>
                 
                 {/* Actions */}
                 <div className="flex space-x-2 mb-4">
-                  {selectedVideo.status !== 'processing' && (
+                  {selectedVideo.status !== 'PROCESSING' && (
                     <button 
                       onClick={() => processVideo(selectedVideo)}
                       className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                      disabled={selectedVideo.status === 'processing'}
+                      disabled={selectedVideo.status === 'PROCESSING'}
                     >
-                      {selectedVideo.status === 'published' ? 'Retraiter' : 'Traiter'}
+                      {selectedVideo.status === 'COMPLETED' ? 'Retraiter' : 'Traiter'}
                     </button>
                   )}
                   <button 
@@ -299,7 +324,7 @@ const VideosPage = () => {
                 </div>
                 
                 {/* Résultats d'analyse */}
-                {selectedVideo.status === 'published' && selectedVideo.analysis && (
+                {selectedVideo.status === 'COMPLETED' && selectedVideo.analysis && (
                   <div className="mt-6">
                     <h3 className="text-lg font-semibold mb-2">Analyse IA</h3>
                     
@@ -337,7 +362,7 @@ const VideosPage = () => {
                 )}
                 
                 {/* Transcription */}
-                {selectedVideo.status === 'published' && selectedVideo.transcription && (
+                {selectedVideo.status === 'COMPLETED' && selectedVideo.transcription && (
                   <div className="mt-6">
                     <h3 className="text-lg font-semibold mb-2">Transcription</h3>
                     
@@ -380,4 +405,5 @@ const VideosPage = () => {
 };
 
 export default VideosPage;
+
 
