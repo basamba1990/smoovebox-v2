@@ -44,9 +44,11 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
     try {
       let result;
       if (isLogin) {
+        console.log('Tentative de connexion avec:', email);
         result = await signIn(email, password);
         console.log('Résultat de connexion:', result);
       } else {
+        console.log('Tentative d\'inscription avec:', email);
         result = await signUp(email, password, firstName, lastName);
         console.log('Résultat d\'inscription:', result);
         
@@ -72,8 +74,18 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
         setError('Erreur d\'authentification - Veuillez réessayer');
       }
     } catch (err) {
-      console.error('Erreur d\'authentification:', err);
-      setError(err.message || "Une erreur s'est produite lors de l'authentification");
+      console.error('Erreur d\'authentification dans AuthModal:', err);
+      
+      // Afficher l'erreur spécifique du contexte d'authentification
+      const errorMessage = err.message || "Une erreur s'est produite lors de l'authentification";
+      setError(errorMessage);
+      
+      // Si c'est une erreur de credentials, suggérer l'inscription
+      if (errorMessage.includes('Email ou mot de passe incorrect') && isLogin) {
+        setTimeout(() => {
+          setError(errorMessage + ' - Vous pouvez également créer un nouveau compte en cliquant sur "Pas de compte ? Inscrivez-vous"');
+        }, 2000);
+      }
     } finally {
       setLoading(false);
     }
