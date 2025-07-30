@@ -88,19 +88,19 @@ const VideosPage = () => {
     try {
       // Tente d'abord de générer une URL signée pour les fichiers privés
       const { data, error } = await supabase.storage
-        .from('videos')
+        .from(\'videos\')
         .createSignedUrl(video.storage_path, 3600); // URL valide pour 1 heure
 
       if (data?.signedUrl) {
         return data.signedUrl;
-      } else if (error && error.message.includes('not found')) {
-        // Si le fichier n'est pas trouvé avec createSignedUrl, tente getPublicUrl comme fallback
+      } else if (error && error.message.includes(\'not found\')) {
+        // Si le fichier n\'est pas trouvé avec createSignedUrl, tente getPublicUrl comme fallback
         const { data: publicData } = supabase.storage
-          .from('videos')
+          .from(\'videos\')
           .getPublicUrl(video.storage_path);
         return publicData?.publicUrl;
       } else if (error) {
-        console.error("Erreur lors de la génération de l'URL signée:", error);
+        console.error("Erreur lors de la génération de l\'URL signée:", error);
         return null;
       }
     } catch (err) {
