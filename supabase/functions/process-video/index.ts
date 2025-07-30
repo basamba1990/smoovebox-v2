@@ -7,21 +7,44 @@ const supabase = createClient(
 )
 
 serve(async (req) => {
+  let video_id: string;
+  
   try {
-    const { video_id, video_url, user_id } = await req.json()
+    // 1. Récupération et validation des données
+    const { video_id: requestVideoId } = await req.json()
+    if (!requestVideoId) {
+      return new Response(JSON.stringify({ error: 'video_id requis' }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      })
+    }
+    video_id = requestVideoId
+
+    // 2. Récupération du chemin de la vidéo
+    const { data: videoData, error: fetchError } = await supabase
+      .from('videos')
+      .select('path')
+      .eq('id', video_id)
+      .single()
+
+    if (fetchError || !videoData) throw new Error('Vidéo introuvable en base')
     
-    // 1. Télécharger la vidéo
-    const videoResponse = await fetch(video_url)
-    if (!videoResponse.ok) throw new Error('Échec téléchargement vidéo')
+    // 3. Construction de l'URL publique
+    const projectRef = new URL(Deno.env.get('SUPABASE_URL')!).hostname.split('.')[0]
+    const videoUrl = `https://${projectRef}.supabase.co/storage/v1/object/public/${videoData.path}`
+
+    // 4. Téléchargement de la vidéo
+    const videoResponse = await fetch(videoUrl)
+    if (!videoResponse.ok) throw new Error('Échec du téléchargement vidéo')
     const videoBlob = await videoResponse.blob()
-    
-    // 2. Transcrire avec OpenAI
+
+    // 5. Transcription avec Whisper
     const formData = new FormData()
     formData.append('file', videoBlob, 'video.mp4')
     formData.append('model', 'whisper-1')
     
     const whisperResponse = await fetch(
-      "https://api.openai.com/v1/audio/transcriptions", 
+      "https://api.openai.com/v1/audio/transcriptions",
       {
         method: "POST",
         headers: {
@@ -30,15 +53,15 @@ serve(async (req) => {
         body: formData
       }
     )
-    
+
     if (!whisperResponse.ok) {
       const error = await whisperResponse.json()
-      throw new Error(`OpenAI: ${error.error?.message || 'Erreur inconnue'}`)
+      throw new Error(`Erreur OpenAI: ${error.error?.message || 'Erreur inconnue'}`)
     }
-    
+
     const { text } = await whisperResponse.json()
-    
-    // 3. Mettre à jour la base de données
+
+    // 6. Mise à jour de la base de données
     const { error: dbError } = await supabase
       .from('videos')
       .update({
@@ -47,21 +70,29 @@ serve(async (req) => {
         status: 'COMPLETED'
       })
       .eq('id', video_id)
-    
-    if (dbError) throw new Error(`DB: ${dbError.message}`)
-    
+
+    if (dbError) throw new Error(`Erreur DB: ${dbError.message}`)
+
     return new Response(JSON.stringify({ success: true }), {
       headers: { "Content-Type": "application/json" }
     })
-    
-  } catch (error) {
-    // Mettre à jour le statut en erreur
-    await supabase
-      .from('videos')
-      .update({ status: 'FAILED', error: error.message })
-      .eq('id', video_id)
 
-    return new Response(JSON.stringify({ error: error.message }), {
+  } catch (error) {
+    // 7. Gestion des erreurs avec protection video_id
+    if (video_id!) {
+      await supabase
+        .from('videos')
+        .update({
+          status: 'FAILED',
+          error: error.message.substring(0, 1000) // Truncation pour le champ texte
+        })
+        .eq('id', video_id)
+    }
+
+    return new Response(JSON.stringify({ 
+      error: error.message,
+      video_id: video_id! || 'inconnu'
+    }), {
       status: 500,
       headers: { "Content-Type": "application/json" }
     })
