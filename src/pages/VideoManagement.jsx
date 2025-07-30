@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import VideoPlayer from '../components/VideoPlayer';
+import VideoAnalysisResults from '../components/VideoAnalysisResults'; // Assurez-vous d'importer ce composant
+import TranscriptionViewer from '../components/TranscriptionViewer'; // Assurez-vous d'importer ce composant
 
 const VideosPage = () => {
   const { user } = useAuth();
@@ -10,6 +12,7 @@ const VideosPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedVideo, setSelectedVideo] = useState(null);
+  const [processingVideoId, setProcessingVideoId] = useState(null); // Pour suivre la vidéo en cours de traitement
   
   // Fonction pour charger les vidéos
   const fetchVideos = async () => {
@@ -41,8 +44,18 @@ const VideosPage = () => {
         setVideos(data || []);
         
         // Si des vidéos sont disponibles, sélectionner la première par défaut
-        if (data && data.length > 0) {
+        if (data && data.length > 0 && !selectedVideo) {
           setSelectedVideo(data[0]);
+        } else if (selectedVideo) {
+          // Mettre à jour la vidéo sélectionnée si elle existe dans la nouvelle liste
+          const updatedSelected = data.find(v => v.id === selectedVideo.id);
+          if (updatedSelected) {
+            setSelectedVideo(updatedSelected);
+          } else if (data.length > 0) {
+            setSelectedVideo(data[0]); // Si la vidéo sélectionnée a été supprimée, sélectionner la première
+          } else {
+            setSelectedVideo(null); // Plus de vidéos
+          }
         }
       }
     } catch (err) {
@@ -81,53 +94,21 @@ const VideosPage = () => {
     };
   }, [user]);
   
-  // Fonction pour générer l'URL de la vidéo
-  const getVideoUrl = async (video) => {
-    if (!video || !video.storage_path) return null;
-    
-    try {
-      // Tente d'abord de générer une URL signée pour les fichiers privés
-      const { data, error } = await supabase.storage
-        .from('videos')
-        .createSignedUrl(video.storage_path, 3600); // URL valide pour 1 heure
-
-      if (data?.signedUrl) {
-        return data.signedUrl;
-      } else if (error && error.message.includes('not found')) {
-        // Si le fichier n'est pas trouvé avec createSignedUrl, tente getPublicUrl comme fallback
-        const { data: publicData } = supabase.storage
-          .from('videos')
-          .getPublicUrl(video.storage_path);
-        return publicData?.publicUrl;
-      } else if (error) {
-        console.error("Erreur lors de la génération de l'URL signée:", error);
-        return null;
-      }
-    } catch (err) {
-      console.error("Erreur inattendue lors de la génération de l'URL:", err);
-      return null;
-    }
-  };
-  
   // Fonction pour traiter une vidéo
   const processVideo = async (video) => {
     try {
       if (!video) return;
       
-      toast.loading("Traitement de la vidéo en cours...");
-      
-      const videoUrl = await getVideoUrl(video);
-      if (!videoUrl) {
-        toast.error("Impossible de générer l'URL de la vidéo");
-        return;
-      }
+      setProcessingVideoId(video.id); // Indiquer que cette vidéo est en cours de traitement
+      toast.loading("Traitement de la vidéo en cours...", { id: 'process-video-toast' });
       
       // Appeler l'Edge Function pour traiter la vidéo
       const { data: authData } = await supabase.auth.getSession();
       const token = authData?.session?.access_token;
       
       if (!token) {
-        toast.error("Session expirée, veuillez vous reconnecter");
+        toast.error("Session expirée, veuillez vous reconnecter", { id: 'process-video-toast' });
+        setProcessingVideoId(null);
         return;
       }
       
@@ -135,11 +116,12 @@ const VideosPage = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
+          'x-openai-api-key': import.meta.env.VITE_OPENAI_API_KEY // Ajouter la clé OpenAI
         },
         body: JSON.stringify({
           videoId: video.id,
-          videoUrl: videoUrl
+          videoUrl: video.storage_path // Passer le storage_path, l'Edge Function générera l'URL signée
         })
       });
       
@@ -149,12 +131,14 @@ const VideosPage = () => {
         throw new Error(result.error || "Erreur lors du traitement de la vidéo");
       }
       
-      toast.success("Vidéo traitée avec succès");
+      toast.success("Vidéo traitée avec succès", { id: 'process-video-toast' });
       fetchVideos(); // Recharger les vidéos pour afficher les résultats
       
     } catch (err) {
       console.error("Erreur lors du traitement de la vidéo:", err);
-      toast.error(`Erreur: ${err.message}`);
+      toast.error(`Erreur: ${err.message}`, { id: 'process-video-toast' });
+    } finally {
+      setProcessingVideoId(null);
     }
   };
   
@@ -297,9 +281,9 @@ const VideosPage = () => {
                     <button 
                       onClick={() => processVideo(selectedVideo)}
                       className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                      disabled={selectedVideo.status === 'PROCESSING'}
+                      disabled={selectedVideo.status === 'PROCESSING' || processingVideoId === selectedVideo.id}
                     >
-                      {selectedVideo.status === 'COMPLETED' ? 'Retraiter' : 'Traiter'}
+                      {processingVideoId === selectedVideo.id ? 'Traitement...' : (selectedVideo.status === 'COMPLETED' ? 'Retraiter' : 'Traiter')}
                     </button>
                   )}
                   <button 
@@ -326,103 +310,36 @@ const VideosPage = () => {
                 
                 {/* Résultats d'analyse */}
                 {selectedVideo.status === 'COMPLETED' && selectedVideo.analysis && (
-                  <div className="mt-6">
-                    <h3 className="text-lg font-semibold mb-2">Analyse IA</h3>
-                    
-                    {selectedVideo.analysis.pitch_analysis && (
-                      <div className="mb-4">
-                        <h4 className="font-medium">Analyse du Pitch</h4>
-                        <p className="text-gray-700">{selectedVideo.analysis.pitch_analysis}</p>
-                      </div>
-                    )}
-                    
-                    {selectedVideo.analysis.body_language_analysis && (
-                      <div className="mb-4">
-                        <h4 className="font-medium">Analyse du Langage Corporel</h4>
-                        <p className="text-gray-700">{selectedVideo.analysis.body_language_analysis}</p>
-                      </div>
-                    )}
-                    
-                    {selectedVideo.analysis.voice_analysis && (
-                      <div className="mb-4">
-                        <h4 className="font-medium">Analyse Vocale</h4>
-                        <p className="text-gray-700">{selectedVideo.analysis.voice_analysis}</p>
-                      </div>
-                    )}
-                    
-                    {selectedVideo.analysis.overall_score && (
-                      <div className="mb-4">
-                        <h4 className="font-medium">Score Global</h4>
-                        <div className="flex items-center space-x-2">
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div 
-                              className="bg-blue-600 h-2 rounded-full" 
-                              style={{ width: `${selectedVideo.analysis.overall_score}%` }}
-                            ></div>
-                          </div>
-                          <span className="text-sm font-medium">{selectedVideo.analysis.overall_score}/100</span>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {selectedVideo.analysis.strengths && selectedVideo.analysis.strengths.length > 0 && (
-                      <div className="mb-4">
-                        <h4 className="font-medium">Points Forts</h4>
-                        <ul className="list-disc pl-5 mt-1">
-                          {selectedVideo.analysis.strengths.map((strength, index) => (
-                            <li key={index} className="text-gray-700">{strength}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    
-                    {selectedVideo.analysis.areas_to_improve && selectedVideo.analysis.areas_to_improve.length > 0 && (
-                      <div className="mb-4">
-                        <h4 className="font-medium">Domaines à Améliorer</h4>
-                        <ul className="list-disc pl-5 mt-1">
-                          {selectedVideo.analysis.areas_to_improve.map((area, index) => (
-                            <li key={index} className="text-gray-700">{area}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
+                  <VideoAnalysisResults analysis={selectedVideo.analysis} />
                 )}
                 
                 {/* Transcription */}
                 {selectedVideo.status === 'COMPLETED' && selectedVideo.transcription && (
-                  <div className="mt-6">
-                    <h3 className="text-lg font-semibold mb-2">Transcription</h3>
-                    
-                    {selectedVideo.transcription.text && (
-                      <div className="bg-gray-50 p-4 rounded">
-                        <p className="text-gray-700">{selectedVideo.transcription.text}</p>
-                      </div>
-                    )}
-                    
-                    {selectedVideo.transcription.segments && selectedVideo.transcription.segments.length > 0 && (
-                      <div className="mt-4">
-                        <h4 className="font-medium mb-2">Segments</h4>
-                        <div className="space-y-2">
-                          {selectedVideo.transcription.segments.map((segment, index) => (
-                            <div key={index} className="bg-gray-50 p-3 rounded">
-                              <div className="text-xs text-gray-500 mb-1">
-                                {Math.floor(segment.start / 60)}:{(segment.start % 60).toString().padStart(2, '0')} - 
-                                {Math.floor(segment.end / 60)}:{(segment.end % 60).toString().padStart(2, '0')}
-                              </div>
-                              <p>{segment.text}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                  <TranscriptionViewer transcription={selectedVideo.transcription} />
+                )}
+
+                {selectedVideo.status === 'PROCESSING' && (
+                  <div className="mt-6 bg-yellow-50 border border-yellow-200 p-4 rounded-lg text-center">
+                    <p className="text-yellow-800 font-medium">La vidéo est en cours de traitement. Les résultats d'analyse et de transcription seront disponibles une fois le traitement terminé.</p>
                   </div>
                 )}
+
+                {selectedVideo.status === 'FAILED' && (
+                  <div className="mt-6 bg-red-50 border border-red-200 p-4 rounded-lg text-center">
+                    <p className="text-red-800 font-medium">Le traitement de cette vidéo a échoué. Veuillez réessayer ou contacter le support.</p>
+                  </div>
+                )}
+
+                {selectedVideo.status === 'PENDING' && (
+                  <div className="mt-6 bg-blue-50 border border-blue-200 p-4 rounded-lg text-center">
+                    <p className="text-blue-800 font-medium">La vidéo est en attente de traitement. Cliquez sur "Traiter" pour lancer l'analyse.</p>
+                  </div>
+                )}
+
               </div>
             ) : (
-              <div className="p-8 text-center">
-                <p className="text-gray-500">Aucune vidéo sélectionnée</p>
-                <p className="text-sm text-gray-400">Sélectionnez une vidéo dans la liste pour voir les détails</p>
+              <div className="p-4 text-center text-gray-500">
+                Sélectionnez une vidéo dans la liste pour voir ses détails.
               </div>
             )}
           </div>
@@ -433,7 +350,3 @@ const VideosPage = () => {
 };
 
 export default VideosPage;
-
-
-
-
