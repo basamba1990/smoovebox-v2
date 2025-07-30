@@ -18,7 +18,7 @@ export const uploadVideo = async (file, userId, metadata, onProgress) => {
     // Générer un nom de fichier unique
     const fileExt = file.name.split('.').pop();
     const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
-    const filePath = `uploads/${fileName}`;
+    const filePath = `uploads/${userId}/${fileName}`;
 
     // Télécharger le fichier vers le stockage
     const { error: uploadError, data } = await supabase.storage
@@ -49,7 +49,7 @@ export const uploadVideo = async (file, userId, metadata, onProgress) => {
           original_file_path: filePath,
           file_size: file.size,
           file_type: file.type,
-          status: 'uploaded',
+          status: 'PENDING',
         },
       ])
       .select()
