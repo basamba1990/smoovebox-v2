@@ -96,6 +96,9 @@ function AppContent() {
         })
         .subscribe((status) => {
           console.log('Statut de souscription aux changements videos:', status);
+          if (status === 'SUBSCRIPTION_ERROR') {
+            console.error('Erreur de souscription aux changements videos');
+          }
         });
 
       // Nettoyage à la désinscription
@@ -361,49 +364,63 @@ function AppContent() {
                       {dashboardError}
                     </p>
                     <Button 
-                      variant="outline" 
                       onClick={loadDashboardData}
-                      className="flex items-center gap-2 hover:bg-red-50 hover:border-red-300 transition-all duration-200"
+                      className="bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700"
                     >
-                      <RefreshCw className="h-4 w-4" />
+                      <RefreshCw className="h-4 w-4 mr-2" />
                       Réessayer
                     </Button>
                   </div>
                 ) : (
-                  <Dashboard dashboardData={dashboardData} />
+                  <Dashboard data={dashboardData} />
                 )}
               </TabsContent>
 
-              <TabsContent value="videos" className="space-y-8">
+              <TabsContent value="videos" className="space-y-6">
                 <VideoManagement />
               </TabsContent>
 
-              <TabsContent value="upload" className="space-y-8">
+              <TabsContent value="upload" className="space-y-6">
                 <UploadPage />
               </TabsContent>
             </Tabs>
           </div>
         ) : (
-          // Page d'accueil pour les utilisateurs non connectés
           <div className="text-center py-16">
-            <div className="inline-flex items-center gap-3 mb-6">
-              <div className="p-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-2xl shadow-lg">
-                <Video className="h-8 w-8 text-white" />
+            <div className="max-w-md mx-auto">
+              <div className="relative mx-auto w-20 h-20 mb-8">
+                <Video className="h-20 w-20 text-blue-600 mx-auto" />
+                <div className="absolute -top-2 -right-2 w-6 h-6 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full animate-pulse"></div>
               </div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-4">
                 Bienvenue sur SpotBulle
               </h1>
+              
+              <p className="text-gray-600 mb-8 text-lg">
+                Analysez vos vidéos avec l'intelligence artificielle pour améliorer vos présentations et votre communication.
+              </p>
+              
+              <div className="space-y-4">
+                <Button 
+                  size="lg"
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl"
+                >
+                  Commencer maintenant
+                </Button>
+                
+                <p className="text-sm text-gray-500">
+                  Déjà un compte ? 
+                  <button 
+                    onClick={() => setIsAuthModalOpen(true)}
+                    className="text-blue-600 hover:text-blue-700 ml-1 font-medium"
+                  >
+                    Se connecter
+                  </button>
+                </p>
+              </div>
             </div>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed mb-8">
-              Votre plateforme de gestion vidéo intelligente
-            </p>
-            <Button 
-              size="lg"
-              onClick={() => setIsAuthModalOpen(true)}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl text-lg px-8 py-3"
-            >
-              Commencer maintenant
-            </Button>
           </div>
         )}
       </main>
@@ -429,4 +446,3 @@ function App() {
 }
 
 export default App;
-
