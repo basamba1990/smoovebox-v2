@@ -130,19 +130,17 @@ Deno.serve(async (req: Request) => {
 
     } catch (transcriptionErr) {
       console.error("Error during transcription:", transcriptionErr);
-      // Fallback à une transcription simulée en cas d'erreur
-      transcriptionText = "Transcription automatique non disponible. Veuillez réessayer ou vérifier le format de la vidéo.";
-      transcriptionSegments = [
-        { start: 0, end: 5, text: "Transcription automatique non disponible" }
-      ];
+      // En cas d'erreur, la transcription sera vide ou contiendra un message d'erreur
+      transcriptionText = "";
+      transcriptionSegments = [];
       
-      // Enregistrer la transcription d'erreur
+      // Enregistrer la transcription d'erreur (ou l'absence de transcription)
       await supabaseAdmin
         .from("transcriptions")
         .insert({
           video_id: videoId,
-          text: transcriptionText,
-          segments: transcriptionSegments,
+          text: "Erreur lors de la transcription. Veuillez réessayer.",
+          segments: [],
           confidence_score: 0.0
         });
     }
