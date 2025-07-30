@@ -329,32 +329,59 @@ const VideosPage = () => {
                   <div className="mt-6">
                     <h3 className="text-lg font-semibold mb-2">Analyse IA</h3>
                     
-                    {selectedVideo.analysis.summary && (
+                    {selectedVideo.analysis.pitch_analysis && (
                       <div className="mb-4">
-                        <h4 className="font-medium">Résumé</h4>
-                        <p className="text-gray-700">{selectedVideo.analysis.summary}</p>
+                        <h4 className="font-medium">Analyse du Pitch</h4>
+                        <p className="text-gray-700">{selectedVideo.analysis.pitch_analysis}</p>
                       </div>
                     )}
                     
-                    {selectedVideo.analysis.keywords && selectedVideo.analysis.keywords.length > 0 && (
+                    {selectedVideo.analysis.body_language_analysis && (
                       <div className="mb-4">
-                        <h4 className="font-medium">Mots-clés</h4>
-                        <div className="flex flex-wrap gap-2 mt-1">
-                          {selectedVideo.analysis.keywords.map((keyword, index) => (
-                            <span key={index} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
-                              {keyword}
-                            </span>
-                          ))}
+                        <h4 className="font-medium">Analyse du Langage Corporel</h4>
+                        <p className="text-gray-700">{selectedVideo.analysis.body_language_analysis}</p>
+                      </div>
+                    )}
+                    
+                    {selectedVideo.analysis.voice_analysis && (
+                      <div className="mb-4">
+                        <h4 className="font-medium">Analyse Vocale</h4>
+                        <p className="text-gray-700">{selectedVideo.analysis.voice_analysis}</p>
+                      </div>
+                    )}
+                    
+                    {selectedVideo.analysis.overall_score && (
+                      <div className="mb-4">
+                        <h4 className="font-medium">Score Global</h4>
+                        <div className="flex items-center space-x-2">
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="bg-blue-600 h-2 rounded-full" 
+                              style={{ width: `${selectedVideo.analysis.overall_score}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-sm font-medium">{selectedVideo.analysis.overall_score}/100</span>
                         </div>
                       </div>
                     )}
                     
-                    {selectedVideo.analysis.suggestions && selectedVideo.analysis.suggestions.length > 0 && (
+                    {selectedVideo.analysis.strengths && selectedVideo.analysis.strengths.length > 0 && (
                       <div className="mb-4">
-                        <h4 className="font-medium">Suggestions d'amélioration</h4>
+                        <h4 className="font-medium">Points Forts</h4>
                         <ul className="list-disc pl-5 mt-1">
-                          {selectedVideo.analysis.suggestions.map((suggestion, index) => (
-                            <li key={index} className="text-gray-700">{suggestion}</li>
+                          {selectedVideo.analysis.strengths.map((strength, index) => (
+                            <li key={index} className="text-gray-700">{strength}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {selectedVideo.analysis.areas_to_improve && selectedVideo.analysis.areas_to_improve.length > 0 && (
+                      <div className="mb-4">
+                        <h4 className="font-medium">Domaines à Améliorer</h4>
+                        <ul className="list-disc pl-5 mt-1">
+                          {selectedVideo.analysis.areas_to_improve.map((area, index) => (
+                            <li key={index} className="text-gray-700">{area}</li>
                           ))}
                         </ul>
                       </div>
