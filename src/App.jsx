@@ -316,7 +316,7 @@ function AppContent() {
             {/* Tabs avec design moderne */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <div className="flex justify-center mb-8">
-                <TabsList className="grid grid-cols-2 bg-white/60 backdrop-blur-sm border border-white/20 shadow-lg rounded-xl p-1">
+                <TabsList className="grid grid-cols-3 bg-white/60 backdrop-blur-sm border border-white/20 shadow-lg rounded-xl p-1">
                   <TabsTrigger 
                     value="dashboard" 
                     className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white transition-all duration-200 rounded-lg"
@@ -330,6 +330,13 @@ function AppContent() {
                   >
                     <Video className="h-4 w-4" />
                     <span className="hidden sm:inline">Mes Vidéos</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="upload" 
+                    className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white transition-all duration-200 rounded-lg"
+                  >
+                    <Upload className="h-4 w-4" />
+                    <span className="hidden sm:inline">Upload</span>
                   </TabsTrigger>
                 </TabsList>
               </div>
@@ -369,6 +376,10 @@ function AppContent() {
 
               <TabsContent value="videos" className="space-y-8">
                 <VideoManagement />
+              </TabsContent>
+
+              <TabsContent value="upload" className="space-y-8">
+                <UploadPage />
               </TabsContent>
             </Tabs>
           </div>
