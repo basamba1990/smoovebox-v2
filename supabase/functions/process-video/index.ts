@@ -63,19 +63,56 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // 2. Simulation de la transcription (à remplacer par une API de transcription réelle)
+    // 2. Transcription réelle avec OpenAI Whisper
     let transcriptionText = "";
+    let transcriptionSegments = [];
+    
     try {
-      // Ici, vous intégreriez l'appel à une API de transcription comme Whisper, AssemblyAI, Google Cloud Speech-to-Text, etc.
-      // Pour l'instant, nous allons simuler une transcription.
-      console.log(`Simulating transcription for video: ${videoId}`);
-      // En production, vous feriez un appel réseau ici, par exemple:
-      // const transcriptionResponse = await fetch("VOTRE_API_TRANSCRIPTION_URL", { method: "POST", body: JSON.stringify({ videoUrl }) });
-      // const transcriptionData = await transcriptionResponse.json();
-      // transcriptionText = transcriptionData.text;
-
-      // Simulation de texte transcrit
-      transcriptionText = `Ceci est une transcription simulée de la vidéo. Le pitch était clair et concis. Le langage corporel était confiant. La voix était bien modulée.`;
+      console.log(`Starting transcription for video: ${videoId}`);
+      
+      // Télécharger la vidéo
+      const videoResponse = await fetch(videoUrl);
+      if (!videoResponse.ok) {
+        throw new Error(`Failed to download video: ${videoResponse.statusText}`);
+      }
+      
+      const videoBlob = await videoResponse.blob();
+      
+      // Créer un fichier temporaire pour la transcription
+      const formData = new FormData();
+      formData.append('file', videoBlob, 'video.mp4');
+      formData.append('model', 'whisper-1');
+      formData.append('response_format', 'verbose_json');
+      formData.append('timestamp_granularities[]', 'segment');
+      
+      // Appel à l'API Whisper d'OpenAI
+      const transcriptionResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${Deno.env.get("OPENAI_API_KEY")}`,
+        },
+        body: formData
+      });
+      
+      if (!transcriptionResponse.ok) {
+        const errorText = await transcriptionResponse.text();
+        console.error("Whisper API error:", errorText);
+        throw new Error(`Whisper API error: ${transcriptionResponse.statusText}`);
+      }
+      
+      const transcriptionData = await transcriptionResponse.json();
+      transcriptionText = transcriptionData.text || "";
+      
+      // Extraire les segments avec timestamps
+      if (transcriptionData.segments) {
+        transcriptionSegments = transcriptionData.segments.map((segment: any) => ({
+          start: segment.start,
+          end: segment.end,
+          text: segment.text
+        }));
+      }
+      
+      console.log("Transcription completed successfully");
       
       // Enregistrer la transcription dans la base de données
       const { error: transcriptionError } = await supabaseAdmin
@@ -83,11 +120,8 @@ Deno.serve(async (req: Request) => {
         .insert({
           video_id: videoId,
           text: transcriptionText,
-          segments: [
-            { start: 0, end: 5, text: "Ceci est une transcription simulée" },
-            { start: 6, end: 10, text: "Le pitch était clair" }
-          ], // Exemple de segments
-          confidence_score: 0.95 // Exemple de score de confiance
+          segments: transcriptionSegments,
+          confidence_score: transcriptionData.confidence || 0.95
         });
 
       if (transcriptionError) {
@@ -95,8 +129,22 @@ Deno.serve(async (req: Request) => {
       }
 
     } catch (transcriptionErr) {
-      console.error("Error during transcription simulation:", transcriptionErr);
-      transcriptionText = "Transcription non disponible en raison d'une erreur.";
+      console.error("Error during transcription:", transcriptionErr);
+      // Fallback à une transcription simulée en cas d'erreur
+      transcriptionText = "Transcription automatique non disponible. Veuillez réessayer ou vérifier le format de la vidéo.";
+      transcriptionSegments = [
+        { start: 0, end: 5, text: "Transcription automatique non disponible" }
+      ];
+      
+      // Enregistrer la transcription d'erreur
+      await supabaseAdmin
+        .from("transcriptions")
+        .insert({
+          video_id: videoId,
+          text: transcriptionText,
+          segments: transcriptionSegments,
+          confidence_score: 0.0
+        });
     }
 
     // 3. Analyse OpenAI basée sur la transcription
@@ -108,19 +156,24 @@ Deno.serve(async (req: Request) => {
         messages: [
           {
             role: "system",
-            content: "Vous êtes un expert en analyse de pitch et communication. Analysez la transcription fournie et fournissez une évaluation structurée."
+            content: "Vous êtes un expert en analyse de pitch et communication. Analysez la transcription fournie et fournissez une évaluation structurée en français."
           },
           {
             role: "user",
-            content: [
-              { 
-                type: "text", 
-                text: `Analysez cette transcription de pitch et fournissez une évaluation détaillée au format JSON avec les champs suivants:\n                - pitch_analysis: Analyse de la structure et du contenu du pitch\n                - body_language_analysis: Analyse du langage corporel et de la posture (déduite du texte si possible)\n                - voice_analysis: Analyse de la qualité vocale et de l'élocution (déduite du texte si possible)\n                - overall_score: Score global sur 100\n                - strengths: Array de 3 points forts\n                - areas_to_improve: Array de 3 domaines à améliorer\n                \n                Transcription: """${transcriptionText}"""\n                \n                Répondez uniquement avec un objet JSON valide.` 
-              }
-            ],
+            content: `Analysez cette transcription de pitch et fournissez une évaluation détaillée au format JSON avec les champs suivants:
+            - pitch_analysis: Analyse de la structure et du contenu du pitch (en français)
+            - body_language_analysis: Analyse du langage corporel et de la posture (déduite du texte si possible, en français)
+            - voice_analysis: Analyse de la qualité vocale et de l'élocution (déduite du texte si possible, en français)
+            - overall_score: Score global sur 100
+            - strengths: Array de 3-5 points forts (en français)
+            - areas_to_improve: Array de 3-5 domaines à améliorer (en français)
+            
+            Transcription: """${transcriptionText}"""
+            
+            Répondez uniquement avec un objet JSON valide.`
           },
         ],
-        max_tokens: 1500,
+        max_tokens: 2000,
         temperature: 0.3,
       });
 
@@ -145,7 +198,7 @@ Deno.serve(async (req: Request) => {
           body_language_analysis: "Analyse automatique non disponible",
           voice_analysis: "Analyse automatique non disponible",
           overall_score: 50,
-          strengths: ["Analyse en cours"],
+          strengths: ["Vidéo reçue avec succès"],
           areas_to_improve: ["Réessayer l'analyse"]
         };
       }
@@ -182,8 +235,11 @@ Deno.serve(async (req: Request) => {
       .from("videos")
       .update({ 
         status: "COMPLETED",
-        analysis: analysisResult, // Ajout des données d'analyse
-        transcription: { text: transcriptionText } // Ajout de la transcription
+        analysis: analysisResult,
+        transcription: { 
+          text: transcriptionText,
+          segments: transcriptionSegments
+        }
       })
       .eq("id", videoId);
 
@@ -197,7 +253,10 @@ Deno.serve(async (req: Request) => {
         success: true,
         message: "Video processed successfully",
         analysis: analysisData,
-        transcription: { text: transcriptionText }
+        transcription: { 
+          text: transcriptionText,
+          segments: transcriptionSegments
+        }
       }),
       {
         headers: { "Content-Type": "application/json" }
@@ -206,6 +265,22 @@ Deno.serve(async (req: Request) => {
 
   } catch (error) {
     console.error("Unexpected error:", error);
+    
+    // En cas d'erreur, marquer la vidéo comme échouée
+    try {
+      const supabaseAdmin = createClient(
+        Deno.env.get("SUPABASE_URL") || "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+      );
+      
+      await supabaseAdmin
+        .from("videos")
+        .update({ status: "FAILED" })
+        .eq("id", (await req.json()).videoId);
+    } catch (updateError) {
+      console.error("Error updating video status to FAILED:", updateError);
+    }
+    
     return new Response(
       JSON.stringify({
         error: "An unexpected error occurred",
@@ -218,7 +293,4 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
-
-
-
 
