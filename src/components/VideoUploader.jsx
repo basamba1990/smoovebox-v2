@@ -2,10 +2,8 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
 
 const UploadPage = () => {
-  const navigate = useNavigate();
   const { user } = useAuth();
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState('');
@@ -116,9 +114,9 @@ const UploadPage = () => {
       setUploadProgress(0);
       setUploading(false);
       
-      // Rediriger vers la page des vidéos après un court délai
+      // Afficher un message pour informer l'utilisateur
       setTimeout(() => {
-        navigate('/videos');
+        toast.info('Vous pouvez maintenant voir votre vidéo dans l\'onglet "Mes Vidéos"');
       }, 2000);
       
     } catch (err) {
