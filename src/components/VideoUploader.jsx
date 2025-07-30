@@ -94,8 +94,8 @@ const UploadPage = () => {
           user_id: user.id,
           title: title,
           description: description,
-          storage_path: filePath, // Chemin du fichier dans le stockage Supabase
-          status: 'PENDING' // Statut initial
+          storage_path: filePath, // Chemin complet avec l'ID utilisateur
+          status: 'PENDING' // Statut initial en majuscules
         })
         .select();
         
@@ -193,8 +193,3 @@ const UploadPage = () => {
 };
 
 export default UploadPage;
-
-
-
-
-
