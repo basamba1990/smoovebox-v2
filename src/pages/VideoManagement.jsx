@@ -81,17 +81,29 @@ const VideosPage = () => {
   }, [user]);
   
   // Fonction pour générer l'URL de la vidéo
-  const getVideoUrl = (video) => {
+  const getVideoUrl = async (video) => {
     if (!video || !video.storage_path) return null;
     
     try {
-      const { data } = supabase.storage
+      // Tente d'abord de générer une URL signée pour les fichiers privés
+      const { data, error } = await supabase.storage
         .from('videos')
-        .getPublicUrl(video.storage_path);
-      
-      return data?.publicUrl;
+        .createSignedUrl(video.storage_path, 3600); // URL valide pour 1 heure
+
+      if (data?.signedUrl) {
+        return data.signedUrl;
+      } else if (error && error.message.includes('not found')) {
+        // Si le fichier n'est pas trouvé avec createSignedUrl, tente getPublicUrl comme fallback
+        const { data: publicData } = supabase.storage
+          .from('videos')
+          .getPublicUrl(video.storage_path);
+        return publicData?.publicUrl;
+      } else if (error) {
+        console.error("Erreur lors de la génération de l'URL signée:", error);
+        return null;
+      }
     } catch (err) {
-      console.error("Erreur lors de la génération de l'URL:", err);
+      console.error("Erreur inattendue lors de la génération de l'URL:", err);
       return null;
     }
   };
@@ -103,7 +115,7 @@ const VideosPage = () => {
       
       toast.loading("Traitement de la vidéo en cours...");
       
-      const videoUrl = getVideoUrl(video);
+      const videoUrl = await getVideoUrl(video);
       if (!videoUrl) {
         toast.error("Impossible de générer l'URL de la vidéo");
         return;
