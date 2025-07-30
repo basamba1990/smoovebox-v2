@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
+import VideoPlayer from '../components/VideoPlayer';
 
 const VideosPage = () => {
   const { user } = useAuth();
@@ -269,19 +270,7 @@ const VideosPage = () => {
                 <h2 className="text-xl font-bold mb-2">{selectedVideo.title || 'Sans titre'}</h2>
                 
                 {/* Lecteur vidéo */}
-                {getVideoUrl(selectedVideo) ? (
-                  <div className="aspect-w-16 aspect-h-9 mb-4">
-                    <video 
-                      src={getVideoUrl(selectedVideo)} 
-                      controls 
-                      className="w-full rounded"
-                    />
-                  </div>
-                ) : (
-                  <div className="bg-gray-200 aspect-w-16 aspect-h-9 flex items-center justify-center mb-4 rounded">
-                    <p>Vidéo non disponible</p>
-                  </div>
-                )}
+                <VideoPlayer video={selectedVideo} />
                 
                 {/* Informations sur la vidéo */}
                 <div className="grid grid-cols-2 gap-4 mb-4">
@@ -417,5 +406,7 @@ const VideosPage = () => {
 };
 
 export default VideosPage;
+
+
 
 
