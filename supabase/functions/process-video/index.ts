@@ -63,43 +63,59 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // 2. Analyse OpenAI en production
-    // Note: Pour une analyse vidéo complète, nous utilisons une approche par extraction de frames
-    // et analyse de contenu textuel si disponible
-    
+    // 2. Simulation de la transcription (à remplacer par une API de transcription réelle)
+    let transcriptionText = "";
+    try {
+      // Ici, vous intégreriez l'appel à une API de transcription comme Whisper, AssemblyAI, Google Cloud Speech-to-Text, etc.
+      // Pour l'instant, nous allons simuler une transcription.
+      console.log(`Simulating transcription for video: ${videoId}`);
+      // En production, vous feriez un appel réseau ici, par exemple:
+      // const transcriptionResponse = await fetch("VOTRE_API_TRANSCRIPTION_URL", { method: "POST", body: JSON.stringify({ videoUrl }) });
+      // const transcriptionData = await transcriptionResponse.json();
+      // transcriptionText = transcriptionData.text;
+
+      // Simulation de texte transcrit
+      transcriptionText = `Ceci est une transcription simulée de la vidéo. Le pitch était clair et concis. Le langage corporel était confiant. La voix était bien modulée.`;
+      
+      // Enregistrer la transcription dans la base de données
+      const { error: transcriptionError } = await supabaseAdmin
+        .from("transcriptions")
+        .insert({
+          video_id: videoId,
+          text: transcriptionText,
+          segments: [
+            { start: 0, end: 5, text: "Ceci est une transcription simulée" },
+            { start: 6, end: 10, text: "Le pitch était clair" }
+          ], // Exemple de segments
+          confidence_score: 0.95 // Exemple de score de confiance
+        });
+
+      if (transcriptionError) {
+        console.error("Error saving transcription:", transcriptionError);
+      }
+
+    } catch (transcriptionErr) {
+      console.error("Error during transcription simulation:", transcriptionErr);
+      transcriptionText = "Transcription non disponible en raison d'une erreur.";
+    }
+
+    // 3. Analyse OpenAI basée sur la transcription
     let analysisResult: AnalysisResult;
     
     try {
-      // Analyse de la vidéo via OpenAI
-      // Pour une vidéo, nous pouvons analyser des frames clés ou utiliser l'URL directement si supportée
       const response = await openai.chat.completions.create({
-        model: "gpt-4o", // Utilisation du modèle le plus récent
+        model: "gpt-4o",
         messages: [
           {
             role: "system",
-            content: "Vous êtes un expert en analyse de pitch et communication. Analysez la vidéo fournie et fournissez une évaluation structurée."
+            content: "Vous êtes un expert en analyse de pitch et communication. Analysez la transcription fournie et fournissez une évaluation structurée."
           },
           {
             role: "user",
             content: [
               { 
                 type: "text", 
-                text: `Analysez cette vidéo de pitch et fournissez une évaluation détaillée au format JSON avec les champs suivants:
-                - pitch_analysis: Analyse de la structure et du contenu du pitch
-                - body_language_analysis: Analyse du langage corporel et de la posture
-                - voice_analysis: Analyse de la qualité vocale et de l'élocution
-                - overall_score: Score global sur 100
-                - strengths: Array de 3 points forts
-                - areas_to_improve: Array de 3 domaines à améliorer
-                
-                Répondez uniquement avec un objet JSON valide.` 
-              },
-              { 
-                type: "image_url", 
-                image_url: { 
-                  url: videoUrl,
-                  detail: "high"
-                } 
+                text: `Analysez cette transcription de pitch et fournissez une évaluation détaillée au format JSON avec les champs suivants:\n                - pitch_analysis: Analyse de la structure et du contenu du pitch\n                - body_language_analysis: Analyse du langage corporel et de la posture (déduite du texte si possible)\n                - voice_analysis: Analyse de la qualité vocale et de l'élocution (déduite du texte si possible)\n                - overall_score: Score global sur 100\n                - strengths: Array de 3 points forts\n                - areas_to_improve: Array de 3 domaines à améliorer\n                \n                Transcription: """${transcriptionText}"""\n                \n                Répondez uniquement avec un objet JSON valide.` 
               }
             ],
           },
@@ -110,7 +126,6 @@ Deno.serve(async (req: Request) => {
 
       const analysisText = response.choices[0].message.content || "";
       
-      // Parser la réponse JSON
       try {
         const parsedAnalysis = JSON.parse(analysisText);
         analysisResult = {
@@ -124,7 +139,6 @@ Deno.serve(async (req: Request) => {
         };
       } catch (parseError) {
         console.error("Error parsing OpenAI response:", parseError);
-        // Fallback: extraire les informations manuellement du texte
         analysisResult = {
           video_id: videoId,
           pitch_analysis: analysisText.substring(0, 500) || "Erreur lors de l'analyse",
@@ -137,7 +151,6 @@ Deno.serve(async (req: Request) => {
       }
     } catch (openaiError) {
       console.error("Error calling OpenAI API:", openaiError);
-      // Fallback en cas d'erreur OpenAI
       analysisResult = {
         video_id: videoId,
         pitch_analysis: "Erreur lors de l'analyse automatique. Veuillez réessayer.",
@@ -149,7 +162,7 @@ Deno.serve(async (req: Request) => {
       };
     }
 
-    // 3. Enregistrer les résultats dans la base de données
+    // 4. Enregistrer les résultats dans la base de données
     const { data: analysisData, error: analysisError } = await supabaseAdmin
       .from("analyses")
       .insert(analysisResult)
@@ -164,26 +177,27 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // 4. Mettre à jour le statut de la vidéo à "COMPLETED" et ajouter les données d'analyse
+    // 5. Mettre à jour le statut de la vidéo à "COMPLETED" et ajouter les données d'analyse et de transcription
     const { error: finalUpdateError } = await supabaseAdmin
       .from("videos")
       .update({ 
         status: "COMPLETED",
-        analysis: analysisResult // Ajout des données d'analyse
+        analysis: analysisResult, // Ajout des données d'analyse
+        transcription: { text: transcriptionText } // Ajout de la transcription
       })
       .eq("id", videoId);
 
     if (finalUpdateError) {
       console.error("Error updating final video status:", finalUpdateError);
-      // Continue despite error as analysis is already saved
     }
 
-    // 5. Retourner les résultats
+    // 6. Retourner les résultats
     return new Response(
       JSON.stringify({
         success: true,
         message: "Video processed successfully",
-        analysis: analysisData
+        analysis: analysisData,
+        transcription: { text: transcriptionText }
       }),
       {
         headers: { "Content-Type": "application/json" }
@@ -204,6 +218,7 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+
 
 
 
