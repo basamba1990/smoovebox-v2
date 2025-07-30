@@ -1,93 +1,51 @@
-// src/components/TranscriptionViewer.jsx
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { Button } from './ui/button.jsx';
 import { Card, CardContent } from './ui/card.jsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.jsx';
-import { RefreshCw, FileText, Video, AlertCircle } from 'lucide-react';
-import { TRANSCRIPTION_STATUS } from '../constants/videoStatus.js';
+import { RefreshCw, FileText, AlertCircle } from 'lucide-react';
 import VideoPlayer from './VideoPlayer.jsx';
 
 const TranscriptionViewer = () => {
   const { user } = useAuth();
-  const [transcriptions, setTranscriptions] = useState([]);
+  const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTranscription, setSelectedTranscription] = useState(null);
+  const [selectedVideo, setSelectedVideo] = useState(null);
   const [activeTab, setActiveTab] = useState('transcript');
 
   useEffect(() => {
     if (user) {
-      fetchTranscriptions();
+      fetchVideos();
     }
   }, [user]);
 
-  const fetchTranscriptions = async () => {
+  const fetchVideos = async () => {
     if (!user) return;
     
     setLoading(true);
     try {
-      // Approche unifiée pour récupérer les transcriptions
-      // Essayer d'abord avec la relation directe user_id via videos
-      const { data: directData, error: directError } = await supabase
-        .from('transcriptions')
-        .select(`
-          *,
-          videos (
-            id,
-            title,
-            file_path,
-            user_id
-          )
-        `)
-        .eq('videos.user_id', user.id)
-        .eq('status', TRANSCRIPTION_STATUS.COMPLETED)
+      // Récupérer les vidéos traitées de l'utilisateur
+      const { data, error } = await supabase
+        .from('videos')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('status', 'COMPLETED')
         .order('processed_at', { ascending: false });
 
-      if (!directError && directData && directData.length > 0) {
-        setTranscriptions(directData);
-        setLoading(false);
-        return;
-      }
-
-      // Si la première approche échoue, essayer avec profile_id
-      // D'abord récupérer le profil de l'utilisateur
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
-        
-      if (profileError) {
-        console.error('Erreur lors de la récupération du profil:', profileError);
-        setTranscriptions([]);
-      } else if (profileData) {
-        // Récupérer les transcriptions via videos avec le profile_id
-        const { data, error } = await supabase
-          .from('transcriptions')
-          .select(`
-            *,
-            videos (
-              id,
-              title,
-              file_path,
-              profile_id
-            )
-          `)
-          .eq('videos.profile_id', profileData.id)
-          .eq('status', TRANSCRIPTION_STATUS.COMPLETED)
-          .order('processed_at', { ascending: false });
-
-        if (!error) {
-          setTranscriptions(data || []);
-        } else {
-          console.error('Erreur lors du chargement des transcriptions:', error);
-          setTranscriptions([]);
+      if (error) {
+        console.error('Erreur lors du chargement des vidéos:', error);
+        setVideos([]);
+      } else {
+        setVideos(data || []);
+        // Sélectionner la première vidéo par défaut si disponible
+        if (data && data.length > 0) {
+          setSelectedVideo(data[0]);
         }
       }
     } catch (error) {
-      console.error('Erreur lors du chargement des transcriptions:', error);
-      setTranscriptions([]);
+      console.error('Erreur lors du chargement des vidéos:', error);
+      setVideos([]);
     } finally {
       setLoading(false);
     }
@@ -105,7 +63,7 @@ const TranscriptionViewer = () => {
     });
   };
 
-  const renderTranscriptionList = () => {
+  const renderVideoList = () => {
     if (loading) {
       return (
         <div className="space-y-4">
@@ -119,13 +77,13 @@ const TranscriptionViewer = () => {
       );
     }
 
-    if (transcriptions.length === 0) {
+    if (videos.length === 0) {
       return (
         <div className="bg-white p-8 rounded-lg shadow-sm border text-center">
           <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Aucune transcription disponible</h3>
+          <h3 className="text-lg font-semibold mb-2">Aucune vidéo traitée disponible</h3>
           <p className="text-gray-600 mb-4">
-            Uploadez une vidéo et attendez que l'analyse soit terminée pour voir les résultats ici.
+            Uploadez une vidéo et traitez-la pour voir les résultats ici.
           </p>
         </div>
       );
@@ -133,31 +91,26 @@ const TranscriptionViewer = () => {
 
     return (
       <div className="space-y-4">
-        {transcriptions.map((transcription) => (
+        {videos.map((video) => (
           <div 
-            key={transcription.id} 
+            key={video.id} 
             className={`bg-white p-6 rounded-lg shadow-sm border cursor-pointer transition-all ${
-              selectedTranscription?.id === transcription.id ? 'ring-2 ring-blue-500' : 'hover:bg-gray-50'
+              selectedVideo?.id === video.id ? 'ring-2 ring-blue-500' : 'hover:bg-gray-50'
             }`}
-            onClick={() => setSelectedTranscription(transcription)}
+            onClick={() => setSelectedVideo(video)}
           >
             <div className="flex justify-between items-start">
               <div>
                 <h3 className="font-semibold text-lg">
-                  {transcription.videos?.title || 'Vidéo sans nom'}
+                  {video.title || 'Vidéo sans nom'}
                 </h3>
                 <p className="text-sm text-gray-500">
-                  Analysé le {formatDate(transcription.processed_at)}
+                  Traitée le {formatDate(video.processed_at)}
                 </p>
                 <div className="flex items-center gap-2 mt-2">
                   <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                     Analyse complète
                   </span>
-                  {transcription.confidence_score && (
-                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      Confiance: {Math.round(transcription.confidence_score * 100)}%
-                    </span>
-                  )}
                 </div>
               </div>
             </div>
@@ -167,33 +120,22 @@ const TranscriptionViewer = () => {
     );
   };
 
-  const renderTranscriptionDetails = () => {
-    if (!selectedTranscription) {
+  const renderVideoDetails = () => {
+    if (!selectedVideo) {
       return (
         <div className="bg-white p-8 rounded-lg shadow-sm border text-center">
           <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Aucune transcription sélectionnée</h3>
+          <h3 className="text-lg font-semibold mb-2">Aucune vidéo sélectionnée</h3>
           <p className="text-gray-600">
-            Sélectionnez une transcription dans la liste pour voir les détails
+            Sélectionnez une vidéo dans la liste pour voir les détails
           </p>
         </div>
       );
     }
 
-    // Analyser le résultat JSON
-    let analysisResult = {};
-    try {
-      if (typeof selectedTranscription.analysis_result === 'string') {
-        analysisResult = JSON.parse(selectedTranscription.analysis_result);
-      } else {
-        analysisResult = selectedTranscription.analysis_result || {};
-      }
-    } catch (error) {
-      console.error('Erreur lors de l\'analyse du résultat JSON:', error);
-      analysisResult = {};
-    }
-
-    const { transcript, summary, keyPoints, sentiment, topics } = analysisResult;
+    // Récupérer les données de transcription et d'analyse
+    const transcription = selectedVideo.transcription || {};
+    const analysis = selectedVideo.analysis || {};
 
     return (
       <div className="bg-white rounded-lg shadow-sm border">
@@ -201,35 +143,31 @@ const TranscriptionViewer = () => {
           <div className="flex justify-between items-start mb-4">
             <div>
               <h3 className="font-semibold text-xl">
-                {selectedTranscription.videos?.title || 'Vidéo sans nom'}
+                {selectedVideo.title || 'Vidéo sans nom'}
               </h3>
               <p className="text-sm text-gray-500">
-                Analysé le {formatDate(selectedTranscription.processed_at)}
+                Traitée le {formatDate(selectedVideo.processed_at)}
               </p>
             </div>
           </div>
           
-          {selectedTranscription.videos?.file_path && (
-            <div className="mb-6">
-              <VideoPlayer url={selectedTranscription.videos.file_path} />
-            </div>
-          )}
+          {/* Lecteur vidéo */}
+          <div className="mb-6">
+            <VideoPlayer video={selectedVideo} />
+          </div>
           
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="mb-4">
               <TabsTrigger value="transcript">Transcription</TabsTrigger>
-              <TabsTrigger value="summary">Résumé</TabsTrigger>
-              <TabsTrigger value="keyPoints">Points clés</TabsTrigger>
-              <TabsTrigger value="sentiment">Sentiment</TabsTrigger>
-              <TabsTrigger value="topics">Sujets</TabsTrigger>
+              <TabsTrigger value="analysis">Analyse</TabsTrigger>
             </TabsList>
             
             <TabsContent value="transcript" className="space-y-4">
               <Card>
                 <CardContent className="p-4">
-                  {transcript ? (
+                  {transcription.text ? (
                     <div className="whitespace-pre-wrap text-gray-700">
-                      {transcript}
+                      {transcription.text}
                     </div>
                   ) : (
                     <div className="p-3 bg-yellow-50 rounded-md flex items-start gap-2">
@@ -241,97 +179,118 @@ const TranscriptionViewer = () => {
                   )}
                 </CardContent>
               </Card>
-            </TabsContent>
-            
-            <TabsContent value="summary" className="space-y-4">
-              <Card>
-                <CardContent className="p-4">
-                  {summary ? (
-                    <div className="whitespace-pre-wrap text-gray-700">
-                      {summary}
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-yellow-50 rounded-md flex items-start gap-2">
-                      <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5 flex-shrink-0" />
-                      <p className="text-sm text-yellow-700">
-                        Aucun résumé disponible pour cette vidéo.
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-            
-            <TabsContent value="keyPoints" className="space-y-4">
-              <Card>
-                <CardContent className="p-4">
-                  {keyPoints && keyPoints.length > 0 ? (
-                    <ul className="list-disc pl-5 space-y-2">
-                      {keyPoints.map((point, index) => (
-                        <li key={index} className="text-gray-700">{point}</li>
+              
+              {transcription.segments && transcription.segments.length > 0 && (
+                <Card className="mt-4">
+                  <CardContent className="p-4">
+                    <h4 className="font-medium mb-2">Segments</h4>
+                    <div className="space-y-2">
+                      {transcription.segments.map((segment, index) => (
+                        <div key={index} className="bg-gray-50 p-3 rounded-md">
+                          <div className="text-xs text-gray-500 mb-1">
+                            {Math.floor(segment.start / 60)}:{(segment.start % 60).toString().padStart(2, '0')} - 
+                            {Math.floor(segment.end / 60)}:{(segment.end % 60).toString().padStart(2, '0')}
+                          </div>
+                          <p>{segment.text}</p>
+                        </div>
                       ))}
-                    </ul>
-                  ) : (
-                    <div className="p-3 bg-yellow-50 rounded-md flex items-start gap-2">
-                      <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5 flex-shrink-0" />
-                      <p className="text-sm text-yellow-700">
-                        Aucun point clé identifié pour cette vidéo.
-                      </p>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
             
-            <TabsContent value="sentiment" className="space-y-4">
+            <TabsContent value="analysis" className="space-y-4">
               <Card>
                 <CardContent className="p-4">
-                  {sentiment ? (
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">Sentiment global:</span>
-                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                          sentiment.overall === 'positive' ? 'bg-green-100 text-green-800' :
-                          sentiment.overall === 'negative' ? 'bg-red-100 text-red-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {sentiment.overall === 'positive' ? 'Positif' :
-                           sentiment.overall === 'negative' ? 'Négatif' : 'Neutre'}
-                        </span>
-                      </div>
+                  {analysis && Object.keys(analysis).length > 0 ? (
+                    <div className="space-y-6">
+                      {/* Résumé */}
+                      {analysis.summary && (
+                        <div>
+                          <h4 className="font-medium mb-2">Résumé</h4>
+                          <p className="text-gray-700">{analysis.summary}</p>
+                        </div>
+                      )}
                       
-                      {sentiment.score && (
-                        <div className="bg-gray-50 p-3 rounded-md">
-                          <div className="mb-2 flex justify-between text-sm">
-                            <span>Score de sentiment</span>
-                            <span>{sentiment.score.toFixed(2)}</span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2.5">
-                            <div 
-                              className={`h-2.5 rounded-full ${
-                                sentiment.score > 0 ? 'bg-green-500' : 
-                                sentiment.score < 0 ? 'bg-red-500' : 'bg-gray-500'
-                              }`}
-                              style={{ 
-                                width: `${Math.min(Math.abs(sentiment.score * 50) + 50, 100)}%`,
-                                marginLeft: sentiment.score < 0 ? 0 : '50%',
-                                marginRight: sentiment.score > 0 ? 0 : '50%',
-                                transform: sentiment.score < 0 ? 'translateX(0)' : 'translateX(-100%)'
-                              }}
-                            ></div>
-                          </div>
-                          <div className="flex justify-between text-xs text-gray-500 mt-1">
-                            <span>Négatif</span>
-                            <span>Neutre</span>
-                            <span>Positif</span>
+                      {/* Mots-clés */}
+                      {analysis.keywords && analysis.keywords.length > 0 && (
+                        <div>
+                          <h4 className="font-medium mb-2">Mots-clés</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {analysis.keywords.map((keyword, index) => (
+                              <span 
+                                key={index}
+                                className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm"
+                              >
+                                {keyword}
+                              </span>
+                            ))}
                           </div>
                         </div>
                       )}
                       
-                      {sentiment.details && (
-                        <div className="mt-4">
-                          <h4 className="font-medium mb-2">Détails:</h4>
-                          <p className="text-gray-700">{sentiment.details}</p>
+                      {/* Analyse du pitch */}
+                      {analysis.pitch_analysis && (
+                        <div>
+                          <h4 className="font-medium mb-2">Analyse du Pitch</h4>
+                          <p className="text-gray-700">{analysis.pitch_analysis}</p>
+                        </div>
+                      )}
+                      
+                      {/* Analyse du langage corporel */}
+                      {analysis.body_language_analysis && (
+                        <div>
+                          <h4 className="font-medium mb-2">Analyse du Langage Corporel</h4>
+                          <p className="text-gray-700">{analysis.body_language_analysis}</p>
+                        </div>
+                      )}
+                      
+                      {/* Analyse vocale */}
+                      {analysis.voice_analysis && (
+                        <div>
+                          <h4 className="font-medium mb-2">Analyse Vocale</h4>
+                          <p className="text-gray-700">{analysis.voice_analysis}</p>
+                        </div>
+                      )}
+                      
+                      {/* Score global */}
+                      {analysis.overall_score && (
+                        <div>
+                          <h4 className="font-medium mb-2">Score Global</h4>
+                          <div className="flex items-center space-x-2">
+                            <div className="w-full bg-gray-200 rounded-full h-2.5">
+                              <div 
+                                className="bg-blue-600 h-2.5 rounded-full" 
+                                style={{ width: `${analysis.overall_score}%` }}
+                              ></div>
+                            </div>
+                            <span className="text-sm font-medium">{analysis.overall_score}/100</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Points forts */}
+                      {analysis.strengths && analysis.strengths.length > 0 && (
+                        <div>
+                          <h4 className="font-medium mb-2">Points Forts</h4>
+                          <ul className="list-disc pl-5 space-y-1">
+                            {analysis.strengths.map((strength, index) => (
+                              <li key={index} className="text-gray-700">{strength}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {/* Domaines à améliorer */}
+                      {analysis.areas_to_improve && analysis.areas_to_improve.length > 0 && (
+                        <div>
+                          <h4 className="font-medium mb-2">Domaines à Améliorer</h4>
+                          <ul className="list-disc pl-5 space-y-1">
+                            {analysis.areas_to_improve.map((area, index) => (
+                              <li key={index} className="text-gray-700">{area}</li>
+                            ))}
+                          </ul>
                         </div>
                       )}
                     </div>
@@ -339,33 +298,7 @@ const TranscriptionViewer = () => {
                     <div className="p-3 bg-yellow-50 rounded-md flex items-start gap-2">
                       <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5 flex-shrink-0" />
                       <p className="text-sm text-yellow-700">
-                        Aucune analyse de sentiment disponible pour cette vidéo.
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-            
-            <TabsContent value="topics" className="space-y-4">
-              <Card>
-                <CardContent className="p-4">
-                  {topics && topics.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {topics.map((topic, index) => (
-                        <span 
-                          key={index}
-                          className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm"
-                        >
-                          {topic}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-yellow-50 rounded-md flex items-start gap-2">
-                      <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5 flex-shrink-0" />
-                      <p className="text-sm text-yellow-700">
-                        Aucun sujet identifié pour cette vidéo.
+                        Aucune analyse disponible pour cette vidéo.
                       </p>
                     </div>
                   )}
@@ -381,7 +314,7 @@ const TranscriptionViewer = () => {
   return (
     <div className="space-y-6">
       <div className="flex justify-end">
-        <Button variant="outline" size="sm" onClick={fetchTranscriptions}>
+        <Button variant="outline" size="sm" onClick={fetchVideos}>
           <RefreshCw className="h-4 w-4 mr-2" />
           Actualiser
         </Button>
@@ -389,11 +322,11 @@ const TranscriptionViewer = () => {
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-4">
-          {renderTranscriptionList()}
+          {renderVideoList()}
         </div>
         
         <div className="lg:col-span-2">
-          {renderTranscriptionDetails()}
+          {renderVideoDetails()}
         </div>
       </div>
     </div>
