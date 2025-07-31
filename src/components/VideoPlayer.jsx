@@ -19,30 +19,21 @@ const VideoPlayer = ({ video }) => {
   const [error, setError] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
   
-  // Fonction pour générer l'URL de la vidéo
-  const getVideoUrl = async (videoData) => {
-    if (!videoData || !videoData.storage_path) return null;
+  // Fonction pour générer l'URL publique de la vidéo
+  const getPublicUrl = (storagePath) => {
+    if (!storagePath) return null;
     
     try {
-      // Tente d'abord de générer une URL signée pour les fichiers privés
-      const { data, error } = await supabase.storage
-        .from('videos')
-        .createSignedUrl(videoData.storage_path, 3600); // URL valide pour 1 heure
-
-      if (data?.signedUrl) {
-        return data.signedUrl;
-      } else if (error && error.message.includes('not found')) {
-        // Si le fichier n'est pas trouvé avec createSignedUrl, tente getPublicUrl comme fallback
-        const { data: publicData } = supabase.storage
-          .from('videos')
-          .getPublicUrl(videoData.storage_path);
-        return publicData?.publicUrl;
-      } else if (error) {
-        console.error("Erreur lors de la génération de l'URL signée:", error);
-        return null;
-      }
-    } catch (err) {
-      console.error("Erreur inattendue lors de la génération de l'URL:", err);
+      // Extraire le projectRef de l'URL Supabase
+      const url = new URL(import.meta.env.VITE_SUPABASE_URL);
+      const projectRef = url.hostname.split('.')[0];
+      
+      // Supprimer le préfixe "videos/" si présent
+      const cleanPath = storagePath.replace(/^videos\//, '');
+      
+      return `https://${projectRef}.supabase.co/storage/v1/object/public/videos/${cleanPath}`;
+    } catch (e) {
+      console.error("Erreur de construction de l'URL:", e);
       return null;
     }
   };
@@ -53,11 +44,30 @@ const VideoPlayer = ({ video }) => {
       if (video) {
         setIsLoading(true);
         setError(null);
-        const url = await getVideoUrl(video);
-        if (url) {
-          setVideoUrl(url);
-        } else {
-          setError("Impossible de charger la vidéo");
+        
+        // 1. Utiliser d'abord l'URL publique
+        const publicUrl = getPublicUrl(video.storage_path);
+        if (publicUrl) {
+          setVideoUrl(publicUrl);
+          return;
+        }
+        
+        // 2. Fallback: URL signée si nécessaire (pour les buckets privés)
+        try {
+          const { data, error } = await supabase.storage
+            .from('videos')
+            .createSignedUrl(video.storage_path, 3600); // 1 heure de validité
+
+          if (data?.signedUrl) {
+            setVideoUrl(data.signedUrl);
+          } else if (error) {
+            console.error("Erreur URL signée:", error);
+            setError("Impossible de charger la vidéo");
+            setIsLoading(false);
+          }
+        } catch (err) {
+          console.error("Erreur URL signée:", err);
+          setError("Erreur de chargement de la vidéo");
           setIsLoading(false);
         }
       }
@@ -73,7 +83,7 @@ const VideoPlayer = ({ video }) => {
         videoRef.current.pause();
       } else {
         videoRef.current.play().catch(err => {
-          setError("Impossible de lire la vidéo. Vérifiez que le format est supporté par votre navigateur.");
+          setError("Impossible de lire la vidéo. Format non supporté?");
           console.error("Erreur de lecture:", err);
         });
       }
@@ -173,6 +183,7 @@ const VideoPlayer = ({ video }) => {
       };
       const handleWaiting = () => setIsLoading(true);
       const handlePlaying = () => setIsLoading(false);
+      const handleEnded = () => setIsPlaying(false);
       
       // Ajouter les écouteurs d'événements
       video.addEventListener('play', handlePlay);
@@ -183,6 +194,7 @@ const VideoPlayer = ({ video }) => {
       video.addEventListener('waiting', handleWaiting);
       video.addEventListener('playing', handlePlaying);
       video.addEventListener('timeupdate', handleTimeUpdate);
+      video.addEventListener('ended', handleEnded);
       
       // Nettoyer les écouteurs d'événements
       return () => {
@@ -194,6 +206,7 @@ const VideoPlayer = ({ video }) => {
         video.removeEventListener('waiting', handleWaiting);
         video.removeEventListener('playing', handlePlaying);
         video.removeEventListener('timeupdate', handleTimeUpdate);
+        video.removeEventListener('ended', handleEnded);
       };
     }
   }, [videoUrl]);
@@ -213,23 +226,23 @@ const VideoPlayer = ({ video }) => {
       }, 3000);
     };
     
+    const handleMouseLeave = () => {
+      if (isPlaying) {
+        setShowControls(false);
+      }
+    };
+    
     const container = containerRef.current;
     if (container) {
       container.addEventListener('mousemove', handleMouseMove);
-      container.addEventListener('mouseleave', () => {
-        if (isPlaying) {
-          setShowControls(false);
-        }
-      });
-      container.addEventListener('mouseenter', () => {
-        setShowControls(true);
-      });
+      container.addEventListener('mouseleave', handleMouseLeave);
+      container.addEventListener('mouseenter', () => setShowControls(true));
     }
     
     return () => {
       if (container) {
         container.removeEventListener('mousemove', handleMouseMove);
-        container.removeEventListener('mouseleave', () => {});
+        container.removeEventListener('mouseleave', handleMouseLeave);
         container.removeEventListener('mouseenter', () => {});
       }
       clearTimeout(timeout);
@@ -239,8 +252,7 @@ const VideoPlayer = ({ video }) => {
   // Gestion des raccourcis clavier
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (document.activeElement.tagName === 'INPUT' || 
-          document.activeElement.tagName === 'TEXTAREA') {
+      if (['INPUT', 'TEXTAREA', 'BUTTON'].includes(document.activeElement.tagName)) {
         return;
       }
       
@@ -335,6 +347,12 @@ const VideoPlayer = ({ video }) => {
           <div className="text-white text-center p-4">
             <p className="text-red-400 font-semibold mb-2">Erreur</p>
             <p>{error}</p>
+            <button 
+              className="mt-2 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+              onClick={() => window.location.reload()}
+            >
+              Réessayer
+            </button>
           </div>
         </div>
       )}
