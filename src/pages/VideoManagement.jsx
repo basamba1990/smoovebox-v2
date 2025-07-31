@@ -12,8 +12,9 @@ const VideosPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedVideo, setSelectedVideo] = useState(null);
-  const [processingVideoId, setProcessingVideoId] = useState(null);
+  const [transcribingVideoId, setTranscribingVideoId] = useState(null);
   
+  // Charger les vidéos de l'utilisateur
   const fetchVideos = async () => {
     try {
       setLoading(true);
@@ -32,28 +33,25 @@ const VideosPage = () => {
         .order('created_at', { ascending: false });
       
       if (error) {
-        console.error("Erreur lors du chargement des vidéos:", error);
-        setError(`Erreur lors du chargement des vidéos: ${error.message}`);
-        setVideos([]);
-      } else {
-        setVideos(data || []);
-        
-        // Mettre à jour la vidéo sélectionnée
-        if (data && data.length > 0) {
-          if (!selectedVideo || !data.some(v => v.id === selectedVideo.id)) {
-            setSelectedVideo(data[0]);
-          } else {
-            // Actualiser les données de la vidéo sélectionnée
-            const updatedVideo = data.find(v => v.id === selectedVideo.id);
-            if (updatedVideo) setSelectedVideo(updatedVideo);
-          }
+        throw new Error(`Erreur lors du chargement des vidéos: ${error.message}`);
+      }
+
+      setVideos(data || []);
+      
+      // Mettre à jour la vidéo sélectionnée
+      if (data && data.length > 0) {
+        if (!selectedVideo || !data.some(v => v.id === selectedVideo.id)) {
+          setSelectedVideo(data[0]);
         } else {
-          setSelectedVideo(null);
+          const updatedVideo = data.find(v => v.id === selectedVideo.id);
+          if (updatedVideo) setSelectedVideo(updatedVideo);
         }
+      } else {
+        setSelectedVideo(null);
       }
     } catch (err) {
-      console.error("Exception lors du chargement des vidéos:", err);
-      setError(`Une erreur inattendue s'est produite: ${err.message}`);
+      console.error("Erreur lors du chargement des vidéos:", err);
+      setError(err.message);
       setVideos([]);
     } finally {
       setLoading(false);
@@ -65,6 +63,7 @@ const VideosPage = () => {
 
     fetchVideos();
     
+    // Configurer l'abonnement aux changements en temps réel
     const channel = supabase
       .channel('videos_changes')
       .on('postgres_changes', 
@@ -74,9 +73,7 @@ const VideosPage = () => {
           table: 'videos',
           filter: `user_id=eq.${user.id}` 
         }, 
-        (payload) => {
-          fetchVideos();
-        }
+        fetchVideos
       )
       .subscribe();
     
@@ -85,85 +82,92 @@ const VideosPage = () => {
     };
   }, [user]);
 
+  // Obtenir l'URL publique d'une vidéo
   const getPublicUrl = (path) => {
     if (!path) return null;
+    
     try {
-      // Extraire le projectRef de l'URL Supabase
       const url = new URL(import.meta.env.VITE_SUPABASE_URL);
       const projectRef = url.hostname.split('.')[0];
-      return `https://${projectRef}.supabase.co/storage/v1/object/public/videos/${path}`;
+      
+      // Supprimer le préfixe "videos/" si présent
+      const cleanPath = path.replace(/^videos\//, '');
+      
+      return `https://${projectRef}.supabase.co/storage/v1/object/public/videos/${cleanPath}`;
     } catch (e) {
       console.error("Erreur de construction de l'URL:", e);
       return null;
     }
   };
   
-  const processVideo = async (video) => {
+  // Lancer la transcription d'une vidéo
+  const transcribeVideo = async (video) => {
     if (!video) return;
     
     try {
-      setProcessingVideoId(video.id);
-      toast.loading("Traitement de la vidéo en cours...", { id: 'process-video-toast' });
+      setTranscribingVideoId(video.id);
+      toast.loading("Démarrage de la transcription...", { id: 'transcribe-toast' });
       
       const { data: authData } = await supabase.auth.getSession();
       const token = authData?.session?.access_token;
       
       if (!token) {
-        toast.error("Session expirée, veuillez vous reconnecter", { id: 'process-video-toast' });
-        setProcessingVideoId(null);
-        return;
+        throw new Error("Session expirée, veuillez vous reconnecter");
       }
       
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-video`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          video_id: video.id
-        })
-      });
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-video`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ video_id: video.id })
+        }
+      );
       
       if (!response.ok) {
         const errorResult = await response.json();
-        throw new Error(errorResult.error || "Erreur lors du traitement de la vidéo");
+        throw new Error(errorResult.error || "Erreur lors de la transcription");
       }
       
-      toast.success("Vidéo traitée avec succès", { id: 'process-video-toast' });
+      toast.success("Transcription démarrée avec succès", { id: 'transcribe-toast' });
       
-      // Actualiser après un court délai pour laisser le temps au traitement
-      setTimeout(fetchVideos, 2000);
+      // Actualiser après un délai pour laisser le temps au traitement
+      setTimeout(fetchVideos, 3000);
       
     } catch (err) {
-      console.error("Erreur lors du traitement de la vidéo:", err);
-      toast.error(`Erreur: ${err.message}`, { id: 'process-video-toast' });
+      console.error("Erreur lors de la transcription:", err);
+      toast.error(`Erreur: ${err.message}`, { id: 'transcribe-toast' });
       
-      // Mettre à jour le statut en échec dans l'interface
+      // Mettre à jour localement le statut
       const updatedVideos = videos.map(v => 
         v.id === video.id ? { ...v, status: 'FAILED', error: err.message } : v
       );
       setVideos(updatedVideos);
+      
       if (selectedVideo?.id === video.id) {
         setSelectedVideo({ ...video, status: 'FAILED', error: err.message });
       }
     } finally {
-      setProcessingVideoId(null);
+      setTranscribingVideoId(null);
     }
   };
   
+  // Supprimer une vidéo (stockage + base de données)
   const deleteVideo = async (video) => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cette vidéo ?')) return;
     
     try {
-      // 1. Supprimer le fichier du stockage
+      // Supprimer le fichier du stockage
       const { error: storageError } = await supabase.storage
         .from('videos')
-        .remove([video.path]);
+        .remove([video.path.replace(/^videos\//, '')]);
       
       if (storageError) throw storageError;
       
-      // 2. Supprimer l'enregistrement de la base de données
+      // Supprimer l'enregistrement en base
       const { error: dbError } = await supabase
         .from('videos')
         .delete()
@@ -180,6 +184,7 @@ const VideosPage = () => {
     }
   };
   
+  // Fonctions utilitaires pour l'affichage du statut
   const getStatusText = (status) => {
     switch (status) {
       case 'PENDING': return 'En attente';
@@ -246,6 +251,7 @@ const VideosPage = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Colonne de gauche - Liste des vidéos */}
           <div className="md:col-span-1 bg-white rounded-lg shadow overflow-hidden">
             <div className="p-4 border-b">
               <h3 className="font-medium">Liste des vidéos</h3>
@@ -272,9 +278,9 @@ const VideosPage = () => {
                       {getStatusText(video.status)}
                     </span>
                   </div>
-                  {video.status === 'FAILED' && (
+                  {video.status === 'FAILED' && video.error && (
                     <p className="text-xs text-red-500 mt-1 truncate">
-                      {video.error || 'Erreur inconnue'}
+                      {video.error}
                     </p>
                   )}
                 </div>
@@ -282,18 +288,22 @@ const VideosPage = () => {
             </div>
           </div>
           
+          {/* Colonne de droite - Détails de la vidéo */}
           <div className="md:col-span-2 bg-white rounded-lg shadow">
             <div className="p-4 border-b">
               <h3 className="font-medium">Détails de la vidéo</h3>
             </div>
+            
             {selectedVideo ? (
               <div className="p-4">
                 <h2 className="text-xl font-bold mb-2">
                   {selectedVideo.title || 'Sans titre'}
                 </h2>
                 
+                {/* Lecteur vidéo */}
                 <VideoPlayer url={getPublicUrl(selectedVideo.path)} />
                 
+                {/* Métadonnées */}
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
                     <p className="text-sm text-gray-500">Date d'upload</p>
@@ -301,27 +311,27 @@ const VideosPage = () => {
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">Statut</p>
-                    <p className={`
-                      ${selectedVideo.status === 'COMPLETED' ? 'text-green-600' : 
-                        selectedVideo.status === 'PROCESSING' ? 'text-yellow-600' : 
-                        selectedVideo.status === 'FAILED' ? 'text-red-600' :
-                        'text-gray-600'} font-medium`
-                      }>
+                    <p className={`font-medium ${
+                      selectedVideo.status === 'COMPLETED' ? 'text-green-600' : 
+                      selectedVideo.status === 'PROCESSING' ? 'text-yellow-600' : 
+                      selectedVideo.status === 'FAILED' ? 'text-red-600' : 'text-gray-600'
+                    }`}>
                       {getStatusText(selectedVideo.status)}
                     </p>
                   </div>
                 </div>
                 
+                {/* Actions */}
                 <div className="flex flex-wrap gap-2 mb-4">
                   {selectedVideo.status !== 'PROCESSING' && (
                     <button 
-                      onClick={() => processVideo(selectedVideo)}
+                      onClick={() => transcribeVideo(selectedVideo)}
                       className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-                      disabled={processingVideoId === selectedVideo.id}
+                      disabled={transcribingVideoId === selectedVideo.id}
                     >
-                      {processingVideoId === selectedVideo.id 
-                        ? 'Traitement en cours...' 
-                        : (selectedVideo.status === 'COMPLETED' ? 'Retraiter' : 'Traiter')}
+                      {transcribingVideoId === selectedVideo.id 
+                        ? 'Transcription en cours...' 
+                        : (selectedVideo.status === 'COMPLETED' ? 'Retranscrire' : 'Transcrire')}
                     </button>
                   )}
                   <button 
@@ -332,6 +342,7 @@ const VideosPage = () => {
                   </button>
                 </div>
                 
+                {/* Messages d'état */}
                 {selectedVideo.status === 'FAILED' && selectedVideo.error && (
                   <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
                     <p className="text-red-700">
@@ -340,28 +351,29 @@ const VideosPage = () => {
                   </div>
                 )}
                 
+                {selectedVideo.status === 'PROCESSING' && (
+                  <div className="mt-4 bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
+                    <p className="text-yellow-700">
+                      La vidéo est en cours de transcription. Les résultats seront disponibles sous peu.
+                    </p>
+                  </div>
+                )}
+                
+                {selectedVideo.status === 'PENDING' && (
+                  <div className="mt-4 bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+                    <p className="text-blue-700">
+                      La vidéo est prête pour la transcription. Cliquez sur "Transcrire" pour commencer.
+                    </p>
+                  </div>
+                )}
+                
+                {/* Résultats */}
                 {selectedVideo.status === 'COMPLETED' && selectedVideo.analysis && (
                   <VideoAnalysisResults analysis={selectedVideo.analysis} />
                 )}
                 
                 {selectedVideo.status === 'COMPLETED' && selectedVideo.transcription && (
                   <TranscriptionViewer transcription={selectedVideo.transcription} />
-                )}
-
-                {selectedVideo.status === 'PROCESSING' && (
-                  <div className="mt-4 bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
-                    <p className="text-yellow-700">
-                      La vidéo est en cours de traitement. Les résultats seront disponibles sous peu.
-                    </p>
-                  </div>
-                )}
-
-                {selectedVideo.status === 'PENDING' && (
-                  <div className="mt-4 bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-                    <p className="text-blue-700">
-                      La vidéo est prête pour le traitement. Cliquez sur "Traiter" pour commencer l'analyse.
-                    </p>
-                  </div>
                 )}
               </div>
             ) : (
