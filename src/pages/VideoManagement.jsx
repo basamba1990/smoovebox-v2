@@ -83,7 +83,11 @@ const VideosPage = () => {
   }, [user]);
 
   // Obtenir l'URL publique d'une vidéo
-  const getPublicUrl = (path) => {
+  const getPublicUrl = (video) => {
+    if (!video) return null;
+    
+    // Utiliser storage_path en priorité, puis file_path
+    const path = video.storage_path || video.file_path;
     if (!path) return null;
     
     try {
@@ -161,11 +165,14 @@ const VideosPage = () => {
     
     try {
       // Supprimer le fichier du stockage
-      const { error: storageError } = await supabase.storage
-        .from('videos')
-        .remove([video.path.replace(/^videos\//, '')]);
-      
-      if (storageError) throw storageError;
+      const path = video.storage_path || video.file_path;
+      if (path) {
+        const { error: storageError } = await supabase.storage
+          .from('videos')
+          .remove([path.replace(/^videos\//, '')]);
+        
+        if (storageError) throw storageError;
+      }
       
       // Supprimer l'enregistrement en base
       const { error: dbError } = await supabase
@@ -301,7 +308,7 @@ const VideosPage = () => {
                 </h2>
                 
                 {/* Lecteur vidéo */}
-                <VideoPlayer url={getPublicUrl(selectedVideo.path)} />
+                <VideoPlayer url={getPublicUrl(selectedVideo)} />
                 
                 {/* Métadonnées */}
                 <div className="grid grid-cols-2 gap-4 mb-4">
@@ -389,3 +396,4 @@ const VideosPage = () => {
 };
 
 export default VideosPage;
+
