@@ -32,12 +32,13 @@ export default defineConfig({
       },
     },
     rollupOptions: {
+      external: [/^react-icons\/fi/],
       output: {
         manualChunks: {
-          react: ['react', 'react-dom'],
-          supabase: ['@supabase/supabase-js'],
-          openai: ['openai'],
-          ui: ['@radix-ui/react-dialog', '@radix-ui/react-tabs'],
+          react: ["react", "react-dom"],
+          supabase: ["@supabase/supabase-js"],
+          openai: ["openai"],
+          ui: ["@radix-ui/react-dialog", "@radix-ui/react-tabs"],
         },
       },
     },
