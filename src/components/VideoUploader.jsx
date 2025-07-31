@@ -85,9 +85,9 @@ const VideoUpload = () => {
 
       // 3. Télécharger le fichier avec suivi de progression
       const { error: uploadError } = await supabase.storage
-        .from(\'videos\')
+        .from('videos')
         .upload(filePath, file, {
-          cacheControl: \'3600\',
+          cacheControl: '3600',
           upsert: false,
           onUploadProgress: (progress) => {
             const percent = Math.round((progress.loaded / progress.total) * 100);
@@ -276,5 +276,3 @@ const VideoUpload = () => {
 };
 
 export default VideoUpload;
-
-
