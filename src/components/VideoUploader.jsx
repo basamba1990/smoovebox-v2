@@ -69,16 +69,19 @@ const UploadPage = () => {
 
       console.log('Début de l\'upload du fichier:', filePath);
       
-      // Upload vers Supabase Storage
-      const { error: uploadError, data: uploadData } = await supabase.storage
+      // Upload vers Supabase Storage AVEC gestion de progression
+      const { error: uploadError } = await supabase.storage
         .from('videos')
         .upload(filePath, file, {
           cacheControl: '3600',
           upsert: false,
-          onUploadProgress: (progress) => {
-            const percent = Math.round((progress.loaded / progress.total) * 100);
-            setUploadProgress(percent);
-            console.log(`Progression de l\'upload: ${percent}%`);
+          // Correction: Utiliser la syntaxe correcte pour le suivi de progression
+          onProgress: (progressEvent) => {
+            const progress = Math.round(
+              (progressEvent.loaded / progressEvent.total) * 100
+            );
+            setUploadProgress(progress);
+            console.log(`Progression de l\'upload: ${progress}%`);
           },
         });
 
@@ -87,7 +90,7 @@ const UploadPage = () => {
         throw new Error(`Erreur lors de l\'upload: ${uploadError.message}`);
       }
 
-      console.log('Fichier uploadé avec succès dans le stockage Supabase:', uploadData);
+      console.log('Fichier uploadé avec succès dans le stockage Supabase');
 
       // Enregistrer les informations de la vidéo dans la base de données
       console.log('Enregistrement des informations vidéo dans la base de données...');
@@ -97,7 +100,7 @@ const UploadPage = () => {
           user_id: user.id,
           title: title,
           description: description,
-          storage_path: filePath,
+          path: `videos/${filePath}`, // Stocker le chemin complet
           status: 'PENDING'
         })
         .select();
@@ -116,20 +119,6 @@ const UploadPage = () => {
         throw new Error("Impossible de récupérer l'ID de la vidéo après l'insertion");
       }
 
-      // Générer une URL signée pour accéder à la vidéo
-      console.log("Génération d'une URL signée pour la vidéo...");
-      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-        .from('videos')
-        .createSignedUrl(filePath, 60 * 60); // 1h de validité
-
-      if (signedUrlError || !signedUrlData?.signedUrl) {
-        console.error('Erreur lors de la génération de l\'URL signée:', signedUrlError);
-        throw new Error("Impossible de générer l'URL d'accès au fichier");
-      }
-
-      const videoUrl = signedUrlData.signedUrl;
-      console.log("URL signée générée:", videoUrl);
-
       // Récupérer le token d'accès pour l'authentification
       const session = await supabase.auth.getSession();
       const accessToken = session?.data?.session?.access_token;
@@ -142,6 +131,7 @@ const UploadPage = () => {
       console.log("Appel de la fonction Edge pour le traitement vidéo...");
       const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-video`;
       
+      // CORRECTION: Envoyer seulement video_id comme requis par l'Edge Function
       const response = await fetch(edgeFunctionUrl, {
         method: 'POST',
         headers: {
@@ -149,9 +139,7 @@ const UploadPage = () => {
           'Authorization': `Bearer ${accessToken}`
         },
         body: JSON.stringify({
-          video_id: videoId,
-          video_url: videoUrl,
-          user_id: user.id
+          video_id: videoId
         }),
       });
 
