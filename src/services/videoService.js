@@ -95,7 +95,7 @@ export const videoService = {
 
     // 3. Télécharger le fichier
     const { error: uploadError } = await supabase.storage
-      .from('uploads')
+    .from(\'videos\')
       .upload(filePath, file, {
         cacheControl: '3600',
         upsert: false
