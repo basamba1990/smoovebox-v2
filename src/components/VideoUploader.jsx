@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { VIDEO_STATUS, toDatabaseStatus } from '../constants/videoStatus';
-import { Button, Progress, Alert, Card, CardBody } from '@material-tailwind/react';
 import { FiUpload, FiX } from 'react-icons/fi';
 
 const VideoUpload = () => {
@@ -179,89 +178,99 @@ const VideoUpload = () => {
   };
 
   return (
-    <Card className="w-full max-w-2xl mx-auto">
-      <CardBody>
-        <h2 className="text-2xl font-bold mb-4">Télécharger une vidéo</h2>
-        
-        {error && (
-          <Alert color="red" className="mb-4" onClose={() => setError(null)}>
-            {error}
-          </Alert>
-        )}
-        
-        {success && (
-          <Alert color="green" className="mb-4">
-            Vidéo téléchargée avec succès! Redirection en cours...
-          </Alert>
-        )}
-        
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-1">Titre</label>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="w-full px-3 py-2 border rounded-md"
-            placeholder="Titre de la vidéo"
-            disabled={uploading}
-          />
+    <div className="w-full max-w-2xl mx-auto bg-white shadow-md rounded-lg p-6">
+      <h2 className="text-2xl font-bold mb-4">Télécharger une vidéo</h2>
+      
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4 relative">
+          <span className="block sm:inline">{error}</span>
+          <span className="absolute top-0 bottom-0 right-0 px-4 py-3" onClick={() => setError(null)}>
+            <FiX className="h-4 w-4" />
+          </span>
         </div>
-        
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-1">Description (optionnelle)</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="w-full px-3 py-2 border rounded-md"
-            rows="3"
-            placeholder="Description de la vidéo"
-            disabled={uploading}
-          />
+      )}
+      
+      {success && (
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+          Vidéo téléchargée avec succès! Redirection en cours...
         </div>
-        
-        <div className="mb-4">
-          <label className="block text-sm font-medium mb-1">Fichier vidéo</label>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            className="w-full"
-            accept="video/*"
-            disabled={uploading}
-          />
-          {file && (
-            <div className="mt-2 flex items-center">
-              <span className="text-sm">{file.name} ({(file.size / (1024 * 1024)).toFixed(2)} MB)</span>
-              <button 
-                onClick={handleCancel} 
-                className="ml-2 text-red-500"
-                disabled={uploading}
-              >
-                <FiX />
-              </button>
-            </div>
-          )}
-        </div>
-        
-        {uploading && progress > 0 && (
-          <div className="mb-4">
-            <Progress value={progress} label={`${progress}%`} color="blue" />
+      )}
+      
+      <div className="mb-4">
+        <label className="block text-sm font-medium mb-1">Titre</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="w-full px-3 py-2 border rounded-md"
+          placeholder="Titre de la vidéo"
+          disabled={uploading}
+        />
+      </div>
+      
+      <div className="mb-4">
+        <label className="block text-sm font-medium mb-1">Description (optionnelle)</label>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          className="w-full px-3 py-2 border rounded-md"
+          rows="3"
+          placeholder="Description de la vidéo"
+          disabled={uploading}
+        />
+      </div>
+      
+      <div className="mb-4">
+        <label className="block text-sm font-medium mb-1">Fichier vidéo</label>
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          className="w-full"
+          accept="video/*"
+          disabled={uploading}
+        />
+        {file && (
+          <div className="mt-2 flex items-center">
+            <span className="text-sm">{file.name} ({(file.size / (1024 * 1024)).toFixed(2)} MB)</span>
+            <button 
+              onClick={handleCancel} 
+              className="ml-2 text-red-500"
+              disabled={uploading}
+            >
+              <FiX />
+            </button>
           </div>
         )}
-        
-        <div className="flex justify-end">
-          <Button
-            onClick={handleUpload}
-            disabled={!file || uploading || success}
-            className="flex items-center gap-2"
-            color="blue"
-          >
-            <FiUpload className="h-4 w-4" />
-            {uploading ? 'Téléchargement en cours...' : 'Télécharger'}
-          </Button>
+      </div>
+      
+      {uploading && progress > 0 && (
+        <div className="mb-4">
+          <div className="w-full bg-gray-200 rounded-full h-2.5">
+            <div 
+              className="bg-blue-600 h-2.5 rounded-full" 
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+          <span className="text-sm text-gray-500 mt-1">{progress}%</span>
         </div>
-      </CardBody>
-    </Card>
+      )}
+      
+      <div className="flex justify-end">
+        <button
+          onClick={handleUpload}
+          disabled={!file || uploading || success}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md ${
+            !file || uploading || success 
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+              : 'bg-blue-600 text-white hover:bg-blue-700'
+          }`}
+        >
+          <FiUpload className="h-4 w-4" />
+          {uploading ? 'Téléchargement en cours...' : 'Télécharger'}
+        </button>
+      </div>
+    </div>
   );
 };
 
