@@ -140,7 +140,7 @@ const UploadPage = () => {
 
       // Appeler la fonction Edge pour le traitement vidéo
       console.log("Appel de la fonction Edge pour le traitement vidéo...");
-      const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-video`;
+      const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-video`;
       
       const response = await fetch(edgeFunctionUrl, {
         method: 'POST',
