@@ -1,17 +1,17 @@
-// src/lib/supabase.js
+-- Code frontend amélioré pour src/lib/supabase.js
 import { createClient } from '@supabase/supabase-js';
-import OpenAI from 'openai';
 import { VIDEO_STATUS } from '../constants/videoStatus.js';
 
 // Configuration avec gestion d'erreurs améliorée et fallbacks robustes
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const openaiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
 
-console.log('Configuration Supabase (version corrigée):', {
+// Constante pour la gestion des sessions - à utiliser de manière cohérente dans toute l'application
+export const AUTH_STORAGE_KEY = 'smoovebox-auth-token';
+
+console.log('Configuration Supabase:', {
   url: supabaseUrl ? 'Définie' : 'Manquante',
-  key: supabaseAnonKey ? 'Définie' : 'Manquante',
-  openai: openaiApiKey ? 'Définie' : 'Manquante'
+  key: supabaseAnonKey ? 'Définie' : 'Manquante'
 });
 
 // Initialisation du client Supabase avec configuration robuste et gestion d'erreurs
@@ -20,7 +20,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    storageKey: 'smoovebox-auth-token',
+    storageKey: AUTH_STORAGE_KEY,
     flowType: 'pkce'
   },
   global: {
@@ -38,40 +38,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
-// Validation et initialisation du client OpenAI avec gestion d'erreur améliorée
-let openaiClient = null;
-let openaiAvailable = false;
-
-const validateOpenAIKey = (key) => {
-  if (!key) return false;
-  // Vérifier le format de la clé OpenAI
-  if (!key.startsWith('sk-')) return false;
-  // Vérifier la longueur minimale
-  if (key.length < 50) return false;
-  return true;
-};
-
-if (openaiApiKey && validateOpenAIKey(openaiApiKey)) {
-  try {
-    openaiClient = new OpenAI({ 
-      apiKey: openaiApiKey,
-      dangerouslyAllowBrowser: true,
-      timeout: 30000,
-      maxRetries: 3
-    });
-    openaiAvailable = true;
-    console.log('Client OpenAI initialisé avec succès (version corrigée)');
-  } catch (error) {
-    console.error('Erreur lors de l\'initialisation d\'OpenAI:', error);
-    openaiAvailable = false;
-  }
-} else {
-  console.warn("Clé OpenAI manquante ou invalide - Les fonctionnalités IA seront désactivées");
-  openaiAvailable = false;
-}
-
-export const openai = openaiClient;
-
 // Fonction utilitaire pour les tentatives avec retry et backoff exponentiel
 export const retryOperation = async (operation, maxRetries = 3, delay = 1000) => {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -88,37 +54,6 @@ export const retryOperation = async (operation, maxRetries = 3, delay = 1000) =>
       const backoffDelay = delay * Math.pow(2, attempt - 1) + Math.random() * 1000;
       await new Promise(resolve => setTimeout(resolve, backoffDelay));
     }
-  }
-};
-
-/**
- * Vérifie la disponibilité du service OpenAI avec retry
- * @returns {Promise<{available: boolean, error?: string}>}
- */
-export const checkOpenAIAvailability = async () => {
-  if (!openaiAvailable || !openaiClient) {
-    return { 
-      available: false, 
-      error: "Service OpenAI non configuré ou clé API invalide" 
-    };
-  }
-
-  try {
-    // Test simple avec l'API OpenAI avec retry
-    await retryOperation(async () => {
-      const response = await openaiClient.models.list();
-      if (!response || !response.data) {
-        throw new Error("Réponse invalide de l'API OpenAI");
-      }
-    }, 2, 500);
-    
-    return { available: true };
-  } catch (error) {
-    console.error('Test de disponibilité OpenAI échoué:', error);
-    return { 
-      available: false, 
-      error: `Service OpenAI indisponible: ${error.message}` 
-    };
   }
 };
 
@@ -242,13 +177,93 @@ export const getProfileId = async (userId) => {
 };
 
 /**
- * Fonction utilitaire pour récupérer les données du dashboard avec gestion d'erreurs
+ * Fonction utilitaire pour récupérer les données du dashboard avec jointures optimisées
  * @param {string} userId 
  * @returns {Promise<Object>}
  */
 export const fetchDashboardData = async (userId) => {
   try {
     console.log('Récupération des données dashboard pour userId:', userId);
+    
+    // Récupérer les vidéos avec leurs transcriptions associées en une seule requête
+    const { data: videosWithTranscriptions, error: queryError } = await retryOperation(async () => {
+      return await supabase
+        .from('videos')
+        .select(`
+          id, 
+          title, 
+          description, 
+          created_at, 
+          status, 
+          thumbnail_url, 
+          file_path,
+          transcriptions:transcriptions(id, confidence_score, created_at)
+        `)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+    });
+      
+    if (queryError) {
+      // Si l'erreur est due à une relation inexistante, essayer les requêtes séparées
+      if (queryError.message?.includes('does not exist') || queryError.code === 'PGRST116') {
+        return await fetchDashboardDataFallback(userId);
+      }
+      console.error('Erreur requête dashboard:', queryError);
+      throw queryError;
+    }
+    
+    // Traiter les données pour le dashboard
+    const videosCount = videosWithTranscriptions ? videosWithTranscriptions.length : 0;
+    
+    // Extraire toutes les transcriptions
+    const allTranscriptions = [];
+    videosWithTranscriptions?.forEach(video => {
+      if (video.transcriptions && Array.isArray(video.transcriptions)) {
+        allTranscriptions.push(...video.transcriptions);
+      }
+    });
+    
+    const transcriptionsCount = allTranscriptions.length;
+    
+    // Calculer le score moyen de confiance
+    let averageScore = null;
+    if (allTranscriptions.length > 0) {
+      const validScores = allTranscriptions
+        .filter(t => t.confidence_score !== null)
+        .map(t => t.confidence_score);
+      
+      if (validScores.length > 0) {
+        averageScore = Math.round(
+          validScores.reduce((sum, score) => sum + score, 0) / validScores.length
+        );
+      }
+    }
+    
+    // Préparer les données du dashboard
+    return {
+      stats: {
+        videosCount,
+        transcriptionsCount,
+        averageScore
+      },
+      recentVideos: videosWithTranscriptions ? videosWithTranscriptions.slice(0, 5) : []
+    };
+    
+  } catch (error) {
+    console.error('Erreur lors de la récupération des données dashboard:', error);
+    // En cas d'erreur, essayer la méthode de fallback
+    return await fetchDashboardDataFallback(userId);
+  }
+};
+
+/**
+ * Version de fallback pour fetchDashboardData utilisant des requêtes séparées
+ * @param {string} userId 
+ * @returns {Promise<Object>}
+ */
+const fetchDashboardDataFallback = async (userId) => {
+  try {
+    console.log('Utilisation du fallback pour les données dashboard');
     
     // Récupérer les statistiques des vidéos avec retry
     const { data: videosData, error: videosError } = await retryOperation(async () => {
@@ -302,12 +317,92 @@ export const fetchDashboardData = async (userId) => {
       },
       recentVideos: videosData ? videosData.slice(0, 5) : []
     };
-    
   } catch (error) {
-    console.error('Erreur lors de la récupération des données dashboard:', error);
+    console.error('Erreur dans le fallback dashboard:', error);
     throw new Error(`Erreur dashboard: ${error.message}`);
   }
 };
 
-export default supabase;
+/**
+ * Déclenche la transcription d'une vidéo via l'Edge Function
+ * @param {string} videoId - ID de la vidéo à transcrire
+ * @returns {Promise<Object>} - Résultat de la transcription
+ */
+export const transcribeVideo = async (videoId) => {
+  try {
+    if (!videoId) {
+      throw new Error('ID de vidéo requis');
+    }
+    
+    // Récupérer le token d'authentification actuel
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('Utilisateur non authentifié');
+    }
+    
+    // Appeler l'Edge Function avec le token d'authentification
+    const response = await fetch(
+      `${supabaseUrl}/functions/v1/transcribe-video`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ video_id: videoId })
+      }
+    );
+    
+    // Vérifier la réponse
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        `Erreur lors de la transcription (${response.status}): ${errorData.error || response.statusText}`
+      );
+    }
+    
+    return await response.json();
+    
+  } catch (error) {
+    console.error('Erreur lors de la transcription:', error);
+    throw error;
+  }
+};
 
+/**
+ * Surveille le statut d'une vidéo en temps réel
+ * @param {string} videoId - ID de la vidéo à surveiller
+ * @param {Function} onStatusChange - Callback appelé lors d'un changement de statut
+ * @returns {Function} - Fonction pour arrêter la surveillance
+ */
+export const watchVideoStatus = (videoId, onStatusChange) => {
+  if (!videoId || typeof onStatusChange !== 'function') {
+    console.error('ID de vidéo et callback requis pour watchVideoStatus');
+    return () => {};
+  }
+  
+  // S'abonner aux changements de statut via Realtime
+  const subscription = supabase
+    .channel(`video-status-${videoId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'videos',
+        filter: `id=eq.${videoId}`
+      },
+      (payload) => {
+        // Appeler le callback avec les nouvelles données
+        onStatusChange(payload.new);
+      }
+    )
+    .subscribe();
+  
+  // Retourner une fonction pour se désabonner
+  return () => {
+    subscription.unsubscribe();
+  };
+};
+
+export default supabase;
