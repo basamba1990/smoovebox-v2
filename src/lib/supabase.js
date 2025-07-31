@@ -1,4 +1,4 @@
--- Code frontend amélioré pour src/lib/supabase.js
+// src/lib/supabase.js
 import { createClient } from '@supabase/supabase-js';
 import { VIDEO_STATUS } from '../constants/videoStatus.js';
 
