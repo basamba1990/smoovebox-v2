@@ -80,14 +80,14 @@ const VideoUpload = () => {
 
       // 2. Générer un nom de fichier unique pour le stockage
       const fileExt = file.name.split('.').pop();
-      const filePath = `${videoData.id}/${Date.now()}.${fileExt}`;
-      const storagePath = `videos/${filePath}`;
+      const filePath = `videos/${videoData.id}/${Date.now()}.${fileExt}`;
+      const storagePath = filePath; // Utiliser filePath comme storage_path
 
       // 3. Télécharger le fichier avec suivi de progression
       const { error: uploadError } = await supabase.storage
-        .from('videos')
+        .from(\'videos\')
         .upload(filePath, file, {
-          cacheControl: '3600',
+          cacheControl: \'3600\',
           upsert: false,
           onUploadProgress: (progress) => {
             const percent = Math.round((progress.loaded / progress.total) * 100);
@@ -114,7 +114,8 @@ const VideoUpload = () => {
         .update({ 
           storage_path: storagePath,
           file_path: storagePath, // Pour compatibilité avec le code existant
-          status: toDatabaseStatus(VIDEO_STATUS.UPLOADED)
+          status: toDatabaseStatus(VIDEO_STATUS.UPLOADED),
+          original_file_path: filePath // Ajouter original_file_path ici
         })
         .eq('id', videoData.id);
 
