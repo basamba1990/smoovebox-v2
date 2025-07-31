@@ -18,13 +18,13 @@ export const uploadVideo = async (file, userId, metadata, onProgress) => {
     // Générer un nom de fichier unique
     const fileExt = file.name.split('.').pop();
     const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
-    const filePath = `uploads/${userId}/${fileName}`;
+    const filePath = `videos/${userId}/${fileName}`;
 
     // Télécharger le fichier vers le stockage
     const { error: uploadError, data } = await supabase.storage
-      .from('videos')
+      .from(\'videos\')
       .upload(filePath, file, {
-        cacheControl: '3600',
+        cacheControl: \'3600\',
         upsert: false,
         onUploadProgress: (progress) => {
           if (onProgress) {
@@ -40,16 +40,18 @@ export const uploadVideo = async (file, userId, metadata, onProgress) => {
 
     // Créer un enregistrement dans la table videos
     const { error: dbError, data: video } = await supabase
-      .from('videos')
+      .from(\'videos\')
       .insert([
         {
           user_id: userId,
           title: metadata.title || file.name,
-          description: metadata.description || '',
+          description: metadata.description || \'\',
           original_file_path: filePath,
           file_size: file.size,
           file_type: file.type,
-          status: 'PENDING',
+          status: \'PENDING\',
+          storage_path: filePath, // Utiliser filePath comme storage_path
+          file_path: filePath // Utiliser filePath comme file_path pour compatibilité
         },
       ])
       .select()
