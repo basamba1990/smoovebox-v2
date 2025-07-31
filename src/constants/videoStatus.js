@@ -1,23 +1,29 @@
 // src/constants/videoStatus.js
+
 // Constantes pour les statuts vidéo alignées avec les valeurs de la base de données
+// La table videos a une contrainte check: status = ANY (ARRAY['processing'::text, 'published'::text, 'draft'::text, 'failed'::text])
 export const VIDEO_STATUS = {
-  PENDING: 'draft',      // Valeur acceptée par la contrainte check de la table videos
-  UPLOADING: 'processing', // Utiliser 'processing' pendant l'upload
-  UPLOADED: 'draft',     // Une fois uploadée mais pas encore traitée
-  PROCESSING: 'processing', // En cours de traitement (transcription, analyse)
-  COMPLETED: 'published', // Traitement terminé avec succès
-  PUBLISHED: 'published', // Alias pour COMPLETED
-  TRANSCRIBED: 'published', // Vidéo avec transcription terminée
-  FAILED: 'failed',      // Échec du traitement
-  ERROR: 'failed'        // Alias pour FAILED
+  // Statuts utilisés dans l'application
+  UPLOADING: 'uploading',
+  READY: 'ready',
+  PROCESSING: 'processing',
+  PUBLISHED: 'published',
+  FAILED: 'failed',
+  ERROR: 'failed',
+  TRANSCRIBED: 'published',
+  
+  // Statuts correspondant aux valeurs de la base de données
+  PENDING: 'draft',
+  UPLOADED: 'draft',
+  COMPLETED: 'published'
 };
 
 // Constantes pour les statuts de transcription
 export const TRANSCRIPTION_STATUS = {
-  PENDING: 'pending',    // En attente de traitement
-  PROCESSING: 'processing', // En cours de traitement
-  COMPLETED: 'completed', // Traitement terminé avec succès
-  ERROR: 'failed'        // Échec du traitement
+  PENDING: 'pending',
+  PROCESSING: 'processing',
+  COMPLETED: 'completed',
+  ERROR: 'failed'
 };
 
 // Fonctions utilitaires pour vérifier les statuts
@@ -50,7 +56,8 @@ export const getStatusLabel = (status) => {
     [VIDEO_STATUS.PUBLISHED]: 'Publiée',
     [VIDEO_STATUS.TRANSCRIBED]: 'Transcrite',
     [VIDEO_STATUS.FAILED]: 'Échec',
-    [VIDEO_STATUS.ERROR]: 'Erreur'
+    [VIDEO_STATUS.ERROR]: 'Erreur',
+    [VIDEO_STATUS.READY]: 'Prête'
   };
   
   return labels[status] || status;
@@ -67,18 +74,11 @@ export const getStatusClass = (status) => {
     [VIDEO_STATUS.PUBLISHED]: 'status-published',
     [VIDEO_STATUS.TRANSCRIBED]: 'status-transcribed',
     [VIDEO_STATUS.FAILED]: 'status-error',
-    [VIDEO_STATUS.ERROR]: 'status-error'
+    [VIDEO_STATUS.ERROR]: 'status-error',
+    [VIDEO_STATUS.READY]: 'status-ready'
   };
   
   return classes[status] || 'status-unknown';
-};
-
-// Vérifier si un statut est valide selon la contrainte check de la base de données
-export const isValidDatabaseStatus = (status) => {
-  // Ces valeurs doivent correspondre exactement à celles définies dans la contrainte check
-  // de la colonne status de la table videos
-  const validStatuses = ['processing', 'published', 'draft', 'failed'];
-  return validStatuses.includes(status);
 };
 
 // Convertir un statut d'application en statut de base de données valide
