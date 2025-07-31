@@ -25,7 +25,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
   global: {
     headers: {
-      'X-Client-Info': 'smoovebox-v2-fixed'
+      'X-Client-Info': 'smoovebox-v2'
     }
   },
   realtime: {
