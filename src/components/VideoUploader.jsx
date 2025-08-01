@@ -2,10 +2,9 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
 
 const UploadPage = () => {
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -68,7 +67,7 @@ const UploadPage = () => {
       const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
       const filePath = `${user.id}/${fileName}`;
       
-      // Uploader le fichier dans le bucket "videos"
+      console.log('Début de l\'upload du fichier:', filePath);
       const { error: uploadError, data } = await supabase.storage
         .from('videos')
         .upload(filePath, file, {
@@ -77,14 +76,18 @@ const UploadPage = () => {
           onUploadProgress: (progress) => {
             const percent = Math.round((progress.loaded / progress.total) * 100);
             setUploadProgress(percent);
+            console.log(`Progression de l\'upload: ${percent}%`);
           },
         });
       
       if (uploadError) {
-        throw new Error(`Erreur lors de l'upload: ${uploadError.message}`);
+        console.error('Erreur Supabase Storage lors de l\'upload:', uploadError);
+        throw new Error(`Erreur lors de l\'upload: ${uploadError.message}`);
       }
+      console.log('Fichier uploadé avec succès dans le stockage Supabase:', data);
       
       // Enregistrer les informations de la vidéo dans la base de données
+      console.log('Enregistrement des informations vidéo dans la base de données...');
       const { data: videoData, error: videoError } = await supabase
         .from('videos')
         .insert({
@@ -92,13 +95,15 @@ const UploadPage = () => {
           title: title,
           description: description,
           storage_path: filePath, // Chemin du fichier dans le stockage Supabase
-          status: 'processing' // Statut initial
+          status: 'PENDING' // Statut initial
         })
         .select();
         
       if (videoError) {
-        throw new Error(`Erreur lors de l'enregistrement de la vidéo: ${videoError.message}`);
+        console.error('Erreur Supabase DB lors de l\'enregistrement de la vidéo:', videoError);
+        throw new Error(`Erreur lors de l\'enregistrement de la vidéo: ${videoError.message}`);
       }
+      console.log('Informations vidéo enregistrées avec succès:', videoData);
       
       toast.success('Vidéo uploadée avec succès et en cours de traitement!');
       
@@ -109,12 +114,13 @@ const UploadPage = () => {
       setUploadProgress(0);
       setUploading(false);
       
-      // Rediriger vers la page des vidéos après un court délai
+      // Afficher un message pour informer l'utilisateur
       setTimeout(() => {
-        navigate('/videos');
+        toast.info('Vous pouvez maintenant voir votre vidéo dans l\'onglet "Mes Vidéos"');
       }, 2000);
       
     } catch (err) {
+      console.error('Erreur générale lors de l\'upload ou de l\'enregistrement:', err);
       toast.error(`Erreur: ${err.message}`);
       setUploading(false);
     }
@@ -187,5 +193,8 @@ const UploadPage = () => {
 };
 
 export default UploadPage;
+
+
+
 
 
