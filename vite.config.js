@@ -37,7 +37,6 @@ export default defineConfig({
         manualChunks: {
           react: ["react", "react-dom"],
           supabase: ["@supabase/supabase-js"],
-          openai: ["openai"],
           ui: ["@radix-ui/react-dialog", "@radix-ui/react-tabs"],
         },
       },
@@ -48,6 +47,6 @@ export default defineConfig({
     strictPort: true,
     open: true,
     host: '0.0.0.0',
-    allowedHosts: ["smoovebox-v2-ok9i3pfat-samba-bas-projects.vercel.app", "smoovebox-v2-git-main-samba-bas-projects.vercel.app", "smoovebox-v2-samba-bas-projects.vercel.app", "https://smoovebox-v2.vercel.app", "smoovebox-*-v2-samba-bas-projects.vercel.app", "5173-i8wktuhtg6hd8ws2xry0r-dded83f9.manusvm.computer", "5173-in3r2nr2ki5dwrk1kwubp-0fe9f55f.manusvm.computer", "5173-i8vyv5qe5dbrxn6i0ay5b-41893f3d.manusvm.computer"],
+    allowedHosts: ["smoovebox-v2-ok9i3pfat-samba-bas-projects.vercel.app", "smoovebox-v2-git-main-samba-bas-projects.vercel.app", "smoovebox-v2-samba-bas-projects.vercel.app", "https://smoovebox-v2.vercel.app", "smoovebox-*-v2-samba-bas-projects.vercel.app", "5173-i7bfrnct909moo19v0zqv-1725487c.manus.computer", "5173-i8wktuhtg6hd8ws2xry0r-dded83f9.manusvm.computer", "5173-in3r2nr2ki5dwrk1kwubp-0fe9f55f.manusvm.computer", "5173-i8vyv5qe5dbrxn6i0ay5b-41893f3d.manusvm.computer"]
   },
 });
