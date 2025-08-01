@@ -358,25 +358,25 @@ function AppContent() {
                                   <Play className="h-5 w-5 text-blue-600" />
                                 </div>
                                 <div>
-                                  <p className="font-medium text-gray-900">{video.title}</p>
-                                  <p className="text-sm text-gray-500">
-                                    {new Date(video.created_at).toLocaleDateString('fr-FR')}
-                                  </p>
+                                  <p className="font-medium text-gray-800">{video.title}</p>
+                                  <p className="text-sm text-gray-500">{new Date(video.created_at).toLocaleDateString()}</p>
                                 </div>
                               </div>
-                              <div className="text-right">
-                                <p className="text-sm font-medium text-gray-900">{video.views} vues</p>
-                                <p className="text-sm text-gray-500">{video.engagement_score}% engagement</p>
+                              <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-1 text-sm text-gray-600">
+                                  <Users className="h-4 w-4" />
+                                  <span>{video.views}</span>
+                                </div>
+                                <div className="flex items-center gap-1 text-sm text-gray-600">
+                                  <TrendingUp className="h-4 w-4" />
+                                  <span>{video.engagement_score}%</span>
+                                </div>
                               </div>
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <div className="text-center py-8">
-                          <Video className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                          <p className="text-gray-500">Aucune vidéo récente</p>
-                          <p className="text-sm text-gray-400 mt-1">Commencez par télécharger votre première vidéo</p>
-                        </div>
+                        <p className="text-gray-500 text-center py-8">Aucune vidéo récente à afficher.</p>
                       )}
                     </div>
                   </div>
@@ -393,78 +393,47 @@ function AppContent() {
             </Tabs>
           </div>
         ) : (
-          // Page d'accueil pour utilisateurs non connectés
-          <div className="text-center py-16">
-            <div className="max-w-3xl mx-auto">
-              <div className="relative mx-auto w-24 h-24 mb-8">
-                <div className="w-full h-full bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center">
-                  <Video className="text-white h-12 w-12" />
-                </div>
-              </div>
-              
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-4">
-                Bienvenue sur SpotBulle
-              </h1>
-              
-              <p className="text-xl text-gray-600 mb-8">
-                Plateforme d'analyse IA pour vos pitchs vidéo
-              </p>
-              
-              <div className="grid md:grid-cols-3 gap-6 mb-12">
-                <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg">
-                  <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-                    <Upload className="text-blue-600 h-6 w-6" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-2">Upload facile</h3>
-                  <p className="text-gray-600 text-sm">Téléchargez vos vidéos en quelques clics</p>
-                </div>
-                
-                <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg">
-                  <div className="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-                    <BarChart3 className="text-purple-600 h-6 w-6" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-2">Analyse IA</h3>
-                  <p className="text-gray-600 text-sm">Obtenez des insights détaillés sur vos pitchs</p>
-                </div>
-                
-                <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg">
-                  <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-                    <FileText className="text-green-600 h-6 w-6" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-2">Transcription</h3>
-                  <p className="text-gray-600 text-sm">Transcription automatique de vos vidéos</p>
-                </div>
-              </div>
-              
-              <div className="flex justify-center gap-4">
-                <Button 
-                  onClick={() => setIsAuthModalOpen(true)}
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-3 rounded-lg font-medium transition-all duration-200 shadow-lg hover:shadow-xl"
-                >
-                  Commencer maintenant
-                </Button>
-                
-                <Button 
-                  variant="outline"
-                  onClick={() => setIsAuthModalOpen(true)}
-                  className="border border-gray-300 hover:bg-blue-50 hover:border-blue-200 text-gray-700 px-8 py-3 rounded-lg font-medium transition-all duration-200"
-                >
-                  Se connecter
-                </Button>
-              </div>
+          <div className="text-center py-20">
+            <h2 className="text-3xl font-bold text-gray-800 mb-4">Bienvenue sur SpotBulle</h2>
+            <p className="text-lg text-gray-600 mb-8">Connectez-vous ou inscrivez-vous pour commencer à analyser vos vidéos.</p>
+            <Button 
+              size="lg"
+              onClick={() => setIsAuthModalOpen(true)}
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl"
+            >
+              Commencer
+            </Button>
+          </div>
+        )}
+
+        {/* Affichage des erreurs Supabase ou d'authentification */}
+        {(supabaseError || authError) && (
+          <div className="fixed bottom-4 right-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 z-50">
+            <AlertTriangle className="h-5 w-5" />
+            <div>
+              <p className="font-semibold">Erreur de connexion</p>
+              <p className="text-sm">{supabaseError || authError?.message || 'Une erreur inconnue est survenue.'}</p>
             </div>
+            {connectionStatus === 'disconnected' && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleRetryConnection}
+                className="text-red-700 hover:bg-red-100"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Réessayer
+              </Button>
+            )}
           </div>
         )}
       </main>
 
-      {/* Modal d'authentification */}
-      {isAuthModalOpen && (
-        <AuthModal
-          isOpen={isAuthModalOpen}
-          onClose={() => setIsAuthModalOpen(false)}
-          onSuccess={handleAuthSuccess}
-        />
-      )}
+      <AuthModal 
+        isOpen={isAuthModalOpen} 
+        onClose={() => setIsAuthModalOpen(false)} 
+        onAuthSuccess={handleAuthSuccess} 
+      />
     </div>
   );
 }
@@ -480,3 +449,5 @@ function App() {
 }
 
 export default App;
+
+
