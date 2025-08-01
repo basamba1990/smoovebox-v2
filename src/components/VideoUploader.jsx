@@ -1,4 +1,4 @@
-// src/components/VideoUpload.jsx
+// src/components/VideoUploader.jsx
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabase';
 import { VIDEO_STATUS, toDatabaseStatus } from '../constants/videoStatus';
 import { FiUpload, FiX } from 'react-icons/fi';
 
-const VideoUpload = () => {
+const VideoUploader = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [file, setFile] = useState(null);
@@ -275,4 +275,4 @@ const VideoUpload = () => {
   );
 };
 
-export default VideoUpload;
+export default VideoUploader;
