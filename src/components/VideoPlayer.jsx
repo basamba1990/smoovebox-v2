@@ -3,9 +3,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Play, Pause, Volume2, VolumeX, Maximize, SkipBack, SkipForward } from 'lucide-react';
 import { Slider } from './ui/slider';
 import { Button } from './ui/button';
-import { supabase } from '../lib/supabase';
 
-const VideoPlayer = ({ video }) => {
+const VideoPlayer = ({ url }) => {
   const videoRef = useRef(null);
   const containerRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -17,64 +16,6 @@ const VideoPlayer = ({ video }) => {
   const [showControls, setShowControls] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [videoUrl, setVideoUrl] = useState(null);
-  
-  // Fonction pour générer l'URL publique de la vidéo
-  const getPublicUrl = (storagePath) => {
-    if (!storagePath) return null;
-    
-    try {
-      // Extraire le projectRef de l'URL Supabase
-      const url = new URL(import.meta.env.VITE_SUPABASE_URL);
-      const projectRef = url.hostname.split('.')[0];
-      
-      // Supprimer le préfixe "videos/" si présent
-      const cleanPath = storagePath.replace(/^videos\//, '');
-      
-      return `https://${projectRef}.supabase.co/storage/v1/object/public/videos/${cleanPath}`;
-    } catch (e) {
-      console.error("Erreur de construction de l'URL:", e);
-      return null;
-    }
-  };
-  
-  // Charger l'URL de la vidéo
-  useEffect(() => {
-    const loadVideoUrl = async () => {
-      if (video) {
-        setIsLoading(true);
-        setError(null);
-        
-        // 1. Utiliser d'abord l'URL publique
-        const publicUrl = getPublicUrl(video.storage_path);
-        if (publicUrl) {
-          setVideoUrl(publicUrl);
-          return;
-        }
-        
-        // 2. Fallback: URL signée si nécessaire (pour les buckets privés)
-        try {
-          const { data, error } = await supabase.storage
-            .from('videos')
-            .createSignedUrl(video.storage_path, 3600); // 1 heure de validité
-
-          if (data?.signedUrl) {
-            setVideoUrl(data.signedUrl);
-          } else if (error) {
-            console.error("Erreur URL signée:", error);
-            setError("Impossible de charger la vidéo");
-            setIsLoading(false);
-          }
-        } catch (err) {
-          console.error("Erreur URL signée:", err);
-          setError("Erreur de chargement de la vidéo");
-          setIsLoading(false);
-        }
-      }
-    };
-    
-    loadVideoUrl();
-  }, [video]);
   
   // Contrôle de la lecture
   const togglePlay = () => {
@@ -83,7 +24,7 @@ const VideoPlayer = ({ video }) => {
         videoRef.current.pause();
       } else {
         videoRef.current.play().catch(err => {
-          setError("Impossible de lire la vidéo. Format non supporté?");
+          setError("Impossible de lire la vidéo. Vérifiez que le format est supporté par votre navigateur.");
           console.error("Erreur de lecture:", err);
         });
       }
@@ -183,7 +124,6 @@ const VideoPlayer = ({ video }) => {
       };
       const handleWaiting = () => setIsLoading(true);
       const handlePlaying = () => setIsLoading(false);
-      const handleEnded = () => setIsPlaying(false);
       
       // Ajouter les écouteurs d'événements
       video.addEventListener('play', handlePlay);
@@ -194,7 +134,6 @@ const VideoPlayer = ({ video }) => {
       video.addEventListener('waiting', handleWaiting);
       video.addEventListener('playing', handlePlaying);
       video.addEventListener('timeupdate', handleTimeUpdate);
-      video.addEventListener('ended', handleEnded);
       
       // Nettoyer les écouteurs d'événements
       return () => {
@@ -206,10 +145,9 @@ const VideoPlayer = ({ video }) => {
         video.removeEventListener('waiting', handleWaiting);
         video.removeEventListener('playing', handlePlaying);
         video.removeEventListener('timeupdate', handleTimeUpdate);
-        video.removeEventListener('ended', handleEnded);
       };
     }
-  }, [videoUrl]);
+  }, []);
   
   // Gestion de l'affichage des contrôles
   useEffect(() => {
@@ -226,23 +164,23 @@ const VideoPlayer = ({ video }) => {
       }, 3000);
     };
     
-    const handleMouseLeave = () => {
-      if (isPlaying) {
-        setShowControls(false);
-      }
-    };
-    
     const container = containerRef.current;
     if (container) {
       container.addEventListener('mousemove', handleMouseMove);
-      container.addEventListener('mouseleave', handleMouseLeave);
-      container.addEventListener('mouseenter', () => setShowControls(true));
+      container.addEventListener('mouseleave', () => {
+        if (isPlaying) {
+          setShowControls(false);
+        }
+      });
+      container.addEventListener('mouseenter', () => {
+        setShowControls(true);
+      });
     }
     
     return () => {
       if (container) {
         container.removeEventListener('mousemove', handleMouseMove);
-        container.removeEventListener('mouseleave', handleMouseLeave);
+        container.removeEventListener('mouseleave', () => {});
         container.removeEventListener('mouseenter', () => {});
       }
       clearTimeout(timeout);
@@ -252,7 +190,8 @@ const VideoPlayer = ({ video }) => {
   // Gestion des raccourcis clavier
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (['INPUT', 'TEXTAREA', 'BUTTON'].includes(document.activeElement.tagName)) {
+      if (document.activeElement.tagName === 'INPUT' || 
+          document.activeElement.tagName === 'TEXTAREA') {
         return;
       }
       
@@ -309,37 +248,22 @@ const VideoPlayer = ({ video }) => {
     };
   }, []);
 
-  // Si pas de vidéo fournie
-  if (!video) {
-    return (
-      <div className="w-full aspect-video bg-gray-200 rounded-lg flex items-center justify-center">
-        <p className="text-gray-500">Aucune vidéo sélectionnée</p>
-      </div>
-    );
-  }
-
   return (
     <div 
       ref={containerRef}
-      className={`relative rounded-lg overflow-hidden bg-black mb-4 ${
+      className={`relative rounded-lg overflow-hidden bg-black ${
         isFullscreen ? 'w-full h-full' : 'w-full aspect-video'
       }`}
       onDoubleClick={toggleFullscreen}
     >
       {/* Vidéo */}
-      {videoUrl ? (
-        <video
-          ref={videoRef}
-          src={videoUrl}
-          className="w-full h-full"
-          onClick={togglePlay}
-          playsInline
-        />
-      ) : (
-        <div className="w-full h-full flex items-center justify-center">
-          <p className="text-white">Chargement de la vidéo...</p>
-        </div>
-      )}
+      <video
+        ref={videoRef}
+        src={url}
+        className="w-full h-full"
+        onClick={togglePlay}
+        playsInline
+      />
       
       {/* Overlay pour les erreurs */}
       {error && (
@@ -347,12 +271,6 @@ const VideoPlayer = ({ video }) => {
           <div className="text-white text-center p-4">
             <p className="text-red-400 font-semibold mb-2">Erreur</p>
             <p>{error}</p>
-            <button 
-              className="mt-2 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
-              onClick={() => window.location.reload()}
-            >
-              Réessayer
-            </button>
           </div>
         </div>
       )}
@@ -365,7 +283,7 @@ const VideoPlayer = ({ video }) => {
       )}
       
       {/* Bouton de lecture central */}
-      {!isPlaying && showControls && !isLoading && !error && videoUrl && (
+      {!isPlaying && showControls && !isLoading && !error && (
         <div 
           className="absolute inset-0 flex items-center justify-center cursor-pointer"
           onClick={togglePlay}
@@ -377,102 +295,100 @@ const VideoPlayer = ({ video }) => {
       )}
       
       {/* Contrôles */}
-      {videoUrl && (
-        <div 
-          className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent px-4 py-2 transition-opacity duration-300 ${
-            showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
-        >
-          {/* Timeline */}
-          <div className="mb-2">
-            <Slider
-              value={[currentTime]}
-              min={0}
-              max={duration || 100}
-              step={0.1}
-              onValueChange={handleSeek}
-              className="cursor-pointer"
-            />
-          </div>
-          
-          {/* Contrôles principaux */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
+      <div 
+        className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent px-4 py-2 transition-opacity duration-300 ${
+          showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        {/* Timeline */}
+        <div className="mb-2">
+          <Slider
+            value={[currentTime]}
+            min={0}
+            max={duration || 100}
+            step={0.1}
+            onValueChange={handleSeek}
+            className="cursor-pointer"
+          />
+        </div>
+        
+        {/* Contrôles principaux */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="text-white hover:bg-white hover:bg-opacity-20 p-1 h-auto"
+              onClick={togglePlay}
+            >
+              {isPlaying ? (
+                <Pause className="h-5 w-5" />
+              ) : (
+                <Play className="h-5 w-5" />
+              )}
+            </Button>
+            
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="text-white hover:bg-white hover:bg-opacity-20 p-1 h-auto"
+              onClick={skipBackward}
+            >
+              <SkipBack className="h-5 w-5" />
+            </Button>
+            
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="text-white hover:bg-white hover:bg-opacity-20 p-1 h-auto"
+              onClick={skipForward}
+            >
+              <SkipForward className="h-5 w-5" />
+            </Button>
+            
+            <div className="flex items-center space-x-2 group relative">
               <Button 
                 variant="ghost" 
                 size="sm" 
                 className="text-white hover:bg-white hover:bg-opacity-20 p-1 h-auto"
-                onClick={togglePlay}
+                onClick={toggleMute}
               >
-                {isPlaying ? (
-                  <Pause className="h-5 w-5" />
+                {isMuted ? (
+                  <VolumeX className="h-5 w-5" />
                 ) : (
-                  <Play className="h-5 w-5" />
+                  <Volume2 className="h-5 w-5" />
                 )}
               </Button>
               
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="text-white hover:bg-white hover:bg-opacity-20 p-1 h-auto"
-                onClick={skipBackward}
-              >
-                <SkipBack className="h-5 w-5" />
-              </Button>
-              
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="text-white hover:bg-white hover:bg-opacity-20 p-1 h-auto"
-                onClick={skipForward}
-              >
-                <SkipForward className="h-5 w-5" />
-              </Button>
-              
-              <div className="flex items-center space-x-2 group relative">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="text-white hover:bg-white hover:bg-opacity-20 p-1 h-auto"
-                  onClick={toggleMute}
-                >
-                  {isMuted ? (
-                    <VolumeX className="h-5 w-5" />
-                  ) : (
-                    <Volume2 className="h-5 w-5" />
-                  )}
-                </Button>
-                
-                <div className="hidden group-hover:block absolute bottom-full left-0 mb-2 bg-black bg-opacity-70 p-2 rounded-md w-24">
-                  <Slider
-                    value={[isMuted ? 0 : volume]}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    onValueChange={handleVolumeChange}
-                    className="cursor-pointer"
-                  />
-                </div>
+              <div className="hidden group-hover:block absolute bottom-full left-0 mb-2 bg-black bg-opacity-70 p-2 rounded-md w-24">
+                <Slider
+                  value={[isMuted ? 0 : volume]}
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  onValueChange={handleVolumeChange}
+                  className="cursor-pointer"
+                />
               </div>
-              
-              <span className="text-white text-xs">
-                {formatTime(currentTime)} / {formatTime(duration)}
-              </span>
             </div>
             
-            <div>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="text-white hover:bg-white hover:bg-opacity-20 p-1 h-auto"
-                onClick={toggleFullscreen}
-              >
-                <Maximize className="h-5 w-5" />
-              </Button>
-            </div>
+            <span className="text-white text-xs">
+              {formatTime(currentTime)} / {formatTime(duration)}
+            </span>
+          </div>
+          
+          <div>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="text-white hover:bg-white hover:bg-opacity-20 p-1 h-auto"
+              onClick={toggleFullscreen}
+            >
+              <Maximize className="h-5 w-5" />
+            </Button>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };
