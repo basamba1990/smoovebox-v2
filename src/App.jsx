@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider } from './context/AuthContext.jsx';
 import AuthModal from './AuthModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
-import UploadVideoMobile from './components/UploadVideoMobile.jsx';
-import TranscriptionViewer from './components/TranscriptionViewer.jsx';
+import VideoManagement from './pages/VideoManagement.jsx';
+import UploadPage from './components/VideoUploader.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { Button } from './components/ui/button.jsx';
@@ -282,7 +282,7 @@ function AppContent() {
             {/* Tabs avec design moderne */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <div className="flex justify-center mb-8">
-                <TabsList className="grid grid-cols-3 bg-white/60 backdrop-blur-sm border border-white/20 shadow-lg rounded-xl p-1">
+                <TabsList className="grid grid-cols-2 bg-white/60 backdrop-blur-sm border border-white/20 shadow-lg rounded-xl p-1">
                   <TabsTrigger 
                     value="dashboard" 
                     className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white transition-all duration-200 rounded-lg"
@@ -291,18 +291,11 @@ function AppContent() {
                     <span className="hidden sm:inline">Dashboard</span>
                   </TabsTrigger>
                   <TabsTrigger 
-                    value="upload" 
+                    value="videos" 
                     className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white transition-all duration-200 rounded-lg"
                   >
-                    <Upload className="h-4 w-4" />
-                    <span className="hidden sm:inline">Upload</span>
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="transcription" 
-                    className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white transition-all duration-200 rounded-lg"
-                  >
-                    <FileText className="h-4 w-4" />
-                    <span className="hidden sm:inline">Analyse IA</span>
+                    <Video className="h-4 w-4" />
+                    <span className="hidden sm:inline">Mes Vidéos</span>
                   </TabsTrigger>
                 </TabsList>
               </div>
@@ -340,6 +333,10 @@ function AppContent() {
                 )}
               </TabsContent>
 
+              <TabsContent value="videos" className="space-y-8">
+                <VideoManagement />
+              </TabsContent>
+
               <TabsContent value="upload" className="space-y-8">
                 <div className="text-center mb-8">
                   <div className="inline-flex items-center gap-3 mb-4">
@@ -352,14 +349,10 @@ function AppContent() {
                   </div>
                   <p className="text-gray-600 max-w-2xl mx-auto leading-relaxed">
                     Uploadez vos pitchs vidéo avec compression automatique et optimisation mobile. 
-                    Notre IA analysera automatiquement votre contenu pour vous fournir des suggestions d'amélioration.
+                    Notre IA analysera automatiquement votre contenu pour vous fournir des suggestions d\amélioration.
                   </p>
                 </div>
-                <div className="flex justify-center">
-                  <div className="w-full max-w-lg">
-                    <UploadVideoMobile />
-                  </div>
-                </div>
+                <UploadPage />
               </TabsContent>
 
               <TabsContent value="transcription" className="space-y-8">
@@ -373,7 +366,7 @@ function AppContent() {
                     </h2>
                   </div>
                   <p className="text-gray-600 max-w-2xl mx-auto leading-relaxed">
-                    Transcription automatique et suggestions d'amélioration par intelligence artificielle. 
+                    Transcription automatique et suggestions d\amélioration par intelligence artificielle. 
                     Découvrez comment optimiser vos présentations grâce à notre analyse avancée.
                   </p>
                 </div>
@@ -430,4 +423,3 @@ function App() {
 }
 
 export default App;
-
