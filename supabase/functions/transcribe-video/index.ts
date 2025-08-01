@@ -1,21 +1,37 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
+// Headers CORS pour toutes les réponses
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
 Deno.serve(async (req) => {
+  // Gérer les requêtes OPTIONS (preflight)
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { 
+      headers: corsHeaders,
+      status: 200 
+    });
+  }
+
   let video_id;
   try {
     // 1. Récupération et validation des données
-    const { video_id: requestVideoId } = await req.json();
-    if (!requestVideoId) {
+    const { videoId, videoUrl } = await req.json();
+    if (!videoId || !videoUrl) {
       return new Response(JSON.stringify({
-        error: 'video_id requis'
+        error: 'videoId et videoUrl requis'
       }), {
         status: 400,
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          ...corsHeaders
         }
       });
     }
-    video_id = requestVideoId;
+    video_id = videoId;
 
     // 2. Création du client Supabase avec authentification
     // Utiliser le token d'authentification de la requête pour respecter les RLS
@@ -25,7 +41,10 @@ Deno.serve(async (req) => {
         error: 'Authentification requise'
       }), {
         status: 401,
-        headers: { "Content-Type": "application/json" }
+        headers: { 
+          "Content-Type": "application/json",
+          ...corsHeaders 
+        }
       });
     }
 
@@ -48,7 +67,7 @@ Deno.serve(async (req) => {
     // 3. Récupération des informations de la vidéo
     const { data: videoData, error: fetchError } = await supabase
       .from('videos')
-      .select('id, file_path, storage_path, user_id, title')
+      .select('id, storage_path, user_id, title')
       .eq('id', video_id)
       .single();
 
@@ -56,42 +75,27 @@ Deno.serve(async (req) => {
       throw new Error(`Vidéo introuvable: ${fetchError?.message || 'Aucune donnée'}`);
     }
 
-    // 4. Construction du chemin de stockage correct
-    const storagePath = videoData.storage_path || videoData.file_path;
-    if (!storagePath) {
-      throw new Error('Chemin de stockage non défini pour cette vidéo');
-    }
-
-    // 5. Mise à jour du statut en "processing"
+    // 4. Mise à jour du statut en "processing"
     await adminSupabase.from('videos')
       .update({
         status: 'processing',
         transcription_attempts: adminSupabase.rpc('increment', {
           row_id: video_id,
           table_name: 'videos',
-          column_name: 'transcription_attempts'
+          column_name: 'transcription_attempts',
+          default_value: 0
         })
       })
       .eq('id', video_id);
 
-    // 6. Récupération de l'URL signée pour accéder au fichier
-    const { data: signedUrlData, error: signedUrlError } = await adminSupabase
-      .storage
-      .from(storagePath.split('/')[0]) // Bucket name
-      .createSignedUrl(storagePath.split('/').slice(1).join('/'), 60); // Path inside bucket, 60 seconds expiry
-
-    if (signedUrlError || !signedUrlData?.signedUrl) {
-      throw new Error(`Impossible d'obtenir l'URL signée: ${signedUrlError?.message || 'URL non générée'}`);
-    }
-
-    // 7. Téléchargement de la vidéo
-    const videoResponse = await fetch(signedUrlData.signedUrl);
+    // 5. Téléchargement de la vidéo depuis l'URL fournie
+    const videoResponse = await fetch(videoUrl);
     if (!videoResponse.ok) {
       throw new Error(`Échec du téléchargement vidéo: ${videoResponse.status}`);
     }
     const videoBlob = await videoResponse.blob();
 
-    // 8. Transcription avec Whisper
+    // 6. Transcription avec Whisper
     const formData = new FormData();
     formData.append('file', videoBlob, 'video.mp4');
     formData.append('model', 'whisper-1');
@@ -113,13 +117,14 @@ Deno.serve(async (req) => {
 
     const transcriptionResult = await whisperResponse.json();
 
-    // 9. Mise à jour de la vidéo avec la transcription
+    // 7. Mise à jour de la vidéo avec la transcription
     const { error: updateError } = await adminSupabase
       .from('videos')
       .update({
-        transcription: transcriptionResult,
+        transcription: transcriptionResult.text,
         processed_at: new Date().toISOString(),
-        status: 'published'
+        status: 'published',
+        transcription_data: transcriptionResult
       })
       .eq('id', video_id);
 
@@ -127,26 +132,31 @@ Deno.serve(async (req) => {
       throw new Error(`Erreur lors de la mise à jour de la vidéo: ${updateError.message}`);
     }
 
-    // 10. Création d'une entrée dans la table transcriptions
-    const { error: transcriptionError } = await adminSupabase
-      .from('transcriptions')
-      .insert({
-        video_id: video_id,
-        language: transcriptionResult.language || 'fr',
-        full_text: transcriptionResult.text,
-        segments: transcriptionResult.segments || null,
-        user_id: videoData.user_id,
-        confidence_score: transcriptionResult.segments ? 
-          calculateAverageConfidence(transcriptionResult.segments) : null,
-        transcription_text: transcriptionResult.text
-      });
+    // 8. Création d'une entrée dans la table transcriptions si elle existe
+    try {
+      const { error: transcriptionError } = await adminSupabase
+        .from('transcriptions')
+        .insert({
+          video_id: video_id,
+          language: transcriptionResult.language || 'fr',
+          full_text: transcriptionResult.text,
+          segments: transcriptionResult.segments || null,
+          user_id: videoData.user_id,
+          confidence_score: transcriptionResult.segments ? 
+            calculateAverageConfidence(transcriptionResult.segments) : null,
+          transcription_text: transcriptionResult.text
+        });
 
-    if (transcriptionError) {
-      console.error("Erreur lors de la création de l'entrée transcription:", transcriptionError);
-      // On continue même si cette étape échoue
+      if (transcriptionError) {
+        console.error("Erreur lors de la création de l'entrée transcription:", transcriptionError);
+        // On continue même si cette étape échoue
+      }
+    } catch (transcriptionTableError) {
+      console.error("La table transcriptions n'existe peut-être pas:", transcriptionTableError);
+      // On ignore cette erreur si la table n'existe pas
     }
 
-    // 11. Générer une analyse AI de la transcription
+    // 9. Générer une analyse AI de la transcription
     let analysisResult = null;
     try {
       analysisResult = await generateAnalysis(transcriptionResult.text, videoData.title);
@@ -171,13 +181,14 @@ Deno.serve(async (req) => {
       has_analysis: !!analysisResult
     }), {
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...corsHeaders
       }
     });
   } catch (error) {
     console.error("Erreur de transcription:", error);
     
-    // 12. Gestion des erreurs avec mise à jour du statut
+    // 10. Gestion des erreurs avec mise à jour du statut
     if (video_id) {
       try {
         const errorSupabase = createClient(
@@ -203,7 +214,8 @@ Deno.serve(async (req) => {
     }), {
       status: 500,
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...corsHeaders
       }
     });
   }
@@ -227,7 +239,7 @@ async function generateAnalysis(transcriptionText, videoTitle) {
   }
   
   const prompt = `
-    Analyse la transcription suivante d'une vidéo intitulée "${videoTitle}".
+    Analyse la transcription suivante d'une vidéo intitulée "${videoTitle || 'Sans titre'}".
     
     TRANSCRIPTION:
     ${transcriptionText.substring(0, 4000)} ${transcriptionText.length > 4000 ? '...(tronqué)' : ''}
@@ -298,5 +310,5 @@ async function generateAnalysis(transcriptionText, videoTitle) {
   } catch (error) {
     console.error("Erreur lors de l'analyse OpenAI:", error);
     return null;
-  }
+  } 
 }
