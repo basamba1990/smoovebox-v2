@@ -1,4 +1,3 @@
-// setup-database.ts - Version corrigée avec headers CORS
 import { createClient } from 'npm:@supabase/supabase-js@2.38.4';
 
 // Headers CORS pour toutes les réponses
@@ -77,6 +76,7 @@ Deno.serve(async (req) => {
       console.log('La table videos n\'existe pas, création...');
       
       // Créer la table videos avec toutes les colonnes nécessaires
+      // CORRECTION: Changement de 'PENDING' à 'processing' pour être cohérent avec la contrainte existante
       const { error: createError } = await supabaseAdmin.rpc('exec_sql', {
         sql: `
           CREATE TABLE IF NOT EXISTS public.videos (
@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
             description TEXT,
             storage_path TEXT NOT NULL,
             public_url TEXT,
-            status TEXT NOT NULL DEFAULT 'PENDING',
+            status TEXT NOT NULL DEFAULT 'processing',
             views INTEGER DEFAULT 0,
             engagement_score FLOAT DEFAULT 0,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
