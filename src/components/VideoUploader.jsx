@@ -159,7 +159,7 @@ const VideoUploader = () => {
         title: title,
         description: description,
         storage_path: filePath,
-        status: 'PENDING'
+        status: 'pending'
       };
       
       // Ajouter public_url si possible
