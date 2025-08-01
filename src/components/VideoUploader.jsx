@@ -1,4 +1,3 @@
-// src/components/VideoUploader.jsx - Version corrigée
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -153,13 +152,13 @@ const VideoUploader = () => {
       // Enregistrer les informations de la vidéo dans la base de données
       console.log('Enregistrement des informations vidéo dans la base de données...');
       
-      // Approche simplifiée : essayer d'insérer directement sans configuration préalable
+      // CORRECTION: Utiliser 'processing' au lieu de 'PENDING' pour respecter la contrainte
       const videoData = {
         user_id: user.id,
         title: title,
         description: description,
         storage_path: filePath,
-        status: 'processing'
+        status: 'processing' // Valeur correcte selon la contrainte de la base de données
       };
       
       // Ajouter public_url si possible
