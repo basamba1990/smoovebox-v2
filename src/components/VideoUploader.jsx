@@ -1,4 +1,4 @@
-// src/components/VideoUploader.jsx
+// src/components/VideoUploader.jsx - Version corrigée
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -31,13 +31,15 @@ const VideoUploader = () => {
           return;
         }
         
-        // Appeler l'Edge Function pour configurer la base de données
+        // Appeler l'Edge Function pour configurer la base de données avec gestion CORS
         const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/setup-database`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
-          }
+            'Authorization': `Bearer ${session.access_token}`,
+            'Accept': 'application/json',
+          },
+          mode: 'cors', // Explicitement spécifier le mode CORS
         });
         
         const result = await response.json();
@@ -49,6 +51,8 @@ const VideoUploader = () => {
         }
       } catch (err) {
         console.error('Erreur lors de la configuration de la base de données:', err);
+        // Ne pas bloquer l'interface si la configuration échoue
+        console.log('Continuons sans la configuration automatique de la base de données');
       } finally {
         setIsSettingUp(false);
       }
@@ -119,7 +123,7 @@ const VideoUploader = () => {
       
       console.log('Début de l\'upload du fichier:', filePath);
       
-      // Upload du fichier
+      // Upload du fichier directement vers Supabase Storage
       const { error: uploadError, data } = await supabase.storage
         .from('videos')
         .upload(filePath, file, {
@@ -149,35 +153,32 @@ const VideoUploader = () => {
       // Enregistrer les informations de la vidéo dans la base de données
       console.log('Enregistrement des informations vidéo dans la base de données...');
       
-      // Vérifier si la colonne public_url existe
+      // Approche simplifiée : essayer d'insérer directement sans configuration préalable
+      const videoData = {
+        user_id: user.id,
+        title: title,
+        description: description,
+        storage_path: filePath,
+        status: 'PENDING'
+      };
+      
+      // Ajouter public_url si possible
       try {
-        const { data: videoData, error: videoError } = await supabase
+        const { data: insertData, error: insertError } = await supabase
           .from('videos')
           .insert({
-            user_id: user.id,
-            title: title,
-            description: description,
-            storage_path: filePath,
-            public_url: publicUrl,
-            status: 'PENDING'
+            ...videoData,
+            public_url: publicUrl
           })
           .select();
           
-        if (videoError) {
-          console.error('Erreur Supabase DB lors de l\'enregistrement de la vidéo:', videoError);
-          
+        if (insertError) {
           // Si l'erreur concerne la colonne public_url, essayer sans cette colonne
-          if (videoError.message && videoError.message.includes('public_url')) {
+          if (insertError.message && insertError.message.includes('public_url')) {
             console.log('Tentative d\'insertion sans la colonne public_url...');
             const { data: fallbackData, error: fallbackError } = await supabase
               .from('videos')
-              .insert({
-                user_id: user.id,
-                title: title,
-                description: description,
-                storage_path: filePath,
-                status: 'PENDING'
-              })
+              .insert(videoData)
               .select();
               
             if (fallbackError) {
@@ -186,15 +187,15 @@ const VideoUploader = () => {
             
             console.log('Informations vidéo enregistrées avec succès (sans public_url):', fallbackData);
           } else {
-            throw new Error(`Erreur lors de l'enregistrement de la vidéo: ${videoError.message}`);
+            throw new Error(`Erreur lors de l'enregistrement de la vidéo: ${insertError.message}`);
           }
         } else {
-          console.log('Informations vidéo enregistrées avec succès:', videoData);
+          console.log('Informations vidéo enregistrées avec succès:', insertData);
         }
       } catch (dbError) {
         console.error('Erreur lors de l\'insertion dans la base de données:', dbError);
         
-        // Essayer de configurer la base de données via l'Edge Function
+        // Essayer de configurer la base de données via l'Edge Function avec gestion d'erreur améliorée
         try {
           console.log('Tentative de configuration de la base de données via Edge Function...');
           
@@ -207,28 +208,26 @@ const VideoUploader = () => {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`
-            }
+              'Authorization': `Bearer ${session.access_token}`,
+              'Accept': 'application/json',
+            },
+            mode: 'cors',
           });
           
-          const result = await response.json();
-          
           if (!response.ok) {
-            throw new Error(`Erreur lors de la configuration de la base de données: ${JSON.stringify(result)}`);
+            const errorText = await response.text();
+            throw new Error(`Erreur HTTP ${response.status}: ${errorText}`);
           }
           
+          const result = await response.json();
           console.log('Configuration de la base de données réussie, nouvelle tentative d\'insertion...');
           
           // Réessayer l'insertion après la configuration
           const { data: retryData, error: retryError } = await supabase
             .from('videos')
             .insert({
-              user_id: user.id,
-              title: title,
-              description: description,
-              storage_path: filePath,
-              public_url: publicUrl,
-              status: 'PENDING'
+              ...videoData,
+              public_url: publicUrl
             })
             .select();
             
@@ -237,13 +236,7 @@ const VideoUploader = () => {
             if (retryError.message && retryError.message.includes('public_url')) {
               const { data: finalData, error: finalError } = await supabase
                 .from('videos')
-                .insert({
-                  user_id: user.id,
-                  title: title,
-                  description: description,
-                  storage_path: filePath,
-                  status: 'PENDING'
-                })
+                .insert(videoData)
                 .select();
                 
               if (finalError) {
@@ -259,7 +252,22 @@ const VideoUploader = () => {
           }
         } catch (setupError) {
           console.error('Erreur lors de la configuration et nouvelle tentative:', setupError);
-          throw new Error(`Échec de la configuration et de l'enregistrement: ${setupError.message}`);
+          
+          // Dernière tentative : essayer d'insérer sans configuration
+          try {
+            const { data: lastResortData, error: lastResortError } = await supabase
+              .from('videos')
+              .insert(videoData)
+              .select();
+              
+            if (lastResortError) {
+              throw new Error(`Échec final de l'enregistrement: ${lastResortError.message}`);
+            }
+            
+            console.log('Informations vidéo enregistrées avec succès (dernière tentative):', lastResortData);
+          } catch (finalError) {
+            throw new Error(`Échec de la configuration et de l'enregistrement: ${finalError.message}`);
+          }
         }
       }
       
