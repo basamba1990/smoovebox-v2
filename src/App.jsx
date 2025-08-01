@@ -8,8 +8,8 @@ import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { Button } from './components/ui/button.jsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs.jsx';
-import { supabase } from './lib/supabase.js';
-import { Video, Upload, BarChart3, FileText, LogOut, AlertTriangle, RefreshCw } from 'lucide-react';
+import { supabase, fetchDashboardData, checkSupabaseConnection } from './lib/supabase.js';
+import { Video, Upload, BarChart3, FileText, LogOut, AlertTriangle, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import './App.css';
 
 function AppContent() {
@@ -19,107 +19,58 @@ function AppContent() {
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState(null);
-  const { user, loading, signOut, profile } = useAuth();
+  const [connectionStatus, setConnectionStatus] = useState('checking');
+  const { user, loading, signOut, profile, error: authError } = useAuth();
 
   // Vérifier la connexion à Supabase avec gestion d'erreur améliorée
   useEffect(() => {
     if (!loading) {
-      const checkSupabaseConnection = async () => {
+      const checkConnection = async () => {
         try {
-          // Test simple de connexion sans requête sur les tables
-          const { data, error } = await supabase.auth.getSession();
+          console.log('Vérification de la connexion Supabase...');
+          const connectionResult = await checkSupabaseConnection();
           
-          if (error) {
-            console.error("Erreur de session Supabase:", error);
-            setSupabaseError("Erreur de connexion à l'authentification");
-            return;
-          }
-
-          // Test de connexion à la base de données (optionnel)
-          try {
-            const { data: testData, error: testError } = await supabase
-              .from('profiles')
-              .select('count')
-              .limit(1);
+          if (connectionResult.connected) {
+            setConnectionStatus('connected');
+            setSupabaseError(null);
             
-            if (testError && testError.code !== 'PGRST116') { // PGRST116 = table not found, acceptable
-              console.warn("Avertissement base de données:", testError);
+            if (connectionResult.error) {
+              console.warn('Connexion avec avertissements:', connectionResult.error);
+              // Ne pas bloquer l'application pour les avertissements
             }
-          } catch (dbError) {
-            console.warn("Base de données non accessible:", dbError);
-            // Ne pas bloquer l'application pour les erreurs de DB
+          } else {
+            setConnectionStatus('error');
+            setSupabaseError(connectionResult.error);
           }
-          
         } catch (error) {
-          console.error("Erreur de connexion Supabase:", error);
-          setSupabaseError("Erreur de configuration Supabase");
+          console.error('Erreur lors de la vérification de connexion:', error);
+          setConnectionStatus('error');
+          setSupabaseError(`Erreur de vérification: ${error.message}`);
         }
       };
       
-      checkSupabaseConnection();
+      checkConnection();
     }
   }, [loading]);
 
   // Récupérer les données du dashboard directement depuis Supabase
-  const fetchDashboardData = async () => {
-    if (!user) return;
+  const loadDashboardData = async () => {
+    if (!user) {
+      console.log('Aucun utilisateur connecté, pas de chargement de données');
+      return;
+    }
     
     try {
       setDashboardLoading(true);
       setDashboardError(null);
       
-      // Récupérer les statistiques des vidéos
-      const { data: videosData, error: videosError } = await supabase
-        .from('videos')
-        .select('id, title, description, created_at, status, thumbnail_url, file_path')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-        
-      if (videosError && videosError.code !== 'PGRST116') {
-        console.error('Erreur vidéos:', videosError);
-      }
+      console.log('Chargement des données dashboard pour:', user.id);
+      const data = await fetchDashboardData(user.id);
       
-      // Récupérer les transcriptions
-      const { data: transcriptionsData, error: transcriptionsError } = await supabase
-        .from('transcriptions')
-        .select('id, confidence_score, created_at')
-        .eq('user_id', user.id);
-      
-      if (transcriptionsError && transcriptionsError.code !== 'PGRST116') {
-        console.error('Erreur transcriptions:', transcriptionsError);
-      }
-      
-      // Calculer les statistiques
-      const videosCount = videosData ? videosData.length : 0;
-      const transcriptionsCount = transcriptionsData ? transcriptionsData.length : 0;
-      
-      // Calculer le score moyen de confiance
-      let averageScore = null;
-      if (transcriptionsData && transcriptionsData.length > 0) {
-        const validScores = transcriptionsData
-          .filter(t => t.confidence_score !== null)
-          .map(t => t.confidence_score);
-        
-        if (validScores.length > 0) {
-          averageScore = Math.round(
-            validScores.reduce((sum, score) => sum + score, 0) / validScores.length
-          );
-        }
-      }
-      
-      // Préparer les données du dashboard
-      const dashboardData = {
-        stats: {
-          videosCount,
-          transcriptionsCount,
-          averageScore
-        },
-        recentVideos: videosData ? videosData.slice(0, 5) : []
-      };
-      
-      setDashboardData(dashboardData);
+      setDashboardData(data);
+      console.log('Données dashboard chargées avec succès:', data);
     } catch (err) {
-      console.error('Erreur dashboard:', err);
+      console.error('Erreur lors du chargement des données dashboard:', err);
       setDashboardError(err.message || 'Erreur lors de la récupération des données');
     } finally {
       setDashboardLoading(false);
@@ -128,87 +79,152 @@ function AppContent() {
 
   // Charger les données du dashboard quand l'utilisateur est connecté ou change d'onglet
   useEffect(() => {
-    if (user && activeTab === 'dashboard') {
-      fetchDashboardData();
+    if (user && activeTab === 'dashboard' && connectionStatus === 'connected') {
+      loadDashboardData();
       
-      // Écouter les changements sur la table 'videos'
+      // Écouter les changements sur la table 'videos' avec gestion d'erreurs
       const videosChannel = supabase
         .channel('videos_changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'videos' }, payload => {
+        .on('postgres_changes', { 
+          event: '*', 
+          schema: 'public', 
+          table: 'videos',
+          filter: `user_id=eq.${user.id}`
+        }, payload => {
           console.log('Changement détecté dans la table videos:', payload);
-          fetchDashboardData(); // Rafraîchir les données du dashboard
+          loadDashboardData(); // Rafraîchir les données du dashboard
         })
-        .subscribe();
+        .subscribe((status) => {
+          console.log('Statut de souscription aux changements videos:', status);
+        });
 
       // Nettoyage à la désinscription
       return () => {
+        console.log('Nettoyage de la souscription aux changements videos');
         supabase.removeChannel(videosChannel);
       };
     }
-  }, [user, activeTab]);
+  }, [user, activeTab, connectionStatus]);
 
   const handleAuthSuccess = (user) => {
-    console.log('User authenticated:', user);
+    console.log('Utilisateur authentifié avec succès:', user.id);
     setIsAuthModalOpen(false);
     // Charger les données du dashboard après connexion réussie
     if (activeTab === 'dashboard') {
-      fetchDashboardData();
+      setTimeout(() => {
+        loadDashboardData();
+      }, 1000); // Délai pour laisser le temps aux triggers de s'exécuter
     }
   };
 
   const handleSignOut = async () => {
     try {
+      console.log('Déconnexion demandée');
       await signOut();
       // Réinitialiser les données du dashboard
       setDashboardData(null);
+      setActiveTab('dashboard'); // Retour au dashboard
     } catch (error) {
       console.error('Erreur de déconnexion:', error);
     }
   };
 
-  // Affichage d'erreur avec plus de détails
-  if (supabaseError) {
+  const handleRetryConnection = async () => {
+    setConnectionStatus('checking');
+    setSupabaseError(null);
+    
+    try {
+      const connectionResult = await checkSupabaseConnection();
+      
+      if (connectionResult.connected) {
+        setConnectionStatus('connected');
+        setSupabaseError(null);
+      } else {
+        setConnectionStatus('error');
+        setSupabaseError(connectionResult.error);
+      }
+    } catch (error) {
+      setConnectionStatus('error');
+      setSupabaseError(`Erreur de reconnexion: ${error.message}`);
+    }
+  };
+
+  // Affichage d'erreur de connexion avec plus de détails et options de récupération
+  if (connectionStatus === 'error' && supabaseError) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="max-w-md mx-auto bg-white p-8 rounded-lg shadow-lg border border-red-200">
-          <div className="flex items-center gap-3 mb-4">
-            <AlertTriangle className="h-8 w-8 text-red-600" />
-            <h2 className="text-xl font-bold text-red-800">Erreur de configuration</h2>
+      <div className="min-h-screen bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50 flex items-center justify-center">
+        <div className="max-w-lg mx-auto bg-white p-8 rounded-xl shadow-2xl border border-red-200">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="relative">
+              <WifiOff className="h-10 w-10 text-red-600" />
+              <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-pulse"></div>
+            </div>
+            <h2 className="text-xl font-bold text-red-800">Erreur de connexion</h2>
           </div>
-          <div className="space-y-3 text-sm text-gray-700">
-            <p>{supabaseError}</p>
-            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-              <p className="text-yellow-800 text-xs">
+          
+          <div className="space-y-4 text-sm text-gray-700">
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+              <p className="font-medium text-red-800 mb-2">Détails de l'erreur :</p>
+              <p className="text-red-700">{supabaseError}</p>
+            </div>
+            
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-yellow-800 text-xs font-medium mb-2">
                 <strong>Solutions possibles :</strong>
               </p>
-              <ul className="text-yellow-800 text-xs mt-2 space-y-1">
-                <li>• Vérifiez les variables d'environnement VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY</li>
+              <ul className="text-yellow-800 text-xs space-y-1">
+                <li>• Vérifiez votre connexion internet</li>
+                <li>• Vérifiez que les variables d'environnement sont correctes</li>
                 <li>• Vérifiez que le projet Supabase est actif</li>
-                <li>• Vérifiez la configuration réseau</li>
+                <li>• Contactez le support si le problème persiste</li>
               </ul>
             </div>
-            <Button 
-              onClick={() => window.location.reload()} 
-              className="w-full mt-4"
-              variant="outline"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Réessayer
-            </Button>
+            
+            <div className="flex gap-3">
+              <Button 
+                onClick={handleRetryConnection} 
+                className="flex-1"
+                disabled={connectionStatus === 'checking'}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${connectionStatus === 'checking' ? 'animate-spin' : ''}`} />
+                {connectionStatus === 'checking' ? 'Vérification...' : 'Réessayer'}
+              </Button>
+              
+              <Button 
+                onClick={() => window.location.reload()} 
+                variant="outline"
+                className="flex-1"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Recharger
+              </Button>
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
-  // Écran de chargement amélioré
-  if (loading) {
+  // Écran de chargement amélioré avec indicateur de statut
+  if (loading || connectionStatus === 'checking') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Chargement de SpotBulle...</p>
-          <p className="text-gray-400 text-sm mt-2">Connexion à la base de données</p>
+          <div className="relative mx-auto w-16 h-16 mb-6">
+            <div className="absolute inset-0 rounded-full border-4 border-blue-200"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-blue-600 border-t-transparent animate-spin"></div>
+          </div>
+          <p className="text-gray-700 font-medium text-lg">Chargement de SpotBulle...</p>
+          <p className="text-gray-500 text-sm mt-2">
+            {connectionStatus === 'checking' ? 'Vérification de la connexion' : 'Initialisation de l\'application'}
+          </p>
+          
+          {connectionStatus === 'connected' && (
+            <div className="flex items-center justify-center gap-2 mt-4 text-green-600">
+              <Wifi className="h-4 w-4" />
+              <span className="text-xs">Connexion établie</span>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -216,7 +232,7 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      {/* Header avec design moderne */}
+      {/* Header avec design moderne et indicateur de statut */}
       <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-white/20 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -232,7 +248,14 @@ function AppContent() {
                 <p className="text-xs text-gray-500 -mt-1">Analyse IA</p>
               </div>
             </div>
+            
             <div className="flex items-center gap-4">
+              {/* Indicateur de statut de connexion */}
+              <div className="hidden sm:flex items-center gap-2 px-2 py-1 rounded-full bg-green-50 border border-green-200">
+                <Wifi className="h-3 w-3 text-green-600" />
+                <span className="text-xs text-green-700">En ligne</span>
+              </div>
+              
               {user ? (
                 <div className="flex items-center gap-4">
                   <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-50 to-purple-50 rounded-full border border-blue-100">
@@ -279,10 +302,21 @@ function AppContent() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {user ? (
           <div className="space-y-8">
+            {/* Affichage des erreurs d'authentification */}
+            {authError && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-600" />
+                  <p className="text-red-800 font-medium">Erreur d'authentification</p>
+                </div>
+                <p className="text-red-700 text-sm mt-1">{authError}</p>
+              </div>
+            )}
+
             {/* Tabs avec design moderne */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <div className="flex justify-center mb-8">
-                <TabsList className="grid grid-cols-2 bg-white/60 backdrop-blur-sm border border-white/20 shadow-lg rounded-xl p-1">
+                <TabsList className="grid grid-cols-3 bg-white/60 backdrop-blur-sm border border-white/20 shadow-lg rounded-xl p-1">
                   <TabsTrigger 
                     value="dashboard" 
                     className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white transition-all duration-200 rounded-lg"
@@ -296,6 +330,13 @@ function AppContent() {
                   >
                     <Video className="h-4 w-4" />
                     <span className="hidden sm:inline">Mes Vidéos</span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="upload" 
+                    className="flex items-center gap-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-500 data-[state=active]:text-white transition-all duration-200 rounded-lg"
+                  >
+                    <Upload className="h-4 w-4" />
+                    <span className="hidden sm:inline">Upload</span>
                   </TabsTrigger>
                 </TabsList>
               </div>
@@ -314,14 +355,14 @@ function AppContent() {
                   <div className="bg-gradient-to-r from-red-50 to-pink-50 border border-red-200 rounded-xl p-8 text-center shadow-lg">
                     <AlertTriangle className="h-12 w-12 text-red-600 mx-auto mb-4" />
                     <h3 className="text-lg font-semibold text-red-800 mb-2">
-                      Erreur de chargement
+                      Erreur de chargement des données
                     </h3>
                     <p className="text-red-700 mb-6">
                       {dashboardError}
                     </p>
                     <Button 
                       variant="outline" 
-                      onClick={fetchDashboardData}
+                      onClick={loadDashboardData}
                       className="flex items-center gap-2 hover:bg-red-50 hover:border-red-300 transition-all duration-200"
                     >
                       <RefreshCw className="h-4 w-4" />
@@ -338,63 +379,28 @@ function AppContent() {
               </TabsContent>
 
               <TabsContent value="upload" className="space-y-8">
-                <div className="text-center mb-8">
-                  <div className="inline-flex items-center gap-3 mb-4">
-                    <div className="p-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl shadow-lg">
-                      <Upload className="h-6 w-6 text-white" />
-                    </div>
-                    <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                      Upload Vidéo
-                    </h2>
-                  </div>
-                  <p className="text-gray-600 max-w-2xl mx-auto leading-relaxed">
-                    Uploadez vos pitchs vidéo avec compression automatique et optimisation mobile. 
-                    Notre IA analysera automatiquement votre contenu pour vous fournir des suggestions d\amélioration.
-                  </p>
-                </div>
                 <UploadPage />
-              </TabsContent>
-
-              <TabsContent value="transcription" className="space-y-8">
-                <div className="text-center mb-8">
-                  <div className="inline-flex items-center gap-3 mb-4">
-                    <div className="p-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl shadow-lg">
-                      <FileText className="h-6 w-6 text-white" />
-                    </div>
-                    <h2 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                      Analyse IA
-                    </h2>
-                  </div>
-                  <p className="text-gray-600 max-w-2xl mx-auto leading-relaxed">
-                    Transcription automatique et suggestions d\amélioration par intelligence artificielle. 
-                    Découvrez comment optimiser vos présentations grâce à notre analyse avancée.
-                  </p>
-                </div>
-                <TranscriptionViewer />
               </TabsContent>
             </Tabs>
           </div>
         ) : (
-          <div className="text-center py-20">
-            <div className="relative mb-8">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-32 h-32 bg-gradient-to-r from-blue-400 to-purple-400 rounded-full opacity-20 animate-pulse"></div>
+          // Page d'accueil pour les utilisateurs non connectés
+          <div className="text-center py-16">
+            <div className="inline-flex items-center gap-3 mb-6">
+              <div className="p-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-2xl shadow-lg">
+                <Video className="h-8 w-8 text-white" />
               </div>
-              <Video className="h-20 w-20 text-blue-600 mx-auto relative z-10" />
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                Bienvenue sur SpotBulle
+              </h1>
             </div>
-            <h2 className="text-4xl font-bold text-gray-900 mb-4">
-              Bienvenue sur{' '}
-              <span className="bg-gradient-to-r from-blue-600 to-indigo-600 text-transparent bg-clip-text">
-                SpotBulle
-              </span>
-            </h2>
-            <p className="text-xl text-gray-600 mb-8">
+            <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed mb-8">
               Votre plateforme de gestion vidéo intelligente
             </p>
             <Button 
               size="lg"
               onClick={() => setIsAuthModalOpen(true)}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl px-8 py-3"
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl text-lg px-8 py-3"
             >
               Commencer maintenant
             </Button>
@@ -402,7 +408,7 @@ function AppContent() {
         )}
       </main>
 
-      {/* Auth Modal */}
+      {/* Modal d'authentification */}
       <AuthModal 
         isOpen={isAuthModalOpen} 
         onClose={() => setIsAuthModalOpen(false)}
@@ -423,3 +429,4 @@ function App() {
 }
 
 export default App;
+
