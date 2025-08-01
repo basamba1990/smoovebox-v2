@@ -1,6 +1,22 @@
-// setup-database.ts
+// setup-database.ts - Version corrigée avec headers CORS
 import { createClient } from 'npm:@supabase/supabase-js@2.38.4';
-Deno.serve(async (req)=>{
+
+// Headers CORS pour toutes les réponses
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+Deno.serve(async (req) => {
+  // Gérer les requêtes OPTIONS (preflight)
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { 
+      headers: corsHeaders,
+      status: 200 
+    });
+  }
+
   try {
     // Récupérer les informations d'authentification
     const authHeader = req.headers.get('Authorization');
@@ -10,19 +26,29 @@ Deno.serve(async (req)=>{
       }), {
         status: 401,
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...corsHeaders
         }
       });
     }
+
     // Créer le client Supabase avec le rôle de service pour avoir les permissions nécessaires
-    const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '', {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
       }
-    });
+    );
+
     // Vérifier si l'utilisateur est authentifié
-    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(authHeader.replace('Bearer ', ''));
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    );
+    
     if (userError || !user) {
       return new Response(JSON.stringify({
         error: 'Utilisateur non authentifié',
@@ -30,17 +56,26 @@ Deno.serve(async (req)=>{
       }), {
         status: 401,
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...corsHeaders
         }
       });
     }
+
     console.log(`Configuration de la base de données demandée par l'utilisateur: ${user.id}`);
+
     // Vérifier si la table videos existe
-    const { error: checkError } = await supabaseAdmin.from('videos').select('id').limit(1);
+    const { error: checkError } = await supabaseAdmin
+      .from('videos')
+      .select('id')
+      .limit(1);
+
     let tableCreated = false;
     let tableUpdated = false;
+
     if (checkError && checkError.code === '42P01') {
       console.log('La table videos n\'existe pas, création...');
+      
       // Créer la table videos avec toutes les colonnes nécessaires
       const { error: createError } = await supabaseAdmin.rpc('exec_sql', {
         sql: `
@@ -75,6 +110,7 @@ Deno.serve(async (req)=>{
             FOR DELETE USING (auth.uid() = user_id);
         `
       });
+
       if (createError) {
         console.error('Erreur lors de la création de la table videos:', createError);
         return new Response(JSON.stringify({
@@ -83,14 +119,17 @@ Deno.serve(async (req)=>{
         }), {
           status: 500,
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            ...corsHeaders
           }
         });
       }
+
       tableCreated = true;
       console.log('Table videos créée avec succès');
     } else {
       console.log('La table videos existe déjà, vérification des colonnes...');
+      
       // Vérifier si la colonne public_url existe
       const { error: columnCheckError } = await supabaseAdmin.rpc('exec_sql', {
         sql: `
@@ -101,12 +140,14 @@ Deno.serve(async (req)=>{
           AND column_name = 'public_url';
         `
       });
+
       // Si la colonne n'existe pas, l'ajouter
       if (columnCheckError) {
         console.log('Ajout de la colonne public_url...');
         const { error: alterError } = await supabaseAdmin.rpc('exec_sql', {
           sql: `ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS public_url TEXT;`
         });
+
         if (alterError) {
           console.error('Erreur lors de l\'ajout de la colonne public_url:', alterError);
           return new Response(JSON.stringify({
@@ -115,27 +156,32 @@ Deno.serve(async (req)=>{
           }), {
             status: 500,
             headers: {
-              'Content-Type': 'application/json'
+              'Content-Type': 'application/json',
+              ...corsHeaders
             }
           });
         }
+
         tableUpdated = true;
         console.log('Colonne public_url ajoutée avec succès');
       }
     }
+
     // Vérifier si le bucket videos existe
     const { data: buckets, error: bucketsError } = await supabaseAdmin.storage.listBuckets();
     let bucketCreated = false;
+
     if (bucketsError) {
       console.error('Erreur lors de la vérification des buckets:', bucketsError);
     } else {
-      const videosBucket = buckets.find((b)=>b.name === 'videos');
+      const videosBucket = buckets.find(b => b.name === 'videos');
       if (!videosBucket) {
         console.log('Création du bucket videos...');
         const { error: createBucketError } = await supabaseAdmin.storage.createBucket('videos', {
           public: true,
           fileSizeLimit: 100 * 1024 * 1024 // 100MB
         });
+
         if (createBucketError) {
           console.error('Erreur lors de la création du bucket videos:', createBucketError);
         } else {
@@ -144,6 +190,7 @@ Deno.serve(async (req)=>{
         }
       }
     }
+
     // Créer une politique de stockage pour permettre l'accès public aux vidéos
     if (bucketCreated) {
       const { error: policyError } = await supabaseAdmin.rpc('exec_sql', {
@@ -171,10 +218,12 @@ Deno.serve(async (req)=>{
           COMMIT;
         `
       });
+
       if (policyError) {
         console.error('Erreur lors de la création des politiques de stockage:', policyError);
       }
     }
+
     return new Response(JSON.stringify({
       success: true,
       message: 'Configuration de la base de données terminée',
@@ -186,9 +235,11 @@ Deno.serve(async (req)=>{
     }), {
       status: 200,
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...corsHeaders
       }
     });
+
   } catch (err) {
     console.error('Erreur lors de la configuration de la base de données:', err);
     return new Response(JSON.stringify({
@@ -197,7 +248,8 @@ Deno.serve(async (req)=>{
     }), {
       status: 500,
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...corsHeaders
       }
     });
   }
