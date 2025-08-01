@@ -6,7 +6,7 @@ import VideoPlayer from '../components/VideoPlayer';
 import VideoAnalysisResults from '../components/VideoAnalysisResults';
 import TranscriptionViewer from '../components/TranscriptionViewer';
 
-const VideosPage = () => {
+const VideoManagement = () => {
   const { user } = useAuth();
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -395,5 +395,5 @@ const VideosPage = () => {
   );
 };
 
-export default VideosPage;
+export default VideoManagement;
 
