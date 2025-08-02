@@ -36,14 +36,20 @@ const VideoManagement = () => {
         throw new Error(`Erreur lors du chargement des vidéos: ${error.message}`);
       }
 
-      setVideos(data || []);
+      // Convertir les statuts si nécessaire (COMPLETED -> published, etc.)
+      const convertedData = data.map(video => ({
+        ...video,
+        status: convertStatus(video.status)
+      }));
+
+      setVideos(convertedData || []);
       
       // Mettre à jour la vidéo sélectionnée
-      if (data && data.length > 0) {
-        if (!selectedVideo || !data.some(v => v.id === selectedVideo.id)) {
-          setSelectedVideo(data[0]);
+      if (convertedData && convertedData.length > 0) {
+        if (!selectedVideo || !convertedData.some(v => v.id === selectedVideo.id)) {
+          setSelectedVideo(convertedData[0]);
         } else {
-          const updatedVideo = data.find(v => v.id === selectedVideo.id);
+          const updatedVideo = convertedData.find(v => v.id === selectedVideo.id);
           if (updatedVideo) setSelectedVideo(updatedVideo);
         }
       } else {
@@ -55,6 +61,32 @@ const VideoManagement = () => {
       setVideos([]);
     } finally {
       setLoading(false);
+    }
+  };
+  
+  // Convertir les statuts entre les formats
+  const convertStatus = (status) => {
+    if (!status) return 'draft';
+    
+    switch (status.toUpperCase()) {
+      case 'COMPLETED': return 'published';
+      case 'PROCESSING': return 'processing';
+      case 'FAILED': return 'failed';
+      case 'PENDING': return 'draft';
+      default: return status.toLowerCase();
+    }
+  };
+  
+  // Convertir les statuts dans l'autre sens
+  const convertStatusToLegacy = (status) => {
+    if (!status) return 'PENDING';
+    
+    switch (status.toLowerCase()) {
+      case 'published': return 'COMPLETED';
+      case 'processing': return 'PROCESSING';
+      case 'failed': return 'FAILED';
+      case 'draft': return 'PENDING';
+      default: return status.toUpperCase();
     }
   };
   
@@ -119,6 +151,7 @@ const VideoManagement = () => {
         throw new Error("Session expirée, veuillez vous reconnecter");
       }
       
+      // Utiliser la nouvelle fonction Edge
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-video`,
         {
@@ -127,7 +160,10 @@ const VideoManagement = () => {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify({ video_id: video.id })
+          body: JSON.stringify({ 
+            videoId: video.id,
+            videoUrl: video.public_url || `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/videos/${video.storage_path || video.file_path}`
+          })
         }
       );
       
@@ -147,12 +183,12 @@ const VideoManagement = () => {
       
       // Mettre à jour localement le statut
       const updatedVideos = videos.map(v => 
-        v.id === video.id ? { ...v, status: 'FAILED', error: err.message } : v
+        v.id === video.id ? { ...v, status: 'failed', error: err.message } : v
       );
       setVideos(updatedVideos);
       
       if (selectedVideo?.id === video.id) {
-        setSelectedVideo({ ...video, status: 'FAILED', error: err.message });
+        setSelectedVideo({ ...video, status: 'failed', error: err.message });
       }
     } finally {
       setTranscribingVideoId(null);
@@ -194,20 +230,20 @@ const VideoManagement = () => {
   // Fonctions utilitaires pour l'affichage du statut
   const getStatusText = (status) => {
     switch (status) {
-      case 'PENDING': return 'En attente';
-      case 'PROCESSING': return 'En traitement';
-      case 'COMPLETED': return 'Terminé';
-      case 'FAILED': return 'Échec';
+      case 'draft': return 'En attente';
+      case 'processing': return 'En traitement';
+      case 'published': return 'Terminé';
+      case 'failed': return 'Échec';
       default: return status;
     }
   };
   
   const getStatusColor = (status) => {
     switch (status) {
-      case 'PENDING': return 'bg-gray-100 text-gray-800';
-      case 'PROCESSING': return 'bg-yellow-100 text-yellow-800';
-      case 'COMPLETED': return 'bg-green-100 text-green-800';
-      case 'FAILED': return 'bg-red-100 text-red-800';
+      case 'draft': return 'bg-gray-100 text-gray-800';
+      case 'processing': return 'bg-yellow-100 text-yellow-800';
+      case 'published': return 'bg-green-100 text-green-800';
+      case 'failed': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -285,7 +321,7 @@ const VideoManagement = () => {
                       {getStatusText(video.status)}
                     </span>
                   </div>
-                  {video.status === 'FAILED' && video.error && (
+                  {video.status === 'failed' && video.error && (
                     <p className="text-xs text-red-500 mt-1 truncate">
                       {video.error}
                     </p>
@@ -319,9 +355,9 @@ const VideoManagement = () => {
                   <div>
                     <p className="text-sm text-gray-500">Statut</p>
                     <p className={`font-medium ${
-                      selectedVideo.status === 'COMPLETED' ? 'text-green-600' : 
-                      selectedVideo.status === 'PROCESSING' ? 'text-yellow-600' : 
-                      selectedVideo.status === 'FAILED' ? 'text-red-600' : 'text-gray-600'
+                      selectedVideo.status === 'published' ? 'text-green-600' : 
+                      selectedVideo.status === 'processing' ? 'text-yellow-600' : 
+                      selectedVideo.status === 'failed' ? 'text-red-600' : 'text-gray-600'
                     }`}>
                       {getStatusText(selectedVideo.status)}
                     </p>
@@ -330,7 +366,7 @@ const VideoManagement = () => {
                 
                 {/* Actions */}
                 <div className="flex flex-wrap gap-2 mb-4">
-                  {selectedVideo.status !== 'PROCESSING' && (
+                  {selectedVideo.status !== 'processing' && (
                     <button 
                       onClick={() => transcribeVideo(selectedVideo)}
                       className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
@@ -338,62 +374,9 @@ const VideoManagement = () => {
                     >
                       {transcribingVideoId === selectedVideo.id 
                         ? 'Transcription en cours...' 
-                        : (selectedVideo.status === 'COMPLETED' ? 'Retranscrire' : 'Transcrire')}
+                        : (selectedVideo.status === 'published' ? 'Retranscrire' : 'Transcrire')}
                     </button>
                   )}
                   <button 
                     onClick={() => deleteVideo(selectedVideo)}
                     className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-                  >
-                    Supprimer
-                  </button>
-                </div>
-                
-                {/* Messages d'état */}
-                {selectedVideo.status === 'FAILED' && selectedVideo.error && (
-                  <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
-                    <p className="text-red-700">
-                      <strong>Erreur de traitement :</strong> {selectedVideo.error}
-                    </p>
-                  </div>
-                )}
-                
-                {selectedVideo.status === 'PROCESSING' && (
-                  <div className="mt-4 bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
-                    <p className="text-yellow-700">
-                      La vidéo est en cours de transcription. Les résultats seront disponibles sous peu.
-                    </p>
-                  </div>
-                )}
-                
-                {selectedVideo.status === 'PENDING' && (
-                  <div className="mt-4 bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-                    <p className="text-blue-700">
-                      La vidéo est prête pour la transcription. Cliquez sur "Transcrire" pour commencer.
-                    </p>
-                  </div>
-                )}
-                
-                {/* Résultats */}
-                {selectedVideo.status === 'COMPLETED' && selectedVideo.analysis && (
-                  <VideoAnalysisResults analysis={selectedVideo.analysis} />
-                )}
-                
-                {selectedVideo.status === 'COMPLETED' && selectedVideo.transcription && (
-                  <TranscriptionViewer transcription={selectedVideo.transcription} />
-                )}
-              </div>
-            ) : (
-              <div className="p-4 text-center text-gray-500">
-                Sélectionnez une vidéo dans la liste pour voir ses détails
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default VideoManagement;
-
