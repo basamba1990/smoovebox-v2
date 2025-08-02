@@ -119,14 +119,14 @@ Deno.serve(async (req) => {
 
     // 7. Mise à jour de la vidéo avec la transcription
     const { error: updateError } = await adminSupabase
-      .from('videos')
+      .from("videos")
       .update({
         transcription: transcriptionResult.text,
         processed_at: new Date().toISOString(),
-        status: 'published',
+        status: "transcribed", // Changement de 'published' à 'transcribed'
         transcription_data: transcriptionResult
       })
-      .eq('id', video_id);
+      .eq("id", video_id);
 
     if (updateError) {
       throw new Error(`Erreur lors de la mise à jour de la vidéo: ${updateError.message}`);
@@ -135,10 +135,10 @@ Deno.serve(async (req) => {
     // 8. Création d'une entrée dans la table transcriptions si elle existe
     try {
       const { error: transcriptionError } = await adminSupabase
-        .from('transcriptions')
+        .from("transcriptions")
         .insert({
           video_id: video_id,
-          language: transcriptionResult.language || 'fr',
+          language: transcriptionResult.language || "fr",
           full_text: transcriptionResult.text,
           segments: transcriptionResult.segments || null,
           user_id: videoData.user_id,
@@ -156,21 +156,31 @@ Deno.serve(async (req) => {
       // On ignore cette erreur si la table n'existe pas
     }
 
-    // 9. Générer une analyse AI de la transcription
+    // 9. Générer une analyse AI de la transcription et appeler process-video
     let analysisResult = null;
     try {
-      analysisResult = await generateAnalysis(transcriptionResult.text, videoData.title);
-      
-      // Enregistrer l'analyse dans la vidéo
-      await adminSupabase
-        .from('videos')
-        .update({
-          analysis: analysisResult
-        })
-        .eq('id', video_id);
-        
+      // Appeler la fonction process-video après la transcription
+      const { data: processInvokeData, error: processInvokeError } = await adminSupabase.functions.invoke(
+        "process-video",
+        {
+          body: { video_id: video_id },
+        }
+      );
+
+      if (processInvokeError) {
+        console.error("Erreur lors de l'appel de la fonction process-video:", processInvokeError);
+      } else {
+        console.log("Fonction process-video appelée avec succès:", processInvokeData);
+      }
+
+      // L'analyse AI est maintenant gérée par process-video, donc on ne la génère plus ici
+      // On peut récupérer le résultat de l'analyse si process-video le retourne
+      if (processInvokeData && processInvokeData.analysis_result) {
+        analysisResult = processInvokeData.analysis_result;
+      }
+
     } catch (analysisError) {
-      console.error("Erreur lors de l'analyse AI:", analysisError);
+      console.error("Erreur lors de l'analyse AI ou de l'appel de process-video:", analysisError);
       // On continue même si l'analyse échoue
     }
 
