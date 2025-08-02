@@ -1,3 +1,4 @@
+// src/components/VideoUploader.jsx
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -161,6 +162,9 @@ const VideoUploader = () => {
         status: 'processing' // Valeur correcte selon la contrainte de la base de données
       };
       
+      // Variable pour stocker l'ID de la vidéo insérée
+      let videoId = null;
+      
       // Ajouter public_url si possible
       try {
         const { data: insertData, error: insertError } = await supabase
@@ -185,11 +189,21 @@ const VideoUploader = () => {
             }
             
             console.log('Informations vidéo enregistrées avec succès (sans public_url):', fallbackData);
+            
+            // Stocker l'ID de la vidéo insérée
+            if (fallbackData && fallbackData.length > 0) {
+              videoId = fallbackData[0].id;
+            }
           } else {
             throw new Error(`Erreur lors de l'enregistrement de la vidéo: ${insertError.message}`);
           }
         } else {
           console.log('Informations vidéo enregistrées avec succès:', insertData);
+          
+          // Stocker l'ID de la vidéo insérée
+          if (insertData && insertData.length > 0) {
+            videoId = insertData[0].id;
+          }
         }
       } catch (dbError) {
         console.error('Erreur lors de l\'insertion dans la base de données:', dbError);
@@ -243,11 +257,21 @@ const VideoUploader = () => {
               }
               
               console.log('Informations vidéo enregistrées avec succès (dernière tentative):', finalData);
+              
+              // Stocker l'ID de la vidéo insérée
+              if (finalData && finalData.length > 0) {
+                videoId = finalData[0].id;
+              }
             } else {
               throw new Error(`Erreur lors de la nouvelle tentative d'enregistrement: ${retryError.message}`);
             }
           } else {
             console.log('Informations vidéo enregistrées avec succès après configuration:', retryData);
+            
+            // Stocker l'ID de la vidéo insérée
+            if (retryData && retryData.length > 0) {
+              videoId = retryData[0].id;
+            }
           }
         } catch (setupError) {
           console.error('Erreur lors de la configuration et nouvelle tentative:', setupError);
@@ -264,6 +288,11 @@ const VideoUploader = () => {
             }
             
             console.log('Informations vidéo enregistrées avec succès (dernière tentative):', lastResortData);
+            
+            // Stocker l'ID de la vidéo insérée
+            if (lastResortData && lastResortData.length > 0) {
+              videoId = lastResortData[0].id;
+            }
           } catch (finalError) {
             throw new Error(`Échec de la configuration et de l'enregistrement: ${finalError.message}`);
           }
@@ -272,24 +301,27 @@ const VideoUploader = () => {
       
       setSuccess("Vidéo uploadée avec succès et en cours de traitement!");
 
-      // Déclencher la fonction Edge pour la transcription
-      try {
-        const { data: invokeData, error: invokeError } = await supabase.functions.invoke(
-          'transcribe-video',
-          {
-            body: { videoId: insertedVideo.id, videoUrl: publicUrl },
+      // CORRECTION: Utiliser l'ID de la vidéo stocké pour appeler la fonction de transcription
+      if (videoId) {
+        try {
+          const { data: invokeData, error: invokeError } = await supabase.functions.invoke(
+            'transcribe-video',
+            {
+              body: { videoId: videoId, videoUrl: publicUrl },
+            }
+          );
+
+          if (invokeError) {
+            console.error('Erreur lors de l\'appel de la fonction transcribe-video:', invokeError);
+          } else {
+            console.log('Fonction transcribe-video appelée avec succès:', invokeData);
           }
-        );
-
-        if (invokeError) {
-          console.error('Erreur lors de l\'appel de la fonction transcribe-video:', invokeError);
-        } else {
-          console.log('Fonction transcribe-video appelée avec succès:', invokeData);
+        } catch (invokeCatchError) {
+          console.error('Erreur inattendue lors de l\'appel de la fonction transcribe-video:', invokeCatchError);
         }
-      } catch (invokeCatchError) {
-        console.error('Erreur inattendue lors de l\'appel de la fonction transcribe-video:', invokeCatchError);
+      } else {
+        console.error('Impossible d\'appeler la fonction de transcription: ID de vidéo non disponible');
       }
-
       
       // Réinitialiser le formulaire
       setFile(null);
