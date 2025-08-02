@@ -270,7 +270,26 @@ const VideoUploader = () => {
         }
       }
       
-      setSuccess('Vidéo uploadée avec succès et en cours de traitement!');
+      setSuccess("Vidéo uploadée avec succès et en cours de traitement!");
+
+      // Déclencher la fonction Edge pour la transcription
+      try {
+        const { data: invokeData, error: invokeError } = await supabase.functions.invoke(
+          'transcribe-video',
+          {
+            body: { videoId: insertedVideo.id, videoUrl: publicUrl },
+          }
+        );
+
+        if (invokeError) {
+          console.error('Erreur lors de l\'appel de la fonction transcribe-video:', invokeError);
+        } else {
+          console.log('Fonction transcribe-video appelée avec succès:', invokeData);
+        }
+      } catch (invokeCatchError) {
+        console.error('Erreur inattendue lors de l\'appel de la fonction transcribe-video:', invokeCatchError);
+      }
+
       
       // Réinitialiser le formulaire
       setFile(null);
