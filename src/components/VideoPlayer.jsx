@@ -45,31 +45,50 @@ const VideoPlayer = ({ video }) => {
         setIsLoading(true);
         setError(null);
         
-        // 1. Utiliser d'abord l'URL publique
-        const publicUrl = getPublicUrl(video.storage_path);
-        if (publicUrl) {
-          setVideoUrl(publicUrl);
+        // 1. Utiliser d'abord l'URL publique directement si elle est disponible dans l'objet vidéo
+        if (video.public_url) {
+          setVideoUrl(video.public_url);
+          setIsLoading(false);
           return;
         }
-        
-        // 2. Fallback: URL signée si nécessaire (pour les buckets privés)
-        try {
-          const { data, error } = await supabase.storage
-            .from('videos')
-            .createSignedUrl(video.storage_path, 3600); // 1 heure de validité
 
-          if (data?.signedUrl) {
-            setVideoUrl(data.signedUrl);
-          } else if (error) {
-            console.error("Erreur URL signée:", error);
-            setError("Impossible de charger la vidéo");
-            setIsLoading(false);
+        // 2. Fallback: URL signée si nécessaire (pour les buckets privés ou si public_url n'est pas directement disponible)
+        //    Ou si le chemin de stockage est présent, tenter de générer une URL publique via Supabase Storage
+        if (video.storage_path) {
+          try {
+            const { data: publicUrlData } = supabase.storage
+              .from("videos")
+              .getPublicUrl(video.storage_path);
+
+            if (publicUrlData?.publicUrl) {
+              setVideoUrl(publicUrlData.publicUrl);
+              setIsLoading(false);
+              return;
+            }
+          } catch (err) {
+            console.error("Erreur lors de la récupération de l'URL publique via storage.getPublicUrl:", err);
           }
-        } catch (err) {
-          console.error("Erreur URL signée:", err);
-          setError("Erreur de chargement de la vidéo");
-          setIsLoading(false);
+
+          // Si getPublicUrl échoue ou ne retourne rien, tenter createSignedUrl
+          try {
+            const { data, error } = await supabase.storage
+              .from("videos")
+              .createSignedUrl(video.storage_path, 3600); // 1 heure de validité
+
+            if (data?.signedUrl) {
+              setVideoUrl(data.signedUrl);
+            } else if (error) {
+              console.error("Erreur URL signée:", error);
+              setError("Impossible de charger la vidéo");
+            }
+          } catch (err) {
+            console.error("Erreur URL signée (catch):", err);
+            setError("Erreur de chargement de la vidéo");
+          }
+        } else {
+          setError("Chemin de stockage de la vidéo non disponible.");
         }
+        setIsLoading(false);
       }
     };
     
