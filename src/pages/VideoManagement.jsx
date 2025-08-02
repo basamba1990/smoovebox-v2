@@ -1,3 +1,4 @@
+// src/components/VideoManagement.jsx
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -68,11 +69,11 @@ const VideoManagement = () => {
   const convertStatus = (status) => {
     if (!status) return 'draft';
     
-    switch (status.toUpperCase()) {
-      case 'COMPLETED': return 'published';
-      case 'PROCESSING': return 'processing';
-      case 'FAILED': return 'failed';
-      case 'PENDING': return 'draft';
+    switch (status.toLowerCase()) {
+      case 'completed': return 'published';
+      case 'processing': return 'processing';
+      case 'failed': return 'failed';
+      case 'pending': return 'draft';
       default: return status.toLowerCase();
     }
   };
@@ -162,7 +163,7 @@ const VideoManagement = () => {
           },
           body: JSON.stringify({ 
             videoId: video.id,
-            videoUrl: video.public_url || `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/videos/${video.storage_path || video.file_path}`
+            videoUrl: video.public_url || getPublicUrl(video)
           })
         }
       );
@@ -344,7 +345,7 @@ const VideoManagement = () => {
                 </h2>
                 
                 {/* Lecteur vidéo */}
-                <VideoPlayer url={getPublicUrl(selectedVideo)} />
+                <VideoPlayer video={selectedVideo} />
                 
                 {/* Métadonnées */}
                 <div className="grid grid-cols-2 gap-4 mb-4">
