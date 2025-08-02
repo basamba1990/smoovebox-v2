@@ -380,3 +380,54 @@ const VideoManagement = () => {
                   <button 
                     onClick={() => deleteVideo(selectedVideo)}
                     className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                  >
+                    Supprimer
+                  </button>
+                </div>
+                
+                {/* Messages d'état */}
+                {selectedVideo.status === 'failed' && selectedVideo.error && (
+                  <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
+                    <p className="text-red-700">
+                      <strong>Erreur de traitement :</strong> {selectedVideo.error}
+                    </p>
+                  </div>
+                )}
+                
+                {selectedVideo.status === 'processing' && (
+                  <div className="mt-4 bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
+                    <p className="text-yellow-700">
+                      La vidéo est en cours de transcription. Les résultats seront disponibles sous peu.
+                    </p>
+                  </div>
+                )}
+                
+                {selectedVideo.status === 'draft' && (
+                  <div className="mt-4 bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+                    <p className="text-blue-700">
+                      La vidéo est prête pour la transcription. Cliquez sur "Transcrire" pour commencer.
+                    </p>
+                  </div>
+                )}
+                
+                {/* Résultats */}
+                {selectedVideo.status === 'published' && (
+                  <>
+                    <TranscriptionViewer video={selectedVideo} />
+                    <VideoAnalysisResults video={selectedVideo} />
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="p-4 text-center text-gray-500">
+                Sélectionnez une vidéo dans la liste pour voir ses détails
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default VideoManagement;
