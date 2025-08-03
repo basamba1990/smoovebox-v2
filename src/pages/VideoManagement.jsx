@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import VideoPlayer from '../components/VideoPlayer';
 import VideoAnalysisResults from '../components/VideoAnalysisResults';
 import TranscriptionViewer from '../components/TranscriptionViewer';
+import VideoProcessingStatus from '../components/VideoProcessingStatus';
 
 const VideoManagement = () => {
   const { user } = useAuth();
@@ -228,27 +229,6 @@ const VideoManagement = () => {
     }
   };
   
-  // Fonctions utilitaires pour l'affichage du statut
-  const getStatusText = (status) => {
-    switch (status) {
-      case 'draft': return 'En attente';
-      case 'processing': return 'En traitement';
-      case 'published': return 'Terminé';
-      case 'failed': return 'Échec';
-      default: return status;
-    }
-  };
-  
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'draft': return 'bg-gray-100 text-gray-800';
-      case 'processing': return 'bg-yellow-100 text-yellow-800';
-      case 'published': return 'bg-green-100 text-green-800';
-      case 'failed': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-  
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-6">
@@ -318,9 +298,9 @@ const VideoManagement = () => {
                         {new Date(video.created_at).toLocaleDateString()}
                       </p>
                     </div>
-                    <span className={`text-xs px-2 py-1 rounded ${getStatusColor(video.status)}`}>
-                      {getStatusText(video.status)}
-                    </span>
+                    <div className="text-xs px-2 py-1 rounded">
+                      <VideoProcessingStatus videoId={video.id} initialStatus={video.status} />
+                    </div>
                   </div>
                   {video.status === 'failed' && video.error && (
                     <p className="text-xs text-red-500 mt-1 truncate">
@@ -355,13 +335,9 @@ const VideoManagement = () => {
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">Statut</p>
-                    <p className={`font-medium ${
-                      selectedVideo.status === 'published' ? 'text-green-600' : 
-                      selectedVideo.status === 'processing' ? 'text-yellow-600' : 
-                      selectedVideo.status === 'failed' ? 'text-red-600' : 'text-gray-600'
-                    }`}>
-                      {getStatusText(selectedVideo.status)}
-                    </p>
+                    <div className="font-medium">
+                      <VideoProcessingStatus videoId={selectedVideo.id} initialStatus={selectedVideo.status} />
+                    </div>
                   </div>
                 </div>
                 
