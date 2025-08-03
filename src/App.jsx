@@ -8,8 +8,10 @@ import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { Button } from './components/ui/button.jsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs.jsx';
-import { supabase, fetchDashboardData, checkSupabaseConnection } from './lib/supabase.js';
+import { supabase, fetchDashboardData, checkSupabaseConnection, retryOperation } from './lib/supabase.js';
 import { Video, Upload, BarChart3, FileText, LogOut, AlertTriangle, RefreshCw, Wifi, WifiOff, Play, Users, TrendingUp, Clock } from 'lucide-react';
+import LoadingScreen from './components/LoadingScreen.jsx';
+import SupabaseDiagnostic from './components/SupabaseDiagnostic.jsx';
 import './App.css';
 
 function AppContent() {
@@ -20,7 +22,7 @@ function AppContent() {
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('connected');
-  const { user, loading, signOut, profile, error: authError } = useAuth();
+  const { user, loading, signOut, profile, error: authError, connectionStatus: authConnectionStatus } = useAuth();
 
   // Vérifier la connexion à Supabase avec gestion d'erreur robuste
   useEffect(() => {
@@ -28,7 +30,17 @@ function AppContent() {
       const checkConnection = async () => {
         try {
           console.log('Vérification de la connexion Supabase...');
-          const connectionResult = await checkSupabaseConnection();
+          
+          // Définir un timeout pour éviter de bloquer trop longtemps
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout de connexion')), 5000)
+          );
+          
+          // Utiliser Promise.race pour limiter le temps d'attente
+          const connectionResult = await Promise.race([
+            checkSupabaseConnection(),
+            timeoutPromise
+          ]);
           
           if (connectionResult.connected) {
             setConnectionStatus('connected');
@@ -45,11 +57,16 @@ function AppContent() {
         }
       };
       
-      setTimeout(checkConnection, 100);
+      // Utiliser un petit délai pour éviter de bloquer le rendu initial
+      const connectionTimer = setTimeout(checkConnection, 100);
+      
+      return () => {
+        clearTimeout(connectionTimer);
+      };
     }
   }, [loading]);
 
-  // Récupérer les données du dashboard
+  // Récupérer les données du dashboard avec gestion d'erreur robuste
   const loadDashboardData = async () => {
     if (!user) {
       console.log('Aucun utilisateur connecté, utilisation de données de démonstration');
@@ -90,7 +107,20 @@ function AppContent() {
       setDashboardError(null);
       
       console.log('Chargement des données dashboard pour:', user.id);
-      const data = await fetchDashboardData(user.id);
+      
+      // Utiliser retryOperation pour réessayer en cas d'échec temporaire
+      const data = await retryOperation(async () => {
+        // Définir un timeout pour éviter de bloquer trop longtemps
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout de récupération des données')), 8000)
+        );
+        
+        // Utiliser Promise.race pour limiter le temps d'attente
+        return await Promise.race([
+          fetchDashboardData(user.id),
+          timeoutPromise
+        ]);
+      }, 2); // Essayer 2 fois maximum
       
       setDashboardData(data);
       console.log('Données dashboard chargées avec succès:', data);
@@ -109,33 +139,65 @@ function AppContent() {
     }
   };
 
-  // Charger les données du dashboard
+  // Charger les données du dashboard avec gestion des erreurs
   useEffect(() => {
+    let mounted = true;
+    let dataTimeout = null;
+    
     if (activeTab === 'dashboard') {
-      loadDashboardData();
+      // Utiliser un petit délai pour éviter de bloquer le rendu initial
+      dataTimeout = setTimeout(() => {
+        if (mounted) {
+          loadDashboardData().catch(err => {
+            console.error('Erreur non gérée lors du chargement des données:', err);
+            if (mounted) {
+              setDashboardError(err.message || 'Erreur inattendue');
+              setDashboardLoading(false);
+            }
+          });
+        }
+      }, 200);
       
       // Écouter les changements sur la table 'videos' si connecté
+      let videosChannel = null;
       if (user && connectionStatus === 'connected') {
-        const videosChannel = supabase
-          .channel('videos_changes')
-          .on('postgres_changes', { 
-            event: '*', 
-            schema: 'public', 
-            table: 'videos',
-            filter: `user_id=eq.${user.id}`
-          }, payload => {
-            console.log('Changement détecté dans la table videos:', payload);
-            loadDashboardData();
-          })
-          .subscribe((status) => {
-            console.log('Statut de souscription aux changements videos:', status);
-          });
-
-        return () => {
-          console.log('Nettoyage de la souscription aux changements videos');
-          supabase.removeChannel(videosChannel);
-        };
+        try {
+          videosChannel = supabase
+            .channel('videos_changes')
+            .on('postgres_changes', { 
+              event: '*', 
+              schema: 'public', 
+              table: 'videos',
+              filter: `user_id=eq.${user.id}`
+            }, payload => {
+              console.log('Changement détecté dans la table videos:', payload);
+              if (mounted) {
+                loadDashboardData().catch(err => {
+                  console.error('Erreur lors du rechargement après changement:', err);
+                });
+              }
+            })
+            .subscribe((status) => {
+              console.log('Statut de souscription aux changements videos:', status);
+            });
+        } catch (err) {
+          console.error('Erreur lors de la configuration du canal realtime:', err);
+        }
       }
+
+      return () => {
+        mounted = false;
+        if (dataTimeout) {
+          clearTimeout(dataTimeout);
+        }
+        if (videosChannel) {
+          try {
+            supabase.removeChannel(videosChannel);
+          } catch (err) {
+            console.error('Erreur lors de la suppression du canal:', err);
+          }
+        }
+      };
     }
   }, [user, activeTab, connectionStatus]);
 
@@ -144,7 +206,9 @@ function AppContent() {
     setIsAuthModalOpen(false);
     if (activeTab === 'dashboard') {
       setTimeout(() => {
-        loadDashboardData();
+        loadDashboardData().catch(err => {
+          console.error('Erreur après authentification:', err);
+        });
       }, 1000);
     }
   };
@@ -157,6 +221,9 @@ function AppContent() {
       setActiveTab('dashboard');
     } catch (error) {
       console.error('Erreur de déconnexion:', error);
+      // Continuer même en cas d'erreur
+      setDashboardData(null);
+      setActiveTab('dashboard');
     }
   };
 
@@ -165,7 +232,16 @@ function AppContent() {
     setSupabaseError(null);
     
     try {
-      const connectionResult = await checkSupabaseConnection();
+      // Définir un timeout pour éviter de bloquer trop longtemps
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout de reconnexion')), 5000)
+      );
+      
+      // Utiliser Promise.race pour limiter le temps d'attente
+      const connectionResult = await Promise.race([
+        checkSupabaseConnection(),
+        timeoutPromise
+      ]);
       
       if (connectionResult.connected) {
         setConnectionStatus('connected');
@@ -180,19 +256,40 @@ function AppContent() {
     }
   };
 
-  // Écran de chargement
+  // Écran de chargement avec timeout de sécurité
+  useEffect(() => {
+    let safetyTimeout = null;
+    
+    if (loading) {
+      // Timeout de sécurité pour éviter un blocage indéfini
+      safetyTimeout = setTimeout(() => {
+        console.warn('Timeout de chargement déclenché après 15 secondes');
+        // Forcer l'affichage de l'application même si le chargement est bloqué
+        if (loading) {
+          window.location.reload(); // Recharger la page en dernier recours
+        }
+      }, 15000); // 15 secondes maximum
+    }
+    
+    return () => {
+      if (safetyTimeout) {
+        clearTimeout(safetyTimeout);
+      }
+    };
+  }, [loading]);
+
   if (loading) {
+    return <LoadingScreen message="Initialisation de l'application" showReloadButton={true} />;
+  }
+
+  // Afficher le diagnostic Supabase si nécessaire
+  if (supabaseError) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="relative mx-auto w-16 h-16 mb-6">
-            <div className="absolute inset-0 rounded-full border-4 border-blue-200"></div>
-            <div className="absolute inset-0 rounded-full border-4 border-blue-600 border-t-transparent animate-spin"></div>
-          </div>
-          <p className="text-gray-700 font-medium text-lg">Chargement de SpotBulle...</p>
-          <p className="text-gray-500 text-sm mt-2">Initialisation de l'application</p>
-        </div>
-      </div>
+      <SupabaseDiagnostic 
+        error={supabaseError}
+        onRetry={handleRetryConnection}
+        onContinue={() => setSupabaseError(null)}
+      />
     );
   }
 
@@ -298,15 +395,36 @@ function AppContent() {
 
               <TabsContent value="dashboard" className="space-y-6">
                 {dashboardLoading ? (
-                  <div className="text-center py-16">
-                    <div className="relative mx-auto w-16 h-16 mb-6">
-                      <div className="absolute inset-0 rounded-full border-4 border-blue-200"></div>
-                      <div className="absolute inset-0 rounded-full border-4 border-blue-600 border-t-transparent animate-spin"></div>
-                    </div>
-                    <p className="text-gray-600 font-medium">Chargement des données du dashboard...</p>
-                  </div>
+                  <LoadingScreen 
+                    message="Chargement des données du dashboard..." 
+                    showReloadButton={false}
+                    onCancel={() => {
+                      setDashboardLoading(false);
+                      loadDashboardData();
+                    }}
+                  />
                 ) : (
                   <div className="space-y-6">
+                    {/* Afficher les erreurs éventuelles */}
+                    {dashboardError && (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-3">
+                        <AlertTriangle className="h-5 w-5 text-red-500" />
+                        <div>
+                          <p className="text-red-700 font-medium">Erreur de chargement</p>
+                          <p className="text-red-600 text-sm">{dashboardError}</p>
+                        </div>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={loadDashboardData}
+                          className="ml-auto"
+                        >
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Réessayer
+                        </Button>
+                      </div>
+                    )}
+                    
                     {/* Statistiques principales */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg">
@@ -348,7 +466,19 @@ function AppContent() {
 
                     {/* Vidéos récentes */}
                     <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Vidéos Récentes</h3>
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-semibold text-gray-900">Vidéos Récentes</h3>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={loadDashboardData}
+                          className="text-xs"
+                        >
+                          <RefreshCw className="h-3 w-3 mr-1" />
+                          Actualiser
+                        </Button>
+                      </div>
+                      
                       {dashboardData?.recentVideos && dashboardData.recentVideos.length > 0 ? (
                         <div className="space-y-4">
                           {dashboardData.recentVideos.map((video) => (
@@ -384,11 +514,15 @@ function AppContent() {
               </TabsContent>
 
               <TabsContent value="videos" className="space-y-6">
-                <VideoManagement />
+                <ErrorBoundary>
+                  <VideoManagement />
+                </ErrorBoundary>
               </TabsContent>
 
               <TabsContent value="upload" className="space-y-6">
-                <UploadPage />
+                <ErrorBoundary>
+                  <UploadPage />
+                </ErrorBoundary>
               </TabsContent>
             </Tabs>
           </div>
