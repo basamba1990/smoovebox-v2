@@ -51,8 +51,8 @@ export const uploadVideo = async (file, userId, metadata, onProgress) => {
           file_size: file.size,
           file_type: file.type,
           status: toDatabaseStatus(VIDEO_STATUS.PROCESSING), // Utiliser la fonction de conversion
-          storage_path: filePath, // Utiliser filePath comme storage_path
-          file_path: filePath // Utiliser filePath comme file_path pour compatibilité
+
+
         },
       ])
       .select()
@@ -182,10 +182,10 @@ export const deleteVideo = async (videoId, userId) => {
     if (video.processed_file_path && video.processed_file_path !== video.original_file_path) {
       filesToDelete.push(video.processed_file_path);
     }
-    if (video.storage_path && 
-        video.storage_path !== video.original_file_path && 
-        video.storage_path !== video.processed_file_path) {
-      filesToDelete.push(video.storage_path);
+    if (video.file_path && 
+        video.file_path !== video.original_file_path && 
+        video.file_path !== video.processed_file_path) {
+      filesToDelete.push(video.file_path);
     }
 
     if (filesToDelete.length > 0) {
