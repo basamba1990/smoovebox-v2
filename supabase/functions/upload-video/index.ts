@@ -14,15 +14,15 @@ const ALLOWED_FORMATS = [
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
 Deno.serve(async (req) => {
   // Gérer les requêtes OPTIONS (preflight)
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { 
+    return new Response('ok', {
       headers: corsHeaders,
-      status: 200 
+      status: 200
     });
   }
 
@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
       user_id: user.id,
       title: title,
       description: description,
-      storage_path: fileName,
+      file_path: fileName,  // Utiliser file_path au lieu de storage_path
       status: 'processing'
     };
 
@@ -236,11 +236,11 @@ Deno.serve(async (req) => {
 });
 
 // Fonction de traitement asynchrone (à implémenter avec un service externe)
-async function processVideoAsync(supabaseUrl: string, supabaseKey: string, videoId: string, filePath: string) {
+async function processVideoAsync(supabaseUrl, supabaseKey, videoId, filePath) {
   try {
     // Ici, vous pourriez appeler un service externe comme FFmpeg ou une API de traitement vidéo
     // Pour l'instant, on simule un traitement
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise((resolve) => setTimeout(resolve, 5000));
 
     // Mise à jour du statut après traitement
     const supabase = createClient(supabaseUrl, supabaseKey, {
