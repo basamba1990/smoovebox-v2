@@ -18,7 +18,7 @@ interface VideoData {
 }
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight requests
+  // CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -29,20 +29,15 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
 
-    // Récupérer les données de la requête
     const { videoId } = await req.json()
     
     if (!videoId) {
       return new Response(
         JSON.stringify({ error: 'videoId est requis' }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400 
-        }
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       )
     }
 
-    // Récupérer les informations de la vidéo
     const { data: video, error: videoError } = await supabaseClient
       .from('videos')
       .select('*')
@@ -50,51 +45,57 @@ Deno.serve(async (req) => {
       .single()
 
     if (videoError || !video) {
-      console.error(`Erreur lors de la récupération de la vidéo ${videoId}:`, videoError)
+      console.error(`Erreur vidéo ${videoId}:`, videoError)
       return new Response(
         JSON.stringify({ error: 'Vidéo non trouvée' }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 404 
-        }
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
       )
     }
 
-    // Mettre à jour le statut de la vidéo à "processing"
     await supabaseClient
       .from('videos')
       .update({ status: 'processing' })
       .eq('id', videoId)
 
-    console.log(`Vidéo ${videoId} - Début de la transcription`)
+    console.log(`Début transcription vidéo ${videoId}`)
 
     try {
-      // Récupérer l'URL de la vidéo depuis le stockage si nécessaire
       let videoUrl = video.url
+
       if (!videoUrl.startsWith('http')) {
-        const { data: signedUrl } = await supabaseClient
+        const { data: signedUrl, error: signedUrlError } = await supabaseClient
           .storage
           .from('videos')
           .createSignedUrl(videoUrl, 3600)
-        
-        videoUrl = signedUrl?.signedUrl || ''
+
+        if (signedUrlError || !signedUrl?.signedUrl) {
+          throw new Error('Impossible de générer l’URL signée')
+        }
+
+        videoUrl = signedUrl.signedUrl
       }
 
-      // Initialiser OpenAI
-      const openai = new OpenAI({
-        apiKey: Deno.env.get('OPENAI_API_KEY') || '',
-      })
+      const videoRes = await fetch(videoUrl)
+      if (!videoRes.ok) {
+        throw new Error(`Erreur téléchargement vidéo : ${videoRes.statusText}`)
+      }
 
-      // Transcription de la vidéo avec Whisper
+      const videoFile = new File(
+        [await videoRes.arrayBuffer()],
+        "video.mp4",
+        { type: "video/mp4" }
+      )
+
+      const openai = new OpenAI({ apiKey: Deno.env.get('OPENAI_API_KEY') || '' })
+
       const transcription = await openai.audio.transcriptions.create({
-        file: await fetch(videoUrl).then(res => res.blob()),
+        file: videoFile,
         model: 'whisper-1',
         language: 'fr',
       })
 
       const transcript = transcription.text
 
-      // Analyse du contenu avec GPT
       const completion = await openai.chat.completions.create({
         model: 'gpt-4',
         messages: [
@@ -104,79 +105,54 @@ Deno.serve(async (req) => {
           },
           {
             role: 'user',
-            content: `Voici la transcription d'une vidéo. Analyse-la et résume les points clés en 3-5 puces:\n\n${transcript}`
+            content: `Voici la transcription d'une vidéo. Analyse-la et résume les points clés:\n\n${transcript}`
           }
         ],
       })
 
       const aiResult = completion.choices[0].message.content
 
-      // IMPORTANT: Mettre à jour la base de données avec les résultats
       const { error: updateError } = await supabaseClient
         .from('videos')
         .update({
           status: 'done',
-          transcript: transcript,
+          transcript,
           ai_result: aiResult,
           processed_at: new Date().toISOString()
         })
         .eq('id', videoId)
 
       if (updateError) {
-        throw new Error(`Erreur lors de la mise à jour des résultats: ${updateError.message}`)
+        throw new Error(`Erreur update: ${updateError.message}`)
       }
 
-      console.log(`Vidéo ${videoId} traitée avec succès`)
+      console.log(`Vidéo ${videoId} traitée.`)
 
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: 'Transcription terminée',
-          videoId,
-          status: 'done'
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200 
-        }
+        JSON.stringify({ success: true, message: 'Transcription terminée', videoId, status: 'done' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
       )
 
     } catch (error) {
-      console.error(`Erreur lors du traitement de la vidéo ${videoId}:`, error)
-      
-      // Mettre à jour le statut de la vidéo à "error"
+      console.error(`Erreur traitement vidéo ${videoId}:`, error)
+
       await supabaseClient
         .from('videos')
-        .update({ 
-          status: 'error',
-          error_message: `Erreur de traitement: ${error.message}`
-        })
+        .update({ status: 'error', error_message: `Erreur: ${error.message}` })
         .eq('id', videoId)
 
       return new Response(
-        JSON.stringify({ 
-          error: 'Erreur lors du traitement de la vidéo',
-          details: error.message 
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500 
-        }
+        JSON.stringify({ error: 'Erreur traitement', details: error.message }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       )
     }
 
   } catch (error) {
     console.error('Erreur générale:', error)
-    
+
     return new Response(
-      JSON.stringify({ 
-        error: 'Erreur interne du serveur',
-        details: error.message 
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500 
-      }
+      JSON.stringify({ error: 'Erreur serveur', details: error.message }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     )
   }
 })
