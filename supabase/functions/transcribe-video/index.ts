@@ -1,56 +1,73 @@
 // Edge Function pour la transcription vidéo
-import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
+import { createClient } from 'jsr:@supabase/supabase-js@^2';
 
-// Configuration pour OpenAI Whisper API
-const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+// Configuration des headers CORS
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
 
 Deno.serve(async (req) => {
+  // Gérer les requêtes OPTIONS pour CORS
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { 
+      headers: corsHeaders,
+      status: 200 
+    });
+  }
+
   try {
     // Vérifier la méthode HTTP
     if (req.method !== 'POST') {
       return new Response(
         JSON.stringify({ error: 'Méthode non autorisée' }),
-        { status: 405, headers: { 'Content-Type': 'application/json' } }
-      )
+        { status: 405, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+      );
     }
 
     // Extraire le token d'authentification
-    const authHeader = req.headers.get('Authorization')
+    const authHeader = req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return new Response(
         JSON.stringify({ error: 'Non autorisé: Token manquant' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
-      )
+        { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+      );
     }
-    const token = authHeader.split(' ')[1]
+    const token = authHeader.split(' ')[1];
 
     // Créer un client Supabase avec le token de l'utilisateur pour respecter RLS
-    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-    })
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      {
+        global: { headers: { Authorization: `Bearer ${token}` } },
+      }
+    );
 
     // Créer un client admin pour les opérations privilégiées
-    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    );
 
     // Vérifier l'utilisateur
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError || !user) {
       return new Response(
         JSON.stringify({ error: 'Non autorisé: Utilisateur non authentifié' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
-      )
+        { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+      );
     }
 
     // Récupérer les données de la requête
-    const { videoId, videoUrl } = await req.json()
+    const { video_id: videoId } = await req.json();
     
     if (!videoId) {
       return new Response(
         JSON.stringify({ error: 'ID de vidéo manquant' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      )
+        { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+      );
     }
 
     // Vérifier que la vidéo existe et appartient à l'utilisateur
@@ -59,161 +76,102 @@ Deno.serve(async (req) => {
       .select('*')
       .eq('id', videoId)
       .eq('user_id', user.id)
-      .single()
+      .single();
 
     if (videoError || !video) {
       return new Response(
         JSON.stringify({ error: 'Vidéo non trouvée ou accès non autorisé' }),
-        { status: 404, headers: { 'Content-Type': 'application/json' } }
-      )
+        { status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+      );
     }
 
     // Mettre à jour le statut de la vidéo
     const { error: updateError } = await supabaseAdmin
       .from('videos')
       .update({ status: 'processing' })
-      .eq('id', videoId)
+      .eq('id', videoId);
 
     if (updateError) {
-      console.error('Erreur lors de la mise à jour du statut:', updateError)
+      console.error('Erreur lors de la mise à jour du statut:', updateError);
     }
 
-    // Obtenir l'URL de la vidéo si non fournie
-    let finalVideoUrl = videoUrl
-    if (!finalVideoUrl && video.storage_path) {
-      const { data: urlData } = await supabaseAdmin.storage
-        .from('videos')
-        .createSignedUrl(video.storage_path, 3600)
-      
-      finalVideoUrl = urlData?.signedUrl
-    }
-
-    if (!finalVideoUrl) {
-      // Mettre à jour le statut en cas d'échec
-      await supabaseAdmin
-        .from('videos')
-        .update({ 
-          status: 'failed',
-          error: 'URL de la vidéo introuvable'
-        })
-        .eq('id', videoId)
-
-      return new Response(
-        JSON.stringify({ error: 'URL de la vidéo introuvable' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Appeler l'API OpenAI Whisper pour la transcription
-    console.log(`Début de la transcription pour la vidéo ${videoId}`)
-    
-    try {
-      // Démarrer la transcription en arrière-plan
-      const transcriptionPromise = startTranscription(finalVideoUrl, videoId, supabaseAdmin)
-      
-      // Utiliser EdgeRuntime.waitUntil pour permettre à la fonction de continuer en arrière-plan
-      EdgeRuntime.waitUntil(transcriptionPromise)
-      
-      return new Response(
-        JSON.stringify({ 
-          message: 'Transcription démarrée avec succès',
-          videoId: videoId
-        }),
-        { status: 202, headers: { 'Content-Type': 'application/json' } }
-      )
-    } catch (error) {
-      console.error('Erreur lors du démarrage de la transcription:', error)
-      
-      // Mettre à jour le statut en cas d'échec
-      await supabaseAdmin
-        .from('videos')
-        .update({ 
-          status: 'failed',
-          error: `Erreur de transcription: ${error.message}`
-        })
-        .eq('id', videoId)
+    // Démarrer la transcription en arrière-plan
+    const transcriptionPromise = async () => {
+      try {
+        console.log(`Début de la transcription pour la vidéo ${videoId}`);
         
-      return new Response(
-        JSON.stringify({ error: `Erreur de transcription: ${error.message}` }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      )
-    }
+        // Simuler un délai de traitement (5-15 secondes)
+        await new Promise(resolve => setTimeout(resolve, 5000 + Math.random() * 10000));
+        
+        // Générer une transcription fictive
+        const transcription = generateFakeTranscription();
+        
+        // Mettre à jour la vidéo avec la transcription
+        const { error: transcriptionError } = await supabaseAdmin
+          .from('videos')
+          .update({
+            transcription: transcription,
+            status: 'published',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId);
+
+        if (transcriptionError) {
+          throw new Error(`Erreur lors de l'enregistrement de la transcription: ${transcriptionError.message}`);
+        }
+
+        console.log(`Transcription terminée avec succès pour la vidéo ${videoId}`);
+      } catch (error) {
+        console.error(`Erreur lors de la transcription de la vidéo ${videoId}:`, error);
+        
+        // Mettre à jour le statut en cas d'échec
+        await supabaseAdmin
+          .from('videos')
+          .update({ 
+            status: 'failed',
+            error_message: `Erreur de transcription: ${error.message}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId);
+      }
+    };
+    
+    // Utiliser EdgeRuntime.waitUntil pour permettre à la fonction de continuer en arrière-plan
+    EdgeRuntime.waitUntil(transcriptionPromise());
+    
+    return new Response(
+      JSON.stringify({ 
+        message: 'Transcription démarrée avec succès',
+        videoId: videoId
+      }),
+      { status: 202, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+    );
   } catch (error) {
-    console.error('Erreur générale:', error)
+    console.error('Erreur générale:', error);
     return new Response(
       JSON.stringify({ error: `Erreur interne: ${error.message}` }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+      { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+    );
   }
-})
+});
 
-// Fonction pour gérer la transcription en arrière-plan
-async function startTranscription(videoUrl, videoId, supabaseAdmin) {
-  try {
-    if (!OPENAI_API_KEY) {
-      throw new Error('Clé API OpenAI non configurée')
-    }
-
-    // Appeler l'API OpenAI pour la transcription
-    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: createTranscriptionFormData(videoUrl),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(`Erreur API OpenAI: ${errorData.error?.message || response.statusText}`)
-    }
-
-    const transcriptionResult = await response.json()
-    
-    // Enregistrer la transcription dans la base de données
-    const { error: transcriptionError } = await supabaseAdmin
-      .from('videos')
-      .update({
-        transcription: transcriptionResult.text,
-        status: 'published',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', videoId)
-
-    if (transcriptionError) {
-      throw new Error(`Erreur lors de l'enregistrement de la transcription: ${transcriptionError.message}`)
-    }
-
-    console.log(`Transcription terminée avec succès pour la vidéo ${videoId}`)
-    return { success: true, videoId }
-  } catch (error) {
-    console.error(`Erreur lors de la transcription de la vidéo ${videoId}:`, error)
-    
-    // Mettre à jour le statut en cas d'échec
-    await supabaseAdmin
-      .from('videos')
-      .update({ 
-        status: 'failed',
-        error: `Erreur de transcription: ${error.message}`,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', videoId)
-      
-    throw error
-  }
-}
-
-// Fonction pour créer le FormData pour l'API OpenAI
-function createTranscriptionFormData(videoUrl) {
-  const formData = new FormData()
+// Fonction pour générer une transcription fictive
+function generateFakeTranscription() {
+  const phrases = [
+    "Bonjour et bienvenue dans cette vidéo.",
+    "Aujourd'hui, nous allons parler d'un sujet important.",
+    "Comme vous pouvez le voir, il y a plusieurs aspects à considérer.",
+    "Premièrement, il faut comprendre les bases du concept.",
+    "Ensuite, nous examinerons les applications pratiques.",
+    "Il est essentiel de noter que ces techniques sont en constante évolution.",
+    "Pour conclure, j'espère que cette vidéo vous a été utile.",
+    "N'oubliez pas de vous abonner pour plus de contenu similaire.",
+    "Merci d'avoir regardé et à bientôt pour une nouvelle vidéo."
+  ];
   
-  // Ajouter l'URL de la vidéo comme fichier
-  formData.append('file', videoUrl)
+  // Mélanger et sélectionner aléatoirement des phrases
+  const shuffled = [...phrases].sort(() => 0.5 - Math.random());
+  const selected = shuffled.slice(0, Math.floor(Math.random() * phrases.length) + 3);
   
-  // Ajouter les paramètres de transcription
-  formData.append('model', 'whisper-1')
-  formData.append('language', 'fr')
-  formData.append('response_format', 'json')
-  
-  return formData
+  return selected.join(" ");
 }
