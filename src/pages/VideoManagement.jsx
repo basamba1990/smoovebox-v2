@@ -1,4 +1,3 @@
-// src/components/VideoManagement.jsx
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -6,7 +5,6 @@ import { toast } from 'sonner';
 import VideoPlayer from '../components/VideoPlayer';
 import VideoAnalysisResults from '../components/VideoAnalysisResults';
 import TranscriptionViewer from '../components/TranscriptionViewer';
-import VideoProcessingStatus from '../components/VideoProcessingStatus';
 
 const VideoManagement = () => {
   const { user } = useAuth();
@@ -70,11 +68,11 @@ const VideoManagement = () => {
   const convertStatus = (status) => {
     if (!status) return 'draft';
     
-    switch (status.toLowerCase()) {
-      case 'completed': return 'published';
-      case 'processing': return 'processing';
-      case 'failed': return 'failed';
-      case 'pending': return 'draft';
+    switch (status.toUpperCase()) {
+      case 'COMPLETED': return 'published';
+      case 'PROCESSING': return 'processing';
+      case 'FAILED': return 'failed';
+      case 'PENDING': return 'draft';
       default: return status.toLowerCase();
     }
   };
@@ -120,7 +118,8 @@ const VideoManagement = () => {
   const getPublicUrl = (video) => {
     if (!video) return null;
     
-    const path = video.file_path;
+    // Utiliser storage_path en priorité, puis file_path
+    const path = video.storage_path || video.file_path;
     if (!path) return null;
     
     try {
@@ -163,7 +162,7 @@ const VideoManagement = () => {
           },
           body: JSON.stringify({ 
             videoId: video.id,
-            videoUrl: video.public_url || getPublicUrl(video)
+            videoUrl: video.public_url || `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/videos/${video.storage_path || video.file_path}`
           })
         }
       );
@@ -202,7 +201,7 @@ const VideoManagement = () => {
     
     try {
       // Supprimer le fichier du stockage
-      const path = video.file_path;
+      const path = video.storage_path || video.file_path;
       if (path) {
         const { error: storageError } = await supabase.storage
           .from('videos')
@@ -225,6 +224,27 @@ const VideoManagement = () => {
     } catch (err) {
       console.error("Erreur lors de la suppression:", err);
       toast.error(`Erreur: ${err.message}`);
+    }
+  };
+  
+  // Fonctions utilitaires pour l'affichage du statut
+  const getStatusText = (status) => {
+    switch (status) {
+      case 'draft': return 'En attente';
+      case 'processing': return 'En traitement';
+      case 'published': return 'Terminé';
+      case 'failed': return 'Échec';
+      default: return status;
+    }
+  };
+  
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'draft': return 'bg-gray-100 text-gray-800';
+      case 'processing': return 'bg-yellow-100 text-yellow-800';
+      case 'published': return 'bg-green-100 text-green-800';
+      case 'failed': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
   
@@ -297,9 +317,9 @@ const VideoManagement = () => {
                         {new Date(video.created_at).toLocaleDateString()}
                       </p>
                     </div>
-                    <div className="text-xs px-2 py-1 rounded">
-                      <VideoProcessingStatus videoId={video.id} initialStatus={video.status} />
-                    </div>
+                    <span className={`text-xs px-2 py-1 rounded ${getStatusColor(video.status)}`}>
+                      {getStatusText(video.status)}
+                    </span>
                   </div>
                   {video.status === 'failed' && video.error && (
                     <p className="text-xs text-red-500 mt-1 truncate">
@@ -324,7 +344,7 @@ const VideoManagement = () => {
                 </h2>
                 
                 {/* Lecteur vidéo */}
-                <VideoPlayer video={selectedVideo} />
+                <VideoPlayer url={getPublicUrl(selectedVideo)} />
                 
                 {/* Métadonnées */}
                 <div className="grid grid-cols-2 gap-4 mb-4">
@@ -334,9 +354,13 @@ const VideoManagement = () => {
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">Statut</p>
-                    <div className="font-medium">
-                      <VideoProcessingStatus videoId={selectedVideo.id} initialStatus={selectedVideo.status} />
-                    </div>
+                    <p className={`font-medium ${
+                      selectedVideo.status === 'published' ? 'text-green-600' : 
+                      selectedVideo.status === 'processing' ? 'text-yellow-600' : 
+                      selectedVideo.status === 'failed' ? 'text-red-600' : 'text-gray-600'
+                    }`}>
+                      {getStatusText(selectedVideo.status)}
+                    </p>
                   </div>
                 </div>
                 
