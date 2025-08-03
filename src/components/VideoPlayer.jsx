@@ -20,8 +20,8 @@ const VideoPlayer = ({ video }) => {
   const [videoUrl, setVideoUrl] = useState(null);
   
   // Fonction pour générer l'URL publique de la vidéo
-  const getPublicUrl = (storagePath) => {
-    if (!storagePath) return null;
+  const getPublicUrl = (filePath) => {
+    if (!filePath) return null;
     
     try {
       // Extraire le projectRef de l'URL Supabase
@@ -29,7 +29,7 @@ const VideoPlayer = ({ video }) => {
       const projectRef = url.hostname.split('.')[0];
       
       // Supprimer le préfixe "videos/" si présent
-      const cleanPath = storagePath.replace(/^videos\//, '');
+      const cleanPath = filePath.replace(/^videos\//, '');
       
       return `https://${projectRef}.supabase.co/storage/v1/object/public/videos/${cleanPath}`;
     } catch (e) {
@@ -77,11 +77,11 @@ const VideoPlayer = ({ video }) => {
         }
 
         // 3. Utiliser storage_path si disponible
-        if (video.storage_path) {
+        if (video.file_path) {
           // Essayer d'abord getPublicUrl de l'API Supabase
           try {
             // Nettoyer le chemin si nécessaire
-            const cleanPath = video.storage_path.replace(/^videos\//, '');
+            const cleanPath = video.file_path.replace(/^videos\//, '');
             
             const { data: publicUrlData } = supabase.storage
               .from("videos")
@@ -99,7 +99,7 @@ const VideoPlayer = ({ video }) => {
           // Si getPublicUrl échoue, essayer createSignedUrl
           try {
             // Nettoyer le chemin si nécessaire
-            const cleanPath = video.storage_path.replace(/^videos\//, '');
+            const cleanPath = video.file_path.replace(/^videos\//, '');
             
             const { data, error: signedUrlError } = await supabase.storage
               .from("videos")
@@ -149,8 +149,8 @@ const VideoPlayer = ({ video }) => {
               }
             }
             
-            if (videoData.storage_path) {
-              const cleanPath = videoData.storage_path.replace(/^videos\//, '');
+            if (videoData.file_path) {
+              const cleanPath = videoData.file_path.replace(/^videos\//, '');
               const { data: urlData } = supabase.storage
                 .from("videos")
                 .getPublicUrl(cleanPath);
@@ -510,8 +510,8 @@ const VideoPlayer = ({ video }) => {
                             }
                           }
                           
-                          if (videoData.storage_path) {
-                            const cleanPath = videoData.storage_path.replace(/^videos\//, '');
+                          if (videoData.file_path) {
+                            const cleanPath = videoData.file_path.replace(/^videos\//, '');
                             const { data: urlData } = supabase.storage
                               .from("videos")
                               .getPublicUrl(cleanPath);
