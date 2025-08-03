@@ -1,6 +1,5 @@
 // src/lib/videoProcessing.js
 import { supabase } from './supabase';
-import { VIDEO_STATUS, toDatabaseStatus } from '../constants/videoStatus';
 
 /**
  * Télécharge une vidéo vers le stockage Supabase
@@ -19,13 +18,13 @@ export const uploadVideo = async (file, userId, metadata, onProgress) => {
     // Générer un nom de fichier unique
     const fileExt = file.name.split('.').pop();
     const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
-    const filePath = `videos/${fileName}`;
+    const filePath = `videos/${userId}/${fileName}`;
 
     // Télécharger le fichier vers le stockage
     const { error: uploadError, data } = await supabase.storage
-      .from('videos')
+      .from(\'videos\')
       .upload(filePath, file, {
-        cacheControl: '3600',
+        cacheControl: \'3600\',
         upsert: false,
         onUploadProgress: (progress) => {
           if (onProgress) {
@@ -41,18 +40,18 @@ export const uploadVideo = async (file, userId, metadata, onProgress) => {
 
     // Créer un enregistrement dans la table videos
     const { error: dbError, data: video } = await supabase
-      .from('videos')
+      .from(\'videos\')
       .insert([
         {
           user_id: userId,
           title: metadata.title || file.name,
-          description: metadata.description || '',
+          description: metadata.description || \'\',
           original_file_path: filePath,
           file_size: file.size,
           file_type: file.type,
-          status: toDatabaseStatus(VIDEO_STATUS.PROCESSING), // Utiliser la fonction de conversion
-
-
+          status: \'PENDING\',
+          storage_path: filePath, // Utiliser filePath comme storage_path
+          file_path: filePath // Utiliser filePath comme file_path pour compatibilité
         },
       ])
       .select()
@@ -103,7 +102,7 @@ export const getUserVideos = async (userId, options = {}) => {
 
     // Ajouter le filtre de statut si spécifié
     if (status) {
-      query = query.eq('status', toDatabaseStatus(status));
+      query = query.eq('status', status);
     }
 
     // Exécuter la requête
@@ -179,13 +178,8 @@ export const deleteVideo = async (videoId, userId) => {
     if (video.original_file_path) {
       filesToDelete.push(video.original_file_path);
     }
-    if (video.processed_file_path && video.processed_file_path !== video.original_file_path) {
+    if (video.processed_file_path) {
       filesToDelete.push(video.processed_file_path);
-    }
-    if (video.file_path && 
-        video.file_path !== video.original_file_path && 
-        video.file_path !== video.processed_file_path) {
-      filesToDelete.push(video.file_path);
     }
 
     if (filesToDelete.length > 0) {
