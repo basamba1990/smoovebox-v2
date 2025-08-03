@@ -1,9 +1,9 @@
 // Edge Function pour configurer automatiquement la base de données
-import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
+import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
 
 // Récupérer les variables d'environnement
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
 Deno.serve(async (req) => {
   try {
@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
             'Access-Control-Allow-Headers': 'Content-Type, Authorization'
           } 
         }
-      )
+      );
     }
 
     // Gérer les requêtes OPTIONS pour CORS
@@ -32,11 +32,11 @@ Deno.serve(async (req) => {
           'Access-Control-Allow-Methods': 'POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization'
         }
-      })
+      });
     }
 
     // Extraire le token d'authentification
-    const authHeader = req.headers.get('Authorization')
+    const authHeader = req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return new Response(
         JSON.stringify({ error: 'Non autorisé: Token manquant' }),
@@ -47,20 +47,20 @@ Deno.serve(async (req) => {
             'Access-Control-Allow-Origin': '*'
           } 
         }
-      )
+      );
     }
-    const token = authHeader.split(' ')[1]
+    const token = authHeader.split(' ')[1];
 
     // Créer un client Supabase avec le token de l'utilisateur pour vérifier l'authentification
     const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       global: { headers: { Authorization: `Bearer ${token}` } },
-    })
+    });
 
     // Créer un client admin pour les opérations privilégiées
-    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Vérifier l'utilisateur
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError || !user) {
       return new Response(
         JSON.stringify({ error: 'Non autorisé: Utilisateur non authentifié' }),
@@ -71,14 +71,14 @@ Deno.serve(async (req) => {
             'Access-Control-Allow-Origin': '*'
           } 
         }
-      )
+      );
     }
 
     // Vérifier si l'utilisateur est administrateur (optionnel)
     // const isAdmin = user.app_metadata?.role === 'admin'
 
     // Configurer la base de données
-    const setupResults = await setupDatabase(supabaseAdmin)
+    const setupResults = await setupDatabase(supabaseAdmin);
 
     return new Response(
       JSON.stringify({
@@ -92,9 +92,9 @@ Deno.serve(async (req) => {
           'Access-Control-Allow-Origin': '*'
         } 
       }
-    )
+    );
   } catch (error) {
-    console.error('Erreur lors de la configuration de la base de données:', error)
+    console.error('Erreur lors de la configuration de la base de données:', error);
     return new Response(
       JSON.stringify({ error: `Erreur: ${error.message}` }),
       { 
@@ -104,9 +104,9 @@ Deno.serve(async (req) => {
           'Access-Control-Allow-Origin': '*'
         } 
       }
-    )
+    );
   }
-})
+});
 
 // Fonction pour configurer la base de données
 async function setupDatabase(supabaseAdmin) {
@@ -114,7 +114,7 @@ async function setupDatabase(supabaseAdmin) {
     storage: { success: false, message: '' },
     tables: { success: false, message: '' },
     policies: { success: false, message: '' }
-  }
+  };
 
   try {
     // 1. Configurer le bucket de stockage
@@ -122,13 +122,13 @@ async function setupDatabase(supabaseAdmin) {
       // Vérifier si le bucket existe déjà
       const { data: buckets, error: bucketsError } = await supabaseAdmin
         .storage
-        .listBuckets()
+        .listBuckets();
 
       if (bucketsError) {
-        throw new Error(`Erreur lors de la vérification des buckets: ${bucketsError.message}`)
+        throw new Error(`Erreur lors de la vérification des buckets: ${bucketsError.message}`);
       }
 
-      const videoBucketExists = buckets.some(bucket => bucket.name === 'videos')
+      const videoBucketExists = buckets.some(bucket => bucket.name === 'videos');
 
       if (!videoBucketExists) {
         // Créer le bucket videos
@@ -138,24 +138,24 @@ async function setupDatabase(supabaseAdmin) {
             public: true,
             fileSizeLimit: 104857600, // 100MB
             allowedMimeTypes: ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm']
-          })
+          });
 
         if (createBucketError) {
-          throw new Error(`Erreur lors de la création du bucket: ${createBucketError.message}`)
+          throw new Error(`Erreur lors de la création du bucket: ${createBucketError.message}`);
         }
       }
 
-      results.storage = { success: true, message: 'Bucket de stockage configuré avec succès' }
+      results.storage = { success: true, message: 'Bucket de stockage configuré avec succès' };
     } catch (storageError) {
-      console.error('Erreur lors de la configuration du stockage:', storageError)
-      results.storage = { success: false, message: storageError.message }
+      console.error('Erreur lors de la configuration du stockage:', storageError);
+      results.storage = { success: false, message: storageError.message };
     }
 
     // 2. Configurer les tables
     try {
       // Vérifier si la table videos existe
       const { data: tables, error: tablesError } = await supabaseAdmin
-        .rpc('get_tables')
+        .rpc('get_tables');
 
       if (tablesError) {
         // Méthode alternative si la fonction RPC n'existe pas
@@ -163,52 +163,52 @@ async function setupDatabase(supabaseAdmin) {
           .from('information_schema.tables')
           .select('table_name')
           .eq('table_schema', 'public')
-          .eq('table_name', 'videos')
+          .eq('table_name', 'videos');
 
         if (tableInfoError) {
-          throw new Error(`Erreur lors de la vérification des tables: ${tableInfoError.message}`)
+          throw new Error(`Erreur lors de la vérification des tables: ${tableInfoError.message}`);
         }
 
-        const videosTableExists = tableInfo && tableInfo.length > 0
+        const videosTableExists = tableInfo && tableInfo.length > 0;
         
         if (!videosTableExists) {
           // Créer la table videos
-          await createVideosTable(supabaseAdmin)
+          await createVideosTable(supabaseAdmin);
         } else {
           // Vérifier et mettre à jour la structure de la table si nécessaire
-          await updateVideosTable(supabaseAdmin)
+          await updateVideosTable(supabaseAdmin);
         }
       } else {
-        const videosTableExists = tables && tables.some(table => table.name === 'videos')
+        const videosTableExists = tables && tables.some(table => table.name === 'videos');
         
         if (!videosTableExists) {
           // Créer la table videos
-          await createVideosTable(supabaseAdmin)
+          await createVideosTable(supabaseAdmin);
         } else {
           // Vérifier et mettre à jour la structure de la table si nécessaire
-          await updateVideosTable(supabaseAdmin)
+          await updateVideosTable(supabaseAdmin);
         }
       }
 
-      results.tables = { success: true, message: 'Tables configurées avec succès' }
+      results.tables = { success: true, message: 'Tables configurées avec succès' };
     } catch (tablesError) {
-      console.error('Erreur lors de la configuration des tables:', tablesError)
-      results.tables = { success: false, message: tablesError.message }
+      console.error('Erreur lors de la configuration des tables:', tablesError);
+      results.tables = { success: false, message: tablesError.message };
     }
 
     // 3. Configurer les politiques RLS
     try {
-      await setupRLSPolicies(supabaseAdmin)
-      results.policies = { success: true, message: 'Politiques RLS configurées avec succès' }
+      await setupRLSPolicies(supabaseAdmin);
+      results.policies = { success: true, message: 'Politiques RLS configurées avec succès' };
     } catch (policiesError) {
-      console.error('Erreur lors de la configuration des politiques RLS:', policiesError)
-      results.policies = { success: false, message: policiesError.message }
+      console.error('Erreur lors de la configuration des politiques RLS:', policiesError);
+      results.policies = { success: false, message: policiesError.message };
     }
 
-    return results
+    return results;
   } catch (error) {
-    console.error('Erreur générale lors de la configuration de la base de données:', error)
-    throw error
+    console.error('Erreur générale lors de la configuration de la base de données:', error);
+    throw error;
   }
 }
 
@@ -230,34 +230,34 @@ async function createVideosTable(supabaseAdmin) {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
     );
-  `
+  `;
   
-  const { error: createTableError } = await supabaseAdmin.rpc('exec', { query: createTableQuery })
+  const { error: createTableError } = await supabaseAdmin.rpc('exec', { query: createTableQuery });
   
   if (createTableError) {
-    throw new Error(`Erreur lors de la création de la table videos: ${createTableError.message}`)
+    throw new Error(`Erreur lors de la création de la table videos: ${createTableError.message}`);
   }
   
   // Activer RLS sur la table
   const enableRLSQuery = `
     ALTER TABLE public.videos ENABLE ROW LEVEL SECURITY;
-  `
+  `;
   
-  const { error: enableRLSError } = await supabaseAdmin.rpc('exec', { query: enableRLSQuery })
+  const { error: enableRLSError } = await supabaseAdmin.rpc('exec', { query: enableRLSQuery });
   
   if (enableRLSError) {
-    throw new Error(`Erreur lors de l'activation de RLS: ${enableRLSError.message}`)
+    throw new Error(`Erreur lors de l'activation de RLS: ${enableRLSError.message}`);
   }
   
   // Créer un index sur user_id pour améliorer les performances
   const createIndexQuery = `
     CREATE INDEX IF NOT EXISTS videos_user_id_idx ON public.videos (user_id);
-  `
+  `;
   
-  const { error: createIndexError } = await supabaseAdmin.rpc('exec', { query: createIndexQuery })
+  const { error: createIndexError } = await supabaseAdmin.rpc('exec', { query: createIndexQuery });
   
   if (createIndexError) {
-    throw new Error(`Erreur lors de la création de l'index: ${createIndexError.message}`)
+    throw new Error(`Erreur lors de la création de l'index: ${createIndexError.message}`);
   }
 }
 
@@ -270,12 +270,12 @@ async function updateVideosTable(supabaseAdmin) {
     WHERE table_schema = 'public'
       AND table_name = 'videos'
       AND column_name = 'id';
-  `
+  `;
   
-  const { data: idColumnInfo, error: idColumnError } = await supabaseAdmin.rpc('exec', { query: checkIdDefaultQuery })
+  const { data: idColumnInfo, error: idColumnError } = await supabaseAdmin.rpc('exec', { query: checkIdDefaultQuery });
   
   if (idColumnError) {
-    throw new Error(`Erreur lors de la vérification de la colonne id: ${idColumnError.message}`)
+    throw new Error(`Erreur lors de la vérification de la colonne id: ${idColumnError.message}`);
   }
   
   // Si la colonne id n'a pas de valeur par défaut, ajouter gen_random_uuid()
@@ -283,12 +283,12 @@ async function updateVideosTable(supabaseAdmin) {
     const updateIdColumnQuery = `
       ALTER TABLE public.videos
       ALTER COLUMN id SET DEFAULT gen_random_uuid();
-    `
+    `;
     
-    const { error: updateIdError } = await supabaseAdmin.rpc('exec', { query: updateIdColumnQuery })
+    const { error: updateIdError } = await supabaseAdmin.rpc('exec', { query: updateIdColumnQuery });
     
     if (updateIdError) {
-      throw new Error(`Erreur lors de la mise à jour de la colonne id: ${updateIdError.message}`)
+      throw new Error(`Erreur lors de la mise à jour de la colonne id: ${updateIdError.message}`);
     }
   }
   
@@ -299,12 +299,12 @@ async function updateVideosTable(supabaseAdmin) {
     WHERE table_schema = 'public'
       AND table_name = 'videos'
       AND column_name = 'public_url';
-  `
+  `;
   
-  const { data: publicUrlColumnInfo, error: publicUrlColumnError } = await supabaseAdmin.rpc('exec', { query: checkPublicUrlQuery })
+  const { data: publicUrlColumnInfo, error: publicUrlColumnError } = await supabaseAdmin.rpc('exec', { query: checkPublicUrlQuery });
   
   if (publicUrlColumnError) {
-    throw new Error(`Erreur lors de la vérification de la colonne public_url: ${publicUrlColumnError.message}`)
+    throw new Error(`Erreur lors de la vérification de la colonne public_url: ${publicUrlColumnError.message}`);
   }
   
   // Si la colonne public_url n'existe pas, l'ajouter
@@ -312,12 +312,12 @@ async function updateVideosTable(supabaseAdmin) {
     const addPublicUrlColumnQuery = `
       ALTER TABLE public.videos
       ADD COLUMN public_url TEXT;
-    `
+    `;
     
-    const { error: addPublicUrlError } = await supabaseAdmin.rpc('exec', { query: addPublicUrlColumnQuery })
+    const { error: addPublicUrlError } = await supabaseAdmin.rpc('exec', { query: addPublicUrlColumnQuery });
     
     if (addPublicUrlError) {
-      throw new Error(`Erreur lors de l'ajout de la colonne public_url: ${addPublicUrlError.message}`)
+      throw new Error(`Erreur lors de l'ajout de la colonne public_url: ${addPublicUrlError.message}`);
     }
   }
   
@@ -330,16 +330,16 @@ async function updateVideosTable(supabaseAdmin) {
     WHERE nsp.nspname = 'public'
       AND rel.relname = 'videos'
       AND con.conname LIKE '%status%';
-  `
+  `;
   
-  const { data: statusConstraintInfo, error: statusConstraintError } = await supabaseAdmin.rpc('exec', { query: checkStatusConstraintQuery })
+  const { data: statusConstraintInfo, error: statusConstraintError } = await supabaseAdmin.rpc('exec', { query: checkStatusConstraintQuery });
   
   if (statusConstraintError) {
-    throw new Error(`Erreur lors de la vérification de la contrainte status: ${statusConstraintError.message}`)
+    throw new Error(`Erreur lors de la vérification de la contrainte status: ${statusConstraintError.message}`);
   }
   
   // Si la contrainte status n'existe pas ou n'est pas correcte, la mettre à jour
-  const correctConstraint = "CHECK (status = ANY (ARRAY['processing'::text, 'published'::text, 'draft'::text, 'failed'::text]))"
+  const correctConstraint = "CHECK (status = ANY (ARRAY['processing'::text, 'published'::text, 'draft'::text, 'failed'::text]))";
   
   if (!statusConstraintInfo || statusConstraintInfo.length === 0 || !statusConstraintInfo[0].constraint_def.includes(correctConstraint)) {
     // Supprimer l'ancienne contrainte si elle existe
@@ -367,12 +367,12 @@ async function updateVideosTable(supabaseAdmin) {
           );
         END IF;
       END $$;
-    `
+    `;
     
-    const { error: dropConstraintError } = await supabaseAdmin.rpc('exec', { query: dropConstraintQuery })
+    const { error: dropConstraintError } = await supabaseAdmin.rpc('exec', { query: dropConstraintQuery });
     
     if (dropConstraintError) {
-      throw new Error(`Erreur lors de la suppression de l'ancienne contrainte: ${dropConstraintError.message}`)
+      throw new Error(`Erreur lors de la suppression de l'ancienne contrainte: ${dropConstraintError.message}`);
     }
     
     // Ajouter la nouvelle contrainte
@@ -380,12 +380,12 @@ async function updateVideosTable(supabaseAdmin) {
       ALTER TABLE public.videos
       ADD CONSTRAINT videos_status_check
       CHECK (status IN ('processing', 'published', 'draft', 'failed'));
-    `
+    `;
     
-    const { error: addConstraintError } = await supabaseAdmin.rpc('exec', { query: addConstraintQuery })
+    const { error: addConstraintError } = await supabaseAdmin.rpc('exec', { query: addConstraintQuery });
     
     if (addConstraintError) {
-      throw new Error(`Erreur lors de l'ajout de la nouvelle contrainte: ${addConstraintError.message}`)
+      throw new Error(`Erreur lors de l'ajout de la nouvelle contrainte: ${addConstraintError.message}`);
     }
   }
 }
@@ -399,12 +399,12 @@ async function setupRLSPolicies(supabaseAdmin) {
     FOR SELECT
     TO authenticated
     USING ((user_id = auth.uid()));
-  `
+  `;
   
-  const { error: selectPolicyError } = await supabaseAdmin.rpc('exec', { query: selectPolicyQuery })
+  const { error: selectPolicyError } = await supabaseAdmin.rpc('exec', { query: selectPolicyQuery });
   
   if (selectPolicyError) {
-    throw new Error(`Erreur lors de la création de la politique SELECT: ${selectPolicyError.message}`)
+    throw new Error(`Erreur lors de la création de la politique SELECT: ${selectPolicyError.message}`);
   }
   
   // Politique pour INSERT (création)
@@ -414,12 +414,12 @@ async function setupRLSPolicies(supabaseAdmin) {
     FOR INSERT
     TO authenticated
     WITH CHECK ((user_id = auth.uid()));
-  `
+  `;
   
-  const { error: insertPolicyError } = await supabaseAdmin.rpc('exec', { query: insertPolicyQuery })
+  const { error: insertPolicyError } = await supabaseAdmin.rpc('exec', { query: insertPolicyQuery });
   
   if (insertPolicyError) {
-    throw new Error(`Erreur lors de la création de la politique INSERT: ${insertPolicyError.message}`)
+    throw new Error(`Erreur lors de la création de la politique INSERT: ${insertPolicyError.message}`);
   }
   
   // Politique pour UPDATE (mise à jour)
@@ -430,12 +430,12 @@ async function setupRLSPolicies(supabaseAdmin) {
     TO authenticated
     USING ((user_id = auth.uid()))
     WITH CHECK ((user_id = auth.uid()));
-  `
+  `;
   
-  const { error: updatePolicyError } = await supabaseAdmin.rpc('exec', { query: updatePolicyQuery })
+  const { error: updatePolicyError } = await supabaseAdmin.rpc('exec', { query: updatePolicyQuery });
   
   if (updatePolicyError) {
-    throw new Error(`Erreur lors de la création de la politique UPDATE: ${updatePolicyError.message}`)
+    throw new Error(`Erreur lors de la création de la politique UPDATE: ${updatePolicyError.message}`);
   }
   
   // Politique pour DELETE (suppression)
@@ -445,11 +445,11 @@ async function setupRLSPolicies(supabaseAdmin) {
     FOR DELETE
     TO authenticated
     USING ((user_id = auth.uid()));
-  `
+  `;
   
-  const { error: deletePolicyError } = await supabaseAdmin.rpc('exec', { query: deletePolicyQuery })
+  const { error: deletePolicyError } = await supabaseAdmin.rpc('exec', { query: deletePolicyQuery });
   
   if (deletePolicyError) {
-    throw new Error(`Erreur lors de la création de la politique DELETE: ${deletePolicyError.message}`)
+    throw new Error(`Erreur lors de la création de la politique DELETE: ${deletePolicyError.message}`);
   }
 }
