@@ -60,9 +60,15 @@ Deno.serve(async (req) => {
     console.log(`Début transcription vidéo ${videoId}`)
 
     try {
+      // Vérifier si l'URL existe
+      if (!video.url) {
+        throw new Error('URL de la vidéo manquante ou invalide')
+      }
+      
       let videoUrl = video.url
 
-      if (!videoUrl.startsWith('http')) {
+      // Vérifier si l'URL est une chaîne avant d'appeler startsWith
+      if (typeof videoUrl === 'string' && !videoUrl.startsWith('http')) {
         const { data: signedUrl, error: signedUrlError } = await supabaseClient
           .storage
           .from('videos')
@@ -73,6 +79,8 @@ Deno.serve(async (req) => {
         }
 
         videoUrl = signedUrl.signedUrl
+      } else if (typeof videoUrl !== 'string') {
+        throw new Error('Format d\'URL de vidéo invalide')
       }
 
       const videoRes = await fetch(videoUrl)
