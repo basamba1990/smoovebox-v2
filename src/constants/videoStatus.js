@@ -71,7 +71,7 @@ export const getStatusLabel = (status) => {
     'ready': 'Prête'
   };
   
-  return labels[normalizedStatus] || status;
+  return labels[normalizedStatus] || status || 'Inconnu';
 };
 
 // Obtenir la classe CSS pour un statut
