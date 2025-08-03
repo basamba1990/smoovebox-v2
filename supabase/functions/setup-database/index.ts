@@ -221,7 +221,7 @@ async function createVideosTable(supabaseAdmin) {
       user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
       title TEXT NOT NULL,
       description TEXT,
-      storage_path TEXT,
+      file_path TEXT,
       public_url TEXT,
       status TEXT NOT NULL CHECK (status IN ('processing', 'published', 'draft', 'failed')),
       error TEXT,
