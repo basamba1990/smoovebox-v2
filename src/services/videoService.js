@@ -152,9 +152,9 @@ export const videoService = {
       const { data: updatedVideo, error: updateError } = await supabase
         .from('videos')
         .update({ 
-          storage_path: filePath,
           file_path: filePath,
           public_url: publicUrlData?.publicUrl || null,
+
           status: toDatabaseStatus(VIDEO_STATUS.UPLOADED)
         })
         .eq('id', videoData.id)
@@ -449,14 +449,14 @@ export const videoService = {
       // 1. Récupérer les informations de la vidéo
       const { data: video, error: fetchError } = await supabase
         .from('videos')
-        .select('storage_path, file_path')
+        .select("file_path")
         .eq('id', videoId)
         .single();
       
       if (fetchError) throw fetchError;
       
       // 2. Supprimer le fichier du stockage si un chemin existe
-      const storagePath = video.storage_path || video.file_path;
+      const storagePath = video.file_path;
       if (storagePath) {
         try {
           const { error: storageError } = await supabase.storage
