@@ -115,6 +115,9 @@ Deno.serve(async (req) => {
     // Génération d'un nom de fichier unique
     const fileExt = videoFile.name.split('.').pop();
     const fileName = `${user.id}/${uuidv4()}.${fileExt}`;
+    
+    // Définir explicitement le chemin de stockage
+    const storagePath = fileName;
 
     // Upload du fichier vers Storage
     const { data: uploadData, error: uploadError } = await supabase.storage
@@ -143,44 +146,64 @@ Deno.serve(async (req) => {
       .getPublicUrl(fileName);
 
     // Création de l'entrée dans la table videos avec les deux champs
-    const videoData = {
-      user_id: user.id,
-      title: title,
-      description: description,
-      file_path: fileName,
-      storage_path: fileName,  // Ajouter storage_path avec la même valeur que file_path
-      status: 'processing'
-    };
+    // Utiliser une requête SQL directe pour s'assurer que tous les champs sont correctement définis
+    const { data: insertData, error: insertError } = await supabase.rpc(
+      'insert_video',
+      {
+        p_user_id: user.id,
+        p_title: title,
+        p_description: description,
+        p_file_path: fileName,
+        p_storage_path: storagePath,
+        p_public_url: publicUrl,
+        p_status: 'processing'
+      }
+    );
 
-    // Essayer d'insérer avec public_url
-    let insertData;
-    try {
-      const { data, error } = await supabase
+    if (insertError) {
+      console.error('Erreur d\'insertion via RPC:', insertError);
+      
+      // Tentative d'insertion directe si la fonction RPC échoue
+      const { data: directInsertData, error: directInsertError } = await supabase
         .from('videos')
         .insert({
-          ...videoData,
-          public_url: publicUrl
+          user_id: user.id,
+          title: title,
+          description: description,
+          file_path: fileName,
+          storage_path: storagePath,
+          public_url: publicUrl,
+          status: 'processing'
         })
         .select()
         .single();
 
-      if (error) throw error;
-      insertData = data;
-    } catch (error) {
-      console.error('Première tentative d\'insertion échouée:', error);
-      
-      // Si la première tentative échoue, essayer sans public_url
-      try {
-        const { data, error: fallbackError } = await supabase
+      if (directInsertError) {
+        console.error('Erreur d\'insertion directe:', directInsertError);
+        
+        // Dernière tentative sans public_url
+        const { data: finalInsertData, error: finalInsertError } = await supabase
           .from('videos')
-          .insert(videoData)
+          .insert({
+            user_id: user.id,
+            title: title,
+            description: description,
+            file_path: fileName,
+            storage_path: storagePath,
+            status: 'processing'
+          })
           .select()
           .single();
 
-        if (fallbackError) {
-          console.error('Erreur d\'insertion en base:', fallbackError);
+        if (finalInsertError) {
+          console.error('Erreur d\'insertion finale:', finalInsertError);
           return new Response(JSON.stringify({
-            error: 'Échec de l\'enregistrement en base de données: ' + fallbackError.message
+            error: 'Échec de l\'enregistrement en base de données: ' + finalInsertError.message,
+            details: {
+              user_id: user.id,
+              storage_path: storagePath,
+              file_path: fileName
+            }
           }), {
             status: 500,
             headers: {
@@ -189,23 +212,30 @@ Deno.serve(async (req) => {
             }
           });
         }
-        insertData = data;
-      } catch (fallbackError) {
-        console.error('Erreur d\'insertion en base (seconde tentative):', fallbackError);
-        return new Response(JSON.stringify({
-          error: 'Échec de l\'enregistrement en base de données: ' + fallbackError.message
-        }), {
-          status: 500,
-          headers: {
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          }
-        });
+        
+        insertData = finalInsertData;
+      } else {
+        insertData = directInsertData;
       }
     }
 
-    // Lancement du traitement en arrière-plan (à implémenter)
-    // EdgeRuntime.waitUntil(processVideoAsync(supabaseUrl, supabaseKey, insertData.id, fileName));
+    // Vérifier si insertData est défini
+    if (!insertData) {
+      return new Response(JSON.stringify({
+        error: 'Échec de l\'enregistrement: aucune donnée retournée',
+        details: {
+          user_id: user.id,
+          storage_path: storagePath,
+          file_path: fileName
+        }
+      }), {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          ...corsHeaders
+        }
+      });
+    }
 
     return new Response(JSON.stringify({
       success: true,
