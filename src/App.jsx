@@ -1,3 +1,4 @@
+// src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { AuthProvider } from './context/AuthContext.jsx';
 import AuthModal from './AuthModal.jsx';
@@ -12,6 +13,7 @@ import { supabase, fetchDashboardData, checkSupabaseConnection, retryOperation }
 import { Video, Upload, BarChart3, FileText, LogOut, AlertTriangle, RefreshCw, Wifi, WifiOff, Play, Users, TrendingUp, Clock } from 'lucide-react';
 import LoadingScreen from './components/LoadingScreen.jsx';
 import SupabaseDiagnostic from './components/SupabaseDiagnostic.jsx';
+import VideoProcessingStatus from './components/VideoProcessingStatus.jsx';
 import './App.css';
 
 function AppContent() {
@@ -81,21 +83,24 @@ function AppContent() {
             title: "Pitch Startup Tech 2024",
             created_at: new Date().toISOString(),
             views: 234,
-            engagement_score: 85.2
+            engagement_score: 85.2,
+            status: 'published'
           },
           {
             id: 2,
             title: "Présentation Produit Innovation",
             created_at: new Date(Date.now() - 86400000).toISOString(),
             views: 189,
-            engagement_score: 72.8
+            engagement_score: 72.8,
+            status: 'published'
           },
           {
             id: 3,
             title: "Demo Solution IA",
             created_at: new Date(Date.now() - 172800000).toISOString(),
             views: 156,
-            engagement_score: 91.3
+            engagement_score: 91.3,
+            status: 'processing'
           }
         ]
       });
@@ -489,9 +494,16 @@ function AppContent() {
                                 </div>
                                 <div>
                                   <p className="font-medium text-gray-900">{video.title}</p>
-                                  <p className="text-sm text-gray-500">
-                                    {new Date(video.created_at).toLocaleDateString('fr-FR')}
-                                  </p>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <p className="text-xs text-gray-500">
+                                      {new Date(video.created_at).toLocaleDateString('fr-FR')}
+                                    </p>
+                                    {video.status && (
+                                      <div className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium">
+                                        <VideoProcessingStatus videoId={video.id} initialStatus={video.status} />
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                               <div className="text-right">
@@ -521,7 +533,12 @@ function AppContent() {
 
               <TabsContent value="upload" className="space-y-6">
                 <ErrorBoundary>
-                  <VideoUploader />
+                  <VideoUploader onUploadComplete={(video) => {
+                    // Recharger les données du dashboard après un upload réussi
+                    if (activeTab === 'dashboard') {
+                      loadDashboardData();
+                    }
+                  }} />
                 </ErrorBoundary>
               </TabsContent>
             </Tabs>
