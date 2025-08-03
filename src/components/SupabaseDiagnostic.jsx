@@ -1,185 +1,109 @@
 // src/components/SupabaseDiagnostic.jsx
-import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import React, { useState } from 'react';
+import { AlertTriangle, CheckCircle, RefreshCw, ArrowRight } from 'lucide-react';
+import { Button } from './ui/button';
 
-const SupabaseDiagnostic = () => {
-  const [diagnosticResults, setDiagnosticResults] = useState({
-    connectionStatus: 'checking',
-    authStatus: 'checking',
-    storageStatus: 'checking',
-    databaseStatus: 'checking',
-    errors: []
-  });
-  const [isVisible, setIsVisible] = useState(true);
-
-  useEffect(() => {
-    const runDiagnostics = async () => {
-      const results = {
-        connectionStatus: 'checking',
-        authStatus: 'checking',
-        storageStatus: 'checking',
-        databaseStatus: 'checking',
-        errors: []
-      };
-
-      // Vérifier la connexion de base
+const SupabaseDiagnostic = ({ 
+  error, 
+  onRetry, 
+  onContinue 
+}) => {
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [diagnosticDetails, setDiagnosticDetails] = useState(false);
+  
+  const handleRetry = async () => {
+    if (onRetry) {
+      setIsRetrying(true);
       try {
-        const { data, error } = await supabase.auth.getSession();
-        if (error) {
-          results.connectionStatus = 'error';
-          results.errors.push(`Erreur de connexion: ${error.message}`);
-        } else {
-          results.connectionStatus = 'success';
-        }
-      } catch (error) {
-        results.connectionStatus = 'error';
-        results.errors.push(`Exception de connexion: ${error.message}`);
+        await onRetry();
+      } catch (err) {
+        console.error('Erreur lors de la tentative de reconnexion:', err);
+      } finally {
+        setIsRetrying(false);
       }
-
-      // Vérifier l'authentification
-      try {
-        const { data, error } = await supabase.auth.getUser();
-        if (error) {
-          results.authStatus = 'error';
-          results.errors.push(`Erreur d'authentification: ${error.message}`);
-        } else {
-          results.authStatus = data.user ? 'authenticated' : 'unauthenticated';
-        }
-      } catch (error) {
-        results.authStatus = 'error';
-        results.errors.push(`Exception d'authentification: ${error.message}`);
-      }
-
-      // Vérifier le stockage
-      try {
-        const { data, error } = await supabase.storage.getBucket('videos');
-        if (error) {
-          results.storageStatus = 'error';
-          results.errors.push(`Erreur de stockage: ${error.message}`);
-        } else {
-          results.storageStatus = 'success';
-        }
-      } catch (error) {
-        results.storageStatus = 'error';
-        results.errors.push(`Exception de stockage: ${error.message}`);
-      }
-
-      // Vérifier la base de données
-      try {
-        const { data, error } = await supabase.from('profiles').select('count').limit(1);
-        if (error) {
-          results.databaseStatus = 'error';
-          results.errors.push(`Erreur de base de données: ${error.message}`);
-        } else {
-          results.databaseStatus = 'success';
-        }
-      } catch (error) {
-        results.databaseStatus = 'error';
-        results.errors.push(`Exception de base de données: ${error.message}`);
-      }
-
-      setDiagnosticResults(results);
-    };
-
-    runDiagnostics();
-  }, []);
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'success':
-      case 'authenticated':
-      case 'unauthenticated':
-        return 'green';
-      case 'error':
-        return 'red';
-      default:
-        return 'orange';
     }
   };
-
-  if (!isVisible) return null;
-
+  
   return (
-    <div style={{
-      position: 'fixed',
-      bottom: '20px',
-      right: '20px',
-      backgroundColor: 'rgba(0, 0, 0, 0.8)',
-      color: 'white',
-      padding: '15px',
-      borderRadius: '5px',
-      zIndex: 9999,
-      maxWidth: '400px',
-      maxHeight: '80vh',
-      overflow: 'auto'
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-        <h3 style={{ margin: 0 }}>Diagnostic Supabase</h3>
-        <button 
-          onClick={() => setIsVisible(false)}
-          style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}
-        >
-          ✕
-        </button>
-      </div>
-      
-      <div>
-        <p>
-          <strong>Connexion:</strong> 
-          <span style={{ color: getStatusColor(diagnosticResults.connectionStatus) }}>
-            {diagnosticResults.connectionStatus}
-          </span>
-        </p>
-        <p>
-          <strong>Authentification:</strong> 
-          <span style={{ color: getStatusColor(diagnosticResults.authStatus) }}>
-            {diagnosticResults.authStatus}
-          </span>
-        </p>
-        <p>
-          <strong>Stockage:</strong> 
-          <span style={{ color: getStatusColor(diagnosticResults.storageStatus) }}>
-            {diagnosticResults.storageStatus}
-          </span>
-        </p>
-        <p>
-          <strong>Base de données:</strong> 
-          <span style={{ color: getStatusColor(diagnosticResults.databaseStatus) }}>
-            {diagnosticResults.databaseStatus}
-          </span>
-        </p>
-      </div>
-      
-      {diagnosticResults.errors.length > 0 && (
-        <div>
-          <h4>Erreurs:</h4>
-          <ul style={{ paddingLeft: '20px', margin: '5px 0' }}>
-            {diagnosticResults.errors.map((error, index) => (
-              <li key={index}>{error}</li>
-            ))}
-          </ul>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+        <div className="flex flex-col items-center text-center mb-6">
+          <div className="h-16 w-16 bg-amber-100 rounded-full flex items-center justify-center mb-4">
+            <AlertTriangle className="h-8 w-8 text-amber-600" />
+          </div>
+          
+          <h2 className="text-xl font-bold text-gray-800 mb-2">
+            Problème de connexion détecté
+          </h2>
+          
+          <p className="text-gray-600">
+            L'application a rencontré un problème lors de la connexion à la base de données.
+          </p>
         </div>
-      )}
-      
-      <div style={{ marginTop: '10px' }}>
-        <p><strong>URL Supabase:</strong> {import.meta.env.VITE_SUPABASE_URL || 'Non définie'}</p>
-        <p><strong>Clé Anon:</strong> {import.meta.env.VITE_SUPABASE_ANON_KEY ? '✓ Définie' : '✗ Non définie'}</p>
+        
+        {error && (
+          <div className="bg-red-50 border border-red-100 rounded-lg p-4 mb-6">
+            <p className="text-sm text-red-800 font-medium mb-1">Message d'erreur:</p>
+            <p className="text-sm text-red-700">{error}</p>
+            
+            {diagnosticDetails && (
+              <div className="mt-3 pt-3 border-t border-red-100">
+                <p className="text-xs text-red-600 font-mono whitespace-pre-wrap">
+                  {JSON.stringify({
+                    timestamp: new Date().toISOString(),
+                    userAgent: navigator.userAgent,
+                    error: error
+                  }, null, 2)}
+                </p>
+              </div>
+            )}
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mt-2 text-xs text-red-700 hover:text-red-800"
+              onClick={() => setDiagnosticDetails(!diagnosticDetails)}
+            >
+              {diagnosticDetails ? 'Masquer les détails' : 'Afficher les détails techniques'}
+            </Button>
+          </div>
+        )}
+        
+        <div className="space-y-4">
+          <Button 
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            onClick={handleRetry}
+            disabled={isRetrying}
+          >
+            {isRetrying ? (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                Tentative de reconnexion...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Réessayer la connexion
+              </>
+            )}
+          </Button>
+          
+          <Button 
+            variant="outline"
+            className="w-full"
+            onClick={onContinue}
+          >
+            <ArrowRight className="h-4 w-4 mr-2" />
+            Continuer quand même
+          </Button>
+          
+          <div className="text-center">
+            <p className="text-xs text-gray-500 mt-4">
+              L'application fonctionnera en mode limité si vous continuez sans connexion à la base de données.
+            </p>
+          </div>
+        </div>
       </div>
-      
-      <button 
-        onClick={() => window.location.reload()}
-        style={{
-          marginTop: '10px',
-          padding: '5px 10px',
-          backgroundColor: '#4a4a4a',
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: 'pointer'
-        }}
-      >
-        Rafraîchir
-      </button>
     </div>
   );
 };
