@@ -38,35 +38,23 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
-/**
- * Fonction utilitaire pour réessayer une opération en cas d'échec
- * @param {Function} operation - La fonction à exécuter
- * @param {number} maxRetries - Nombre maximum de tentatives
- * @param {number} delay - Délai entre les tentatives en ms
- * @returns {Promise} - Le résultat de l'opération
- */
+// Fonction utilitaire pour les tentatives avec retry et backoff exponentiel
 export const retryOperation = async (operation, maxRetries = 3, delay = 1000) => {
-  let lastError;
-  
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // Tentative d'exécution de l'opération
       return await operation();
     } catch (error) {
-      console.warn(`Tentative ${attempt + 1}/${maxRetries} échouée:`, error);
-      lastError = error;
+      console.warn(`Tentative ${attempt}/${maxRetries} échouée:`, error.message);
       
-      // Si ce n'est pas la dernière tentative, attendre avant de réessayer
-      if (attempt < maxRetries - 1) {
-        // Backoff exponentiel avec jitter
-        const backoffDelay = delay * Math.pow(2, attempt) + Math.random() * 1000;
-        await new Promise(resolve => setTimeout(resolve, backoffDelay));
+      if (attempt === maxRetries) {
+        throw error;
       }
+      
+      // Backoff exponentiel avec jitter
+      const backoffDelay = delay * Math.pow(2, attempt - 1) + Math.random() * 1000;
+      await new Promise(resolve => setTimeout(resolve, backoffDelay));
     }
   }
-  
-  // Si toutes les tentatives ont échoué, lancer l'erreur
-  throw lastError;
 };
 
 /**
@@ -198,63 +186,73 @@ export const fetchDashboardData = async (userId) => {
     console.log('Récupération des données dashboard pour userId:', userId);
     
     // Récupérer les vidéos avec leurs transcriptions associées en une seule requête
-    const { data: videos, error: videosError } = await retryOperation(async () => {
+    const { data: videosWithTranscriptions, error: queryError } = await retryOperation(async () => {
       return await supabase
         .from('videos')
-        .select('*')
+        .select(`
+          id, 
+          title, 
+          description, 
+          created_at, 
+          status, 
+          thumbnail_url, 
+          file_path,
+          transcriptions:transcriptions(id, confidence_score, created_at)
+        `)
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
     });
       
-    if (videosError) throw videosError;
-    
-    // Si aucune vidéo n'est trouvée, retourner des valeurs par défaut
-    if (!videos || videos.length === 0) {
-      return {
-        totalVideos: 0,
-        totalViews: 0,
-        avgEngagement: 0,
-        recentVideos: []
-      };
+    if (queryError) {
+      // Si l'erreur est due à une relation inexistante, essayer les requêtes séparées
+      if (queryError.message?.includes('does not exist') || queryError.code === 'PGRST116') {
+        return await fetchDashboardDataFallback(userId);
+      }
+      console.error('Erreur requête dashboard:', queryError);
+      throw queryError;
     }
     
-    // Calculer les statistiques à partir des vidéos récupérées
-    const totalVideos = videos.length;
+    // Traiter les données pour le dashboard
+    const videosCount = videosWithTranscriptions ? videosWithTranscriptions.length : 0;
     
-    // Calculer le nombre total de vues (avec une valeur par défaut de 0 si views est null)
-    const totalViews = videos.reduce((sum, video) => sum + (video.views || 0), 0);
+    // Extraire toutes les transcriptions
+    const allTranscriptions = [];
+    videosWithTranscriptions?.forEach(video => {
+      if (video.transcriptions && Array.isArray(video.transcriptions)) {
+        allTranscriptions.push(...video.transcriptions);
+      }
+    });
     
-    // Calculer l'engagement moyen (avec une valeur par défaut de 0 si engagement_score est null)
-    const validEngagementScores = videos.filter(video => video.engagement_score !== null && video.engagement_score !== undefined);
-    const avgEngagement = validEngagementScores.length > 0
-      ? validEngagementScores.reduce((sum, video) => sum + video.engagement_score, 0) / validEngagementScores.length
-      : 0;
+    const transcriptionsCount = allTranscriptions.length;
     
-    // Prendre les 5 vidéos les plus récentes pour l'affichage
-    const recentVideos = videos.slice(0, 5).map(video => ({
-      id: video.id,
-      title: video.title || `Video ${video.id}`,
-      created_at: video.created_at,
-      views: video.views || 0,
-      engagement_score: video.engagement_score || 0
-    }));
+    // Calculer le score moyen de confiance
+    let averageScore = null;
+    if (allTranscriptions.length > 0) {
+      const validScores = allTranscriptions
+        .filter(t => t.confidence_score !== null)
+        .map(t => t.confidence_score);
+      
+      if (validScores.length > 0) {
+        averageScore = Math.round(
+          validScores.reduce((sum, score) => sum + score, 0) / validScores.length
+        );
+      }
+    }
     
+    // Préparer les données du dashboard
     return {
-      totalVideos,
-      totalViews,
-      avgEngagement,
-      recentVideos
+      stats: {
+        videosCount,
+        transcriptionsCount,
+        averageScore
+      },
+      recentVideos: videosWithTranscriptions ? videosWithTranscriptions.slice(0, 5) : []
     };
-  } catch (error) {
-    console.error('Erreur lors de la récupération des données du dashboard:', error);
     
+  } catch (error) {
+    console.error('Erreur lors de la récupération des données dashboard:', error);
     // En cas d'erreur, essayer la méthode de fallback
-    try {
-      return await fetchDashboardDataFallback(userId);
-    } catch (fallbackError) {
-      console.error('Erreur dans le fallback dashboard:', fallbackError);
-      throw new Error(`Erreur de récupération des données: ${error.message}`);
-    }
+    return await fetchDashboardDataFallback(userId);
   }
 };
 
@@ -271,52 +269,53 @@ const fetchDashboardDataFallback = async (userId) => {
     const { data: videosData, error: videosError } = await retryOperation(async () => {
       return await supabase
         .from('videos')
-        .select('id, title, description, created_at, status, thumbnail_url, file_path, views, engagement_score')
+        .select('id, title, description, created_at, status, thumbnail_url, file_path')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
     });
       
     if (videosError && videosError.code !== 'PGRST116') {
       console.error('Erreur vidéos:', videosError);
-      throw videosError;
     }
     
-    // Si aucune vidéo n'est trouvée, retourner des valeurs par défaut
-    if (!videosData || videosData.length === 0) {
-      return {
-        totalVideos: 0,
-        totalViews: 0,
-        avgEngagement: 0,
-        recentVideos: []
-      };
+    // Récupérer les transcriptions avec retry
+    const { data: transcriptionsData, error: transcriptionsError } = await retryOperation(async () => {
+      return await supabase
+        .from('transcriptions')
+        .select('id, confidence_score, created_at')
+        .eq('user_id', userId);
+    });
+    
+    if (transcriptionsError && transcriptionsError.code !== 'PGRST116') {
+      console.error('Erreur transcriptions:', transcriptionsError);
     }
     
     // Calculer les statistiques
-    const totalVideos = videosData.length;
+    const videosCount = videosData ? videosData.length : 0;
+    const transcriptionsCount = transcriptionsData ? transcriptionsData.length : 0;
     
-    // Calculer le nombre total de vues (avec une valeur par défaut de 0 si views est null)
-    const totalViews = videosData.reduce((sum, video) => sum + (video.views || 0), 0);
+    // Calculer le score moyen de confiance
+    let averageScore = null;
+    if (transcriptionsData && transcriptionsData.length > 0) {
+      const validScores = transcriptionsData
+        .filter(t => t.confidence_score !== null)
+        .map(t => t.confidence_score);
+      
+      if (validScores.length > 0) {
+        averageScore = Math.round(
+          validScores.reduce((sum, score) => sum + score, 0) / validScores.length
+        );
+      }
+    }
     
-    // Calculer l'engagement moyen (avec une valeur par défaut de 0 si engagement_score est null)
-    const validEngagementScores = videosData.filter(video => video.engagement_score !== null && video.engagement_score !== undefined);
-    const avgEngagement = validEngagementScores.length > 0
-      ? validEngagementScores.reduce((sum, video) => sum + video.engagement_score, 0) / validEngagementScores.length
-      : 0;
-    
-    // Prendre les 5 vidéos les plus récentes pour l'affichage
-    const recentVideos = videosData.slice(0, 5).map(video => ({
-      id: video.id,
-      title: video.title || `Video ${video.id}`,
-      created_at: video.created_at,
-      views: video.views || 0,
-      engagement_score: video.engagement_score || 0
-    }));
-    
+    // Préparer les données du dashboard
     return {
-      totalVideos,
-      totalViews,
-      avgEngagement,
-      recentVideos
+      stats: {
+        videosCount,
+        transcriptionsCount,
+        averageScore
+      },
+      recentVideos: videosData ? videosData.slice(0, 5) : []
     };
   } catch (error) {
     console.error('Erreur dans le fallback dashboard:', error);
