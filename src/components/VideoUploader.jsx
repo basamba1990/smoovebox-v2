@@ -1,47 +1,20 @@
-// src/components/VideoUploader.jsx
-import React, { useState, useRef, useEffect } from 'react';
-import { Upload, AlertCircle, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { VIDEO_STATUS, toDatabaseStatus } from '../constants/videoStatus';
-import { Button } from './ui/button';
 import { useAuth } from '../context/AuthContext';
+import { Button } from './ui/button';
+import { Loader2 } from 'lucide-react';
 
-// Fonction de validation d'URL
-const validateVideoUrl = (url) => {
-  if (!url || url.trim() === '') {
-    return 'L\'URL de la vidéo est requise';
-  }
-  
-  // Si c'est une URL HTTP/HTTPS
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    try {
-      new URL(url); // Vérifie si l'URL est valide
-      return null; // Pas d'erreur
-    } catch (e) {
-      return 'Format d\'URL invalide';
-    }
-  }
-  
-  // Si c'est un chemin de stockage (bucket/path)
-  if (!url.match(/^[^/]+\/.*$/)) {
-    return 'Format de chemin de stockage invalide. Doit être au format bucket/path';
-  }
-  
-  return null; // Pas d'erreur
-};
-
-const VideoUploader = ({ onUploadComplete }) => {
+const VideoUploader = () => {
   const { user } = useAuth();
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [isSettingUp, setIsSettingUp] = useState(false);
-  const fileInputRef = useRef(null);
-
+  
   // Configurer la base de données au chargement du composant
   useEffect(() => {
     const setupDatabase = async () => {
@@ -58,26 +31,22 @@ const VideoUploader = ({ onUploadComplete }) => {
         }
         
         // Appeler l'Edge Function pour configurer la base de données avec gestion CORS
-        try {
-          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/setup-database`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`,
-              'Accept': 'application/json',
-            },
-            mode: 'cors', // Explicitement spécifier le mode CORS
-          });
-          
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.warn(`Configuration de la base de données: ${response.status} - ${errorText}`);
-          } else {
-            const result = await response.json();
-            console.log('Configuration de la base de données réussie:', result);
-          }
-        } catch (fetchError) {
-          console.warn('Erreur lors de l\'appel à setup-database:', fetchError);
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/setup-database`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+            'Accept': 'application/json',
+          },
+          mode: 'cors', // Explicitement spécifier le mode CORS
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+          console.error('Erreur lors de la configuration de la base de données:', result);
+        } else {
+          console.log('Configuration de la base de données réussie:', result);
         }
       } catch (err) {
         console.error('Erreur lors de la configuration de la base de données:', err);
@@ -142,14 +111,9 @@ const VideoUploader = ({ onUploadComplete }) => {
       return;
     }
     
-    if (!title.trim()) {
-      setError('Veuillez entrer un titre pour la vidéo');
-      return;
-    }
-    
     try {
       setUploading(true);
-      setProgress(0);
+      setUploadProgress(0);
       
       // Générer un nom de fichier unique
       const fileExt = file.name.split('.').pop();
@@ -166,7 +130,7 @@ const VideoUploader = ({ onUploadComplete }) => {
           upsert: false,
           onUploadProgress: (progress) => {
             const percent = Math.round((progress.loaded / progress.total) * 100);
-            setProgress(percent);
+            setUploadProgress(percent);
             console.log(`Progression de l\'upload: ${percent}%`);
           },
         });
@@ -185,29 +149,19 @@ const VideoUploader = ({ onUploadComplete }) => {
       const publicUrl = publicURLData?.publicUrl || null;
       console.log('URL publique de la vidéo:', publicUrl);
       
-      // Valider l'URL avant de l'enregistrer
-      const urlError = validateVideoUrl(filePath);
-      if (urlError) {
-        throw new Error(urlError);
-      }
-      
       // Enregistrer les informations de la vidéo dans la base de données
       console.log('Enregistrement des informations vidéo dans la base de données...');
       
-      // Utiliser le statut correct pour la base de données
+      // CORRECTION: Utiliser 'processing' au lieu de 'PENDING' pour respecter la contrainte
       const videoData = {
         user_id: user.id,
-        title: title.trim(),
-        description: description.trim() || null,
-        file_path: filePath,
-        url: filePath, // S'assurer que l'URL est définie et valide
-        status: toDatabaseStatus(VIDEO_STATUS.PROCESSING)
+        title: title,
+        description: description,
+        storage_path: filePath,
+        status: 'processing' // Valeur correcte selon la contrainte de la base de données
       };
       
-      // Variable pour stocker l'ID de la vidéo insérée
-      let videoId = null;
-      let insertedVideo = null;
-      
+      // Ajouter public_url si possible
       try {
         const { data: insertData, error: insertError } = await supabase
           .from('videos')
@@ -231,21 +185,11 @@ const VideoUploader = ({ onUploadComplete }) => {
             }
             
             console.log('Informations vidéo enregistrées avec succès (sans public_url):', fallbackData);
-            
-            if (fallbackData && fallbackData.length > 0) {
-              videoId = fallbackData[0].id;
-              insertedVideo = fallbackData[0];
-            }
           } else {
             throw new Error(`Erreur lors de l'enregistrement de la vidéo: ${insertError.message}`);
           }
         } else {
           console.log('Informations vidéo enregistrées avec succès:', insertData);
-          
-          if (insertData && insertData.length > 0) {
-            videoId = insertData[0].id;
-            insertedVideo = insertData[0];
-          }
         }
       } catch (dbError) {
         console.error('Erreur lors de l\'insertion dans la base de données:', dbError);
@@ -299,23 +243,11 @@ const VideoUploader = ({ onUploadComplete }) => {
               }
               
               console.log('Informations vidéo enregistrées avec succès (dernière tentative):', finalData);
-              
-              // Stocker l'ID de la vidéo insérée
-              if (finalData && finalData.length > 0) {
-                videoId = finalData[0].id;
-                insertedVideo = finalData[0];
-              }
             } else {
               throw new Error(`Erreur lors de la nouvelle tentative d'enregistrement: ${retryError.message}`);
             }
           } else {
             console.log('Informations vidéo enregistrées avec succès après configuration:', retryData);
-            
-            // Stocker l'ID de la vidéo insérée
-            if (retryData && retryData.length > 0) {
-              videoId = retryData[0].id;
-              insertedVideo = retryData[0];
-            }
           }
         } catch (setupError) {
           console.error('Erreur lors de la configuration et nouvelle tentative:', setupError);
@@ -332,90 +264,19 @@ const VideoUploader = ({ onUploadComplete }) => {
             }
             
             console.log('Informations vidéo enregistrées avec succès (dernière tentative):', lastResortData);
-            
-            // Stocker l'ID de la vidéo insérée
-            if (lastResortData && lastResortData.length > 0) {
-              videoId = lastResortData[0].id;
-              insertedVideo = lastResortData[0];
-            }
           } catch (finalError) {
             throw new Error(`Échec de la configuration et de l'enregistrement: ${finalError.message}`);
           }
         }
       }
       
-      setSuccess("Vidéo uploadée avec succès et en cours de traitement!");
-
-      // Appeler l'Edge Function pour traiter la vidéo
-      if (videoId) {
-        try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session) {
-            throw new Error('Aucune session utilisateur trouvée');
-          }
-          
-          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-video`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`,
-            },
-            body: JSON.stringify({ video_id: videoId }),
-          });
-          
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            console.warn(`Avertissement: Traitement de la vidéo (${response.status}): ${errorData.error || response.statusText}`);
-          } else {
-            console.log('Traitement de la vidéo démarré avec succès');
-          }
-        } catch (processError) {
-          console.warn('Erreur lors du démarrage du traitement:', processError);
-          // Ne pas bloquer le flux si le traitement échoue
-        }
-        
-        // Essayer également d'appeler la fonction de transcription
-        try {
-          // Vérifier que l'URL est valide avant d'appeler la fonction
-          const videoUrl = insertedVideo?.url || filePath;
-          const urlValidationError = validateVideoUrl(videoUrl);
-          
-          if (urlValidationError) {
-            console.warn(`URL invalide pour la transcription: ${urlValidationError}`);
-            // Utiliser le chemin de stockage comme fallback
-            console.log('Utilisation du chemin de stockage comme fallback pour la transcription');
-          }
-          
-          const { data: invokeData, error: invokeError } = await supabase.functions.invoke(
-            'transcribe-video',
-            {
-              body: { videoId: videoId, videoUrl: videoUrl },
-            }
-          );
-
-          if (invokeError) {
-            console.error('Erreur lors de l\'appel de la fonction transcribe-video:', invokeError);
-          } else {
-            console.log('Fonction transcribe-video appelée avec succès:', invokeData);
-          }
-        } catch (invokeCatchError) {
-          console.error('Erreur inattendue lors de l\'appel de la fonction transcribe-video:', invokeCatchError);
-        }
-      }
+      setSuccess('Vidéo uploadée avec succès et en cours de traitement!');
       
       // Réinitialiser le formulaire
       setFile(null);
       setTitle('');
       setDescription('');
-      setProgress(0);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      
-      // Notifier le parent avec les données de la vidéo
-      if (onUploadComplete && insertedVideo) {
-        onUploadComplete(insertedVideo);
-      }
+      setUploadProgress(0);
       
       // Afficher un message pour informer l'utilisateur
       setTimeout(() => {
@@ -459,7 +320,6 @@ const VideoUploader = ({ onUploadComplete }) => {
           <input 
             type="file" 
             id="file" 
-            ref={fileInputRef}
             accept="video/*" 
             onChange={handleFileChange} 
             className="mt-1 block w-full text-sm text-gray-500
@@ -505,10 +365,10 @@ const VideoUploader = ({ onUploadComplete }) => {
             <div className="w-full bg-gray-200 rounded-full h-2.5">
               <div 
                 className="bg-gradient-to-r from-blue-500 to-purple-500 h-2.5 rounded-full transition-all duration-300" 
-                style={{ width: `${progress}%` }}
+                style={{ width: `${uploadProgress}%` }}
               ></div>
             </div>
-            <p className="text-sm text-gray-600 text-center">{progress}% complété</p>
+            <p className="text-sm text-gray-600 text-center">{uploadProgress}% complété</p>
           </div>
         )}
         
