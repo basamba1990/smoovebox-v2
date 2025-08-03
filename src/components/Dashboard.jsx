@@ -41,8 +41,7 @@ const Dashboard = () => {
             status,
             confidence_score,
             processed_at,
-            analysis_result,
-            error_message
+            analysis_result
           )
         `)
         .eq('user_id', user.id)
@@ -50,15 +49,6 @@ const Dashboard = () => {
 
       if (!directError && directData && directData.length > 0) {
         setVideos(directData);
-        
-        // Si une vidéo était sélectionnée, mettre à jour ses données
-        if (selectedVideo) {
-          const updatedSelectedVideo = directData.find(v => v.id === selectedVideo.id);
-          if (updatedSelectedVideo) {
-            setSelectedVideo(updatedSelectedVideo);
-          }
-        }
-        
         setLoading(false);
         return;
       }
@@ -97,8 +87,7 @@ const Dashboard = () => {
                   status,
                   confidence_score,
                   processed_at,
-                  analysis_result,
-                  error_message
+                  analysis_result
                 )
               `)
               .eq('profile_id', newProfile.id)
@@ -106,14 +95,6 @@ const Dashboard = () => {
 
             if (!error) {
               setVideos(data || []);
-              
-              // Si une vidéo était sélectionnée, mettre à jour ses données
-              if (selectedVideo && data) {
-                const updatedSelectedVideo = data.find(v => v.id === selectedVideo.id);
-                if (updatedSelectedVideo) {
-                  setSelectedVideo(updatedSelectedVideo);
-                }
-              }
             }
           } else {
             console.error('Erreur lors de la création du profil:', createError);
@@ -134,8 +115,7 @@ const Dashboard = () => {
               status,
               confidence_score,
               processed_at,
-              analysis_result,
-              error_message
+              analysis_result
             )
           `)
           .eq('profile_id', profileData.id)
@@ -143,14 +123,6 @@ const Dashboard = () => {
 
         if (!error) {
           setVideos(data || []);
-          
-          // Si une vidéo était sélectionnée, mettre à jour ses données
-          if (selectedVideo && data) {
-            const updatedSelectedVideo = data.find(v => v.id === selectedVideo.id);
-            if (updatedSelectedVideo) {
-              setSelectedVideo(updatedSelectedVideo);
-            }
-          }
         } else {
           console.error('Erreur lors du chargement des vidéos:', error);
           setVideos([]);
@@ -168,28 +140,6 @@ const Dashboard = () => {
     if (!videoId) return;
     
     try {
-      // Récupérer d'abord les informations de la vidéo pour le stockage
-      const { data: videoData } = await supabase
-        .from('videos')
-.select("file_path")
-        .eq('id', videoId)
-        .single();
-      
-      // Supprimer le fichier du stockage si un chemin est disponible
-      if (videoData && (videoData.file_path)) {
-        const storagePath = videoData.file_path;
-        // Nettoyer le chemin si nécessaire (enlever le préfixe "videos/")
-        const cleanPath = storagePath.replace(/^videos\//, '');
-        
-        const { error: storageError } = await supabase.storage
-          .from('videos')
-          .remove([cleanPath]);
-        
-        if (storageError) {
-          console.error('Erreur lors de la suppression du fichier:', storageError);
-        }
-      }
-      
       // Supprimer d'abord les transcriptions associées
       const { error: transcriptionError } = await supabase
         .from('transcriptions')
@@ -237,11 +187,6 @@ const Dashboard = () => {
   };
 
   const getStatusBadge = (status) => {
-    if (!status) return 'bg-gray-100 text-gray-800';
-    
-    // Normaliser le statut en majuscules pour la comparaison
-    const normalizedStatus = status.toUpperCase();
-    
     const statusMap = {
       [VIDEO_STATUS.PENDING]: 'bg-yellow-100 text-yellow-800',
       [VIDEO_STATUS.PROCESSING]: 'bg-blue-100 text-blue-800',
@@ -253,15 +198,10 @@ const Dashboard = () => {
       [TRANSCRIPTION_STATUS.FAILED]: 'bg-red-100 text-red-800',
     };
     
-    return statusMap[normalizedStatus] || 'bg-gray-100 text-gray-800';
+    return statusMap[status] || 'bg-gray-100 text-gray-800';
   };
 
   const getStatusText = (status) => {
-    if (!status) return 'Inconnu';
-    
-    // Normaliser le statut en majuscules pour la comparaison
-    const normalizedStatus = status.toUpperCase();
-    
     const statusTextMap = {
       [VIDEO_STATUS.PENDING]: 'En attente',
       [VIDEO_STATUS.PROCESSING]: 'En traitement',
@@ -273,33 +213,7 @@ const Dashboard = () => {
       [TRANSCRIPTION_STATUS.FAILED]: 'Échec',
     };
     
-    return statusTextMap[normalizedStatus] || 'Inconnu';
-  };
-
-  // Fonction pour obtenir l'URL publique d'une vidéo
-  const getVideoUrl = (video) => {
-    if (!video) return null;
-    
-    // Si la vidéo a déjà une URL publique, l'utiliser
-    if (video.public_url) return video.public_url;
-    
-    // Sinon, construire l'URL à partir du chemin de stockage
-    const path = video.file_path;
-    if (!path) return null;
-    
-    try {
-      // Extraire le projectRef de l'URL Supabase
-      const url = new URL(import.meta.env.VITE_SUPABASE_URL);
-      const projectRef = url.hostname.split('.')[0];
-      
-      // Supprimer le préfixe "videos/" si présent
-      const cleanPath = path.replace(/^videos\//, '');
-      
-      return `https://${projectRef}.supabase.co/storage/v1/object/public/videos/${cleanPath}`;
-    } catch (e) {
-      console.error("Erreur de construction de l'URL:", e);
-      return null;
-    }
+    return statusTextMap[status] || 'Inconnu';
   };
 
   const renderVideoList = () => {
@@ -436,8 +350,6 @@ const Dashboard = () => {
       );
     }
 
-    const videoUrl = getVideoUrl(selectedVideo);
-
     return (
       <div className="bg-white rounded-lg shadow-sm border">
         <div className="p-6">
@@ -453,13 +365,9 @@ const Dashboard = () => {
             </div>
           </div>
           
-          {videoUrl ? (
+          {selectedVideo.file_path && (
             <div className="mb-6">
-              <VideoPlayer video={selectedVideo} />
-            </div>
-          ) : (
-            <div className="mb-6 bg-gray-100 aspect-video flex items-center justify-center rounded-lg">
-              <p className="text-gray-500">Vidéo non disponible</p>
+              <VideoPlayer url={selectedVideo.file_path} />
             </div>
           )}
           
@@ -478,11 +386,7 @@ const Dashboard = () => {
                     <Button 
                       variant="outline" 
                       size="sm"
-                      onClick={() => {
-                        setActiveTab('transcriptions');
-                        // Passer la vidéo sélectionnée au composant TranscriptionViewer via l'état local
-                        // ou utiliser un contexte global si nécessaire
-                      }}
+                      onClick={() => setActiveTab('transcriptions')}
                     >
                       <FileText className="h-4 w-4 mr-2" />
                       Voir l'analyse
@@ -601,7 +505,7 @@ const Dashboard = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <TranscriptionViewer video={selectedVideo} />
+              <TranscriptionViewer />
             </CardContent>
           </Card>
         </TabsContent>
