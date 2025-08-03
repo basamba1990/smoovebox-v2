@@ -3,7 +3,7 @@ import { AuthProvider } from './context/AuthContext.jsx';
 import AuthModal from './AuthModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import VideoManagement from './pages/VideoManagement.jsx';
-import UploadPage from './components/VideoUploader.jsx';
+import VideoUploader from './components/VideoUploader.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { Button } from './components/ui/button.jsx';
