@@ -1,11 +1,11 @@
-// src/components/VideoPlayer.jsx
+// src/components/VideoPlayer.jsx - Version adaptée
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Pause, Volume2, VolumeX, Maximize, SkipBack, SkipForward } from 'lucide-react';
 import { Slider } from './ui/slider';
 import { Button } from './ui/button';
 import { supabase } from '../lib/supabase';
 
-const VideoPlayer = ({ video }) => {
+const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePath, poster }) => {
   const videoRef = useRef(null);
   const containerRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -28,12 +28,53 @@ const VideoPlayer = ({ video }) => {
       const url = new URL(import.meta.env.VITE_SUPABASE_URL);
       const projectRef = url.hostname.split('.')[0];
       
-      // Supprimer le préfixe "videos/" si présent
-      const cleanPath = storagePath.replace(/^videos\//, '');
+      // Gérer les chemins avec ou sans préfixe de bucket
+      let bucket = 'videos';
+      let path = storagePath;
       
-      return `https://${projectRef}.supabase.co/storage/v1/object/public/videos/${cleanPath}`;
+      // Si storagePath contient un format bucket/path
+      if (storagePath.includes('/')) {
+        const parts = storagePath.split('/', 1);
+        if (parts.length > 0) {
+          bucket = parts[0];
+          path = storagePath.substring(bucket.length + 1);
+        }
+      }
+      
+      return `https://${projectRef}.supabase.co/storage/v1/object/public/${bucket}/${path}`;
     } catch (e) {
       console.error("Erreur de construction de l'URL:", e);
+      return null;
+    }
+  };
+  
+  // Fonction pour créer une URL signée
+  const createSignedUrl = async (storagePath) => {
+    if (!storagePath) return null;
+    
+    try {
+      // Extraire le bucket et le chemin
+      let bucket = 'videos';
+      let path = storagePath;
+      
+      // Si storagePath contient un format bucket/path
+      if (storagePath.includes('/')) {
+        const parts = storagePath.split('/', 1);
+        if (parts.length > 0) {
+          bucket = parts[0];
+          path = storagePath.substring(bucket.length + 1);
+        }
+      }
+      
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .createSignedUrl(path, 3600); // 1 heure de validité
+        
+      if (error) throw error;
+      
+      return data?.signedUrl || null;
+    } catch (err) {
+      console.error('Erreur lors de la création de l\'URL signée:', err);
       return null;
     }
   };
@@ -41,40 +82,65 @@ const VideoPlayer = ({ video }) => {
   // Charger l'URL de la vidéo
   useEffect(() => {
     const loadVideoUrl = async () => {
-      if (video) {
-        setIsLoading(true);
-        setError(null);
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        // Déterminer la source de la vidéo
+        let finalVideoUrl = null;
         
-        // 1. Utiliser d'abord l'URL publique
-        const publicUrl = getPublicUrl(video.storage_path);
-        if (publicUrl) {
-          setVideoUrl(publicUrl);
-          return;
-        }
-        
-        // 2. Fallback: URL signée si nécessaire (pour les buckets privés)
-        try {
-          const { data, error } = await supabase.storage
-            .from('videos')
-            .createSignedUrl(video.storage_path, 3600); // 1 heure de validité
-
-          if (data?.signedUrl) {
-            setVideoUrl(data.signedUrl);
-          } else if (error) {
-            console.error("Erreur URL signée:", error);
-            setError("Impossible de charger la vidéo");
-            setIsLoading(false);
+        // 1. Utiliser l'URL directe si fournie en prop
+        if (propVideoUrl) {
+          if (propVideoUrl.startsWith('http://') || propVideoUrl.startsWith('https://')) {
+            finalVideoUrl = propVideoUrl;
           }
-        } catch (err) {
-          console.error("Erreur URL signée:", err);
-          setError("Erreur de chargement de la vidéo");
-          setIsLoading(false);
         }
+        
+        // 2. Utiliser l'URL de la vidéo si fournie dans l'objet video
+        if (!finalVideoUrl && video?.url) {
+          if (video.url.startsWith('http://') || video.url.startsWith('https://')) {
+            finalVideoUrl = video.url;
+          }
+        }
+        
+        // 3. Utiliser le chemin de stockage fourni en prop
+        if (!finalVideoUrl && propStoragePath) {
+          // Essayer d'abord l'URL publique
+          finalVideoUrl = getPublicUrl(propStoragePath);
+          
+          // Si pas d'URL publique, essayer l'URL signée
+          if (!finalVideoUrl) {
+            finalVideoUrl = await createSignedUrl(propStoragePath);
+          }
+        }
+        
+        // 4. Utiliser le chemin de stockage de l'objet video
+        if (!finalVideoUrl && video?.storage_path) {
+          // Essayer d'abord l'URL publique
+          finalVideoUrl = getPublicUrl(video.storage_path);
+          
+          // Si pas d'URL publique, essayer l'URL signée
+          if (!finalVideoUrl) {
+            finalVideoUrl = await createSignedUrl(video.storage_path);
+          }
+        }
+        
+        // Si aucune source valide n'est trouvée
+        if (!finalVideoUrl) {
+          throw new Error('Aucune source vidéo valide disponible');
+        }
+        
+        setVideoUrl(finalVideoUrl);
+      } catch (err) {
+        console.error('Erreur de chargement vidéo:', err);
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
       }
     };
     
     loadVideoUrl();
-  }, [video]);
+  }, [video, propVideoUrl, propStoragePath]);
   
   // Contrôle de la lecture
   const togglePlay = () => {
@@ -309,8 +375,8 @@ const VideoPlayer = ({ video }) => {
     };
   }, []);
 
-  // Si pas de vidéo fournie
-  if (!video) {
+  // Si pas de vidéo fournie et pas de props directes
+  if (!video && !propVideoUrl && !propStoragePath) {
     return (
       <div className="w-full aspect-video bg-gray-200 rounded-lg flex items-center justify-center">
         <p className="text-gray-500">Aucune vidéo sélectionnée</p>
@@ -334,6 +400,7 @@ const VideoPlayer = ({ video }) => {
           className="w-full h-full"
           onClick={togglePlay}
           playsInline
+          poster={poster}
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center">
