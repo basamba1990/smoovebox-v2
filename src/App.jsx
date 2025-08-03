@@ -521,7 +521,7 @@ function AppContent() {
 
               <TabsContent value="upload" className="space-y-6">
                 <ErrorBoundary>
-                  <UploadPage />
+                  <VideoUploader />
                 </ErrorBoundary>
               </TabsContent>
             </Tabs>
