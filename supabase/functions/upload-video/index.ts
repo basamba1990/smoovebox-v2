@@ -142,16 +142,17 @@ Deno.serve(async (req) => {
       .from('videos')
       .getPublicUrl(fileName);
 
-    // Création de l'entrée dans la table videos (approche simplifiée)
+    // Création de l'entrée dans la table videos avec les deux champs
     const videoData = {
       user_id: user.id,
       title: title,
       description: description,
-      file_path: fileName,  // Utiliser file_path au lieu de storage_path
+      file_path: fileName,
+      storage_path: fileName,  // Ajouter storage_path avec la même valeur que file_path
       status: 'processing'
     };
 
-    // Essayer d'insérer avec public_url, sinon sans
+    // Essayer d'insérer avec public_url
     let insertData;
     try {
       const { data, error } = await supabase
@@ -166,8 +167,10 @@ Deno.serve(async (req) => {
       if (error) throw error;
       insertData = data;
     } catch (error) {
-      // Si l'erreur concerne public_url, essayer sans cette colonne
-      if (error.message && error.message.includes('public_url')) {
+      console.error('Première tentative d\'insertion échouée:', error);
+      
+      // Si la première tentative échoue, essayer sans public_url
+      try {
         const { data, error: fallbackError } = await supabase
           .from('videos')
           .insert(videoData)
@@ -177,7 +180,7 @@ Deno.serve(async (req) => {
         if (fallbackError) {
           console.error('Erreur d\'insertion en base:', fallbackError);
           return new Response(JSON.stringify({
-            error: 'Échec de l\'enregistrement en base de données'
+            error: 'Échec de l\'enregistrement en base de données: ' + fallbackError.message
           }), {
             status: 500,
             headers: {
@@ -187,10 +190,10 @@ Deno.serve(async (req) => {
           });
         }
         insertData = data;
-      } else {
-        console.error('Erreur d\'insertion en base:', error);
+      } catch (fallbackError) {
+        console.error('Erreur d\'insertion en base (seconde tentative):', fallbackError);
         return new Response(JSON.stringify({
-          error: 'Échec de l\'enregistrement en base de données'
+          error: 'Échec de l\'enregistrement en base de données: ' + fallbackError.message
         }), {
           status: 500,
           headers: {
