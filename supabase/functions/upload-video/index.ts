@@ -1,7 +1,6 @@
-// Edge Function pour gérer l'upload de vidéos avec gestion flexible des chemins de stockage
+// Edge Function pour traiter une vidéo après son upload
 import { createClient } from 'jsr:@supabase/supabase-js@^2';
-import { multiParser } from 'jsr:@supabase/multiparser@^0.1.5';
-import { v4 as uuidv4 } from 'jsr:uuid@^9.0.1';
+import { corsHeaders } from '../_shared/cors.ts';
 
 // Constantes pour les statuts de vidéo
 const VIDEO_STATUS = {
@@ -11,21 +10,27 @@ const VIDEO_STATUS = {
 };
 
 Deno.serve(async (req) => {
-  // Vérifier la méthode HTTP
-  if (req.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ error: 'Méthode non autorisée' }),
-      { status: 405, headers: { 'Content-Type': 'application/json' } }
-    );
+  // Gérer les requêtes OPTIONS (CORS preflight)
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: new Headers(corsHeaders)
+    });
   }
-
+  
   try {
     // Initialiser le client Supabase avec le token d'authentification
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: 'Authentification requise' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
+        { 
+          status: 401, 
+          headers: { 
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          } 
+        }
       );
     }
 
@@ -44,90 +49,95 @@ Deno.serve(async (req) => {
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: 'Utilisateur non authentifié', details: authError?.message }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
+        { 
+          status: 401, 
+          headers: { 
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          } 
+        }
       );
     }
 
-    // Parser le formulaire multipart
-    const formData = await multiParser(req);
+    // Récupérer les données de la requête
+    const { videoId } = await req.json();
     
-    // Extraire les données du formulaire
-    const videoFile = formData.files.video;
-    const title = formData.fields.title || 'Sans titre';
-    const description = formData.fields.description || '';
-    
-    if (!videoFile) {
+    if (!videoId) {
       return new Response(
-        JSON.stringify({ error: 'Aucun fichier vidéo fourni' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'ID de vidéo requis' }),
+        { 
+          status: 400, 
+          headers: { 
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          } 
+        }
       );
     }
 
-    // Générer un nom de fichier unique
-    const fileExt = videoFile.filename.split('.').pop();
-    const fileName = `${uuidv4()}.${fileExt}`;
-    const filePath = `${user.id}/${fileName}`;
-
-    // Uploader le fichier dans le bucket "videos"
-    const { data: uploadData, error: uploadError } = await supabaseClient.storage
+    // Récupérer les informations de la vidéo
+    const { data: video, error: fetchError } = await supabaseClient
       .from('videos')
-      .upload(filePath, videoFile.content, {
-        contentType: videoFile.contentType,
-        cacheControl: '3600'
-      });
-
-    if (uploadError) {
-      console.error('Erreur d\'upload:', uploadError);
-      return new Response(
-        JSON.stringify({ error: 'Erreur lors de l\'upload de la vidéo', details: uploadError.message }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Construire le chemin de stockage
-    const storagePath = `videos/${filePath}`;
-
-    // Insérer l'enregistrement dans la base de données
-    const { data: video, error: insertError } = await supabaseClient
-      .from('videos')
-      .insert({
-        title,
-        description,
-        user_id: user.id,
-        storage_path: storagePath,
-        status: VIDEO_STATUS.PROCESSING,
-        // Laisser url à NULL pour le moment
-      })
-      .select()
+      .select('*')
+      .eq('id', videoId)
       .single();
-
-    if (insertError) {
-      // Si l'insertion échoue, supprimer le fichier uploadé
-      await supabaseClient.storage.from('videos').remove([filePath]);
-      
-      console.error('Erreur d\'insertion:', insertError);
+    
+    if (fetchError || !video) {
       return new Response(
-        JSON.stringify({ error: 'Erreur lors de l\'enregistrement de la vidéo', details: insertError.message }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Vidéo non trouvée', details: fetchError?.message }),
+        { 
+          status: 404, 
+          headers: { 
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          } 
+        }
+      );
+    }
+    
+    // Vérifier que l'utilisateur est bien le propriétaire de la vidéo
+    if (video.user_id !== user.id) {
+      return new Response(
+        JSON.stringify({ error: 'Vous n\'êtes pas autorisé à traiter cette vidéo' }),
+        { 
+          status: 403, 
+          headers: { 
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          } 
+        }
       );
     }
 
-    // Déclencher le traitement asynchrone de la vidéo (simulation)
-    // Dans une implémentation réelle, vous pourriez appeler une autre fonction Edge ou un webhook
+    // Traitement asynchrone de la vidéo
     EdgeRuntime.waitUntil(
       (async () => {
         try {
+          // Mettre à jour le statut pour indiquer que le traitement a commencé
+          await supabaseClient
+            .from('videos')
+            .update({
+              status: VIDEO_STATUS.PROCESSING
+            })
+            .eq('id', videoId);
+          
           // Simuler un délai de traitement
           await new Promise(resolve => setTimeout(resolve, 5000));
           
-          // Mettre à jour le statut de la vidéo
+          // Ici, vous pourriez effectuer des opérations comme :
+          // - Générer une miniature
+          // - Extraire des métadonnées (durée, résolution)
+          // - Transcoder la vidéo
+          // - Générer des sous-titres
+          
+          // Mettre à jour le statut de la vidéo une fois le traitement terminé
           await supabaseClient
             .from('videos')
             .update({
               status: VIDEO_STATUS.READY,
               // Vous pourriez également mettre à jour d'autres champs comme duration, thumbnail_url, etc.
             })
-            .eq('id', video.id);
+            .eq('id', videoId);
         } catch (err) {
           console.error('Erreur lors du traitement asynchrone:', err);
           
@@ -138,20 +148,23 @@ Deno.serve(async (req) => {
               status: VIDEO_STATUS.ERROR,
               error_message: 'Erreur lors du traitement de la vidéo'
             })
-            .eq('id', video.id);
+            .eq('id', videoId);
         }
       })()
     );
 
-    // Retourner la réponse avec les données de la vidéo
+    // Retourner une réponse immédiate
     return new Response(
       JSON.stringify({
-        message: 'Vidéo uploadée avec succès et en cours de traitement',
-        video
+        message: 'Traitement de la vidéo démarré',
+        videoId
       }),
       { 
         status: 200, 
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+          'Content-Type': 'application/json',
+          ...corsHeaders
+        } 
       }
     );
 
@@ -159,7 +172,13 @@ Deno.serve(async (req) => {
     console.error('Erreur non gérée:', err);
     return new Response(
       JSON.stringify({ error: 'Erreur serveur', details: err.message }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      { 
+        status: 500, 
+        headers: { 
+          'Content-Type': 'application/json',
+          ...corsHeaders
+        } 
+      }
     );
   }
 });
