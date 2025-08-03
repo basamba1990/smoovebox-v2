@@ -199,7 +199,7 @@ const VideoUploader = ({ onUploadComplete }) => {
         user_id: user.id,
         title: title.trim(),
         description: description.trim() || null,
-        file_path: filePath,  // CORRECTION: Utiliser file_path au lieu de storage_path
+        file_path: filePath,
         url: filePath, // S'assurer que l'URL est définie et valide
         status: toDatabaseStatus(VIDEO_STATUS.PROCESSING)
       };

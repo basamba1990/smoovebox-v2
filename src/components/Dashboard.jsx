@@ -171,13 +171,13 @@ const Dashboard = () => {
       // Récupérer d'abord les informations de la vidéo pour le stockage
       const { data: videoData } = await supabase
         .from('videos')
-        .select('storage_path, file_path')
+.select("file_path")
         .eq('id', videoId)
         .single();
       
       // Supprimer le fichier du stockage si un chemin est disponible
-      if (videoData && (videoData.storage_path || videoData.file_path)) {
-        const storagePath = videoData.storage_path || videoData.file_path;
+      if (videoData && (videoData.file_path)) {
+        const storagePath = videoData.file_path;
         // Nettoyer le chemin si nécessaire (enlever le préfixe "videos/")
         const cleanPath = storagePath.replace(/^videos\//, '');
         
@@ -284,7 +284,7 @@ const Dashboard = () => {
     if (video.public_url) return video.public_url;
     
     // Sinon, construire l'URL à partir du chemin de stockage
-    const path = video.storage_path || video.file_path;
+    const path = video.file_path;
     if (!path) return null;
     
     try {
