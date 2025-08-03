@@ -6,6 +6,30 @@ import { VIDEO_STATUS, toDatabaseStatus } from '../constants/videoStatus';
 import { Button } from './ui/button';
 import { useAuth } from '../context/AuthContext';
 
+// Fonction de validation d'URL
+const validateVideoUrl = (url) => {
+  if (!url || url.trim() === '') {
+    return 'L\'URL de la vidéo est requise';
+  }
+  
+  // Si c'est une URL HTTP/HTTPS
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    try {
+      new URL(url); // Vérifie si l'URL est valide
+      return null; // Pas d'erreur
+    } catch (e) {
+      return 'Format d\'URL invalide';
+    }
+  }
+  
+  // Si c'est un chemin de stockage (bucket/path)
+  if (!url.match(/^[^/]+\/.*$/)) {
+    return 'Format de chemin de stockage invalide. Doit être au format bucket/path';
+  }
+  
+  return null; // Pas d'erreur
+};
+
 const VideoUploader = ({ onUploadComplete }) => {
   const { user } = useAuth();
   const [file, setFile] = useState(null);
@@ -161,6 +185,12 @@ const VideoUploader = ({ onUploadComplete }) => {
       const publicUrl = publicURLData?.publicUrl || null;
       console.log('URL publique de la vidéo:', publicUrl);
       
+      // Valider l'URL avant de l'enregistrer
+      const urlError = validateVideoUrl(filePath);
+      if (urlError) {
+        throw new Error(urlError);
+      }
+      
       // Enregistrer les informations de la vidéo dans la base de données
       console.log('Enregistrement des informations vidéo dans la base de données...');
       
@@ -170,6 +200,7 @@ const VideoUploader = ({ onUploadComplete }) => {
         title: title.trim(),
         description: description.trim() || null,
         storage_path: filePath,
+        url: filePath, // S'assurer que l'URL est définie et valide
         status: toDatabaseStatus(VIDEO_STATUS.PROCESSING)
       };
       
@@ -345,10 +376,20 @@ const VideoUploader = ({ onUploadComplete }) => {
         
         // Essayer également d'appeler la fonction de transcription
         try {
+          // Vérifier que l'URL est valide avant d'appeler la fonction
+          const videoUrl = insertedVideo?.url || filePath;
+          const urlValidationError = validateVideoUrl(videoUrl);
+          
+          if (urlValidationError) {
+            console.warn(`URL invalide pour la transcription: ${urlValidationError}`);
+            // Utiliser le chemin de stockage comme fallback
+            console.log('Utilisation du chemin de stockage comme fallback pour la transcription');
+          }
+          
           const { data: invokeData, error: invokeError } = await supabase.functions.invoke(
             'transcribe-video',
             {
-              body: { videoId: videoId, videoUrl: publicUrl },
+              body: { videoId: videoId, videoUrl: videoUrl },
             }
           );
 
