@@ -26,7 +26,7 @@ const VideoProcessingStatus = ({ videoId, initialStatus, onStatusChange }) => {
     try {
       const { data, error } = await supabase
         .from('videos')
-        .select('status, transcript, ai_result, error_message')
+        .select('status, transcript, ai_result, error_message, url')
         .eq('id', videoId)
         .single();
 
@@ -299,9 +299,9 @@ const VideoProcessingStatus = ({ videoId, initialStatus, onStatusChange }) => {
     );
   };
 
-  // Rendu des messages d'erreur
+  // Rendu des messages d'erreur génériques
   const renderError = () => {
-    if (!error || isLoading) return null;
+    if (!error || isLoading || error.includes('URL')) return null;
 
     return (
       <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
@@ -312,6 +312,37 @@ const VideoProcessingStatus = ({ videoId, initialStatus, onStatusChange }) => {
             className="text-xs text-blue-600 hover:text-blue-800 flex items-center"
           >
             <RefreshCw className="w-3 h-3 mr-1" /> Réessayer
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // Nouveau rendu spécifique pour les erreurs d'URL
+  const renderUrlError = () => {
+    if (status !== 'error' || !error || !error.includes('URL')) return null;
+    
+    return (
+      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
+        <p className="text-xs text-red-600">
+          <strong>Erreur d'URL :</strong> {error}
+        </p>
+        <div className="mt-2">
+          <p className="text-xs text-gray-600">
+            Solutions possibles :
+          </p>
+          <ul className="text-xs text-gray-600 list-disc pl-4 mt-1">
+            <li>Vérifiez que l'URL de la vidéo est correcte</li>
+            <li>Réessayez l'upload avec un nouveau fichier</li>
+            <li>Contactez le support si le problème persiste</li>
+          </ul>
+        </div>
+        <div className="mt-1 flex justify-end">
+          <button 
+            onClick={handleRefresh}
+            className="text-xs text-blue-600 hover:text-blue-800 flex items-center"
+          >
+            <RefreshCw className="w-3 h-3 mr-1" /> Vérifier à nouveau
           </button>
         </div>
       </div>
@@ -339,6 +370,7 @@ const VideoProcessingStatus = ({ videoId, initialStatus, onStatusChange }) => {
       {renderLastChecked()}
       {renderProcessingMessage()}
       {renderError()}
+      {renderUrlError()} {/* Nouveau rendu spécifique aux erreurs d'URL */}
       {renderLongWaitMessage()}
       {renderResults()}
     </div>
