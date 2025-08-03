@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
           .createSignedUrl(videoUrl, 3600)
 
         if (signedUrlError || !signedUrl?.signedUrl) {
-          throw new Error('Impossible de générer l’URL signée')
+          throw new Error('Impossible de générer l'URL signée')
         }
 
         videoUrl = signedUrl.signedUrl
