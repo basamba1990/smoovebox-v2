@@ -12,6 +12,7 @@ const VideoProcessingStatus = ({ videoId, initialStatus, onStatusChange }) => {
   const [error, setError] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
   const [lastChecked, setLastChecked] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Mettre à jour le statut si initialStatus change
   useEffect(() => {
@@ -28,7 +29,7 @@ const VideoProcessingStatus = ({ videoId, initialStatus, onStatusChange }) => {
         .select('status, transcript, ai_result, error_message')
         .eq('id', videoId)
         .single();
-        
+
       if (error) throw error;
       
       if (data) {
@@ -43,7 +44,11 @@ const VideoProcessingStatus = ({ videoId, initialStatus, onStatusChange }) => {
         
         // Notifier le parent du changement de statut si nécessaire
         if (onStatusChange && status !== data.status) {
-          onStatusChange(data.status);
+          onStatusChange({
+            status: data.status,
+            transcript: data.transcript,
+            aiResult: data.ai_result
+          });
         }
         
         // Si le statut est terminal, arrêter le polling
@@ -52,20 +57,28 @@ const VideoProcessingStatus = ({ videoId, initialStatus, onStatusChange }) => {
         } else if (isProcessingStatus(data.status)) {
           // Si toujours en traitement, incrémenter le compteur de tentatives
           setRetryCount(prev => prev + 1);
+          
+          // Arrêter le polling après trop de tentatives
+          if (retryCount >= 60) {
+            setIsPolling(false);
+            setError('Le traitement a pris trop de temps. Merci de réessayer plus tard.');
+          }
         }
       }
       
       setLastChecked(new Date());
+      setIsLoading(false);
     } catch (err) {
       console.error(`Erreur lors de la récupération des données de la vidéo ${videoId}:`, err);
       setError(err.message);
+      setIsLoading(false);
     }
   };
 
   // Configurer la surveillance en temps réel
   useEffect(() => {
     if (!videoId) return;
-    
+
     console.log(`Configuration de la surveillance pour la vidéo ${videoId}`);
     
     // Récupérer les données initiales
@@ -100,8 +113,12 @@ const VideoProcessingStatus = ({ videoId, initialStatus, onStatusChange }) => {
           }
           
           // Notifier le parent du changement de statut si nécessaire
-          if (onStatusChange) {
-            onStatusChange(payload.new.status);
+          if (onStatusChange && payload.new.status !== status) {
+            onStatusChange({
+              status: payload.new.status,
+              transcript: payload.new.transcript,
+              aiResult: payload.new.ai_result
+            });
           }
           
           // Si le statut est terminal, arrêter le polling
@@ -129,11 +146,11 @@ const VideoProcessingStatus = ({ videoId, initialStatus, onStatusChange }) => {
       setIsPolling(false);
     };
   }, [videoId]);
-  
+
   // Effet pour le polling comme fallback si realtime ne fonctionne pas
   useEffect(() => {
     if (!videoId || !isPolling) return;
-    
+
     let isMounted = true;
     
     // Déterminer l'intervalle de polling en fonction du nombre de tentatives
@@ -159,49 +176,51 @@ const VideoProcessingStatus = ({ videoId, initialStatus, onStatusChange }) => {
 
   // Fonction pour forcer une actualisation manuelle
   const handleRefresh = async () => {
+    setIsLoading(true);
     await fetchVideoData();
+  };
+
+  // Rendu du loader initial
+  const renderLoader = () => {
+    if (!isLoading) return null;
+    
+    return (
+      <div className="flex items-center justify-center py-4">
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-500"></div>
+        <span className="ml-2 text-sm text-gray-600">Chargement...</span>
+      </div>
+    );
   };
 
   // Rendu du statut
   const renderStatus = () => {
+    if (isLoading) return null;
+    
     if (isCompletedStatus(status)) {
       return (
         <div className="flex items-center text-green-600">
-          <CheckCircle className="w-4 h-4 mr-1" />
+          <CheckCircle className="w-5 h-5 mr-1" />
           <span>{getStatusLabel(status)}</span>
         </div>
       );
     } else if (isErrorStatus(status)) {
       return (
         <div className="flex items-center text-red-600">
-          <AlertCircle className="w-4 h-4 mr-1" />
+          <AlertCircle className="w-5 h-5 mr-1" />
           <span>{getStatusLabel(status)}</span>
-          <button 
-            onClick={handleRefresh} 
-            className="ml-2 p-1 rounded-full hover:bg-gray-100"
-            title="Actualiser"
-          >
-            <RefreshCw className="w-3 h-3" />
-          </button>
         </div>
       );
     } else {
       return (
         <div className="flex items-center text-amber-600">
           {isPolling ? (
-            <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+            <RefreshCw className="w-5 h-5 mr-1 animate-spin" />
           ) : (
-            <Clock className="w-4 h-4 mr-1" />
+            <Clock className="w-5 h-5 mr-1" />
           )}
           <span>{getStatusLabel(status)}</span>
           {retryCount > 10 && (
-            <button 
-              onClick={handleRefresh} 
-              className="ml-2 p-1 rounded-full hover:bg-gray-100"
-              title="Actualiser"
-            >
-              <RefreshCw className="w-3 h-3" />
-            </button>
+            <span className="ml-2 text-xs text-gray-500">({retryCount})</span>
           )}
         </div>
       );
@@ -210,8 +229,8 @@ const VideoProcessingStatus = ({ videoId, initialStatus, onStatusChange }) => {
 
   // Rendu du temps écoulé depuis la dernière vérification
   const renderLastChecked = () => {
-    if (!lastChecked || !isProcessingStatus(status)) return null;
-    
+    if (!lastChecked || !isProcessingStatus(status) || isLoading) return null;
+
     const now = new Date();
     const diffSeconds = Math.floor((now - lastChecked) / 1000);
     
@@ -230,10 +249,23 @@ const VideoProcessingStatus = ({ videoId, initialStatus, onStatusChange }) => {
     );
   };
 
+  // Rendu du message d'analyse en cours
+  const renderProcessingMessage = () => {
+    if (!isProcessingStatus(status) || isLoading) return null;
+    
+    return (
+      <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
+        <p className="text-xs text-blue-700">
+          <span className="font-medium">Analyse en cours...</span> Cela peut prendre quelques minutes selon la longueur de la vidéo.
+        </p>
+      </div>
+    );
+  };
+
   // Rendu des résultats (transcription et analyse IA)
   const renderResults = () => {
-    if (status !== 'done') return null;
-    
+    if (status !== 'done' || isLoading) return null;
+
     return (
       <div className="mt-4 space-y-4">
         {transcript ? (
@@ -249,7 +281,7 @@ const VideoProcessingStatus = ({ videoId, initialStatus, onStatusChange }) => {
             <p className="text-sm text-gray-500">Aucune transcription trouvée.</p>
           </div>
         )}
-
+        
         {aiResult ? (
           <div className="bg-white p-3 rounded-md border border-gray-200">
             <div className="flex items-center mb-2 text-gray-700">
@@ -269,8 +301,8 @@ const VideoProcessingStatus = ({ videoId, initialStatus, onStatusChange }) => {
 
   // Rendu des messages d'erreur
   const renderError = () => {
-    if (!error) return null;
-    
+    if (!error || isLoading) return null;
+
     return (
       <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
         <p className="text-xs text-red-600">{error}</p>
@@ -288,8 +320,8 @@ const VideoProcessingStatus = ({ videoId, initialStatus, onStatusChange }) => {
 
   // Rendu du message d'attente prolongée
   const renderLongWaitMessage = () => {
-    if (!isProcessingStatus(status) || retryCount < 15) return null;
-    
+    if (!isProcessingStatus(status) || retryCount < 15 || isLoading) return null;
+
     return (
       <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-md">
         <p className="text-xs text-amber-700">
@@ -301,9 +333,11 @@ const VideoProcessingStatus = ({ videoId, initialStatus, onStatusChange }) => {
   };
 
   return (
-    <div className="video-status">
+    <div className="video-processing-status">
+      {renderLoader()}
       {renderStatus()}
       {renderLastChecked()}
+      {renderProcessingMessage()}
       {renderError()}
       {renderLongWaitMessage()}
       {renderResults()}
