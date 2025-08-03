@@ -120,8 +120,7 @@ const VideoManagement = () => {
   const getPublicUrl = (video) => {
     if (!video) return null;
     
-    // Utiliser storage_path en priorité, puis file_path
-    const path = video.storage_path || video.file_path;
+    const path = video.file_path;
     if (!path) return null;
     
     try {
@@ -203,7 +202,7 @@ const VideoManagement = () => {
     
     try {
       // Supprimer le fichier du stockage
-      const path = video.storage_path || video.file_path;
+      const path = video.file_path;
       if (path) {
         const { error: storageError } = await supabase.storage
           .from('videos')
