@@ -180,9 +180,8 @@ const VideoUploader = ({ onUploadComplete }) => {
       // Appeler l'Edge Function pour gérer l'upload et l'insertion
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-        },
+        // Ne pas inclure l'en-tête Authorization pour éviter les problèmes avec les requêtes multipart/form-data
+        // Le token est déjà dans l'URL
         body: formData,
       });
       
@@ -248,9 +247,7 @@ const VideoUploader = ({ onUploadComplete }) => {
       
       const response = await fetch(url, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-        }
+        // Ne pas inclure l'en-tête Authorization pour tester si le paramètre d'URL fonctionne
       });
       
       const result = await response.json();
