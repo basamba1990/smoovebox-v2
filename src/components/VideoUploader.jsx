@@ -1,6 +1,4 @@
-// src/components/VideoUploader.jsx
 import React, { useState, useRef } from 'react';
-import { Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Button } from './ui/button';
 import { useAuth } from '../context/AuthContext';
@@ -84,51 +82,10 @@ const VideoUploader = ({ onUploadComplete }) => {
         });
       }, 300);
       
-      // 1. Créer un enregistrement dans la base de données
-      const { data: videoRecord, error: insertError } = await supabase
-        .from('videos')
-        .insert({
-          title: title.trim(),
-          description: description.trim(),
-          user_id: user.id,
-          status: 'processing'
-        })
-        .select()
-        .single();
-      
-      if (insertError) {
-        if (insertError.code === '42P01') { // Relation n'existe pas
-          // Créer la table videos
-          const { error: tableError } = await supabase.rpc('create_videos_table');
-          
-          if (tableError) {
-            throw new Error(`Erreur lors de la création de la table: ${tableError.message}`);
-          }
-          
-          // Réessayer l'insertion
-          const { data: retryVideo, error: retryError } = await supabase
-            .from('videos')
-            .insert({
-              title: title.trim(),
-              description: description.trim(),
-              user_id: user.id,
-              status: 'processing'
-            })
-            .select()
-            .single();
-            
-          if (retryError) {
-            throw new Error(`Erreur lors de l'insertion: ${retryError.message}`);
-          }
-          
-          videoRecord = retryVideo;
-        } else {
-          throw new Error(`Erreur lors de l'insertion: ${insertError.message}`);
-        }
-      }
-      
-      // 2. Uploader le fichier au Storage
+      // 1. Uploader d'abord le fichier au Storage
       const filePath = `${user.id}/${Date.now()}_${file.name}`;
+      console.log('Uploading file to path:', filePath);
+      
       const { error: uploadError } = await supabase.storage
         .from('videos')
         .upload(filePath, file, {
@@ -137,31 +94,37 @@ const VideoUploader = ({ onUploadComplete }) => {
         });
       
       if (uploadError) {
-        // Si l'upload échoue, supprimer l'enregistrement de la base de données
-        await supabase
-          .from('videos')
-          .delete()
-          .eq('id', videoRecord.id);
-          
         throw new Error(`Erreur lors de l'upload: ${uploadError.message}`);
       }
       
-      // 3. Mettre à jour l'enregistrement avec le chemin de stockage
+      // 2. Obtenir l'URL signée pour le fichier
       const { data: publicUrl } = await supabase.storage
         .from('videos')
         .createSignedUrl(filePath, 365 * 24 * 60 * 60); // URL valide pendant 1 an
       
-      const { error: updateError } = await supabase
+      // 3. Créer l'enregistrement dans la base de données APRÈS l'upload réussi
+      const { data: videoRecord, error: insertError } = await supabase
         .from('videos')
-        .update({
-          storage_path: filePath,
+        .insert({
+          title: title.trim(),
+          description: description.trim(),
+          user_id: user.id,
+          storage_path: filePath, // Chemin du fichier déjà uploadé
           url: publicUrl?.signedUrl || null,
-          status: 'ready'
+          status: 'ready',
+          original_file_name: file.name,
+          file_size: file.size
         })
-        .eq('id', videoRecord.id);
+        .select()
+        .single();
       
-      if (updateError) {
-        throw new Error(`Erreur lors de la mise à jour: ${updateError.message}`);
+      if (insertError) {
+        // Si l'insertion échoue, supprimer le fichier uploadé
+        await supabase.storage
+          .from('videos')
+          .remove([filePath]);
+          
+        throw new Error(`Erreur lors de l'insertion: ${insertError.message}`);
       }
       
       // Arrêter la simulation de progression
@@ -176,16 +139,9 @@ const VideoUploader = ({ onUploadComplete }) => {
         fileInputRef.current.value = '';
       }
       
-      // Récupérer la vidéo mise à jour
-      const { data: finalVideo } = await supabase
-        .from('videos')
-        .select('*')
-        .eq('id', videoRecord.id)
-        .single();
-      
       // Notifier le parent avec les données de la vidéo
-      if (onUploadComplete && finalVideo) {
-        onUploadComplete(finalVideo);
+      if (onUploadComplete && videoRecord) {
+        onUploadComplete(videoRecord);
       }
       
       // Afficher un message de succès
