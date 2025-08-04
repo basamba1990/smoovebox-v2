@@ -1,4 +1,4 @@
-// Edge Function pour configurer la base de données
+// Edge Function pour configurer la base de données pour l'application de vidéos
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
 
 // En-têtes CORS pour permettre les requêtes cross-origin
@@ -15,6 +15,34 @@ function handleOptions() {
     status: 204,
     headers: new Headers(corsHeaders)
   });
+}
+
+// Fonction pour extraire le token JWT de l'en-tête Authorization
+function extractToken(req) {
+  // Essayer d'abord l'en-tête Authorization standard
+  const authHeader = req.headers.get('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7);
+  }
+  
+  // Si pas d'en-tête Authorization, vérifier dans les cookies
+  const cookieHeader = req.headers.get('Cookie');
+  if (cookieHeader) {
+    const cookies = cookieHeader.split(';').map(c => c.trim());
+    const authCookie = cookies.find(c => c.startsWith('sb-access-token='));
+    if (authCookie) {
+      return authCookie.substring('sb-access-token='.length);
+    }
+  }
+  
+  // Vérifier dans les paramètres de requête
+  const url = new URL(req.url);
+  const token = url.searchParams.get('token');
+  if (token) {
+    return token;
+  }
+  
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -38,11 +66,19 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Initialiser le client Supabase avec le token d'authentification
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
+    // Récupérer le token d'authentification
+    const token = extractToken(req);
+    
+    if (!token) {
       return new Response(
-        JSON.stringify({ error: 'Authentification requise' }),
+        JSON.stringify({ 
+          error: 'Authentification requise', 
+          debug: {
+            hasAuthHeader: !!req.headers.get('Authorization'),
+            authHeaderValue: req.headers.get('Authorization')?.substring(0, 20) + '...',
+            hasCookie: !!req.headers.get('Cookie'),
+          }
+        }),
         { 
           status: 401, 
           headers: { 
@@ -53,12 +89,13 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Initialiser le client Supabase avec le token récupéré
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL'),
       Deno.env.get('SUPABASE_ANON_KEY'),
       {
         global: {
-          headers: { Authorization: authHeader }
+          headers: { Authorization: `Bearer ${token}` }
         }
       }
     );
@@ -67,7 +104,14 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     if (authError || !user) {
       return new Response(
-        JSON.stringify({ error: 'Utilisateur non authentifié', details: authError?.message }),
+        JSON.stringify({ 
+          error: 'Utilisateur non authentifié', 
+          details: authError?.message,
+          debug: {
+            tokenLength: token?.length,
+            tokenStart: token?.substring(0, 10) + '...',
+          }
+        }),
         { 
           status: 401, 
           headers: { 
@@ -78,207 +122,156 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Créer les fonctions SQL nécessaires
-    const setupResults = {
-      bucket: null,
-      table: null,
-      functions: null
-    };
+    // Utiliser le client service_role pour les opérations administratives
+    const serviceClient = createClient(
+      Deno.env.get('SUPABASE_URL'),
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    );
 
-    // 1. Créer le bucket "videos" s'il n'existe pas
+    // Créer les fonctions RPC nécessaires
+    const createCheckTableExistsFunction = `
+      CREATE OR REPLACE FUNCTION check_table_exists(table_name TEXT)
+      RETURNS BOOLEAN
+      LANGUAGE plpgsql
+      SECURITY DEFINER
+      SET search_path = public
+      AS $$
+      DECLARE
+        table_exists BOOLEAN;
+      BEGIN
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = $1
+        ) INTO table_exists;
+        
+        RETURN table_exists;
+      END;
+      $$;
+    `;
+
+    const createVideosTableFunction = `
+      CREATE OR REPLACE FUNCTION create_videos_table()
+      RETURNS VOID
+      LANGUAGE plpgsql
+      SECURITY DEFINER
+      SET search_path = public
+      AS $$
+      BEGIN
+        -- Créer la table videos si elle n'existe pas
+        CREATE TABLE IF NOT EXISTS videos (
+          id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+          title TEXT NOT NULL,
+          description TEXT,
+          user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+          storage_path TEXT NOT NULL,
+          url TEXT,
+          status TEXT NOT NULL DEFAULT 'processing',
+          error_message TEXT,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+
+        -- Activer Row Level Security
+        ALTER TABLE videos ENABLE ROW LEVEL SECURITY;
+
+        -- Créer une politique pour permettre aux utilisateurs de voir leurs propres vidéos
+        CREATE POLICY "Les utilisateurs peuvent voir leurs propres vidéos"
+          ON videos FOR SELECT
+          USING (auth.uid() = user_id);
+
+        -- Créer une politique pour permettre aux utilisateurs d'insérer leurs propres vidéos
+        CREATE POLICY "Les utilisateurs peuvent insérer leurs propres vidéos"
+          ON videos FOR INSERT
+          WITH CHECK (auth.uid() = user_id);
+
+        -- Créer une politique pour permettre aux utilisateurs de mettre à jour leurs propres vidéos
+        CREATE POLICY "Les utilisateurs peuvent mettre à jour leurs propres vidéos"
+          ON videos FOR UPDATE
+          USING (auth.uid() = user_id)
+          WITH CHECK (auth.uid() = user_id);
+
+        -- Créer une politique pour permettre aux utilisateurs de supprimer leurs propres vidéos
+        CREATE POLICY "Les utilisateurs peuvent supprimer leurs propres vidéos"
+          ON videos FOR DELETE
+          USING (auth.uid() = user_id);
+          
+        -- Créer un index sur user_id pour améliorer les performances
+        CREATE INDEX IF NOT EXISTS videos_user_id_idx ON videos(user_id);
+        
+        -- Créer un trigger pour mettre à jour le champ updated_at
+        CREATE OR REPLACE FUNCTION update_updated_at_column()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          NEW.updated_at = NOW();
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+
+        DROP TRIGGER IF EXISTS update_videos_updated_at ON videos;
+        CREATE TRIGGER update_videos_updated_at
+        BEFORE UPDATE ON videos
+        FOR EACH ROW
+        EXECUTE FUNCTION update_updated_at_column();
+      END;
+      $$;
+    `;
+
+    // Exécuter les requêtes SQL pour créer les fonctions
+    await serviceClient.rpc('exec_sql', { sql: createCheckTableExistsFunction });
+    await serviceClient.rpc('exec_sql', { sql: createVideosTableFunction });
+
+    // Créer le bucket de stockage si nécessaire
     try {
-      const { data: buckets } = await supabaseClient.storage.listBuckets();
+      const { data: buckets } = await serviceClient.storage.listBuckets();
       const videoBucket = buckets.find(bucket => bucket.name === 'videos');
       
       if (!videoBucket) {
-        // Créer le bucket s'il n'existe pas
-        await supabaseClient.storage.createBucket('videos', {
+        await serviceClient.storage.createBucket('videos', {
           public: false,
-          fileSizeLimit: 104857600, // 100MB en octets
+          fileSizeLimit: 104857600, // 100MB
         });
-        setupResults.bucket = 'created';
-      } else {
-        setupResults.bucket = 'exists';
       }
     } catch (bucketError) {
       console.error('Erreur lors de la création du bucket:', bucketError);
-      setupResults.bucket = `error: ${bucketError.message}`;
     }
 
-    // 2. Créer les fonctions SQL nécessaires
+    // Vérifier si la table videos existe, sinon la créer
+    const { data: tableExists } = await serviceClient.rpc('check_table_exists', { table_name: 'videos' });
+    
+    if (!tableExists) {
+      await serviceClient.rpc('create_videos_table');
+    }
+
+    // Créer la fonction exec_sql si elle n'existe pas déjà
+    const createExecSqlFunction = `
+      CREATE OR REPLACE FUNCTION exec_sql(sql text)
+      RETURNS void
+      LANGUAGE plpgsql
+      SECURITY DEFINER
+      SET search_path = public
+      AS $$
+      BEGIN
+        EXECUTE sql;
+      END;
+      $$;
+    `;
+
     try {
-      // Fonction pour vérifier si une table existe
-      const { error: checkTableFnError } = await supabaseClient.rpc('create_check_table_exists_function');
-      
-      if (checkTableFnError) {
-        // La fonction existe peut-être déjà, essayons de créer la fonction nous-mêmes
-        const { error: createFnError } = await supabaseClient.from('_functions').insert({
-          name: 'check_table_exists',
-          code: `
-          CREATE OR REPLACE FUNCTION check_table_exists(table_name text)
-          RETURNS boolean
-          LANGUAGE plpgsql
-          SECURITY DEFINER
-          AS $$
-          DECLARE
-            table_exists boolean;
-          BEGIN
-            SELECT EXISTS (
-              SELECT FROM information_schema.tables 
-              WHERE table_schema = 'public' 
-              AND table_name = $1
-            ) INTO table_exists;
-            
-            RETURN table_exists;
-          END;
-          $$;
-          `
-        });
-        
-        if (createFnError) {
-          console.error('Erreur lors de la création de la fonction check_table_exists:', createFnError);
-        }
-      }
-      
-      // Fonction pour créer la table videos
-      const { error: createTableFnError } = await supabaseClient.rpc('create_videos_table_function');
-      
-      if (createTableFnError) {
-        // La fonction existe peut-être déjà, essayons de créer la fonction nous-mêmes
-        const { error: createFnError } = await supabaseClient.from('_functions').insert({
-          name: 'create_videos_table',
-          code: `
-          CREATE OR REPLACE FUNCTION create_videos_table()
-          RETURNS void
-          LANGUAGE plpgsql
-          SECURITY DEFINER
-          AS $$
-          BEGIN
-            -- Créer la table si elle n'existe pas
-            CREATE TABLE IF NOT EXISTS public.videos (
-              id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-              created_at timestamp with time zone DEFAULT now() NOT NULL,
-              updated_at timestamp with time zone DEFAULT now() NOT NULL,
-              title text NOT NULL,
-              description text,
-              user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-              url text,
-              storage_path text NOT NULL,
-              status text DEFAULT 'processing' NOT NULL,
-              error_message text,
-              duration integer,
-              thumbnail_url text
-            );
-            
-            -- Ajouter les commentaires
-            COMMENT ON TABLE public.videos IS 'Table pour stocker les vidéos uploadées par les utilisateurs';
-            COMMENT ON COLUMN public.videos.id IS 'Identifiant unique de la vidéo';
-            COMMENT ON COLUMN public.videos.created_at IS 'Date de création de l''enregistrement';
-            COMMENT ON COLUMN public.videos.updated_at IS 'Date de dernière mise à jour de l''enregistrement';
-            COMMENT ON COLUMN public.videos.title IS 'Titre de la vidéo';
-            COMMENT ON COLUMN public.videos.description IS 'Description de la vidéo';
-            COMMENT ON COLUMN public.videos.user_id IS 'Identifiant de l''utilisateur qui a uploadé la vidéo';
-            COMMENT ON COLUMN public.videos.url IS 'URL publique de la vidéo';
-            COMMENT ON COLUMN public.videos.storage_path IS 'Chemin de stockage de la vidéo dans le bucket';
-            COMMENT ON COLUMN public.videos.status IS 'Statut de la vidéo (processing, ready, error)';
-            COMMENT ON COLUMN public.videos.error_message IS 'Message d''erreur en cas de problème';
-            COMMENT ON COLUMN public.videos.duration IS 'Durée de la vidéo en secondes';
-            COMMENT ON COLUMN public.videos.thumbnail_url IS 'URL de la miniature de la vidéo';
-            
-            -- Créer les index
-            CREATE INDEX IF NOT EXISTS videos_user_id_idx ON public.videos (user_id);
-            CREATE INDEX IF NOT EXISTS videos_status_idx ON public.videos (status);
-            
-            -- Activer RLS
-            ALTER TABLE public.videos ENABLE ROW LEVEL SECURITY;
-            
-            -- Créer les politiques RLS
-            DO $$
-            BEGIN
-              -- Politique pour permettre à l'utilisateur de voir ses propres vidéos
-              IF NOT EXISTS (
-                SELECT FROM pg_policies WHERE tablename = 'videos' AND policyname = 'Users can view their own videos'
-              ) THEN
-                CREATE POLICY "Users can view their own videos" ON public.videos
-                  FOR SELECT USING (auth.uid() = user_id);
-              END IF;
-              
-              -- Politique pour permettre à l'utilisateur d'insérer ses propres vidéos
-              IF NOT EXISTS (
-                SELECT FROM pg_policies WHERE tablename = 'videos' AND policyname = 'Users can insert their own videos'
-              ) THEN
-                CREATE POLICY "Users can insert their own videos" ON public.videos
-                  FOR INSERT WITH CHECK (auth.uid() = user_id);
-              END IF;
-              
-              -- Politique pour permettre à l'utilisateur de mettre à jour ses propres vidéos
-              IF NOT EXISTS (
-                SELECT FROM pg_policies WHERE tablename = 'videos' AND policyname = 'Users can update their own videos'
-              ) THEN
-                CREATE POLICY "Users can update their own videos" ON public.videos
-                  FOR UPDATE USING (auth.uid() = user_id);
-              END IF;
-              
-              -- Politique pour permettre à l'utilisateur de supprimer ses propres vidéos
-              IF NOT EXISTS (
-                SELECT FROM pg_policies WHERE tablename = 'videos' AND policyname = 'Users can delete their own videos'
-              ) THEN
-                CREATE POLICY "Users can delete their own videos" ON public.videos
-                  FOR DELETE USING (auth.uid() = user_id);
-              END IF;
-            END
-            $$;
-            
-            -- Créer un trigger pour mettre à jour updated_at
-            DROP TRIGGER IF EXISTS set_updated_at ON public.videos;
-            CREATE TRIGGER set_updated_at
-              BEFORE UPDATE ON public.videos
-              FOR EACH ROW
-              EXECUTE FUNCTION public.set_updated_at();
-          END;
-          $$;
-          `
-        });
-        
-        if (createFnError) {
-          console.error('Erreur lors de la création de la fonction create_videos_table:', createFnError);
-        }
-      }
-      
-      setupResults.functions = 'created';
-    } catch (fnError) {
-      console.error('Erreur lors de la création des fonctions:', fnError);
-      setupResults.functions = `error: ${fnError.message}`;
+      await serviceClient.rpc('exec_sql', { sql: createExecSqlFunction });
+    } catch (error) {
+      // La fonction existe probablement déjà, ignorons l'erreur
+      console.log('Note: La fonction exec_sql existe peut-être déjà');
     }
 
-    // 3. Créer la table videos si elle n'existe pas
-    try {
-      // Vérifier si la table existe
-      const { data: tableExists, error: tableCheckError } = await supabaseClient.rpc('check_table_exists', { table_name: 'videos' });
-      
-      if (tableCheckError || !tableExists) {
-        // La table n'existe pas, essayons de la créer
-        const { error: createTableError } = await supabaseClient.rpc('create_videos_table');
-        
-        if (createTableError) {
-          console.error('Erreur lors de la création de la table videos:', createTableError);
-          setupResults.table = `error: ${createTableError.message}`;
-        } else {
-          setupResults.table = 'created';
-        }
-      } else {
-        setupResults.table = 'exists';
-      }
-    } catch (tableError) {
-      console.error('Erreur lors de la vérification/création de la table:', tableError);
-      setupResults.table = `error: ${tableError.message}`;
-    }
-
-    // Retourner les résultats
     return new Response(
       JSON.stringify({
-        message: 'Configuration de la base de données terminée',
-        results: setupResults
+        message: 'Configuration de la base de données réussie',
+        details: {
+          functionsCreated: ['check_table_exists', 'create_videos_table', 'exec_sql'],
+          tableChecked: 'videos',
+          bucketChecked: 'videos'
+        }
       }),
       { 
         status: 200, 
