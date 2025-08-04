@@ -17,31 +17,35 @@ function handleOptions() {
   });
 }
 
-// Fonction pour extraire le token JWT de l'en-tête Authorization
+// Fonction pour extraire le token JWT de l'en-tête Authorization ou des paramètres d'URL
 function extractToken(req) {
-  // Essayer d'abord l'en-tête Authorization standard
+  // Essayer d'abord les paramètres d'URL (priorité la plus haute)
+  const url = new URL(req.url);
+  const tokenParam = url.searchParams.get('token');
+  if (tokenParam) {
+    console.log("Token trouvé dans les paramètres d'URL");
+    return tokenParam;
+  }
+  
+  // Essayer ensuite l'en-tête Authorization
   const authHeader = req.headers.get('Authorization');
   if (authHeader && authHeader.startsWith('Bearer ')) {
+    console.log("Token trouvé dans l'en-tête Authorization");
     return authHeader.substring(7);
   }
   
-  // Si pas d'en-tête Authorization, vérifier dans les cookies
+  // Vérifier dans les cookies
   const cookieHeader = req.headers.get('Cookie');
   if (cookieHeader) {
     const cookies = cookieHeader.split(';').map(c => c.trim());
     const authCookie = cookies.find(c => c.startsWith('sb-access-token='));
     if (authCookie) {
+      console.log("Token trouvé dans les cookies");
       return authCookie.substring('sb-access-token='.length);
     }
   }
   
-  // Vérifier dans les paramètres de requête
-  const url = new URL(req.url);
-  const token = url.searchParams.get('token');
-  if (token) {
-    return token;
-  }
-  
+  console.log("Aucun token trouvé");
   return null;
 }
 
@@ -70,6 +74,12 @@ Deno.serve(async (req) => {
     const token = extractToken(req);
     
     if (!token) {
+      // Journaliser les en-têtes pour le débogage
+      const headers = {};
+      req.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+      
       return new Response(
         JSON.stringify({ 
           error: 'Authentification requise', 
@@ -77,6 +87,8 @@ Deno.serve(async (req) => {
             hasAuthHeader: !!req.headers.get('Authorization'),
             authHeaderValue: req.headers.get('Authorization')?.substring(0, 20) + '...',
             hasCookie: !!req.headers.get('Cookie'),
+            url: req.url,
+            headers: headers
           }
         }),
         { 
@@ -110,6 +122,7 @@ Deno.serve(async (req) => {
           debug: {
             tokenLength: token?.length,
             tokenStart: token?.substring(0, 10) + '...',
+            tokenEnd: token?.substring(token.length - 10),
           }
         }),
         { 
@@ -128,98 +141,49 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     );
 
-    // Créer les fonctions RPC nécessaires
-    const createCheckTableExistsFunction = `
-      CREATE OR REPLACE FUNCTION check_table_exists(table_name TEXT)
-      RETURNS BOOLEAN
+    // Créer les fonctions SQL nécessaires
+    const createExecSqlFunction = `
+      CREATE OR REPLACE FUNCTION exec_sql(sql text, params text[] DEFAULT NULL)
+      RETURNS void
       LANGUAGE plpgsql
       SECURITY DEFINER
       SET search_path = public
       AS $$
-      DECLARE
-        table_exists BOOLEAN;
       BEGIN
-        SELECT EXISTS (
-          SELECT FROM information_schema.tables 
-          WHERE table_schema = 'public' 
-          AND table_name = $1
-        ) INTO table_exists;
-        
-        RETURN table_exists;
+        IF params IS NULL THEN
+          EXECUTE sql;
+        ELSE
+          EXECUTE sql USING params;
+        END IF;
       END;
       $$;
     `;
 
-    const createVideosTableFunction = `
-      CREATE OR REPLACE FUNCTION create_videos_table()
-      RETURNS VOID
+    const createExecSqlWithReturnFunction = `
+      CREATE OR REPLACE FUNCTION exec_sql_with_return(sql text, params text[] DEFAULT NULL)
+      RETURNS SETOF json
       LANGUAGE plpgsql
       SECURITY DEFINER
       SET search_path = public
       AS $$
       BEGIN
-        -- Créer la table videos si elle n'existe pas
-        CREATE TABLE IF NOT EXISTS videos (
-          id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-          title TEXT NOT NULL,
-          description TEXT,
-          user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-          storage_path TEXT NOT NULL,
-          url TEXT,
-          status TEXT NOT NULL DEFAULT 'processing',
-          error_message TEXT,
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-
-        -- Activer Row Level Security
-        ALTER TABLE videos ENABLE ROW LEVEL SECURITY;
-
-        -- Créer une politique pour permettre aux utilisateurs de voir leurs propres vidéos
-        CREATE POLICY "Les utilisateurs peuvent voir leurs propres vidéos"
-          ON videos FOR SELECT
-          USING (auth.uid() = user_id);
-
-        -- Créer une politique pour permettre aux utilisateurs d'insérer leurs propres vidéos
-        CREATE POLICY "Les utilisateurs peuvent insérer leurs propres vidéos"
-          ON videos FOR INSERT
-          WITH CHECK (auth.uid() = user_id);
-
-        -- Créer une politique pour permettre aux utilisateurs de mettre à jour leurs propres vidéos
-        CREATE POLICY "Les utilisateurs peuvent mettre à jour leurs propres vidéos"
-          ON videos FOR UPDATE
-          USING (auth.uid() = user_id)
-          WITH CHECK (auth.uid() = user_id);
-
-        -- Créer une politique pour permettre aux utilisateurs de supprimer leurs propres vidéos
-        CREATE POLICY "Les utilisateurs peuvent supprimer leurs propres vidéos"
-          ON videos FOR DELETE
-          USING (auth.uid() = user_id);
-          
-        -- Créer un index sur user_id pour améliorer les performances
-        CREATE INDEX IF NOT EXISTS videos_user_id_idx ON videos(user_id);
-        
-        -- Créer un trigger pour mettre à jour le champ updated_at
-        CREATE OR REPLACE FUNCTION update_updated_at_column()
-        RETURNS TRIGGER AS $$
-        BEGIN
-          NEW.updated_at = NOW();
-          RETURN NEW;
-        END;
-        $$ LANGUAGE plpgsql;
-
-        DROP TRIGGER IF EXISTS update_videos_updated_at ON videos;
-        CREATE TRIGGER update_videos_updated_at
-        BEFORE UPDATE ON videos
-        FOR EACH ROW
-        EXECUTE FUNCTION update_updated_at_column();
+        IF params IS NULL THEN
+          RETURN QUERY EXECUTE sql;
+        ELSE
+          RETURN QUERY EXECUTE sql USING params;
+        END IF;
       END;
       $$;
     `;
 
     // Exécuter les requêtes SQL pour créer les fonctions
-    await serviceClient.rpc('exec_sql', { sql: createCheckTableExistsFunction });
-    await serviceClient.rpc('exec_sql', { sql: createVideosTableFunction });
+    await serviceClient.rpc('exec_sql', { sql: createExecSqlFunction }).catch(err => {
+      console.log('Note: La fonction exec_sql existe peut-être déjà:', err.message);
+    });
+    
+    await serviceClient.rpc('exec_sql', { sql: createExecSqlWithReturnFunction }).catch(err => {
+      console.log('Note: La fonction exec_sql_with_return existe peut-être déjà:', err.message);
+    });
 
     // Créer le bucket de stockage si nécessaire
     try {
@@ -237,38 +201,84 @@ Deno.serve(async (req) => {
     }
 
     // Vérifier si la table videos existe, sinon la créer
-    const { data: tableExists } = await serviceClient.rpc('check_table_exists', { table_name: 'videos' });
-    
-    if (!tableExists) {
-      await serviceClient.rpc('create_videos_table');
-    }
-
-    // Créer la fonction exec_sql si elle n'existe pas déjà
-    const createExecSqlFunction = `
-      CREATE OR REPLACE FUNCTION exec_sql(sql text)
-      RETURNS void
-      LANGUAGE plpgsql
-      SECURITY DEFINER
-      SET search_path = public
-      AS $$
-      BEGIN
-        EXECUTE sql;
-      END;
-      $$;
+    const checkTableQuery = `
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'videos'
+      );
     `;
+    
+    const { data: tableExists } = await serviceClient.rpc('exec_sql_with_return', { 
+      sql: checkTableQuery 
+    }).catch(() => ({ data: [{ exists: false }] }));
+    
+    if (!tableExists || !tableExists[0]?.exists) {
+      const createTableQuery = `
+        CREATE TABLE IF NOT EXISTS public.videos (
+          id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+          title TEXT NOT NULL,
+          description TEXT,
+          user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+          storage_path TEXT NOT NULL,
+          url TEXT,
+          status TEXT NOT NULL DEFAULT 'processing',
+          error_message TEXT,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
 
-    try {
-      await serviceClient.rpc('exec_sql', { sql: createExecSqlFunction });
-    } catch (error) {
-      // La fonction existe probablement déjà, ignorons l'erreur
-      console.log('Note: La fonction exec_sql existe peut-être déjà');
+        -- Activer Row Level Security
+        ALTER TABLE public.videos ENABLE ROW LEVEL SECURITY;
+
+        -- Créer une politique pour permettre aux utilisateurs de voir leurs propres vidéos
+        CREATE POLICY "Les utilisateurs peuvent voir leurs propres vidéos"
+          ON public.videos FOR SELECT
+          USING (auth.uid() = user_id);
+
+        -- Créer une politique pour permettre aux utilisateurs d'insérer leurs propres vidéos
+        CREATE POLICY "Les utilisateurs peuvent insérer leurs propres vidéos"
+          ON public.videos FOR INSERT
+          WITH CHECK (auth.uid() = user_id);
+
+        -- Créer une politique pour permettre aux utilisateurs de mettre à jour leurs propres vidéos
+        CREATE POLICY "Les utilisateurs peuvent mettre à jour leurs propres vidéos"
+          ON public.videos FOR UPDATE
+          USING (auth.uid() = user_id)
+          WITH CHECK (auth.uid() = user_id);
+
+        -- Créer une politique pour permettre aux utilisateurs de supprimer leurs propres vidéos
+        CREATE POLICY "Les utilisateurs peuvent supprimer leurs propres vidéos"
+          ON public.videos FOR DELETE
+          USING (auth.uid() = user_id);
+          
+        -- Créer un index sur user_id pour améliorer les performances
+        CREATE INDEX IF NOT EXISTS videos_user_id_idx ON public.videos(user_id);
+        
+        -- Créer un trigger pour mettre à jour le champ updated_at
+        CREATE OR REPLACE FUNCTION update_updated_at_column()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          NEW.updated_at = NOW();
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+
+        DROP TRIGGER IF EXISTS update_videos_updated_at ON public.videos;
+        CREATE TRIGGER update_videos_updated_at
+        BEFORE UPDATE ON public.videos
+        FOR EACH ROW
+        EXECUTE FUNCTION update_updated_at_column();
+      `;
+      
+      await serviceClient.rpc('exec_sql', { sql: createTableQuery });
     }
 
     return new Response(
       JSON.stringify({
         message: 'Configuration de la base de données réussie',
         details: {
-          functionsCreated: ['check_table_exists', 'create_videos_table', 'exec_sql'],
+          functionsCreated: ['exec_sql', 'exec_sql_with_return'],
           tableChecked: 'videos',
           bucketChecked: 'videos'
         }
