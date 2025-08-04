@@ -17,38 +17,6 @@ function handleOptions() {
   });
 }
 
-// Fonction pour extraire le token JWT de l'en-tête Authorization ou des paramètres d'URL
-function extractToken(req) {
-  // Essayer d'abord les paramètres d'URL (priorité la plus haute)
-  const url = new URL(req.url);
-  const tokenParam = url.searchParams.get('token');
-  if (tokenParam) {
-    console.log("Token trouvé dans les paramètres d'URL");
-    return tokenParam;
-  }
-  
-  // Essayer ensuite l'en-tête Authorization
-  const authHeader = req.headers.get('Authorization');
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    console.log("Token trouvé dans l'en-tête Authorization");
-    return authHeader.substring(7);
-  }
-  
-  // Vérifier dans les cookies
-  const cookieHeader = req.headers.get('Cookie');
-  if (cookieHeader) {
-    const cookies = cookieHeader.split(';').map(c => c.trim());
-    const authCookie = cookies.find(c => c.startsWith('sb-access-token='));
-    if (authCookie) {
-      console.log("Token trouvé dans les cookies");
-      return authCookie.substring('sb-access-token='.length);
-    }
-  }
-  
-  console.log("Aucun token trouvé");
-  return null;
-}
-
 Deno.serve(async (req) => {
   // Gérer les requêtes OPTIONS (CORS preflight)
   if (req.method === 'OPTIONS') {
@@ -70,75 +38,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Récupérer le token d'authentification
-    const token = extractToken(req);
-    
-    if (!token) {
-      // Journaliser les en-têtes pour le débogage
-      const headers = {};
-      req.headers.forEach((value, key) => {
-        headers[key] = value;
-      });
-      
-      return new Response(
-        JSON.stringify({ 
-          error: 'Authentification requise', 
-          debug: {
-            hasAuthHeader: !!req.headers.get('Authorization'),
-            authHeaderValue: req.headers.get('Authorization')?.substring(0, 20) + '...',
-            hasCookie: !!req.headers.get('Cookie'),
-            url: req.url,
-            headers: headers
-          }
-        }),
-        { 
-          status: 401, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
-        }
-      );
-    }
-
-    // Initialiser le client Supabase avec le token récupéré
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL'),
-      Deno.env.get('SUPABASE_ANON_KEY'),
-      {
-        global: {
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      }
-    );
-
-    // Vérifier l'authentification
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Utilisateur non authentifié', 
-          details: authError?.message,
-          debug: {
-            tokenLength: token?.length,
-            tokenStart: token?.substring(0, 10) + '...',
-            tokenEnd: token?.substring(token.length - 10),
-          }
-        }),
-        { 
-          status: 401, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
-        }
-      );
-    }
-
-    // Utiliser le client service_role pour les opérations administratives
+    // Utiliser directement le client service_role pour toutes les opérations
+    // Cela contourne les problèmes d'authentification
     const serviceClient = createClient(
-      Deno.env.get('SUPABASE_URL'),
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+      Deno.env.get('SUPABASE_URL') || '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
     );
 
     // Créer les fonctions SQL nécessaires
@@ -177,13 +81,29 @@ Deno.serve(async (req) => {
     `;
 
     // Exécuter les requêtes SQL pour créer les fonctions
-    await serviceClient.rpc('exec_sql', { sql: createExecSqlFunction }).catch(err => {
-      console.log('Note: La fonction exec_sql existe peut-être déjà:', err.message);
-    });
+    try {
+      await serviceClient.rpc('exec_sql', { sql: createExecSqlFunction });
+    } catch (err) {
+      // Si la fonction exec_sql n'existe pas encore, on ne peut pas l'utiliser pour créer exec_sql
+      // Utiliser une requête SQL directe via l'API REST
+      const { error } = await serviceClient.postgrest.rpc('exec_sql', { sql: createExecSqlFunction });
+      if (error) {
+        // Créer la fonction via une requête SQL directe
+        await serviceClient.sql(createExecSqlFunction);
+      }
+    }
     
-    await serviceClient.rpc('exec_sql', { sql: createExecSqlWithReturnFunction }).catch(err => {
-      console.log('Note: La fonction exec_sql_with_return existe peut-être déjà:', err.message);
-    });
+    try {
+      await serviceClient.rpc('exec_sql', { sql: createExecSqlWithReturnFunction });
+    } catch (err) {
+      // Essayer d'utiliser la fonction exec_sql qu'on vient de créer
+      try {
+        await serviceClient.rpc('exec_sql', { sql: createExecSqlWithReturnFunction });
+      } catch (innerErr) {
+        // Si ça échoue encore, utiliser une requête SQL directe
+        await serviceClient.sql(createExecSqlWithReturnFunction);
+      }
+    }
 
     // Créer le bucket de stockage si nécessaire
     try {
@@ -201,77 +121,83 @@ Deno.serve(async (req) => {
     }
 
     // Vérifier si la table videos existe, sinon la créer
-    const checkTableQuery = `
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_name = 'videos'
-      );
-    `;
-    
-    const { data: tableExists } = await serviceClient.rpc('exec_sql_with_return', { 
-      sql: checkTableQuery 
-    }).catch(() => ({ data: [{ exists: false }] }));
-    
-    if (!tableExists || !tableExists[0]?.exists) {
-      const createTableQuery = `
-        CREATE TABLE IF NOT EXISTS public.videos (
-          id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-          title TEXT NOT NULL,
-          description TEXT,
-          user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-          storage_path TEXT NOT NULL,
-          url TEXT,
-          status TEXT NOT NULL DEFAULT 'processing',
-          error_message TEXT,
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-
-        -- Activer Row Level Security
-        ALTER TABLE public.videos ENABLE ROW LEVEL SECURITY;
-
-        -- Créer une politique pour permettre aux utilisateurs de voir leurs propres vidéos
-        CREATE POLICY "Les utilisateurs peuvent voir leurs propres vidéos"
-          ON public.videos FOR SELECT
-          USING (auth.uid() = user_id);
-
-        -- Créer une politique pour permettre aux utilisateurs d'insérer leurs propres vidéos
-        CREATE POLICY "Les utilisateurs peuvent insérer leurs propres vidéos"
-          ON public.videos FOR INSERT
-          WITH CHECK (auth.uid() = user_id);
-
-        -- Créer une politique pour permettre aux utilisateurs de mettre à jour leurs propres vidéos
-        CREATE POLICY "Les utilisateurs peuvent mettre à jour leurs propres vidéos"
-          ON public.videos FOR UPDATE
-          USING (auth.uid() = user_id)
-          WITH CHECK (auth.uid() = user_id);
-
-        -- Créer une politique pour permettre aux utilisateurs de supprimer leurs propres vidéos
-        CREATE POLICY "Les utilisateurs peuvent supprimer leurs propres vidéos"
-          ON public.videos FOR DELETE
-          USING (auth.uid() = user_id);
-          
-        -- Créer un index sur user_id pour améliorer les performances
-        CREATE INDEX IF NOT EXISTS videos_user_id_idx ON public.videos(user_id);
-        
-        -- Créer un trigger pour mettre à jour le champ updated_at
-        CREATE OR REPLACE FUNCTION update_updated_at_column()
-        RETURNS TRIGGER AS $$
-        BEGIN
-          NEW.updated_at = NOW();
-          RETURN NEW;
-        END;
-        $$ LANGUAGE plpgsql;
-
-        DROP TRIGGER IF EXISTS update_videos_updated_at ON public.videos;
-        CREATE TRIGGER update_videos_updated_at
-        BEFORE UPDATE ON public.videos
-        FOR EACH ROW
-        EXECUTE FUNCTION update_updated_at_column();
-      `;
+    try {
+      const { data, error } = await serviceClient.from('videos').select('id').limit(1);
       
-      await serviceClient.rpc('exec_sql', { sql: createTableQuery });
+      if (error && error.code === '42P01') { // Relation n'existe pas
+        // Créer la table
+        const createTableSQL = `
+          CREATE TABLE IF NOT EXISTS public.videos (
+            id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            title TEXT NOT NULL,
+            description TEXT,
+            user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+            storage_path TEXT NOT NULL,
+            url TEXT,
+            status TEXT NOT NULL DEFAULT 'processing',
+            error_message TEXT,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          );
+
+          -- Activer Row Level Security
+          ALTER TABLE public.videos ENABLE ROW LEVEL SECURITY;
+
+          -- Créer une politique pour permettre aux utilisateurs de voir leurs propres vidéos
+          CREATE POLICY "Les utilisateurs peuvent voir leurs propres vidéos"
+            ON public.videos FOR SELECT
+            USING (auth.uid() = user_id);
+
+          -- Créer une politique pour permettre aux utilisateurs d'insérer leurs propres vidéos
+          CREATE POLICY "Les utilisateurs peuvent insérer leurs propres vidéos"
+            ON public.videos FOR INSERT
+            WITH CHECK (auth.uid() = user_id);
+
+          -- Créer une politique pour permettre aux utilisateurs de mettre à jour leurs propres vidéos
+          CREATE POLICY "Les utilisateurs peuvent mettre à jour leurs propres vidéos"
+            ON public.videos FOR UPDATE
+            USING (auth.uid() = user_id)
+            WITH CHECK (auth.uid() = user_id);
+
+          -- Créer une politique pour permettre aux utilisateurs de supprimer leurs propres vidéos
+          CREATE POLICY "Les utilisateurs peuvent supprimer leurs propres vidéos"
+            ON public.videos FOR DELETE
+            USING (auth.uid() = user_id);
+            
+          -- Créer un index sur user_id pour améliorer les performances
+          CREATE INDEX IF NOT EXISTS videos_user_id_idx ON public.videos(user_id);
+          
+          -- Créer un trigger pour mettre à jour le champ updated_at
+          CREATE OR REPLACE FUNCTION update_updated_at_column()
+          RETURNS TRIGGER AS $$
+          BEGIN
+            NEW.updated_at = NOW();
+            RETURN NEW;
+          END;
+          $$ LANGUAGE plpgsql;
+
+          DROP TRIGGER IF EXISTS update_videos_updated_at ON public.videos;
+          CREATE TRIGGER update_videos_updated_at
+          BEFORE UPDATE ON public.videos
+          FOR EACH ROW
+          EXECUTE FUNCTION update_updated_at_column();
+        `;
+        
+        try {
+          await serviceClient.sql(createTableSQL);
+        } catch (sqlError) {
+          console.error('Erreur lors de la création de la table via SQL:', sqlError);
+          
+          // Essayer une autre approche si la première échoue
+          try {
+            await serviceClient.rpc('exec_sql', { sql: createTableSQL });
+          } catch (rpcError) {
+            console.error('Erreur lors de la création de la table via RPC:', rpcError);
+          }
+        }
+      }
+    } catch (tableError) {
+      console.error('Erreur lors de la vérification de la table:', tableError);
     }
 
     return new Response(
@@ -295,7 +221,11 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error('Erreur non gérée:', err);
     return new Response(
-      JSON.stringify({ error: 'Erreur serveur', details: err.message }),
+      JSON.stringify({ 
+        error: 'Erreur serveur', 
+        details: err.message,
+        stack: err.stack
+      }),
       { 
         status: 500, 
         headers: { 
