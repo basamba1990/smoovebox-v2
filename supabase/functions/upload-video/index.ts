@@ -1,7 +1,6 @@
 // Edge Function pour gérer l'upload de vidéos avec gestion flexible des chemins de stockage
-import { createClient } from 'jsr:@supabase/supabase-js@^2';
-import { multiParser } from 'jsr:@supabase/multiparser@^0.1.5';
-import { v4 as uuidv4 } from 'jsr:uuid@^9.0.1';
+import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
+import { v4 as uuidv4 } from 'npm:uuid@9.0.1';
 
 // Constantes pour les statuts de vidéo
 const VIDEO_STATUS = {
@@ -87,14 +86,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Parser le formulaire multipart
-    let formData;
-    try {
-      formData = await multiParser(req);
-    } catch (parseError) {
-      console.error('Erreur de parsing du formulaire:', parseError);
+    // Parser le formulaire multipart manuellement
+    const contentType = req.headers.get('content-type');
+    if (!contentType || !contentType.includes('multipart/form-data')) {
       return new Response(
-        JSON.stringify({ error: 'Erreur lors du traitement du formulaire', details: parseError.message }),
+        JSON.stringify({ error: 'Le contenu doit être de type multipart/form-data' }),
         { 
           status: 400, 
           headers: { 
@@ -104,13 +100,16 @@ Deno.serve(async (req) => {
         }
       );
     }
+
+    // Utiliser FormData API native de Deno
+    const formData = await req.formData();
     
     // Extraire les données du formulaire
-    const videoFile = formData.files.video;
-    const title = formData.fields.title || 'Sans titre';
-    const description = formData.fields.description || '';
+    const videoFile = formData.get('video');
+    const title = formData.get('title')?.toString() || 'Sans titre';
+    const description = formData.get('description')?.toString() || '';
     
-    if (!videoFile) {
+    if (!videoFile || !(videoFile instanceof File)) {
       return new Response(
         JSON.stringify({ error: 'Aucun fichier vidéo fourni' }),
         { 
@@ -125,7 +124,7 @@ Deno.serve(async (req) => {
 
     // Vérifier le type de fichier
     const validTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm'];
-    if (!validTypes.includes(videoFile.contentType)) {
+    if (!validTypes.includes(videoFile.type)) {
       return new Response(
         JSON.stringify({ error: 'Format de fichier non supporté. Veuillez utiliser MP4, MOV, AVI ou WebM.' }),
         { 
@@ -154,7 +153,7 @@ Deno.serve(async (req) => {
     }
 
     // Générer un nom de fichier unique
-    const fileExt = videoFile.filename.split('.').pop();
+    const fileExt = videoFile.name.split('.').pop();
     const fileName = `${uuidv4()}.${fileExt}`;
     const filePath = `${user.id}/${fileName}`;
 
@@ -175,11 +174,14 @@ Deno.serve(async (req) => {
       // Continuer même si la vérification échoue, l'upload échouera si le bucket n'existe pas
     }
 
+    // Convertir le fichier en ArrayBuffer pour l'upload
+    const fileArrayBuffer = await videoFile.arrayBuffer();
+
     // Uploader le fichier dans le bucket "videos"
     const { data: uploadData, error: uploadError } = await supabaseClient.storage
       .from('videos')
-      .upload(filePath, videoFile.content, {
-        contentType: videoFile.contentType,
+      .upload(filePath, fileArrayBuffer, {
+        contentType: videoFile.type,
         cacheControl: '3600',
         upsert: false
       });
