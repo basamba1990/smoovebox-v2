@@ -1,34 +1,9 @@
 // src/components/VideoUploader.jsx
-import React, { useState, useRef, useEffect } from 'react';
-import { Upload, AlertCircle, Loader2 } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { VIDEO_STATUS, toDatabaseStatus } from '../constants/videoStatus';
 import { Button } from './ui/button';
 import { useAuth } from '../context/AuthContext';
-
-// Fonction de validation d'URL
-const validateVideoUrl = (url) => {
-  if (!url || url.trim() === '') {
-    return 'L\'URL de la vidéo est requise';
-  }
-  
-  // Si c'est une URL HTTP/HTTPS
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    try {
-      new URL(url); // Vérifie si l'URL est valide
-      return null; // Pas d'erreur
-    } catch (e) {
-      return 'Format d\'URL invalide';
-    }
-  }
-  
-  // Si c'est un chemin de stockage (bucket/path)
-  if (!url.match(/^[^/]+\/.*$/)) {
-    return 'Format de chemin de stockage invalide. Doit être au format bucket/path';
-  }
-  
-  return null; // Pas d'erreur
-};
 
 const VideoUploader = ({ onUploadComplete }) => {
   const { user } = useAuth();
@@ -39,50 +14,7 @@ const VideoUploader = ({ onUploadComplete }) => {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  const [isSettingUp, setIsSettingUp] = useState(false);
   const fileInputRef = useRef(null);
-
-  // Configurer la base de données au chargement du composant
-  useEffect(() => {
-    const setupDatabase = async () => {
-      if (!user) return;
-      
-      try {
-        setIsSettingUp(true);
-        
-        // Récupérer le token d'authentification
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          console.error('Aucune session utilisateur trouvée');
-          setError('Session d\'authentification manquante !');
-          return;
-        }
-        
-        console.log("Setup - Token disponible:", !!session.access_token);
-        
-        // Utiliser directement le client Supabase pour appeler l'Edge Function
-        const { data, error: fnError } = await supabase.functions.invoke('setup-database', {
-          method: 'POST',
-          body: {} // Corps vide pour une requête POST
-        });
-        
-        if (fnError) {
-          console.error('Erreur lors de l\'appel à setup-database:', fnError);
-          setError(`Erreur de configuration: ${fnError.message || fnError}`);
-        } else {
-          console.log('Configuration de la base de données réussie:', data);
-          setSuccess('Base de données configurée avec succès');
-        }
-      } catch (err) {
-        console.error('Erreur lors de la configuration de la base de données:', err);
-        setError(`Erreur: ${err.message}`);
-      } finally {
-        setIsSettingUp(false);
-      }
-    };
-    
-    setupDatabase();
-  }, [user]);
   
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -144,18 +76,6 @@ const VideoUploader = ({ onUploadComplete }) => {
       setUploading(true);
       setProgress(0);
       
-      // Récupérer le token d'authentification
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('Session d\'authentification manquante !');
-      }
-      
-      // Préparer les données pour l'upload
-      const formData = new FormData();
-      formData.append('video', file);
-      formData.append('title', title.trim());
-      formData.append('description', description.trim());
-      
       // Simuler la progression pendant l'upload
       const progressInterval = setInterval(() => {
         setProgress((prev) => {
@@ -164,42 +84,88 @@ const VideoUploader = ({ onUploadComplete }) => {
         });
       }, 300);
       
-      // Utiliser directement le client Supabase pour appeler l'Edge Function
-      // Note: Pour les fichiers, nous devons utiliser fetch car supabase.functions.invoke
-      // ne prend pas en charge FormData directement
-      
-      // Créer une URL signée pour l'upload direct au bucket Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      // 1. Créer un enregistrement dans la base de données
+      const { data: videoRecord, error: insertError } = await supabase
         .from('videos')
-        .upload(`${user.id}/${Date.now()}_${file.name}`, file, {
+        .insert({
+          title: title.trim(),
+          description: description.trim(),
+          user_id: user.id,
+          status: 'processing'
+        })
+        .select()
+        .single();
+      
+      if (insertError) {
+        if (insertError.code === '42P01') { // Relation n'existe pas
+          // Créer la table videos
+          const { error: tableError } = await supabase.rpc('create_videos_table');
+          
+          if (tableError) {
+            throw new Error(`Erreur lors de la création de la table: ${tableError.message}`);
+          }
+          
+          // Réessayer l'insertion
+          const { data: retryVideo, error: retryError } = await supabase
+            .from('videos')
+            .insert({
+              title: title.trim(),
+              description: description.trim(),
+              user_id: user.id,
+              status: 'processing'
+            })
+            .select()
+            .single();
+            
+          if (retryError) {
+            throw new Error(`Erreur lors de l'insertion: ${retryError.message}`);
+          }
+          
+          videoRecord = retryVideo;
+        } else {
+          throw new Error(`Erreur lors de l'insertion: ${insertError.message}`);
+        }
+      }
+      
+      // 2. Uploader le fichier au Storage
+      const filePath = `${user.id}/${Date.now()}_${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from('videos')
+        .upload(filePath, file, {
           cacheControl: '3600',
           upsert: false
         });
       
       if (uploadError) {
-        throw new Error(`Erreur lors de l'upload du fichier: ${uploadError.message}`);
+        // Si l'upload échoue, supprimer l'enregistrement de la base de données
+        await supabase
+          .from('videos')
+          .delete()
+          .eq('id', videoRecord.id);
+          
+        throw new Error(`Erreur lors de l'upload: ${uploadError.message}`);
       }
       
-      // Maintenant que le fichier est uploadé, appeler l'Edge Function pour traiter la vidéo
-      const { data: processData, error: processError } = await supabase.functions.invoke('process-video', {
-        method: 'POST',
-        body: {
-          title: title.trim(),
-          description: description.trim(),
-          storagePath: uploadData.path,
-          fileName: file.name,
-          fileType: file.type,
-          fileSize: file.size
-        }
-      });
+      // 3. Mettre à jour l'enregistrement avec le chemin de stockage
+      const { data: publicUrl } = await supabase.storage
+        .from('videos')
+        .createSignedUrl(filePath, 365 * 24 * 60 * 60); // URL valide pendant 1 an
+      
+      const { error: updateError } = await supabase
+        .from('videos')
+        .update({
+          storage_path: filePath,
+          url: publicUrl?.signedUrl || null,
+          status: 'ready'
+        })
+        .eq('id', videoRecord.id);
+      
+      if (updateError) {
+        throw new Error(`Erreur lors de la mise à jour: ${updateError.message}`);
+      }
       
       // Arrêter la simulation de progression
       clearInterval(progressInterval);
-      
-      if (processError) {
-        throw new Error(`Erreur lors du traitement de la vidéo: ${processError.message}`);
-      }
-      
       setProgress(100);
       
       // Réinitialiser le formulaire
@@ -210,13 +176,20 @@ const VideoUploader = ({ onUploadComplete }) => {
         fileInputRef.current.value = '';
       }
       
+      // Récupérer la vidéo mise à jour
+      const { data: finalVideo } = await supabase
+        .from('videos')
+        .select('*')
+        .eq('id', videoRecord.id)
+        .single();
+      
       // Notifier le parent avec les données de la vidéo
-      if (onUploadComplete && processData.video) {
-        onUploadComplete(processData.video);
+      if (onUploadComplete && finalVideo) {
+        onUploadComplete(finalVideo);
       }
       
       // Afficher un message de succès
-      setSuccess("Vidéo uploadée avec succès et en cours de traitement!");
+      setSuccess("Vidéo uploadée avec succès!");
       setTimeout(() => {
         setSuccess('Vous pouvez maintenant voir votre vidéo dans l\'onglet "Mes Vidéos"');
       }, 2000);
@@ -229,45 +202,9 @@ const VideoUploader = ({ onUploadComplete }) => {
     }
   };
   
-  // Fonction pour tester l'authentification
-  const testAuth = async () => {
-    try {
-      setError(null);
-      setSuccess(null);
-      
-      // Utiliser directement le client Supabase pour appeler l'Edge Function
-      const { data, error: fnError } = await supabase.functions.invoke('test-auth', {
-        method: 'GET'
-      });
-      
-      if (fnError) {
-        console.error('Erreur lors du test d\'authentification:', fnError);
-        setError(`Échec de l'authentification: ${fnError.message || 'Erreur inconnue'}`);
-      } else {
-        console.log('Test d\'authentification:', data);
-        
-        if (data.authInfo?.user) {
-          setSuccess(`Authentification réussie! Utilisateur: ${data.authInfo.user.email || data.authInfo.user.id}`);
-        } else {
-          setError(`Échec de l'authentification: ${data.error || data.details || 'Raison inconnue'}`);
-        }
-      }
-    } catch (err) {
-      console.error('Erreur lors du test d\'authentification:', err);
-      setError(`Erreur: ${err.message}`);
-    }
-  };
-  
   return (
     <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg">
       <h1 className="text-2xl font-bold mb-6 text-gray-800">Uploader une nouvelle vidéo</h1>
-      
-      {isSettingUp && (
-        <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg mb-6 flex items-center">
-          <Loader2 className="animate-spin mr-2 h-4 w-4" />
-          <p>Configuration de la base de données en cours...</p>
-        </div>
-      )}
       
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
@@ -280,18 +217,6 @@ const VideoUploader = ({ onUploadComplete }) => {
           <p>{success}</p>
         </div>
       )}
-      
-      {/* Bouton de test d'authentification */}
-      <div className="mb-6">
-        <Button 
-          type="button" 
-          onClick={testAuth}
-          className="w-full bg-blue-500 hover:bg-blue-600"
-          variant="outline"
-        >
-          Tester l'authentification
-        </Button>
-      </div>
       
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
@@ -308,7 +233,7 @@ const VideoUploader = ({ onUploadComplete }) => {
               file:text-sm file:font-semibold
               file:bg-blue-50 file:text-blue-700
               hover:file:bg-blue-100"
-            disabled={uploading || isSettingUp}
+            disabled={uploading}
           />
           <p className="mt-1 text-xs text-gray-500">Formats acceptés: MP4, MOV, AVI, WebM (max 100MB)</p>
         </div>
@@ -322,7 +247,7 @@ const VideoUploader = ({ onUploadComplete }) => {
             onChange={(e) => setTitle(e.target.value)} 
             className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
             placeholder="Entrez un titre pour votre vidéo"
-            disabled={uploading || isSettingUp}
+            disabled={uploading}
             required
           />
         </div>
@@ -336,7 +261,7 @@ const VideoUploader = ({ onUploadComplete }) => {
             rows="3" 
             className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
             placeholder="Ajoutez une description à votre vidéo"
-            disabled={uploading || isSettingUp}
+            disabled={uploading}
           ></textarea>
         </div>
         
@@ -355,9 +280,9 @@ const VideoUploader = ({ onUploadComplete }) => {
         <Button 
           type="submit" 
           className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-          disabled={uploading || !file || isSettingUp}
+          disabled={uploading || !file}
         >
-          {uploading ? `Upload en cours...` : isSettingUp ? 'Configuration en cours...' : 'Uploader la vidéo'}
+          {uploading ? `Upload en cours...` : 'Uploader la vidéo'}
         </Button>
       </form>
     </div>
