@@ -60,28 +60,18 @@ const VideoUploader = ({ onUploadComplete }) => {
         
         console.log("Setup - Token disponible:", !!session.access_token);
         
-        // Appeler l'Edge Function pour configurer la base de données
-        try {
-          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/setup-database`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`
-            }
-          });
-          
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: `Erreur ${response.status}` }));
-            console.warn(`Configuration de la base de données: ${response.status}`, errorData);
-            setError(`Erreur de configuration: ${errorData.error || response.statusText}`);
-          } else {
-            const result = await response.json();
-            console.log('Configuration de la base de données réussie:', result);
-            setSuccess('Base de données configurée avec succès');
-          }
-        } catch (fetchError) {
-          console.error('Erreur lors de l\'appel à setup-database:', fetchError);
-          setError(`Erreur de connexion: ${fetchError.message}`);
+        // Utiliser directement le client Supabase pour appeler l'Edge Function
+        const { data, error: fnError } = await supabase.functions.invoke('setup-database', {
+          method: 'POST',
+          body: {} // Corps vide pour une requête POST
+        });
+        
+        if (fnError) {
+          console.error('Erreur lors de l\'appel à setup-database:', fnError);
+          setError(`Erreur de configuration: ${fnError.message || fnError}`);
+        } else {
+          console.log('Configuration de la base de données réussie:', data);
+          setSuccess('Base de données configurée avec succès');
         }
       } catch (err) {
         console.error('Erreur lors de la configuration de la base de données:', err);
@@ -174,30 +164,40 @@ const VideoUploader = ({ onUploadComplete }) => {
         });
       }, 300);
       
-      // Appeler l'Edge Function pour gérer l'upload et l'insertion
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-video`, {
+      // Utiliser directement le client Supabase pour appeler l'Edge Function
+      // Note: Pour les fichiers, nous devons utiliser fetch car supabase.functions.invoke
+      // ne prend pas en charge FormData directement
+      
+      // Créer une URL signée pour l'upload direct au bucket Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('videos')
+        .upload(`${user.id}/${Date.now()}_${file.name}`, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+      
+      if (uploadError) {
+        throw new Error(`Erreur lors de l'upload du fichier: ${uploadError.message}`);
+      }
+      
+      // Maintenant que le fichier est uploadé, appeler l'Edge Function pour traiter la vidéo
+      const { data: processData, error: processError } = await supabase.functions.invoke('process-video', {
         method: 'POST',
-        headers: {
-          // Ne pas inclure Content-Type pour les requêtes multipart/form-data
-          // Le navigateur le définira automatiquement avec la boundary
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: formData
+        body: {
+          title: title.trim(),
+          description: description.trim(),
+          storagePath: uploadData.path,
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size
+        }
       });
       
       // Arrêter la simulation de progression
       clearInterval(progressInterval);
       
-      // Traiter la réponse
-      let result;
-      try {
-        result = await response.json();
-      } catch (jsonError) {
-        throw new Error(`Erreur de parsing de la réponse: ${await response.text()}`);
-      }
-      
-      if (!response.ok) {
-        throw new Error(result.error || `Erreur ${response.status}: ${response.statusText}`);
+      if (processError) {
+        throw new Error(`Erreur lors du traitement de la vidéo: ${processError.message}`);
       }
       
       setProgress(100);
@@ -211,8 +211,8 @@ const VideoUploader = ({ onUploadComplete }) => {
       }
       
       // Notifier le parent avec les données de la vidéo
-      if (onUploadComplete && result.video) {
-        onUploadComplete(result.video);
+      if (onUploadComplete && processData.video) {
+        onUploadComplete(processData.video);
       }
       
       // Afficher un message de succès
@@ -235,34 +235,22 @@ const VideoUploader = ({ onUploadComplete }) => {
       setError(null);
       setSuccess(null);
       
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setError('Session d\'authentification manquante !');
-        return;
-      }
-      
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/test-auth`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Accept': 'application/json'
-        }
+      // Utiliser directement le client Supabase pour appeler l'Edge Function
+      const { data, error: fnError } = await supabase.functions.invoke('test-auth', {
+        method: 'GET'
       });
       
-      let result;
-      try {
-        result = await response.json();
-      } catch (jsonError) {
-        throw new Error(`Erreur de parsing de la réponse: ${await response.text()}`);
-      }
-      
-      console.log('Test d\'authentification:', result);
-      
-      if (response.ok && result.authInfo?.user) {
-        setSuccess(`Authentification réussie! Utilisateur: ${result.authInfo.user.email || result.authInfo.user.id}`);
+      if (fnError) {
+        console.error('Erreur lors du test d\'authentification:', fnError);
+        setError(`Échec de l'authentification: ${fnError.message || 'Erreur inconnue'}`);
       } else {
-        setError(`Échec de l'authentification: ${result.error || result.details || 'Raison inconnue'}`);
-        console.error('Détails de l\'erreur:', result);
+        console.log('Test d\'authentification:', data);
+        
+        if (data.authInfo?.user) {
+          setSuccess(`Authentification réussie! Utilisateur: ${data.authInfo.user.email || data.authInfo.user.id}`);
+        } else {
+          setError(`Échec de l'authentification: ${data.error || data.details || 'Raison inconnue'}`);
+        }
       }
     } catch (err) {
       console.error('Erreur lors du test d\'authentification:', err);
