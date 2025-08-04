@@ -1,5 +1,5 @@
 // Edge Function pour configurer la base de données
-import { createClient } from 'jsr:@supabase/supabase-js@^2';
+import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
 
 // En-têtes CORS pour permettre les requêtes cross-origin
 const corsHeaders = {
