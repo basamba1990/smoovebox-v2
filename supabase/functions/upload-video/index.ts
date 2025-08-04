@@ -25,6 +25,38 @@ function handleOptions() {
   });
 }
 
+// Fonction pour extraire le token JWT de l'en-tête Authorization
+function extractToken(req) {
+  // Essayer d'abord l'en-tête Authorization standard
+  const authHeader = req.headers.get('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7);
+  }
+  
+  // Si pas d'en-tête Authorization, vérifier dans les cookies
+  const cookieHeader = req.headers.get('Cookie');
+  if (cookieHeader) {
+    const cookies = cookieHeader.split(';').map(c => c.trim());
+    const authCookie = cookies.find(c => c.startsWith('sb-access-token='));
+    if (authCookie) {
+      return authCookie.substring('sb-access-token='.length);
+    }
+  }
+  
+  // Vérifier dans les paramètres de requête
+  const url = new URL(req.url);
+  const token = url.searchParams.get('token');
+  if (token) {
+    return token;
+  }
+  
+  // Vérifier dans le corps de la requête si c'est du JSON
+  // Note: Cela ne fonctionnera pas pour les requêtes multipart/form-data
+  // car nous ne pouvons pas lire le corps deux fois
+  
+  return null;
+}
+
 Deno.serve(async (req) => {
   // Gérer les requêtes OPTIONS (CORS preflight)
   if (req.method === 'OPTIONS') {
@@ -46,11 +78,19 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Initialiser le client Supabase avec le token d'authentification
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
+    // Récupérer le token d'authentification
+    const token = extractToken(req);
+    
+    if (!token) {
       return new Response(
-        JSON.stringify({ error: 'Authentification requise' }),
+        JSON.stringify({ 
+          error: 'Authentification requise', 
+          debug: {
+            hasAuthHeader: !!req.headers.get('Authorization'),
+            authHeaderValue: req.headers.get('Authorization')?.substring(0, 20) + '...',
+            hasCookie: !!req.headers.get('Cookie'),
+          }
+        }),
         { 
           status: 401, 
           headers: { 
@@ -61,12 +101,13 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Initialiser le client Supabase avec le token récupéré
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL'),
       Deno.env.get('SUPABASE_ANON_KEY'),
       {
         global: {
-          headers: { Authorization: authHeader }
+          headers: { Authorization: `Bearer ${token}` }
         }
       }
     );
@@ -75,7 +116,14 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     if (authError || !user) {
       return new Response(
-        JSON.stringify({ error: 'Utilisateur non authentifié', details: authError?.message }),
+        JSON.stringify({ 
+          error: 'Utilisateur non authentifié', 
+          details: authError?.message,
+          debug: {
+            tokenLength: token?.length,
+            tokenStart: token?.substring(0, 10) + '...',
+          }
+        }),
         { 
           status: 401, 
           headers: { 
