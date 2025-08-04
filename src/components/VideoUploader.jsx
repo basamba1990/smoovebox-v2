@@ -164,7 +164,7 @@ const VideoUploader = ({ onUploadComplete }) => {
       formData.append('description', description.trim());
       
       // Appeler l'Edge Function pour gérer l'upload et l'insertion
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-video-fixed`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-video`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
