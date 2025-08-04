@@ -25,6 +25,15 @@ function handleOptions() {
   });
 }
 
+// Extraire le token JWT de l'en-tête Authorization
+function extractToken(req) {
+  const authHeader = req.headers.get('Authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.substring(7);
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   // Gérer les requêtes OPTIONS (CORS preflight)
   if (req.method === 'OPTIONS') {
@@ -46,27 +55,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Utiliser directement le client service_role pour toutes les opérations
-    // Cela contourne les problèmes d'authentification
-    const serviceClient = createClient(
-      Deno.env.get('SUPABASE_URL') || '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
-    );
-
-    // Extraire l'ID utilisateur du token JWT dans l'URL
-    const url = new URL(req.url);
-    const token = url.searchParams.get('token');
+    // Extraire le token d'authentification de l'en-tête
+    const token = extractToken(req);
     
     if (!token) {
       return new Response(
         JSON.stringify({ 
-          error: 'Token manquant dans l\'URL', 
-          debug: {
-            url: req.url
-          }
+          error: 'Authentification requise',
+          details: 'Token manquant dans l\'en-tête Authorization'
         }),
         { 
-          status: 400, 
+          status: 401, 
           headers: { 
             'Content-Type': 'application/json',
             ...corsHeaders
@@ -75,19 +74,25 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Vérifier le token et obtenir l'utilisateur
-    const { data: userData, error: userError } = await serviceClient.auth.getUser(token);
+    // Initialiser le client Supabase avec le token de l'utilisateur
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') || '',
+      Deno.env.get('SUPABASE_ANON_KEY') || '',
+      {
+        global: {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      }
+    );
+
+    // Vérifier l'authentification
+    const { data: userData, error: userError } = await supabaseClient.auth.getUser();
     
     if (userError || !userData?.user) {
       return new Response(
         JSON.stringify({ 
-          error: 'Token invalide ou expiré', 
-          details: userError?.message || 'Utilisateur non trouvé',
-          debug: {
-            tokenLength: token.length,
-            tokenStart: token.substring(0, 10) + '...',
-            tokenEnd: token.substring(token.length - 10)
-          }
+          error: 'Authentification échouée', 
+          details: userError?.message || 'Utilisateur non trouvé'
         }),
         { 
           status: 401, 
@@ -100,6 +105,12 @@ Deno.serve(async (req) => {
     }
 
     const user = userData.user;
+
+    // Initialiser le client service_role pour les opérations privilégiées
+    const serviceClient = createClient(
+      Deno.env.get('SUPABASE_URL') || '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+    );
 
     // Parser le formulaire multipart
     const contentType = req.headers.get('content-type');
