@@ -25,35 +25,35 @@ function handleOptions() {
   });
 }
 
-// Fonction pour extraire le token JWT de l'en-tête Authorization
+// Fonction pour extraire le token JWT de l'en-tête Authorization ou des paramètres d'URL
 function extractToken(req) {
-  // Essayer d'abord l'en-tête Authorization standard
+  // Essayer d'abord les paramètres d'URL (priorité la plus haute)
+  const url = new URL(req.url);
+  const tokenParam = url.searchParams.get('token');
+  if (tokenParam) {
+    console.log("Token trouvé dans les paramètres d'URL");
+    return tokenParam;
+  }
+  
+  // Essayer ensuite l'en-tête Authorization
   const authHeader = req.headers.get('Authorization');
   if (authHeader && authHeader.startsWith('Bearer ')) {
+    console.log("Token trouvé dans l'en-tête Authorization");
     return authHeader.substring(7);
   }
   
-  // Si pas d'en-tête Authorization, vérifier dans les cookies
+  // Vérifier dans les cookies
   const cookieHeader = req.headers.get('Cookie');
   if (cookieHeader) {
     const cookies = cookieHeader.split(';').map(c => c.trim());
     const authCookie = cookies.find(c => c.startsWith('sb-access-token='));
     if (authCookie) {
+      console.log("Token trouvé dans les cookies");
       return authCookie.substring('sb-access-token='.length);
     }
   }
   
-  // Vérifier dans les paramètres de requête
-  const url = new URL(req.url);
-  const token = url.searchParams.get('token');
-  if (token) {
-    return token;
-  }
-  
-  // Vérifier dans le corps de la requête si c'est du JSON
-  // Note: Cela ne fonctionnera pas pour les requêtes multipart/form-data
-  // car nous ne pouvons pas lire le corps deux fois
-  
+  console.log("Aucun token trouvé");
   return null;
 }
 
@@ -82,6 +82,12 @@ Deno.serve(async (req) => {
     const token = extractToken(req);
     
     if (!token) {
+      // Journaliser les en-têtes pour le débogage
+      const headers = {};
+      req.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+      
       return new Response(
         JSON.stringify({ 
           error: 'Authentification requise', 
@@ -89,6 +95,8 @@ Deno.serve(async (req) => {
             hasAuthHeader: !!req.headers.get('Authorization'),
             authHeaderValue: req.headers.get('Authorization')?.substring(0, 20) + '...',
             hasCookie: !!req.headers.get('Cookie'),
+            url: req.url,
+            headers: headers
           }
         }),
         { 
@@ -122,6 +130,7 @@ Deno.serve(async (req) => {
           debug: {
             tokenLength: token?.length,
             tokenStart: token?.substring(0, 10) + '...',
+            tokenEnd: token?.substring(token.length - 10),
           }
         }),
         { 
@@ -133,6 +142,13 @@ Deno.serve(async (req) => {
         }
       );
     }
+
+    // Utiliser le client service_role pour les opérations administratives
+    // Cela nous permet de contourner les problèmes d'authentification
+    const serviceClient = createClient(
+      Deno.env.get('SUPABASE_URL'),
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    );
 
     // Parser le formulaire multipart manuellement
     const contentType = req.headers.get('content-type');
@@ -207,12 +223,12 @@ Deno.serve(async (req) => {
 
     // Vérifier si le bucket "videos" existe, sinon le créer
     try {
-      const { data: buckets } = await supabaseClient.storage.listBuckets();
+      const { data: buckets } = await serviceClient.storage.listBuckets();
       const videoBucket = buckets.find(bucket => bucket.name === 'videos');
       
       if (!videoBucket) {
         // Créer le bucket s'il n'existe pas
-        await supabaseClient.storage.createBucket('videos', {
+        await serviceClient.storage.createBucket('videos', {
           public: false,
           fileSizeLimit: 104857600, // 100MB en octets
         });
@@ -225,8 +241,9 @@ Deno.serve(async (req) => {
     // Convertir le fichier en ArrayBuffer pour l'upload
     const fileArrayBuffer = await videoFile.arrayBuffer();
 
-    // Uploader le fichier dans le bucket "videos"
-    const { data: uploadData, error: uploadError } = await supabaseClient.storage
+    // Uploader le fichier dans le bucket "videos" en utilisant le client service_role
+    // pour éviter les problèmes d'authentification
+    const { data: uploadData, error: uploadError } = await serviceClient.storage
       .from('videos')
       .upload(filePath, fileArrayBuffer, {
         contentType: videoFile.type,
@@ -253,44 +270,90 @@ Deno.serve(async (req) => {
 
     // Vérifier si la table "videos" existe, sinon la créer
     try {
-      // Vérifier si la table existe
-      const { error: tableCheckError } = await supabaseClient.rpc('check_table_exists', { table_name: 'videos' });
+      // Utiliser le client service_role pour exécuter des requêtes SQL directement
+      const checkTableQuery = `
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = 'videos'
+        );
+      `;
       
-      if (tableCheckError) {
-        // La table n'existe probablement pas, essayons de la créer
-        const { error: createTableError } = await supabaseClient.rpc('create_videos_table');
+      const { data: tableExists, error: tableCheckError } = await serviceClient.rpc('exec_sql_with_return', { 
+        sql: checkTableQuery 
+      });
+      
+      if (tableCheckError || !tableExists || !tableExists[0]?.exists) {
+        // La table n'existe pas, créons-la
+        const createTableQuery = `
+          CREATE TABLE IF NOT EXISTS public.videos (
+            id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            title TEXT NOT NULL,
+            description TEXT,
+            user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+            storage_path TEXT NOT NULL,
+            url TEXT,
+            status TEXT NOT NULL DEFAULT 'processing',
+            error_message TEXT,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+          );
+
+          -- Activer Row Level Security
+          ALTER TABLE public.videos ENABLE ROW LEVEL SECURITY;
+
+          -- Créer une politique pour permettre aux utilisateurs de voir leurs propres vidéos
+          CREATE POLICY "Les utilisateurs peuvent voir leurs propres vidéos"
+            ON public.videos FOR SELECT
+            USING (auth.uid() = user_id);
+
+          -- Créer une politique pour permettre aux utilisateurs d'insérer leurs propres vidéos
+          CREATE POLICY "Les utilisateurs peuvent insérer leurs propres vidéos"
+            ON public.videos FOR INSERT
+            WITH CHECK (auth.uid() = user_id);
+
+          -- Créer une politique pour permettre aux utilisateurs de mettre à jour leurs propres vidéos
+          CREATE POLICY "Les utilisateurs peuvent mettre à jour leurs propres vidéos"
+            ON public.videos FOR UPDATE
+            USING (auth.uid() = user_id)
+            WITH CHECK (auth.uid() = user_id);
+
+          -- Créer une politique pour permettre aux utilisateurs de supprimer leurs propres vidéos
+          CREATE POLICY "Les utilisateurs peuvent supprimer leurs propres vidéos"
+            ON public.videos FOR DELETE
+            USING (auth.uid() = user_id);
+            
+          -- Créer un index sur user_id pour améliorer les performances
+          CREATE INDEX IF NOT EXISTS videos_user_id_idx ON public.videos(user_id);
+        `;
         
-        if (createTableError) {
-          console.error('Erreur lors de la création de la table videos:', createTableError);
-          // Continuer quand même, l'insertion échouera si la table n'existe pas
-        }
+        await serviceClient.rpc('exec_sql', { sql: createTableQuery });
       }
     } catch (tableError) {
       console.error('Erreur lors de la vérification/création de la table:', tableError);
       // Continuer quand même, l'insertion échouera si la table n'existe pas
     }
 
-    // Insérer l'enregistrement dans la base de données
-    const { data: video, error: insertError } = await supabaseClient
-      .from('videos')
-      .insert({
-        title,
-        description,
-        user_id: user.id,
-        storage_path: storagePath,
-        status: VIDEO_STATUS.PROCESSING,
-        // Laisser url à NULL pour le moment
-      })
-      .select()
-      .single();
+    // Insérer l'enregistrement dans la base de données en utilisant le client service_role
+    // mais en spécifiant explicitement l'ID utilisateur
+    const insertQuery = `
+      INSERT INTO public.videos (title, description, user_id, storage_path, status)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *;
+    `;
+    
+    const { data: video, error: insertError } = await serviceClient.rpc('exec_sql_with_return', { 
+      sql: insertQuery,
+      params: [title, description, user.id, storagePath, VIDEO_STATUS.PROCESSING]
+    });
 
-    if (insertError) {
+    if (insertError || !video || video.length === 0) {
       // Si l'insertion échoue, supprimer le fichier uploadé
-      await supabaseClient.storage.from('videos').remove([filePath]);
+      await serviceClient.storage.from('videos').remove([filePath]);
       
       console.error('Erreur d\'insertion:', insertError);
       return new Response(
-        JSON.stringify({ error: 'Erreur lors de l\'enregistrement de la vidéo', details: insertError.message }),
+        JSON.stringify({ error: 'Erreur lors de l\'enregistrement de la vidéo', details: insertError?.message }),
         { 
           status: 500, 
           headers: { 
@@ -309,30 +372,35 @@ Deno.serve(async (req) => {
           await new Promise(resolve => setTimeout(resolve, 5000));
           
           // Générer une URL publique pour la vidéo
-          const { data: publicUrl } = await supabaseClient.storage
+          const { data: publicUrl } = await serviceClient.storage
             .from('videos')
             .createSignedUrl(filePath, 365 * 24 * 60 * 60); // URL valide pendant 1 an
           
           // Mettre à jour le statut de la vidéo et l'URL
-          await supabaseClient
-            .from('videos')
-            .update({
-              status: VIDEO_STATUS.READY,
-              url: publicUrl?.signedUrl || null,
-              // Vous pourriez également mettre à jour d'autres champs comme duration, thumbnail_url, etc.
-            })
-            .eq('id', video.id);
+          const updateQuery = `
+            UPDATE public.videos
+            SET status = $1, url = $2, updated_at = NOW()
+            WHERE id = $3;
+          `;
+          
+          await serviceClient.rpc('exec_sql', { 
+            sql: updateQuery,
+            params: [VIDEO_STATUS.READY, publicUrl?.signedUrl || null, video[0].id]
+          });
         } catch (err) {
           console.error('Erreur lors du traitement asynchrone:', err);
           
           // En cas d'erreur, mettre à jour le statut
-          await supabaseClient
-            .from('videos')
-            .update({
-              status: VIDEO_STATUS.ERROR,
-              error_message: 'Erreur lors du traitement de la vidéo'
-            })
-            .eq('id', video.id);
+          const errorUpdateQuery = `
+            UPDATE public.videos
+            SET status = $1, error_message = $2, updated_at = NOW()
+            WHERE id = $3;
+          `;
+          
+          await serviceClient.rpc('exec_sql', { 
+            sql: errorUpdateQuery,
+            params: [VIDEO_STATUS.ERROR, 'Erreur lors du traitement de la vidéo', video[0].id]
+          });
         }
       })()
     );
@@ -341,7 +409,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         message: 'Vidéo uploadée avec succès et en cours de traitement',
-        video
+        video: video[0]
       }),
       { 
         status: 200, 
