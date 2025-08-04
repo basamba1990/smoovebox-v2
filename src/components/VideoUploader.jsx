@@ -69,7 +69,7 @@ const VideoUploader = ({ onUploadComplete }) => {
           const response = await fetch(url, {
             method: 'POST',
             headers: {
-             // 'Content-Type': 'application/json',
+              'Content-Type': 'application/json',
               'Authorization': `Bearer ${session.access_token}`,
               'Accept': 'application/json',
             },
