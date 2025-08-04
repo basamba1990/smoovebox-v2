@@ -54,6 +54,7 @@ const VideoUploader = ({ onUploadComplete }) => {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
           console.error('Aucune session utilisateur trouvée');
+          setError('Session d\'authentification manquante !');
           return;
         }
         
@@ -65,24 +66,26 @@ const VideoUploader = ({ onUploadComplete }) => {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`,
-              'Accept': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`
             }
           });
           
           if (!response.ok) {
-            const errorText = await response.text();
-            console.warn(`Configuration de la base de données: ${response.status} - ${errorText}`);
+            const errorData = await response.json().catch(() => ({ error: `Erreur ${response.status}` }));
+            console.warn(`Configuration de la base de données: ${response.status}`, errorData);
+            setError(`Erreur de configuration: ${errorData.error || response.statusText}`);
           } else {
             const result = await response.json();
             console.log('Configuration de la base de données réussie:', result);
+            setSuccess('Base de données configurée avec succès');
           }
         } catch (fetchError) {
-          console.warn('Erreur lors de l\'appel à setup-database:', fetchError);
+          console.error('Erreur lors de l\'appel à setup-database:', fetchError);
+          setError(`Erreur de connexion: ${fetchError.message}`);
         }
       } catch (err) {
         console.error('Erreur lors de la configuration de la base de données:', err);
-        // Ne pas bloquer l'interface si la configuration échoue
+        setError(`Erreur: ${err.message}`);
       } finally {
         setIsSettingUp(false);
       }
@@ -154,7 +157,7 @@ const VideoUploader = ({ onUploadComplete }) => {
       // Récupérer le token d'authentification
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        throw new Error('Aucune session utilisateur trouvée');
+        throw new Error('Session d\'authentification manquante !');
       }
       
       // Préparer les données pour l'upload
@@ -162,15 +165,6 @@ const VideoUploader = ({ onUploadComplete }) => {
       formData.append('video', file);
       formData.append('title', title.trim());
       formData.append('description', description.trim());
-      
-      // Appeler l'Edge Function pour gérer l'upload et l'insertion
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-video`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: formData,
-      });
       
       // Simuler la progression pendant l'upload
       const progressInterval = setInterval(() => {
@@ -180,16 +174,33 @@ const VideoUploader = ({ onUploadComplete }) => {
         });
       }, 300);
       
-      // Traiter la réponse
-      const result = await response.json();
+      // Appeler l'Edge Function pour gérer l'upload et l'insertion
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-video`, {
+        method: 'POST',
+        headers: {
+          // Ne pas inclure Content-Type pour les requêtes multipart/form-data
+          // Le navigateur le définira automatiquement avec la boundary
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: formData
+      });
       
       // Arrêter la simulation de progression
       clearInterval(progressInterval);
-      setProgress(100);
+      
+      // Traiter la réponse
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        throw new Error(`Erreur de parsing de la réponse: ${await response.text()}`);
+      }
       
       if (!response.ok) {
-        throw new Error(result.error || 'Erreur lors de l\'upload de la vidéo');
+        throw new Error(result.error || `Erreur ${response.status}: ${response.statusText}`);
       }
+      
+      setProgress(100);
       
       // Réinitialiser le formulaire
       setFile(null);
@@ -226,7 +237,7 @@ const VideoUploader = ({ onUploadComplete }) => {
       
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        setError('Aucune session utilisateur trouvée');
+        setError('Session d\'authentification manquante !');
         return;
       }
       
@@ -238,13 +249,20 @@ const VideoUploader = ({ onUploadComplete }) => {
         }
       });
       
-      const result = await response.json();
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        throw new Error(`Erreur de parsing de la réponse: ${await response.text()}`);
+      }
+      
       console.log('Test d\'authentification:', result);
       
-      if (response.ok && result.authInfo?.success) {
-        setSuccess(`Authentification réussie! Utilisateur: ${result.authInfo.user.email}`);
+      if (response.ok && result.authInfo?.user) {
+        setSuccess(`Authentification réussie! Utilisateur: ${result.authInfo.user.email || result.authInfo.user.id}`);
       } else {
-        setError(`Échec de l'authentification: ${result.error || result.authInfo?.error?.message || 'Raison inconnue'}`);
+        setError(`Échec de l'authentification: ${result.error || result.details || 'Raison inconnue'}`);
+        console.error('Détails de l\'erreur:', result);
       }
     } catch (err) {
       console.error('Erreur lors du test d\'authentification:', err);
