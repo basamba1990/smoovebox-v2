@@ -60,20 +60,14 @@ const VideoUploader = ({ onUploadComplete }) => {
         console.log("Setup - Token disponible:", !!session.access_token);
         console.log("Setup - Longueur du token:", session.access_token?.length);
         
-        // Appeler l'Edge Function pour configurer la base de données avec gestion CORS
+        // Appeler l'Edge Function pour configurer la base de données
         try {
-          // Ajouter le token comme paramètre d'URL en plus de l'en-tête
-          const url = new URL(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/setup-database`);
-          url.searchParams.append('token', session.access_token);
-          
-          const response = await fetch(url, {
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/setup-database`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`,
-              'Accept': 'application/json',
-            },
-            mode: 'cors', // Explicitement spécifier le mode CORS
+              'Authorization': `Bearer ${session.access_token}`
+            }
           });
           
           if (!response.ok) {
@@ -173,15 +167,12 @@ const VideoUploader = ({ onUploadComplete }) => {
       formData.append('title', title.trim());
       formData.append('description', description.trim());
       
-      // Ajouter le token comme paramètre d'URL en plus de l'en-tête
-      const url = new URL(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-video`);
-      url.searchParams.append('token', session.access_token);
-      
       // Appeler l'Edge Function pour gérer l'upload et l'insertion
-      const response = await fetch(url, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-video`, {
         method: 'POST',
-        // Ne pas inclure l'en-tête Authorization pour éviter les problèmes avec les requêtes multipart/form-data
-        // Le token est déjà dans l'URL
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        },
         body: formData,
       });
       
@@ -241,14 +232,17 @@ const VideoUploader = ({ onUploadComplete }) => {
         return;
       }
       
-      // Ajouter le token comme paramètre d'URL
-      const url = new URL(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/test-auth`);
-      url.searchParams.append('token', session.access_token);
-      
-      const response = await fetch(url, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/test-auth`, {
         method: 'GET',
-        // Ne pas inclure l'en-tête Authorization pour tester si le paramètre d'URL fonctionne
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        }
       });
+      
+      if (!response.ok) {
+        throw new Error(`Erreur HTTP: ${response.status}`);
+      }
       
       const result = await response.json();
       console.log('Test d\'authentification:', result);
