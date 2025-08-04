@@ -58,7 +58,6 @@ const VideoUploader = ({ onUploadComplete }) => {
         }
         
         console.log("Setup - Token disponible:", !!session.access_token);
-        console.log("Setup - Longueur du token:", session.access_token?.length);
         
         // Appeler l'Edge Function pour configurer la base de données
         try {
@@ -66,7 +65,8 @@ const VideoUploader = ({ onUploadComplete }) => {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`
+              'Authorization': `Bearer ${session.access_token}`,
+              'Accept': 'application/json',
             }
           });
           
@@ -83,7 +83,6 @@ const VideoUploader = ({ onUploadComplete }) => {
       } catch (err) {
         console.error('Erreur lors de la configuration de la base de données:', err);
         // Ne pas bloquer l'interface si la configuration échoue
-        console.log('Continuons sans la configuration automatique de la base de données');
       } finally {
         setIsSettingUp(false);
       }
@@ -158,9 +157,6 @@ const VideoUploader = ({ onUploadComplete }) => {
         throw new Error('Aucune session utilisateur trouvée');
       }
       
-      console.log("Token disponible:", !!session.access_token);
-      console.log("Longueur du token:", session.access_token?.length);
-      
       // Préparer les données pour l'upload
       const formData = new FormData();
       formData.append('video', file);
@@ -226,6 +222,8 @@ const VideoUploader = ({ onUploadComplete }) => {
   const testAuth = async () => {
     try {
       setError(null);
+      setSuccess(null);
+      
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         setError('Aucune session utilisateur trouvée');
@@ -236,21 +234,17 @@ const VideoUploader = ({ onUploadComplete }) => {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json'
+          'Accept': 'application/json'
         }
       });
-      
-      if (!response.ok) {
-        throw new Error(`Erreur HTTP: ${response.status}`);
-      }
       
       const result = await response.json();
       console.log('Test d\'authentification:', result);
       
-      if (result.authInfo?.user) {
+      if (response.ok && result.authInfo?.success) {
         setSuccess(`Authentification réussie! Utilisateur: ${result.authInfo.user.email}`);
       } else {
-        setError(`Échec de l'authentification: ${result.authInfo?.error?.message || 'Raison inconnue'}`);
+        setError(`Échec de l'authentification: ${result.error || result.authInfo?.error?.message || 'Raison inconnue'}`);
       }
     } catch (err) {
       console.error('Erreur lors du test d\'authentification:', err);
