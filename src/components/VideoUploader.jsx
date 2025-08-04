@@ -57,9 +57,16 @@ const VideoUploader = ({ onUploadComplete }) => {
           return;
         }
         
+        console.log("Setup - Token disponible:", !!session.access_token);
+        console.log("Setup - Longueur du token:", session.access_token?.length);
+        
         // Appeler l'Edge Function pour configurer la base de données avec gestion CORS
         try {
-          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/setup-database`, {
+          // Ajouter le token comme paramètre d'URL en plus de l'en-tête
+          const url = new URL(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/setup-database`);
+          url.searchParams.append('token', session.access_token);
+          
+          const response = await fetch(url, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -157,14 +164,21 @@ const VideoUploader = ({ onUploadComplete }) => {
         throw new Error('Aucune session utilisateur trouvée');
       }
       
+      console.log("Token disponible:", !!session.access_token);
+      console.log("Longueur du token:", session.access_token?.length);
+      
       // Préparer les données pour l'upload
       const formData = new FormData();
       formData.append('video', file);
       formData.append('title', title.trim());
       formData.append('description', description.trim());
       
+      // Ajouter le token comme paramètre d'URL en plus de l'en-tête
+      const url = new URL(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-video`);
+      url.searchParams.append('token', session.access_token);
+      
       // Appeler l'Edge Function pour gérer l'upload et l'insertion
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-video`, {
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
@@ -218,6 +232,41 @@ const VideoUploader = ({ onUploadComplete }) => {
     }
   };
   
+  // Fonction pour tester l'authentification
+  const testAuth = async () => {
+    try {
+      setError(null);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setError('Aucune session utilisateur trouvée');
+        return;
+      }
+      
+      // Ajouter le token comme paramètre d'URL
+      const url = new URL(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/test-auth`);
+      url.searchParams.append('token', session.access_token);
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        }
+      });
+      
+      const result = await response.json();
+      console.log('Test d\'authentification:', result);
+      
+      if (result.authInfo?.user) {
+        setSuccess(`Authentification réussie! Utilisateur: ${result.authInfo.user.email}`);
+      } else {
+        setError(`Échec de l'authentification: ${result.authInfo?.error?.message || 'Raison inconnue'}`);
+      }
+    } catch (err) {
+      console.error('Erreur lors du test d\'authentification:', err);
+      setError(`Erreur: ${err.message}`);
+    }
+  };
+  
   return (
     <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg">
       <h1 className="text-2xl font-bold mb-6 text-gray-800">Uploader une nouvelle vidéo</h1>
@@ -240,6 +289,18 @@ const VideoUploader = ({ onUploadComplete }) => {
           <p>{success}</p>
         </div>
       )}
+      
+      {/* Bouton de test d'authentification */}
+      <div className="mb-6">
+        <Button 
+          type="button" 
+          onClick={testAuth}
+          className="w-full bg-blue-500 hover:bg-blue-600"
+          variant="outline"
+        >
+          Tester l'authentification
+        </Button>
+      </div>
       
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
