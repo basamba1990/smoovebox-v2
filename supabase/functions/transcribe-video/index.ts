@@ -1,19 +1,10 @@
-// transcribe-video.ts - Version complète avec transcription OpenAI et analyse IA
+// transcribe-video.ts - Version simplifiée et robuste
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import OpenAI from 'npm:openai@4.28.0'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-// Fonction pour journaliser les erreurs avec plus de détails
-function logError(message, error, additionalInfo = {}) {
-  console.error(`ERROR: ${message}`, {
-    error: error?.message || error,
-    stack: error?.stack,
-    ...additionalInfo
-  });
 }
 
 Deno.serve(async (req) => {
@@ -31,7 +22,7 @@ Deno.serve(async (req) => {
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     
     if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
-      logError("Variables d'environnement manquantes", null, {
+      console.error("Variables d'environnement manquantes", {
         supabaseUrl: !!supabaseUrl,
         supabaseServiceKey: !!supabaseServiceKey,
         openaiApiKey: !!openaiApiKey
@@ -49,8 +40,6 @@ Deno.serve(async (req) => {
       );
     }
     
-    console.log("Variables d'environnement vérifiées");
-    
     const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
     const openai = new OpenAI({
       apiKey: openaiApiKey
@@ -62,7 +51,7 @@ Deno.serve(async (req) => {
       requestData = await req.json();
       console.log("Données de requête reçues:", { videoId: requestData.videoId });
     } catch (parseError) {
-      logError("Erreur lors de l'analyse du JSON de la requête", parseError);
+      console.error("Erreur lors de l'analyse du JSON de la requête", parseError);
       return new Response(
         JSON.stringify({ error: "Format de requête invalide", details: parseError.message }),
         { 
@@ -84,112 +73,102 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Récupération des informations pour la vidéo ${videoId}`);
-    
     // Vérifier si la vidéo existe et récupérer son URL
-    let video;
-    try {
-      const { data, error: videoError } = await supabaseClient
-        .from('videos')
-        .select('*')
-        .eq('id', videoId)
-        .single();
+    const { data: video, error: videoError } = await supabaseClient
+      .from('videos')
+      .select('*')
+      .eq('id', videoId)
+      .single();
 
-      if (videoError) {
-        logError(`Erreur lors de la récupération de la vidéo ${videoId}`, videoError);
-        return new Response(
-          JSON.stringify({ 
-            error: 'Erreur lors de la récupération de la vidéo', 
-            details: videoError.message,
-            code: videoError.code
-          }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: videoError.code === 'PGRST116' ? 404 : 500
-          }
-        );
-      }
-
-      if (!data) {
-        return new Response(
-          JSON.stringify({ error: 'Vidéo non trouvée' }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 404 
-          }
-        );
-      }
-      
-      video = data;
-      console.log(`Vidéo trouvée: ${video.id}, titre: ${video.title || 'Sans titre'}`);
-      
-      // Vérifier que la vidéo a une URL
-      if (!video.url) {
-        return new Response(
-          JSON.stringify({ error: 'URL de la vidéo non disponible' }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400 
-          }
-        );
-      }
-      
-    } catch (error) {
-      logError("Erreur non gérée lors de la vérification de la vidéo", error);
+    if (videoError) {
+      console.error(`Erreur lors de la récupération de la vidéo ${videoId}`, videoError);
       return new Response(
         JSON.stringify({ 
-          error: 'Erreur lors du traitement de la requête', 
-          details: error.message
+          error: 'Erreur lors de la récupération de la vidéo', 
+          details: videoError.message
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500 
+          status: videoError.code === 'PGRST116' ? 404 : 500
+        }
+      );
+    }
+
+    if (!video) {
+      return new Response(
+        JSON.stringify({ error: 'Vidéo non trouvée' }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 404 
         }
       );
     }
     
-    // Assurer que les structures de base de données nécessaires existent
-    await ensureDatabaseStructures(supabaseClient);
-    
-    // Mettre à jour le statut de la vidéo pour indiquer que la transcription est en cours
-    try {
-      await supabaseClient
-        .from('videos')
-        .update({
-          status: 'processing',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId);
-      
-      console.log(`Statut de la vidéo mis à jour: processing`);
-    } catch (updateError) {
-      logError("Erreur lors de la mise à jour du statut de la vidéo", updateError);
-      // Continuer malgré l'erreur
+    // Vérifier que la vidéo a une URL
+    if (!video.url) {
+      return new Response(
+        JSON.stringify({ error: 'URL de la vidéo non disponible' }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400 
+        }
+      );
     }
     
-    try {
-      // Récupérer l'URL de la vidéo depuis Storage si nécessaire
-      let videoUrl = video.url;
+    // Mettre à jour le statut de la vidéo pour indiquer que la transcription est en cours
+    await supabaseClient
+      .from('videos')
+      .update({
+        status: 'processing',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', videoId);
+    
+    // Récupérer l'URL de la vidéo depuis Storage si nécessaire
+    let videoUrl = video.url;
+    
+    if (videoUrl.startsWith('/') || !videoUrl.startsWith('http')) {
+      // C'est un chemin relatif, obtenir l'URL signée
+      const bucket = videoUrl.includes('/storage/') ? 
+        videoUrl.split('/storage/')[1].split('/')[0] : 'videos';
       
-      if (videoUrl.startsWith('/') || !videoUrl.startsWith('http')) {
-        // C'est un chemin relatif, obtenir l'URL signée
-        const { data: signedUrlData, error: signedUrlError } = await supabaseClient
-          .storage
+      const filePath = videoUrl.replace(/^\/storage\/[^/]+\//, '');
+      
+      const { data: signedUrlData, error: signedUrlError } = await supabaseClient
+        .storage
+        .from(bucket)
+        .createSignedUrl(filePath, 60 * 60); // 1 heure
+      
+      if (signedUrlError) {
+        console.error(`Erreur lors de la création de l'URL signée:`, signedUrlError);
+        
+        await supabaseClient
           .from('videos')
-          .createSignedUrl(videoUrl.replace(/^\/storage\/videos\//, ''), 60 * 60); // 1 heure
+          .update({
+            status: 'error',
+            error_message: `Erreur d'accès à la vidéo: ${signedUrlError.message}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId);
         
-        if (signedUrlError) {
-          throw new Error(`Erreur lors de la création de l'URL signée: ${signedUrlError.message}`);
-        }
-        
-        videoUrl = signedUrlData.signedUrl;
+        return new Response(
+          JSON.stringify({ 
+            error: "Erreur d'accès à la vidéo", 
+            details: signedUrlError.message 
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 500 
+          }
+        );
       }
       
-      console.log("URL de la vidéo obtenue pour la transcription");
-      
-      // Transcription avec OpenAI Whisper
-      console.log("Début de la transcription avec OpenAI Whisper");
-      
+      videoUrl = signedUrlData.signedUrl;
+    }
+    
+    console.log("URL de la vidéo obtenue pour la transcription");
+    
+    try {
       // Télécharger la vidéo
       const videoResponse = await fetch(videoUrl);
       if (!videoResponse.ok) {
@@ -223,7 +202,7 @@ Deno.serve(async (req) => {
       };
       
       // Mettre à jour la vidéo avec les données de transcription
-      const { error: updateError } = await supabaseClient
+      await supabaseClient
         .from('videos')
         .update({
           transcription: transcriptionData.text,
@@ -233,35 +212,9 @@ Deno.serve(async (req) => {
         })
         .eq('id', videoId);
       
-      if (updateError) {
-        throw new Error(`Erreur lors de la mise à jour de la vidéo avec les données de transcription: ${updateError.message}`);
-      }
-      
       console.log("Vidéo mise à jour avec les données de transcription");
       
-      // Créer un enregistrement dans la table transcriptions
-      try {
-        await supabaseClient
-          .from('transcriptions')
-          .insert({
-            video_id: videoId,
-            status: 'completed',
-            text: transcriptionData.text,
-            segments: transcriptionData.segments,
-            language: transcriptionData.language,
-            confidence_score: transcriptionData.segments.reduce((acc, segment) => acc + segment.confidence, 0) / transcriptionData.segments.length,
-            processed_at: new Date().toISOString()
-          });
-        
-        console.log("Enregistrement de transcription créé avec succès");
-      } catch (transcriptionError) {
-        logError("Erreur lors de la création de l'enregistrement de transcription", transcriptionError);
-        // Continuer malgré l'erreur
-      }
-      
       // Générer l'analyse IA de la transcription
-      console.log("Début de l'analyse IA de la transcription");
-      
       try {
         const analysisResponse = await openai.chat.completions.create({
           model: "gpt-3.5-turbo",
@@ -309,23 +262,16 @@ Deno.serve(async (req) => {
           .eq('id', videoId);
         
         console.log("Vidéo mise à jour avec l'analyse IA");
-        
       } catch (analysisError) {
-        logError("Erreur lors de l'analyse IA", analysisError);
-        // Mettre à jour le statut même en cas d'erreur d'analyse
-        await supabaseClient
-          .from('videos')
-          .update({
-            status: 'transcribed', // Seulement transcrit, pas analysé
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId);
+        console.error("Erreur lors de l'analyse IA", analysisError);
+        // L'analyse a échoué mais la transcription a réussi
+        // On ne change pas le statut 'transcribed'
       }
       
       return new Response(
         JSON.stringify({ 
           success: true, 
-          message: 'Transcription et analyse terminées avec succès',
+          message: 'Transcription terminée avec succès',
           videoId
         }),
         { 
@@ -335,25 +281,21 @@ Deno.serve(async (req) => {
       );
       
     } catch (error) {
-      logError("Erreur lors de la transcription ou de l'analyse", error);
+      console.error("Erreur lors de la transcription", error);
       
       // Mettre à jour le statut de la vidéo pour indiquer l'échec
-      try {
-        await supabaseClient
-          .from('videos')
-          .update({
-            status: 'error',
-            error_message: error.message,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId);
-      } catch (updateError) {
-        logError("Erreur lors de la mise à jour du statut d'erreur", updateError);
-      }
+      await supabaseClient
+        .from('videos')
+        .update({
+          status: 'error',
+          error_message: `Erreur de transcription: ${error.message}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId);
       
       return new Response(
         JSON.stringify({ 
-          error: 'Erreur lors de la transcription ou de l\'analyse', 
+          error: 'Erreur lors de la transcription', 
           details: error.message
         }),
         { 
@@ -364,7 +306,7 @@ Deno.serve(async (req) => {
     }
 
   } catch (error) {
-    logError("Erreur générale non gérée", error);
+    console.error("Erreur générale non gérée", error);
     
     return new Response(
       JSON.stringify({ 
@@ -378,173 +320,3 @@ Deno.serve(async (req) => {
     );
   }
 });
-
-// Fonction pour s'assurer que toutes les structures de base de données nécessaires existent
-async function ensureDatabaseStructures(supabaseClient) {
-  console.log("Vérification des structures de base de données");
-  
-  try {
-    // Créer la fonction exec_sql_with_return si elle n'existe pas
-    try {
-      await supabaseClient.rpc('exec_sql_with_return', { sql: 'SELECT 1' });
-      console.log("La fonction exec_sql_with_return existe déjà");
-    } catch (funcError) {
-      console.log("Création de la fonction exec_sql_with_return");
-      
-      const createFunctionSQL = `
-        CREATE OR REPLACE FUNCTION exec_sql_with_return(sql text, params text[] DEFAULT NULL)
-        RETURNS SETOF json
-        LANGUAGE plpgsql
-        SECURITY DEFINER
-        SET search_path = public
-        AS $$
-        BEGIN
-          IF params IS NULL THEN
-            RETURN QUERY EXECUTE sql;
-          ELSE
-            RETURN QUERY EXECUTE sql USING params;
-          END IF;
-        END;
-        $$;
-      `;
-      
-      await supabaseClient.sql(createFunctionSQL);
-      console.log("Fonction exec_sql_with_return créée avec succès");
-    }
-    
-    // Vérifier si la colonne transcription_data existe dans la table videos
-    const { data: columnExists } = await supabaseClient
-      .rpc('exec_sql_with_return', { 
-        sql: `
-          SELECT EXISTS (
-            SELECT FROM information_schema.columns 
-            WHERE table_schema = 'public' 
-            AND table_name = 'videos'
-            AND column_name = 'transcription_data'
-          ) as exists;
-        `
-      });
-    
-    const transcriptionDataExists = columnExists?.[0]?.exists || false;
-    
-    if (!transcriptionDataExists) {
-      console.log("Ajout de la colonne transcription_data à la table videos");
-      
-      await supabaseClient.sql(`
-        ALTER TABLE public.videos 
-        ADD COLUMN IF NOT EXISTS transcription_data JSONB;
-      `);
-      
-      console.log("Colonne transcription_data ajoutée avec succès");
-    }
-    
-    // Vérifier si la colonne analysis existe dans la table videos
-    const { data: analysisColumnExists } = await supabaseClient
-      .rpc('exec_sql_with_return', { 
-        sql: `
-          SELECT EXISTS (
-            SELECT FROM information_schema.columns 
-            WHERE table_schema = 'public' 
-            AND table_name = 'videos'
-            AND column_name = 'analysis'
-          ) as exists;
-        `
-      });
-    
-    const analysisExists = analysisColumnExists?.[0]?.exists || false;
-    
-    if (!analysisExists) {
-      console.log("Ajout de la colonne analysis à la table videos");
-      
-      await supabaseClient.sql(`
-        ALTER TABLE public.videos 
-        ADD COLUMN IF NOT EXISTS analysis JSONB;
-      `);
-      
-      console.log("Colonne analysis ajoutée avec succès");
-    }
-    
-    // Vérifier si la colonne error_message existe dans la table videos
-    const { data: errorColumnExists } = await supabaseClient
-      .rpc('exec_sql_with_return', { 
-        sql: `
-          SELECT EXISTS (
-            SELECT FROM information_schema.columns 
-            WHERE table_schema = 'public' 
-            AND table_name = 'videos'
-            AND column_name = 'error_message'
-          ) as exists;
-        `
-      });
-    
-    const errorMessageExists = errorColumnExists?.[0]?.exists || false;
-    
-    if (!errorMessageExists) {
-      console.log("Ajout de la colonne error_message à la table videos");
-      
-      await supabaseClient.sql(`
-        ALTER TABLE public.videos 
-        ADD COLUMN IF NOT EXISTS error_message TEXT;
-      `);
-      
-      console.log("Colonne error_message ajoutée avec succès");
-    }
-    
-    // Vérifier si la table transcriptions existe
-    const { data: tableExists } = await supabaseClient
-      .rpc('exec_sql_with_return', { 
-        sql: `
-          SELECT EXISTS (
-            SELECT FROM information_schema.tables 
-            WHERE table_schema = 'public' 
-            AND table_name = 'transcriptions'
-          ) as exists;
-        `
-      });
-    
-    const transcriptionsExists = tableExists?.[0]?.exists || false;
-    
-    if (!transcriptionsExists) {
-      console.log("Création de la table transcriptions");
-      
-      await supabaseClient.sql(`
-        CREATE TABLE IF NOT EXISTS public.transcriptions (
-          id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-          video_id BIGINT NOT NULL REFERENCES public.videos(id) ON DELETE CASCADE,
-          status TEXT NOT NULL DEFAULT 'pending',
-          text TEXT,
-          segments JSONB,
-          confidence_score FLOAT,
-          language TEXT,
-          processed_at TIMESTAMP WITH TIME ZONE,
-          error_message TEXT,
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-
-        -- Activer Row Level Security
-        ALTER TABLE public.transcriptions ENABLE ROW LEVEL SECURITY;
-
-        -- Créer une politique pour permettre aux utilisateurs de voir leurs propres transcriptions
-        CREATE POLICY "Les utilisateurs peuvent voir leurs propres transcriptions"
-          ON public.transcriptions FOR SELECT
-          USING (EXISTS (
-            SELECT 1 FROM public.videos
-            WHERE videos.id = transcriptions.video_id
-            AND videos.user_id = auth.uid()
-          ));
-
-        -- Créer un index sur video_id pour améliorer les performances
-        CREATE INDEX IF NOT EXISTS transcriptions_video_id_idx ON public.transcriptions(video_id);
-      `);
-      
-      console.log("Table transcriptions créée avec succès");
-    }
-    
-    console.log("Vérification des structures de base de données terminée avec succès");
-    
-  } catch (error) {
-    logError("Erreur lors de la vérification des structures de base de données", error);
-    throw error;
-  }
-}
