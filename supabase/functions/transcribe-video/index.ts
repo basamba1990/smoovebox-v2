@@ -355,6 +355,24 @@ Deno.serve(async (req) => {
         
         console.log(`Vidéo mise à jour avec les données de transcription`);
         
+        // Appeler la fonction de synchronisation
+        try {
+          const { error: syncError } = await supabaseClient.rpc(
+            'sync_video_transcription',
+            { video_id: videoId }
+          );
+          
+          if (syncError) {
+            console.error(`Erreur lors de l'appel à sync_video_transcription:`, syncError);
+            // On continue malgré l'erreur
+          } else {
+            console.log(`Fonction sync_video_transcription appelée avec succès`);
+          }
+        } catch (syncError) {
+          console.error(`Exception lors de l'appel à sync_video_transcription:`, syncError);
+          // On continue malgré l'erreur
+        }
+        
         // Générer l'analyse IA de la transcription
         try {
           console.log(`Début de l'analyse IA du texte transcrit`);
