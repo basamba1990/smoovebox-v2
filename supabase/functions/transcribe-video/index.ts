@@ -6,8 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// CORRECTION: Utilisation de ctx comme deuxième paramètre pour accéder à waitUntil
-Deno.serve(async (req, ctx) => {
+// CORRECTION: Utilisation de Deno.serve sans ctx
+Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -179,10 +179,13 @@ Deno.serve(async (req, ctx) => {
       
       try {
         // Vérifier si le fichier existe dans le bucket
+        const parentPath = filePath.split('/').slice(0, -1).join('/') || undefined;
+        console.log(`Vérification du contenu du dossier: ${parentPath || '(racine)'}`);
+        
         const { data: fileList, error: fileListError } = await supabaseClient
           .storage
           .from(bucket)
-          .list(filePath.split('/').slice(0, -1).join('/') || undefined, {
+          .list(parentPath, {
             limit: 100,
             offset: 0,
             sortBy: { column: 'name', order: 'asc' },
@@ -192,7 +195,8 @@ Deno.serve(async (req, ctx) => {
           console.error("Erreur lors de la vérification de l'existence du fichier:", fileListError);
         } else {
           const fileName = filePath.split('/').pop();
-          console.log(`Recherche du fichier ${fileName} dans la liste:`, fileList.map(f => f.name));
+          console.log(`Contenu du dossier '${parentPath || '(racine)'}':`, fileList.map(f => f.name));
+          console.log(`Recherche du fichier ${fileName} dans la liste`);
           const fileFound = fileList.some(f => f.name === fileName);
           console.log(`Fichier ${fileName} trouvé dans le bucket ${bucket}: ${fileFound}`);
           
@@ -266,8 +270,22 @@ Deno.serve(async (req, ctx) => {
     
     console.log(`URL de la vidéo obtenue pour la transcription: ${videoUrl.substring(0, 50)}...`);
     
-    // Démarrer le processus de transcription en arrière-plan
-    const transcriptionPromise = (async () => {
+    // CORRECTION: Démarrer le processus de transcription immédiatement (sans waitUntil)
+    // Nous allons quand même retourner une réponse rapide au client
+    const responsePromise = new Response(
+      JSON.stringify({ 
+        success: true, 
+        message: 'Transcription démarrée avec succès',
+        videoId
+      }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200 
+      }
+    );
+    
+    // Démarrer le processus de transcription
+    (async () => {
       try {
         // Télécharger la vidéo
         console.log(`Téléchargement de la vidéo...`);
@@ -313,13 +331,14 @@ Deno.serve(async (req, ctx) => {
             language: transcription.language
           };
           
+          // CORRECTION: Vérifier les valeurs autorisées pour le statut
           // Mettre à jour la vidéo avec les données de transcription
           const { error: transcriptionUpdateError } = await supabaseClient
             .from('videos')
             .update({
               transcription: transcriptionData.text,
               transcription_data: transcriptionData,
-              status: 'transcribed',
+              status: 'completed', // CORRECTION: Utiliser 'completed' au lieu de 'transcribed'
               updated_at: new Date().toISOString()
             })
             .eq('id', videoId);
@@ -375,7 +394,7 @@ Deno.serve(async (req, ctx) => {
               .from('videos')
               .update({
                 analysis: analysis,
-                status: 'analyzed',
+                status: 'analyzed', // VÉRIFIER: S'assurer que 'analyzed' est une valeur autorisée
                 updated_at: new Date().toISOString()
               })
               .eq('id', videoId);
@@ -389,7 +408,7 @@ Deno.serve(async (req, ctx) => {
           } catch (analysisError) {
             console.error("Erreur lors de l'analyse IA", analysisError);
             // L'analyse a échoué mais la transcription a réussi
-            // On ne change pas le statut 'transcribed'
+            // On ne change pas le statut 'completed'
           }
         } catch (whisperError) {
           console.error("Erreur lors de l'appel à l'API Whisper:", whisperError);
@@ -411,21 +430,8 @@ Deno.serve(async (req, ctx) => {
       }
     })();
     
-    // CORRECTION: Utilisation de ctx.waitUntil au lieu de EdgeRuntime.waitUntil
-    ctx.waitUntil(transcriptionPromise);
-    
     // Retourner immédiatement une réponse pour ne pas bloquer le client
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: 'Transcription démarrée avec succès',
-        videoId
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
-      }
-    );
+    return responsePromise;
 
   } catch (error) {
     console.error("Erreur générale non gérée", error);
