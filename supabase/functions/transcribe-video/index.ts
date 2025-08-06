@@ -1,4 +1,3 @@
-// transcribe-video.ts - Version simplifiée et robuste
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import OpenAI from 'npm:openai@4.28.0'
 
@@ -49,7 +48,7 @@ Deno.serve(async (req) => {
     let requestData;
     try {
       requestData = await req.json();
-      console.log("Données de requête reçues:", { videoId: requestData.videoId });
+      console.log("Données de requête reçues:", requestData);
     } catch (parseError) {
       console.error("Erreur lors de l'analyse du JSON de la requête", parseError);
       return new Response(
@@ -74,6 +73,7 @@ Deno.serve(async (req) => {
     }
 
     // Vérifier si la vidéo existe et récupérer son URL
+    console.log(`Recherche de la vidéo avec ID: ${videoId}`);
     const { data: video, error: videoError } = await supabaseClient
       .from('videos')
       .select('*')
@@ -104,8 +104,15 @@ Deno.serve(async (req) => {
       );
     }
     
-    // Vérifier que la vidéo a une URL
-    if (!video.url) {
+    console.log("Vidéo trouvée:", { 
+      id: video.id, 
+      title: video.title, 
+      url: video.url ? "URL présente" : "URL absente",
+      storage_path: video.storage_path || "Chemin non défini"
+    });
+    
+    // Vérifier que la vidéo a une URL ou un chemin de stockage
+    if (!video.url && !video.storage_path) {
       return new Response(
         JSON.stringify({ error: 'URL de la vidéo non disponible' }),
         { 
@@ -113,6 +120,30 @@ Deno.serve(async (req) => {
           status: 400 
         }
       );
+    }
+    
+    // Vérifier si la table a les colonnes nécessaires
+    try {
+      const { error: updateTestError } = await supabaseClient
+        .from('videos')
+        .update({ status: 'processing' })
+        .eq('id', videoId);
+      
+      if (updateTestError) {
+        console.error("Erreur lors du test de mise à jour de la table videos:", updateTestError);
+        return new Response(
+          JSON.stringify({ 
+            error: "Structure de table incorrecte", 
+            details: "La table videos ne contient pas les colonnes nécessaires. Vérifiez que les colonnes status, transcription, transcription_data, analysis et error_message existent."
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 500 
+          }
+        );
+      }
+    } catch (structureError) {
+      console.error("Erreur lors du test de structure de la table:", structureError);
     }
     
     // Mettre à jour le statut de la vidéo pour indiquer que la transcription est en cours
@@ -127,13 +158,18 @@ Deno.serve(async (req) => {
     // Récupérer l'URL de la vidéo depuis Storage si nécessaire
     let videoUrl = video.url;
     
-    if (videoUrl.startsWith('/') || !videoUrl.startsWith('http')) {
+    if (!videoUrl && video.storage_path) {
+      console.log("Génération d'une URL signée pour le chemin:", video.storage_path);
       // C'est un chemin relatif, obtenir l'URL signée
-      const bucket = videoUrl.includes('/storage/') ? 
-        videoUrl.split('/storage/')[1].split('/')[0] : 'videos';
+      const bucket = 'videos'; // Par défaut
+      let filePath = video.storage_path;
       
-      const filePath = videoUrl.replace(/^\/storage\/[^/]+\//, '');
+      // Nettoyer le chemin si nécessaire
+      if (filePath.startsWith('videos/')) {
+        filePath = filePath.substring(7); // Enlever le préfixe 'videos/'
+      }
       
+      console.log(`Création d'URL signée pour bucket: ${bucket}, chemin: ${filePath}`);
       const { data: signedUrlData, error: signedUrlError } = await supabaseClient
         .storage
         .from(bucket)
@@ -164,21 +200,53 @@ Deno.serve(async (req) => {
       }
       
       videoUrl = signedUrlData.signedUrl;
+      console.log("URL signée générée avec succès");
+    }
+    
+    if (!videoUrl) {
+      console.error("Impossible d'obtenir une URL pour la vidéo");
+      await supabaseClient
+        .from('videos')
+        .update({
+          status: 'error',
+          error_message: "Impossible d'obtenir une URL pour la vidéo",
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId);
+        
+      return new Response(
+        JSON.stringify({ 
+          error: "URL de la vidéo non disponible", 
+          details: "Ni l'URL ni le chemin de stockage ne permettent d'accéder à la vidéo" 
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400 
+        }
+      );
     }
     
     console.log("URL de la vidéo obtenue pour la transcription");
     
     try {
       // Télécharger la vidéo
+      console.log("Téléchargement de la vidéo depuis:", videoUrl.substring(0, 50) + "...");
       const videoResponse = await fetch(videoUrl);
       if (!videoResponse.ok) {
         throw new Error(`Erreur lors du téléchargement de la vidéo: ${videoResponse.status} ${videoResponse.statusText}`);
       }
       
+      console.log("Vidéo téléchargée avec succès, préparation pour OpenAI");
       const videoBlob = await videoResponse.blob();
       const videoFile = new File([videoBlob], "video.mp4", { type: "video/mp4" });
       
+      console.log("Taille du fichier vidéo:", videoFile.size, "octets");
+      if (videoFile.size > 25 * 1024 * 1024) {
+        throw new Error("La vidéo est trop volumineuse pour être traitée par l'API Whisper (limite de 25 Mo)");
+      }
+      
       // Transcription avec OpenAI
+      console.log("Début de la transcription avec OpenAI Whisper");
       const transcription = await openai.audio.transcriptions.create({
         file: videoFile,
         model: "whisper-1",
@@ -202,7 +270,8 @@ Deno.serve(async (req) => {
       };
       
       // Mettre à jour la vidéo avec les données de transcription
-      await supabaseClient
+      console.log("Mise à jour de la vidéo avec les données de transcription");
+      const { error: updateError } = await supabaseClient
         .from('videos')
         .update({
           transcription: transcriptionData.text,
@@ -211,11 +280,17 @@ Deno.serve(async (req) => {
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId);
+        
+      if (updateError) {
+        console.error("Erreur lors de la mise à jour de la transcription:", updateError);
+        throw new Error(`Erreur lors de la mise à jour de la transcription: ${updateError.message}`);
+      }
       
       console.log("Vidéo mise à jour avec les données de transcription");
       
       // Générer l'analyse IA de la transcription
       try {
+        console.log("Début de l'analyse IA de la transcription");
         const analysisResponse = await openai.chat.completions.create({
           model: "gpt-3.5-turbo",
           messages: [
@@ -252,7 +327,7 @@ Deno.serve(async (req) => {
         console.log("Analyse IA générée avec succès");
         
         // Mettre à jour la vidéo avec l'analyse
-        await supabaseClient
+        const { error: analysisUpdateError } = await supabaseClient
           .from('videos')
           .update({
             analysis: analysis,
@@ -260,8 +335,12 @@ Deno.serve(async (req) => {
             updated_at: new Date().toISOString()
           })
           .eq('id', videoId);
-        
-        console.log("Vidéo mise à jour avec l'analyse IA");
+          
+        if (analysisUpdateError) {
+          console.error("Erreur lors de la mise à jour de l'analyse:", analysisUpdateError);
+        } else {
+          console.log("Vidéo mise à jour avec l'analyse IA");
+        }
       } catch (analysisError) {
         console.error("Erreur lors de l'analyse IA", analysisError);
         // L'analyse a échoué mais la transcription a réussi
