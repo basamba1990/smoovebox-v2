@@ -1,4 +1,3 @@
-// transcribe-video.ts - Version corrigée avec gestion correcte des chemins de stockage
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import OpenAI from 'npm:openai@4.28.0'
 
@@ -40,7 +39,14 @@ Deno.serve(async (req) => {
       );
     }
     
-    const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+    // Utilisation de la clé de service avec l'option auth: { persistSession: false }
+    // pour éviter les erreurs d'authentification 401
+    const supabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        persistSession: false
+      }
+    });
+    
     const openai = new OpenAI({
       apiKey: openaiApiKey
     });
