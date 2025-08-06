@@ -1,13 +1,18 @@
-// src/components/TranscriptionViewer.jsx
+// src/components/TranscriptionViewer.jsx - Version modifiée
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { Button } from './ui/button.jsx';
-import { Card, CardContent } from './ui/card.jsx';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.jsx';
-import { RefreshCw, FileText, AlertCircle, Loader2 } from 'lucide-react';
-import VideoPlayer from './VideoPlayer.jsx';
-import { TRANSCRIPTION_STATUS } from '../constants/videoStatus.js';
+import { RefreshCw, AlertCircle, Loader2 } from 'lucide-react';
+
+// Constantes pour les statuts de vidéo
+const VIDEO_STATUS = {
+  PROCESSING: 'processing',
+  TRANSCRIBED: 'transcribed',
+  ANALYZED: 'analyzed',
+  ERROR: 'error',
+  READY: 'ready'
+};
 
 const TranscriptionViewer = ({ video }) => {
   const { user } = useAuth();
@@ -15,24 +20,20 @@ const TranscriptionViewer = ({ video }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showFullText, setShowFullText] = useState(false);
-  const [transcriptionStatus, setTranscriptionStatus] = useState(null);
   const [pollingInterval, setPollingInterval] = useState(null);
 
   useEffect(() => {
     if (video && video.id) {
       fetchTranscription();
       
-      // Si la transcription est en cours de traitement, configurer un polling
-      if (video.transcriptions && 
-          video.transcriptions.length > 0 && 
-          video.transcriptions[0].status === TRANSCRIPTION_STATUS.PROCESSING) {
+      // Si la vidéo est en cours de traitement, configurer un polling
+      if (video.status === VIDEO_STATUS.PROCESSING) {
         startPolling();
       } else {
         stopPolling();
       }
     } else {
       setTranscription(null);
-      setTranscriptionStatus(null);
       stopPolling();
     }
     
@@ -73,21 +74,10 @@ const TranscriptionViewer = ({ video }) => {
       }
       setError(null);
 
-      // Récupérer à la fois les données de transcription et le statut actuel
+      // Récupérer les données de transcription directement depuis la table videos
       const { data, error: fetchError } = await supabase
         .from('videos')
-        .select(`
-          id,
-          transcription,
-          transcription_data,
-          transcriptions (
-            id,
-            status,
-            confidence_score,
-            processed_at,
-            error_message
-          )
-        `)
+        .select('id, transcription, transcription_data, status, error_message')
         .eq('id', video.id)
         .single();
 
@@ -95,21 +85,15 @@ const TranscriptionViewer = ({ video }) => {
         throw new Error(`Erreur lors de la récupération de la transcription: ${fetchError.message}`);
       }
 
-      // Mettre à jour le statut de la transcription
-      if (data.transcriptions && data.transcriptions.length > 0) {
-        const currentStatus = data.transcriptions[0].status;
-        setTranscriptionStatus(currentStatus);
-        
-        // Si la transcription est terminée ou a échoué, arrêter le polling
-        if (currentStatus === TRANSCRIPTION_STATUS.COMPLETED || 
-            currentStatus === TRANSCRIPTION_STATUS.FAILED) {
-          stopPolling();
-        } else if (currentStatus === TRANSCRIPTION_STATUS.PROCESSING) {
-          // S'assurer que le polling est actif si la transcription est en cours
-          if (!pollingInterval) {
-            startPolling();
-          }
+      // Si la vidéo a changé de statut, mettre à jour le polling
+      if (data.status === VIDEO_STATUS.PROCESSING) {
+        if (!pollingInterval) {
+          startPolling();
         }
+      } else if (data.status === VIDEO_STATUS.ERROR || 
+                data.status === VIDEO_STATUS.TRANSCRIBED || 
+                data.status === VIDEO_STATUS.ANALYZED) {
+        stopPolling();
       }
 
       // Traiter les données de transcription
@@ -120,7 +104,9 @@ const TranscriptionViewer = ({ video }) => {
         
         setTranscription({
           text: transcriptionText,
-          segments: segments
+          segments: segments,
+          status: data.status,
+          error_message: data.error_message
         });
       } else {
         setTranscription(null);
@@ -132,6 +118,47 @@ const TranscriptionViewer = ({ video }) => {
       if (!silent) {
         setLoading(false);
       }
+    }
+  };
+
+  // Fonction pour lancer manuellement la transcription
+  const startTranscription = async () => {
+    if (!video || !video.id) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Appeler la fonction Edge pour démarrer la transcription
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-video`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabase.auth.session()?.access_token}`
+        },
+        body: JSON.stringify({ videoId: video.id })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Erreur ${response.status}`);
+      }
+      
+      // Démarrer le polling pour suivre l'avancement
+      startPolling();
+      
+      // Mettre à jour l'interface pour montrer que la transcription est en cours
+      setTranscription({
+        text: "Transcription en cours...",
+        segments: [],
+        status: VIDEO_STATUS.PROCESSING
+      });
+      
+    } catch (err) {
+      console.error('Erreur lors du démarrage de la transcription:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -158,7 +185,7 @@ const TranscriptionViewer = ({ video }) => {
   }
 
   // Si la transcription est en cours de chargement
-  if (loading) {
+  if (loading && !transcription) {
     return (
       <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg mt-6">
         <h2 className="text-xl font-bold mb-6 text-gray-800">Transcription</h2>
@@ -192,7 +219,7 @@ const TranscriptionViewer = ({ video }) => {
   }
 
   // Si la transcription est en cours de traitement
-  if (transcriptionStatus === TRANSCRIPTION_STATUS.PROCESSING) {
+  if (transcription?.status === VIDEO_STATUS.PROCESSING || video.status === VIDEO_STATUS.PROCESSING) {
     return (
       <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg mt-6">
         <h2 className="text-xl font-bold mb-6 text-gray-800">Transcription</h2>
@@ -217,7 +244,7 @@ const TranscriptionViewer = ({ video }) => {
   }
 
   // Si la transcription a échoué
-  if (transcriptionStatus === TRANSCRIPTION_STATUS.FAILED) {
+  if (transcription?.status === VIDEO_STATUS.ERROR || video.status === VIDEO_STATUS.ERROR) {
     return (
       <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg mt-6">
         <h2 className="text-xl font-bold mb-6 text-gray-800">Transcription</h2>
@@ -227,23 +254,37 @@ const TranscriptionViewer = ({ video }) => {
             <div>
               <p className="font-medium">La transcription a échoué</p>
               <p className="text-sm mt-1">
-                {video.transcriptions?.[0]?.error_message || 
+                {transcription?.error_message || video.error_message || 
                  "Une erreur s'est produite lors de la transcription de cette vidéo."}
               </p>
             </div>
           </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={startTranscription}
+            className="mt-4"
+          >
+            Réessayer la transcription
+          </Button>
         </div>
       </div>
     );
   }
 
   // Si aucune transcription n'est disponible
-  if (!transcription) {
+  if (!transcription || (!transcription.text && !video.transcription)) {
     return (
       <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg mt-6">
         <h2 className="text-xl font-bold mb-6 text-gray-800">Transcription</h2>
         <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg">
-          <p className="text-gray-500">Aucune transcription disponible pour cette vidéo.</p>
+          <p className="text-gray-500 mb-4">Aucune transcription disponible pour cette vidéo.</p>
+          <Button 
+            onClick={startTranscription}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            Transcrire cette vidéo
+          </Button>
         </div>
       </div>
     );
