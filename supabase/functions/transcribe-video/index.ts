@@ -6,7 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-Deno.serve(async (req) => {
+// CORRECTION: Utilisation de ctx comme deuxième paramètre pour accéder à waitUntil
+Deno.serve(async (req, ctx) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -40,13 +41,14 @@ Deno.serve(async (req) => {
     }
     
     // Utilisation de la clé de service avec l'option auth: { persistSession: false }
-    // pour éviter les erreurs d'authentification 401
     const supabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         persistSession: false
       }
     });
     
+    // Initialisation du client OpenAI avec logging pour déboguer
+    console.log("Initialisation du client OpenAI avec la clé: " + openaiApiKey.substring(0, 5) + "...");
     const openai = new OpenAI({
       apiKey: openaiApiKey
     });
@@ -117,7 +119,8 @@ Deno.serve(async (req) => {
       .from('videos')
       .update({
         status: 'processing',
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        transcription_attempts: (video.transcription_attempts || 0) + 1
       })
       .eq('id', videoId);
       
@@ -148,6 +151,7 @@ Deno.serve(async (req) => {
           // Vérifier si ce bucket existe dans le projet
           try {
             const { data: buckets } = await supabaseClient.storage.listBuckets();
+            console.log("Buckets disponibles:", buckets.map(b => b.name));
             const bucketExists = buckets.some(b => b.name === possibleBucket);
             
             if (bucketExists) {
@@ -173,19 +177,50 @@ Deno.serve(async (req) => {
       
       console.log(`Création d'URL signée pour bucket: ${bucket}, chemin: ${filePath}`);
       
-      const { data: signedUrlData, error: signedUrlError } = await supabaseClient
-        .storage
-        .from(bucket)
-        .createSignedUrl(filePath, 60 * 60); // 1 heure
-      
-      if (signedUrlError) {
-        console.error(`Erreur lors de la création de l'URL signée:`, signedUrlError);
+      try {
+        // Vérifier si le fichier existe dans le bucket
+        const { data: fileList, error: fileListError } = await supabaseClient
+          .storage
+          .from(bucket)
+          .list(filePath.split('/').slice(0, -1).join('/') || undefined, {
+            limit: 100,
+            offset: 0,
+            sortBy: { column: 'name', order: 'asc' },
+          });
+          
+        if (fileListError) {
+          console.error("Erreur lors de la vérification de l'existence du fichier:", fileListError);
+        } else {
+          const fileName = filePath.split('/').pop();
+          console.log(`Recherche du fichier ${fileName} dans la liste:`, fileList.map(f => f.name));
+          const fileFound = fileList.some(f => f.name === fileName);
+          console.log(`Fichier ${fileName} trouvé dans le bucket ${bucket}: ${fileFound}`);
+          
+          if (!fileFound) {
+            throw new Error(`Fichier ${fileName} non trouvé dans le bucket ${bucket}`);
+          }
+        }
+        
+        // Créer l'URL signée
+        const { data: signedUrlData, error: signedUrlError } = await supabaseClient
+          .storage
+          .from(bucket)
+          .createSignedUrl(filePath, 60 * 60); // 1 heure
+        
+        if (signedUrlError) {
+          throw signedUrlError;
+        }
+        
+        videoUrl = signedUrlData.signedUrl;
+        console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 50)}...`);
+      } catch (storageError) {
+        console.error(`Erreur lors de la création de l'URL signée:`, storageError);
         
         await supabaseClient
           .from('videos')
           .update({
             status: 'error',
-            error_message: `Erreur d'accès à la vidéo: ${signedUrlError.message}`,
+            error_message: `Erreur d'accès à la vidéo: ${storageError.message}`,
             updated_at: new Date().toISOString()
           })
           .eq('id', videoId);
@@ -193,7 +228,7 @@ Deno.serve(async (req) => {
         return new Response(
           JSON.stringify({ 
             error: "Erreur d'accès à la vidéo", 
-            details: signedUrlError.message,
+            details: storageError.message,
             context: {
               bucket,
               originalPath: video.storage_path,
@@ -206,9 +241,6 @@ Deno.serve(async (req) => {
           }
         );
       }
-      
-      videoUrl = signedUrlData.signedUrl;
-      console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 50)}...`);
     }
     
     if (!videoUrl) {
@@ -232,7 +264,7 @@ Deno.serve(async (req) => {
       );
     }
     
-    console.log(`URL de la vidéo obtenue pour la transcription`);
+    console.log(`URL de la vidéo obtenue pour la transcription: ${videoUrl.substring(0, 50)}...`);
     
     // Démarrer le processus de transcription en arrière-plan
     const transcriptionPromise = (async () => {
@@ -244,7 +276,13 @@ Deno.serve(async (req) => {
           throw new Error(`Erreur lors du téléchargement de la vidéo: ${videoResponse.status} ${videoResponse.statusText}`);
         }
         
-        console.log(`Vidéo téléchargée avec succès, taille: ${videoResponse.headers.get('content-length') || 'inconnue'}`);
+        const contentLength = videoResponse.headers.get('content-length');
+        console.log(`Vidéo téléchargée avec succès, taille: ${contentLength || 'inconnue'} octets`);
+        
+        // Vérifier la taille du fichier (limite OpenAI: 25 Mo)
+        if (contentLength && parseInt(contentLength) > 25 * 1024 * 1024) {
+          throw new Error(`La vidéo est trop volumineuse (${Math.round(parseInt(contentLength) / (1024 * 1024))} Mo). La limite est de 25 Mo pour OpenAI Whisper.`);
+        }
         
         const videoBlob = await videoResponse.blob();
         const videoFile = new File([videoBlob], "video.mp4", { type: "video/mp4" });
@@ -252,95 +290,110 @@ Deno.serve(async (req) => {
         console.log(`Début de la transcription avec OpenAI Whisper`);
         
         // Transcription avec OpenAI
-        const transcription = await openai.audio.transcriptions.create({
-          file: videoFile,
-          model: "whisper-1",
-          response_format: "verbose_json",
-          language: "fr"
-        });
-        
-        console.log(`Transcription terminée avec succès, longueur: ${transcription.text.length} caractères`);
-        
-        // Formater les données de transcription
-        const transcriptionData = {
-          text: transcription.text,
-          segments: transcription.segments.map(segment => ({
-            id: segment.id,
-            start: segment.start,
-            end: segment.end,
-            text: segment.text,
-            confidence: segment.confidence
-          })),
-          language: transcription.language
-        };
-        
-        // Mettre à jour la vidéo avec les données de transcription
-        await supabaseClient
-          .from('videos')
-          .update({
-            transcription: transcriptionData.text,
-            transcription_data: transcriptionData,
-            status: 'transcribed',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId);
-        
-        console.log(`Vidéo mise à jour avec les données de transcription`);
-        
-        // Générer l'analyse IA de la transcription
         try {
-          console.log(`Début de l'analyse IA du texte transcrit`);
-          
-          const analysisResponse = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
-            messages: [
-              {
-                role: "system",
-                content: `Tu es un expert en analyse de discours. Analyse la transcription suivante et fournit:
-                1. Un résumé concis (5-7 phrases)
-                2. 5-7 points clés
-                3. Une évaluation de la clarté et de la structure (note de 1 à 10)
-                4. 3-5 suggestions d'amélioration
-                5. 3-5 points forts
-                
-                Réponds au format JSON avec les clés suivantes:
-                {
-                  "resume": "string",
-                  "points_cles": ["string", "string", ...],
-                  "evaluation": {
-                    "clarte": number,
-                    "structure": number
-                  },
-                  "suggestions": ["string", "string", ...],
-                  "strengths": ["string", "string", ...]
-                }`
-              },
-              {
-                role: "user",
-                content: transcriptionData.text
-              }
-            ],
-            response_format: { type: "json_object" }
+          const transcription = await openai.audio.transcriptions.create({
+            file: videoFile,
+            model: "whisper-1",
+            response_format: "verbose_json",
+            language: "fr"
           });
           
-          const analysis = JSON.parse(analysisResponse.choices[0].message.content);
-          console.log(`Analyse IA générée avec succès`);
+          console.log(`Transcription terminée avec succès, longueur: ${transcription.text.length} caractères`);
           
-          // Mettre à jour la vidéo avec l'analyse
-          await supabaseClient
+          // Formater les données de transcription
+          const transcriptionData = {
+            text: transcription.text,
+            segments: transcription.segments.map(segment => ({
+              id: segment.id,
+              start: segment.start,
+              end: segment.end,
+              text: segment.text,
+              confidence: segment.confidence
+            })),
+            language: transcription.language
+          };
+          
+          // Mettre à jour la vidéo avec les données de transcription
+          const { error: transcriptionUpdateError } = await supabaseClient
             .from('videos')
             .update({
-              analysis: analysis,
-              status: 'analyzed',
+              transcription: transcriptionData.text,
+              transcription_data: transcriptionData,
+              status: 'transcribed',
               updated_at: new Date().toISOString()
             })
             .eq('id', videoId);
+            
+          if (transcriptionUpdateError) {
+            console.error(`Erreur lors de la mise à jour de la transcription:`, transcriptionUpdateError);
+            throw transcriptionUpdateError;
+          }
           
-          console.log(`Vidéo mise à jour avec l'analyse IA`);
-        } catch (analysisError) {
-          console.error("Erreur lors de l'analyse IA", analysisError);
-          // L'analyse a échoué mais la transcription a réussi
-          // On ne change pas le statut 'transcribed'
+          console.log(`Vidéo mise à jour avec les données de transcription`);
+          
+          // Générer l'analyse IA de la transcription
+          try {
+            console.log(`Début de l'analyse IA du texte transcrit`);
+            
+            const analysisResponse = await openai.chat.completions.create({
+              model: "gpt-3.5-turbo",
+              messages: [
+                {
+                  role: "system",
+                  content: `Tu es un expert en analyse de discours. Analyse la transcription suivante et fournit:
+                  1. Un résumé concis (5-7 phrases)
+                  2. 5-7 points clés
+                  3. Une évaluation de la clarté et de la structure (note de 1 à 10)
+                  4. 3-5 suggestions d'amélioration
+                  5. 3-5 points forts
+                  
+                  Réponds au format JSON avec les clés suivantes:
+                  {
+                    "resume": "string",
+                    "points_cles": ["string", "string", ...],
+                    "evaluation": {
+                      "clarte": number,
+                      "structure": number
+                    },
+                    "suggestions": ["string", "string", ...],
+                    "strengths": ["string", "string", ...]
+                  }`
+                },
+                {
+                  role: "user",
+                  content: transcriptionData.text
+                }
+              ],
+              response_format: { type: "json_object" }
+            });
+            
+            const analysis = JSON.parse(analysisResponse.choices[0].message.content);
+            console.log(`Analyse IA générée avec succès`);
+            
+            // Mettre à jour la vidéo avec l'analyse
+            const { error: analysisUpdateError } = await supabaseClient
+              .from('videos')
+              .update({
+                analysis: analysis,
+                status: 'analyzed',
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', videoId);
+              
+            if (analysisUpdateError) {
+              console.error(`Erreur lors de la mise à jour de l'analyse:`, analysisUpdateError);
+              // On ne lance pas d'erreur ici car la transcription a réussi
+            } else {
+              console.log(`Vidéo mise à jour avec l'analyse IA`);
+            }
+          } catch (analysisError) {
+            console.error("Erreur lors de l'analyse IA", analysisError);
+            // L'analyse a échoué mais la transcription a réussi
+            // On ne change pas le statut 'transcribed'
+          }
+        } catch (whisperError) {
+          console.error("Erreur lors de l'appel à l'API Whisper:", whisperError);
+          throw new Error(`Erreur de transcription OpenAI: ${whisperError.message || JSON.stringify(whisperError)}`);
         }
         
       } catch (error) {
@@ -358,8 +411,8 @@ Deno.serve(async (req) => {
       }
     })();
     
-    // Utiliser EdgeRuntime.waitUntil pour permettre à la fonction de continuer en arrière-plan
-    EdgeRuntime.waitUntil(transcriptionPromise);
+    // CORRECTION: Utilisation de ctx.waitUntil au lieu de EdgeRuntime.waitUntil
+    ctx.waitUntil(transcriptionPromise);
     
     // Retourner immédiatement une réponse pour ne pas bloquer le client
     return new Response(
