@@ -39,6 +39,25 @@ Deno.serve(async (req) => {
       );
     }
     
+    // Vérifier la validité de la clé OpenAI (format basique)
+    if (!openaiApiKey.startsWith('sk-') || openaiApiKey.length < 20) {
+      const maskedKey = openaiApiKey ? 
+        `${openaiApiKey.substring(0, 3)}...${openaiApiKey.substring(openaiApiKey.length - 4)}` : 
+        'non définie';
+      console.error("Clé OpenAI invalide:", maskedKey, "longueur:", openaiApiKey?.length || 0);
+      
+      return new Response(
+        JSON.stringify({ 
+          error: "Configuration incorrecte", 
+          details: "La clé API OpenAI semble invalide" 
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500 
+        }
+      );
+    }
+    
     const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
     const openai = new OpenAI({
       apiKey: openaiApiKey
@@ -122,38 +141,24 @@ Deno.serve(async (req) => {
       );
     }
     
-    // Vérifier si la table a les colonnes nécessaires
-    try {
-      const { error: updateTestError } = await supabaseClient
-        .from('videos')
-        .update({ status: 'processing' })
-        .eq('id', videoId);
-      
-      if (updateTestError) {
-        console.error("Erreur lors du test de mise à jour de la table videos:", updateTestError);
-        return new Response(
-          JSON.stringify({ 
-            error: "Structure de table incorrecte", 
-            details: "La table videos ne contient pas les colonnes nécessaires. Vérifiez que les colonnes status, transcription, transcription_data, analysis et error_message existent."
-          }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 500 
-          }
-        );
-      }
-    } catch (structureError) {
-      console.error("Erreur lors du test de structure de la table:", structureError);
-    }
-    
     // Mettre à jour le statut de la vidéo pour indiquer que la transcription est en cours
-    await supabaseClient
-      .from('videos')
-      .update({
-        status: 'processing',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', videoId);
+    try {
+      const { error: updateError } = await supabaseClient
+        .from('videos')
+        .update({
+          status: 'processing',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId);
+        
+      if (updateError) {
+        console.error("Erreur lors de la mise à jour du statut:", updateError);
+        // Continuer malgré l'erreur
+      }
+    } catch (updateError) {
+      console.error("Exception lors de la mise à jour du statut:", updateError);
+      // Continuer malgré l'erreur
+    }
     
     // Récupérer l'URL de la vidéo depuis Storage si nécessaire
     let videoUrl = video.url;
@@ -170,27 +175,62 @@ Deno.serve(async (req) => {
       }
       
       console.log(`Création d'URL signée pour bucket: ${bucket}, chemin: ${filePath}`);
-      const { data: signedUrlData, error: signedUrlError } = await supabaseClient
-        .storage
-        .from(bucket)
-        .createSignedUrl(filePath, 60 * 60); // 1 heure
-      
-      if (signedUrlError) {
-        console.error(`Erreur lors de la création de l'URL signée:`, signedUrlError);
+      try {
+        const { data: signedUrlData, error: signedUrlError } = await supabaseClient
+          .storage
+          .from(bucket)
+          .createSignedUrl(filePath, 60 * 60); // 1 heure
         
-        await supabaseClient
-          .from('videos')
-          .update({
-            status: 'error',
-            error_message: `Erreur d'accès à la vidéo: ${signedUrlError.message}`,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId);
+        if (signedUrlError) {
+          console.error(`Erreur lors de la création de l'URL signée:`, signedUrlError);
+          
+          try {
+            await supabaseClient
+              .from('videos')
+              .update({
+                status: 'error',
+                error_message: `Erreur d'accès à la vidéo: ${signedUrlError.message}`,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', videoId);
+          } catch (updateError) {
+            console.error("Erreur lors de la mise à jour du statut d'erreur:", updateError);
+          }
+          
+          return new Response(
+            JSON.stringify({ 
+              error: "Erreur d'accès à la vidéo", 
+              details: signedUrlError.message 
+            }),
+            { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 500 
+            }
+          );
+        }
+        
+        videoUrl = signedUrlData.signedUrl;
+        console.log("URL signée générée avec succès");
+      } catch (signedUrlException) {
+        console.error("Exception lors de la création de l'URL signée:", signedUrlException);
+        
+        try {
+          await supabaseClient
+            .from('videos')
+            .update({
+              status: 'error',
+              error_message: `Exception lors de la création de l'URL signée: ${signedUrlException.message}`,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', videoId);
+        } catch (updateError) {
+          console.error("Erreur lors de la mise à jour du statut d'erreur:", updateError);
+        }
         
         return new Response(
           JSON.stringify({ 
-            error: "Erreur d'accès à la vidéo", 
-            details: signedUrlError.message 
+            error: "Exception lors de la création de l'URL signée", 
+            details: signedUrlException.message 
           }),
           { 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -198,21 +238,23 @@ Deno.serve(async (req) => {
           }
         );
       }
-      
-      videoUrl = signedUrlData.signedUrl;
-      console.log("URL signée générée avec succès");
     }
     
     if (!videoUrl) {
       console.error("Impossible d'obtenir une URL pour la vidéo");
-      await supabaseClient
-        .from('videos')
-        .update({
-          status: 'error',
-          error_message: "Impossible d'obtenir une URL pour la vidéo",
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId);
+      
+      try {
+        await supabaseClient
+          .from('videos')
+          .update({
+            status: 'error',
+            error_message: "Impossible d'obtenir une URL pour la vidéo",
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId);
+      } catch (updateError) {
+        console.error("Erreur lors de la mise à jour du statut d'erreur:", updateError);
+      }
         
       return new Response(
         JSON.stringify({ 
@@ -231,146 +273,203 @@ Deno.serve(async (req) => {
     try {
       // Télécharger la vidéo
       console.log("Téléchargement de la vidéo depuis:", videoUrl.substring(0, 50) + "...");
-      const videoResponse = await fetch(videoUrl);
+      const videoResponse = await fetch(videoUrl, {
+        headers: {
+          'Accept': 'video/*',
+          'User-Agent': 'Supabase Edge Function'
+        }
+      });
+      
       if (!videoResponse.ok) {
         throw new Error(`Erreur lors du téléchargement de la vidéo: ${videoResponse.status} ${videoResponse.statusText}`);
       }
       
+      // Vérifier le type de contenu
+      const contentType = videoResponse.headers.get('content-type');
+      console.log("Type de contenu de la vidéo:", contentType);
+      
+      if (!contentType || !contentType.startsWith('video/')) {
+        console.log("Attention: Le type de contenu n'est pas une vidéo. Tentative de traitement quand même.");
+      }
+      
       console.log("Vidéo téléchargée avec succès, préparation pour OpenAI");
       const videoBlob = await videoResponse.blob();
-      const videoFile = new File([videoBlob], "video.mp4", { type: "video/mp4" });
+      console.log("Taille du blob vidéo:", videoBlob.size, "octets");
       
-      console.log("Taille du fichier vidéo:", videoFile.size, "octets");
-      if (videoFile.size > 25 * 1024 * 1024) {
-        throw new Error("La vidéo est trop volumineuse pour être traitée par l'API Whisper (limite de 25 Mo)");
+      // Vérifier si le fichier est vide
+      if (videoBlob.size === 0) {
+        throw new Error("Le fichier vidéo téléchargé est vide");
       }
+      
+      // Vérifier la taille maximale pour Whisper (25 Mo)
+      if (videoBlob.size > 25 * 1024 * 1024) {
+        throw new Error(`La vidéo est trop volumineuse pour être traitée par l'API Whisper (${(videoBlob.size / (1024 * 1024)).toFixed(2)} Mo, limite de 25 Mo)`);
+      }
+      
+      // Créer un fichier avec le bon type MIME
+      let mimeType = 'video/mp4';
+      if (contentType && contentType.startsWith('video/')) {
+        mimeType = contentType;
+      }
+      
+      const videoFile = new File([videoBlob], "video.mp4", { type: mimeType });
+      console.log("Fichier préparé pour OpenAI:", {
+        name: videoFile.name,
+        type: videoFile.type,
+        size: videoFile.size
+      });
       
       // Transcription avec OpenAI
       console.log("Début de la transcription avec OpenAI Whisper");
-      const transcription = await openai.audio.transcriptions.create({
-        file: videoFile,
-        model: "whisper-1",
-        response_format: "verbose_json",
-        language: "fr"
-      });
-      
-      console.log("Transcription terminée avec succès");
-      
-      // Formater les données de transcription
-      const transcriptionData = {
-        text: transcription.text,
-        segments: transcription.segments.map(segment => ({
-          id: segment.id,
-          start: segment.start,
-          end: segment.end,
-          text: segment.text,
-          confidence: segment.confidence
-        })),
-        language: transcription.language
-      };
-      
-      // Mettre à jour la vidéo avec les données de transcription
-      console.log("Mise à jour de la vidéo avec les données de transcription");
-      const { error: updateError } = await supabaseClient
-        .from('videos')
-        .update({
-          transcription: transcriptionData.text,
-          transcription_data: transcriptionData,
-          status: 'transcribed',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId);
-        
-      if (updateError) {
-        console.error("Erreur lors de la mise à jour de la transcription:", updateError);
-        throw new Error(`Erreur lors de la mise à jour de la transcription: ${updateError.message}`);
-      }
-      
-      console.log("Vidéo mise à jour avec les données de transcription");
-      
-      // Générer l'analyse IA de la transcription
       try {
-        console.log("Début de l'analyse IA de la transcription");
-        const analysisResponse = await openai.chat.completions.create({
-          model: "gpt-3.5-turbo",
-          messages: [
-            {
-              role: "system",
-              content: `Tu es un expert en analyse de discours. Analyse la transcription suivante et fournit:
-              1. Un résumé concis (5-7 phrases)
-              2. 5-7 points clés
-              3. Une évaluation de la clarté et de la structure (note de 1 à 10)
-              4. 3-5 suggestions d'amélioration
-              5. 3-5 points forts
-              
-              Réponds au format JSON avec les clés suivantes:
-              {
-                "resume": "string",
-                "points_cles": ["string", "string", ...],
-                "evaluation": {
-                  "clarte": number,
-                  "structure": number
-                },
-                "suggestions": ["string", "string", ...],
-                "strengths": ["string", "string", ...]
-              }`
-            },
-            {
-              role: "user",
-              content: transcriptionData.text
-            }
-          ],
-          response_format: { type: "json_object" }
+        const transcription = await openai.audio.transcriptions.create({
+          file: videoFile,
+          model: "whisper-1",
+          response_format: "verbose_json",
+          language: "fr"
         });
         
-        const analysis = JSON.parse(analysisResponse.choices[0].message.content);
-        console.log("Analyse IA générée avec succès");
+        console.log("Transcription terminée avec succès");
         
-        // Mettre à jour la vidéo avec l'analyse
-        const { error: analysisUpdateError } = await supabaseClient
-          .from('videos')
-          .update({
-            analysis: analysis,
-            status: 'analyzed',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId);
+        // Formater les données de transcription
+        const transcriptionData = {
+          text: transcription.text,
+          segments: transcription.segments.map(segment => ({
+            id: segment.id,
+            start: segment.start,
+            end: segment.end,
+            text: segment.text,
+            confidence: segment.confidence
+          })),
+          language: transcription.language
+        };
+        
+        // Mettre à jour la vidéo avec les données de transcription
+        console.log("Mise à jour de la vidéo avec les données de transcription");
+        try {
+          const { error: updateError } = await supabaseClient
+            .from('videos')
+            .update({
+              transcription: transcriptionData.text,
+              transcription_data: transcriptionData,
+              status: 'transcribed',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', videoId);
+            
+          if (updateError) {
+            console.error("Erreur lors de la mise à jour de la transcription:", updateError);
+            throw new Error(`Erreur lors de la mise à jour de la transcription: ${updateError.message}`);
+          }
           
-        if (analysisUpdateError) {
-          console.error("Erreur lors de la mise à jour de l'analyse:", analysisUpdateError);
-        } else {
-          console.log("Vidéo mise à jour avec l'analyse IA");
+          console.log("Vidéo mise à jour avec les données de transcription");
+        } catch (updateError) {
+          console.error("Exception lors de la mise à jour de la transcription:", updateError);
+          throw new Error(`Exception lors de la mise à jour de la transcription: ${updateError.message}`);
         }
-      } catch (analysisError) {
-        console.error("Erreur lors de l'analyse IA", analysisError);
-        // L'analyse a échoué mais la transcription a réussi
-        // On ne change pas le statut 'transcribed'
+        
+        // Générer l'analyse IA de la transcription
+        try {
+          console.log("Début de l'analyse IA de la transcription");
+          const analysisResponse = await openai.chat.completions.create({
+            model: "gpt-3.5-turbo",
+            messages: [
+              {
+                role: "system",
+                content: `Tu es un expert en analyse de discours. Analyse la transcription suivante et fournit:
+                1. Un résumé concis (5-7 phrases)
+                2. 5-7 points clés
+                3. Une évaluation de la clarté et de la structure (note de 1 à 10)
+                4. 3-5 suggestions d'amélioration
+                5. 3-5 points forts
+                
+                Réponds au format JSON avec les clés suivantes:
+                {
+                  "resume": "string",
+                  "points_cles": ["string", "string", ...],
+                  "evaluation": {
+                    "clarte": number,
+                    "structure": number
+                  },
+                  "suggestions": ["string", "string", ...],
+                  "strengths": ["string", "string", ...]
+                }`
+              },
+              {
+                role: "user",
+                content: transcriptionData.text
+              }
+            ],
+            response_format: { type: "json_object" }
+          });
+          
+          const analysis = JSON.parse(analysisResponse.choices[0].message.content);
+          console.log("Analyse IA générée avec succès");
+          
+          // Mettre à jour la vidéo avec l'analyse
+          try {
+            const { error: analysisUpdateError } = await supabaseClient
+              .from('videos')
+              .update({
+                analysis: analysis,
+                status: 'analyzed',
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', videoId);
+              
+            if (analysisUpdateError) {
+              console.error("Erreur lors de la mise à jour de l'analyse:", analysisUpdateError);
+            } else {
+              console.log("Vidéo mise à jour avec l'analyse IA");
+            }
+          } catch (analysisUpdateError) {
+            console.error("Exception lors de la mise à jour de l'analyse:", analysisUpdateError);
+          }
+        } catch (analysisError) {
+          console.error("Erreur lors de l'analyse IA", analysisError);
+          // L'analyse a échoué mais la transcription a réussi
+          // On ne change pas le statut 'transcribed'
+        }
+        
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            message: 'Transcription terminée avec succès',
+            videoId
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200 
+          }
+        );
+      } catch (openaiError) {
+        console.error("Erreur OpenAI détaillée:", {
+          message: openaiError.message,
+          type: openaiError.constructor.name,
+          status: openaiError.status,
+          code: openaiError.code,
+          param: openaiError.param
+        });
+        
+        throw new Error(`Erreur OpenAI: ${openaiError.message}`);
       }
-      
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: 'Transcription terminée avec succès',
-          videoId
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200 
-        }
-      );
       
     } catch (error) {
       console.error("Erreur lors de la transcription", error);
       
       // Mettre à jour le statut de la vidéo pour indiquer l'échec
-      await supabaseClient
-        .from('videos')
-        .update({
-          status: 'error',
-          error_message: `Erreur de transcription: ${error.message}`,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId);
+      try {
+        await supabaseClient
+          .from('videos')
+          .update({
+            status: 'error',
+            error_message: `Erreur de transcription: ${error.message}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId);
+      } catch (updateError) {
+        console.error("Erreur lors de la mise à jour du statut d'erreur:", updateError);
+      }
       
       return new Response(
         JSON.stringify({ 
