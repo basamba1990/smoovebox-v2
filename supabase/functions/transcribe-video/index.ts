@@ -6,7 +6,20 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// CORRECTION: Utilisation de Deno.serve sans ctx
+// Valeurs possibles pour le statut (à ajuster selon votre schéma)
+const VALID_STATUS = {
+  PROCESSING: 'processing',
+  READY: 'ready',
+  ERROR: 'error',
+  // Essayons ces valeurs alternatives
+  DONE: 'done',
+  FINISHED: 'finished',
+  COMPLETE: 'complete',
+  SUCCESS: 'success',
+  TRANSCRIBED: 'transcribed',
+  ANALYZED: 'analyzed'
+};
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -114,11 +127,31 @@ Deno.serve(async (req) => {
     
     console.log(`Vidéo trouvée: ${video.id}, titre: ${video.title}, chemin: ${video.storage_path}`);
     
+    // IMPORTANT: Vérifier les valeurs autorisées pour le statut
+    console.log(`Statut actuel de la vidéo: ${video.status}`);
+    
+    // Récupérer les valeurs autorisées pour le statut
+    try {
+      const { data: statusValues, error: statusError } = await supabaseClient.rpc(
+        'get_enum_values',
+        { enum_name: 'video_status' }
+      );
+      
+      if (statusError) {
+        console.error("Erreur lors de la récupération des valeurs de statut:", statusError);
+      } else if (statusValues && statusValues.length > 0) {
+        console.log("Valeurs autorisées pour le statut:", statusValues);
+      }
+    } catch (enumError) {
+      console.error("Erreur lors de l'appel à get_enum_values:", enumError);
+      // Continuons même si cette vérification échoue
+    }
+    
     // Mettre à jour le statut de la vidéo pour indiquer que la transcription est en cours
     const { error: updateError } = await supabaseClient
       .from('videos')
       .update({
-        status: 'processing',
+        status: VALID_STATUS.PROCESSING,
         updated_at: new Date().toISOString(),
         transcription_attempts: (video.transcription_attempts || 0) + 1
       })
@@ -128,7 +161,7 @@ Deno.serve(async (req) => {
       console.error(`Erreur lors de la mise à jour du statut de la vidéo ${videoId}`, updateError);
       // On continue malgré l'erreur
     } else {
-      console.log(`Statut de la vidéo ${videoId} mis à jour à 'processing'`);
+      console.log(`Statut de la vidéo ${videoId} mis à jour à '${VALID_STATUS.PROCESSING}'`);
     }
     
     // Récupérer l'URL de la vidéo depuis Storage si nécessaire
@@ -223,7 +256,7 @@ Deno.serve(async (req) => {
         await supabaseClient
           .from('videos')
           .update({
-            status: 'error',
+            status: VALID_STATUS.ERROR,
             error_message: `Erreur d'accès à la vidéo: ${storageError.message}`,
             updated_at: new Date().toISOString()
           })
@@ -253,7 +286,7 @@ Deno.serve(async (req) => {
       await supabaseClient
         .from('videos')
         .update({
-          status: 'error',
+          status: VALID_STATUS.ERROR,
           error_message: 'Aucune URL disponible pour cette vidéo',
           updated_at: new Date().toISOString()
         })
@@ -331,24 +364,94 @@ Deno.serve(async (req) => {
             language: transcription.language
           };
           
-          // CORRECTION: Vérifier les valeurs autorisées pour le statut
-          // Mettre à jour la vidéo avec les données de transcription
-          const { error: transcriptionUpdateError } = await supabaseClient
-            .from('videos')
-            .update({
-              transcription: transcriptionData.text,
-              transcription_data: transcriptionData,
-              status: 'completed', // CORRECTION: Utiliser 'completed' au lieu de 'transcribed'
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', videoId);
-            
-          if (transcriptionUpdateError) {
-            console.error(`Erreur lors de la mise à jour de la transcription:`, transcriptionUpdateError);
-            throw transcriptionUpdateError;
+          // Essayer différentes valeurs de statut jusqu'à ce qu'une fonctionne
+          let transcriptionUpdateSuccess = false;
+          
+          // Essayer d'abord avec le statut actuel (si c'est 'ready' ou 'processing')
+          if (video.status === VALID_STATUS.READY || video.status === VALID_STATUS.PROCESSING) {
+            try {
+              const { error: transcriptionUpdateError } = await supabaseClient
+                .from('videos')
+                .update({
+                  transcription: transcriptionData.text,
+                  transcription_data: transcriptionData,
+                  // Garder le même statut
+                  status: video.status,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', videoId);
+                
+              if (!transcriptionUpdateError) {
+                console.log(`Vidéo mise à jour avec les données de transcription (statut inchangé: ${video.status})`);
+                transcriptionUpdateSuccess = true;
+              } else {
+                console.error(`Erreur lors de la mise à jour avec statut inchangé:`, transcriptionUpdateError);
+              }
+            } catch (updateError) {
+              console.error(`Exception lors de la mise à jour avec statut inchangé:`, updateError);
+            }
           }
           
-          console.log(`Vidéo mise à jour avec les données de transcription`);
+          // Si la première tentative a échoué, essayer avec différentes valeurs de statut
+          if (!transcriptionUpdateSuccess) {
+            // Essayer chaque valeur de statut possible
+            for (const statusKey of Object.keys(VALID_STATUS)) {
+              const statusValue = VALID_STATUS[statusKey];
+              if (statusValue === VALID_STATUS.PROCESSING || statusValue === VALID_STATUS.ERROR) {
+                // Sauter les statuts qui ne sont pas pertinents pour une transcription terminée
+                continue;
+              }
+              
+              try {
+                console.log(`Tentative de mise à jour avec le statut: ${statusValue}`);
+                const { error: transcriptionUpdateError } = await supabaseClient
+                  .from('videos')
+                  .update({
+                    transcription: transcriptionData.text,
+                    transcription_data: transcriptionData,
+                    status: statusValue,
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('id', videoId);
+                  
+                if (!transcriptionUpdateError) {
+                  console.log(`Vidéo mise à jour avec les données de transcription (statut: ${statusValue})`);
+                  transcriptionUpdateSuccess = true;
+                  break; // Sortir de la boucle si la mise à jour a réussi
+                } else {
+                  console.error(`Erreur lors de la mise à jour avec statut ${statusValue}:`, transcriptionUpdateError);
+                }
+              } catch (updateError) {
+                console.error(`Exception lors de la mise à jour avec statut ${statusValue}:`, updateError);
+              }
+            }
+          }
+          
+          // Si aucune mise à jour n'a réussi, essayer sans changer le statut
+          if (!transcriptionUpdateSuccess) {
+            try {
+              console.log(`Tentative de mise à jour sans changer le statut`);
+              const { error: transcriptionUpdateError } = await supabaseClient
+                .from('videos')
+                .update({
+                  transcription: transcriptionData.text,
+                  transcription_data: transcriptionData,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', videoId);
+                
+              if (!transcriptionUpdateError) {
+                console.log(`Vidéo mise à jour avec les données de transcription (statut inchangé)`);
+                transcriptionUpdateSuccess = true;
+              } else {
+                console.error(`Erreur lors de la mise à jour sans changer le statut:`, transcriptionUpdateError);
+                throw transcriptionUpdateError;
+              }
+            } catch (finalUpdateError) {
+              console.error(`Exception lors de la mise à jour finale:`, finalUpdateError);
+              throw finalUpdateError;
+            }
+          }
           
           // Générer l'analyse IA de la transcription
           try {
@@ -389,26 +492,27 @@ Deno.serve(async (req) => {
             const analysis = JSON.parse(analysisResponse.choices[0].message.content);
             console.log(`Analyse IA générée avec succès`);
             
-            // Mettre à jour la vidéo avec l'analyse
-            const { error: analysisUpdateError } = await supabaseClient
-              .from('videos')
-              .update({
-                analysis: analysis,
-                status: 'analyzed', // VÉRIFIER: S'assurer que 'analyzed' est une valeur autorisée
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', videoId);
-              
-            if (analysisUpdateError) {
-              console.error(`Erreur lors de la mise à jour de l'analyse:`, analysisUpdateError);
-              // On ne lance pas d'erreur ici car la transcription a réussi
-            } else {
-              console.log(`Vidéo mise à jour avec l'analyse IA`);
+            // Mettre à jour la vidéo avec l'analyse sans changer le statut
+            try {
+              const { error: analysisUpdateError } = await supabaseClient
+                .from('videos')
+                .update({
+                  analysis: analysis,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', videoId);
+                
+              if (analysisUpdateError) {
+                console.error(`Erreur lors de la mise à jour de l'analyse:`, analysisUpdateError);
+              } else {
+                console.log(`Vidéo mise à jour avec l'analyse IA`);
+              }
+            } catch (analysisUpdateError) {
+              console.error(`Exception lors de la mise à jour de l'analyse:`, analysisUpdateError);
             }
           } catch (analysisError) {
             console.error("Erreur lors de l'analyse IA", analysisError);
             // L'analyse a échoué mais la transcription a réussi
-            // On ne change pas le statut 'completed'
           }
         } catch (whisperError) {
           console.error("Erreur lors de l'appel à l'API Whisper:", whisperError);
@@ -419,14 +523,18 @@ Deno.serve(async (req) => {
         console.error("Erreur lors de la transcription", error);
         
         // Mettre à jour le statut de la vidéo pour indiquer l'échec
-        await supabaseClient
-          .from('videos')
-          .update({
-            status: 'error',
-            error_message: `Erreur de transcription: ${error.message}`,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId);
+        try {
+          await supabaseClient
+            .from('videos')
+            .update({
+              status: VALID_STATUS.ERROR,
+              error_message: `Erreur de transcription: ${error.message}`,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', videoId);
+        } catch (updateError) {
+          console.error("Erreur lors de la mise à jour du statut d'erreur:", updateError);
+        }
       }
     })();
     
@@ -448,3 +556,22 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+// Fonction pour créer une fonction RPC qui retourne les valeurs d'un enum
+// Vous devez l'exécuter une fois dans votre base de données
+/*
+CREATE OR REPLACE FUNCTION get_enum_values(enum_name text)
+RETURNS text[] AS $$
+DECLARE
+    enum_values text[];
+BEGIN
+    SELECT array_agg(enumlabel)
+    INTO enum_values
+    FROM pg_enum
+    JOIN pg_type ON pg_enum.enumtypid = pg_type.oid
+    WHERE pg_type.typname = enum_name;
+    
+    RETURN enum_values;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+*/
