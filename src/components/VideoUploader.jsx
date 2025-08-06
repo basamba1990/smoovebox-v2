@@ -12,6 +12,7 @@ const VideoUploader = ({ onUploadComplete }) => {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [transcribing, setTranscribing] = useState(false);
   const fileInputRef = useRef(null);
   
   const handleFileChange = (e) => {
@@ -146,9 +147,53 @@ const VideoUploader = ({ onUploadComplete }) => {
       
       // Afficher un message de succès
       setSuccess("Vidéo uploadée avec succès!");
-      setTimeout(() => {
-        setSuccess('Vous pouvez maintenant voir votre vidéo dans l\'onglet "Mes Vidéos"');
-      }, 2000);
+      
+      // NOUVELLE PARTIE: Appeler la fonction Edge pour transcription
+      try {
+        setTranscribing(true);
+        console.log('Démarrage de la transcription pour la vidéo:', videoRecord.id);
+        
+        // Récupérer le token d'authentification
+        const { data: { session } } = await supabase.auth.getSession();
+        const accessToken = session?.access_token;
+        
+        if (!accessToken) {
+          console.error("Impossible de récupérer le token d'authentification");
+          setSuccess("Vidéo uploadée avec succès! La transcription n'a pas pu être démarrée automatiquement.");
+          return;
+        }
+        
+        const transcribeResponse = await fetch('/functions/v1/transcribe-video', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            videoId: videoRecord.id
+          })
+        });
+        
+        if (!transcribeResponse.ok) {
+          const errorData = await transcribeResponse.json();
+          console.error('Erreur lors de la demande de transcription:', errorData);
+          setSuccess("Vidéo uploadée avec succès! La transcription n'a pas pu être démarrée automatiquement.");
+        } else {
+          const responseData = await transcribeResponse.json();
+          console.log('Transcription initiée avec succès:', responseData);
+          setSuccess("Vidéo uploadée avec succès! La transcription est en cours...");
+          
+          // Mettre à jour la liste des vidéos pour refléter le statut de transcription
+          if (onUploadComplete) {
+            onUploadComplete();
+          }
+        }
+      } catch (transcribeError) {
+        console.error('Erreur lors de l\'appel à la fonction de transcription:', transcribeError);
+        setSuccess("Vidéo uploadée avec succès! La transcription n'a pas pu être démarrée automatiquement.");
+      } finally {
+        setTranscribing(false);
+      }
       
     } catch (err) {
       console.error('Erreur lors de l\'upload:', err);
@@ -171,6 +216,14 @@ const VideoUploader = ({ onUploadComplete }) => {
       {success && (
         <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-6">
           <p>{success}</p>
+          {transcribing && (
+            <div className="mt-2">
+              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                <div className="bg-green-500 h-1.5 rounded-full animate-pulse"></div>
+              </div>
+              <p className="text-xs mt-1">Démarrage de la transcription...</p>
+            </div>
+          )}
         </div>
       )}
       
@@ -189,7 +242,7 @@ const VideoUploader = ({ onUploadComplete }) => {
               file:text-sm file:font-semibold
               file:bg-blue-50 file:text-blue-700
               hover:file:bg-blue-100"
-            disabled={uploading}
+            disabled={uploading || transcribing}
           />
           <p className="mt-1 text-xs text-gray-500">Formats acceptés: MP4, MOV, AVI, WebM (max 100MB)</p>
         </div>
@@ -203,7 +256,7 @@ const VideoUploader = ({ onUploadComplete }) => {
             onChange={(e) => setTitle(e.target.value)} 
             className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
             placeholder="Entrez un titre pour votre vidéo"
-            disabled={uploading}
+            disabled={uploading || transcribing}
             required
           />
         </div>
@@ -217,7 +270,7 @@ const VideoUploader = ({ onUploadComplete }) => {
             rows="3" 
             className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
             placeholder="Ajoutez une description à votre vidéo"
-            disabled={uploading}
+            disabled={uploading || transcribing}
           ></textarea>
         </div>
         
@@ -236,9 +289,9 @@ const VideoUploader = ({ onUploadComplete }) => {
         <Button 
           type="submit" 
           className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-          disabled={uploading || !file}
+          disabled={uploading || transcribing || !file}
         >
-          {uploading ? `Upload en cours...` : 'Uploader la vidéo'}
+          {uploading ? `Upload en cours...` : transcribing ? 'Démarrage de la transcription...' : 'Uploader la vidéo'}
         </Button>
       </form>
     </div>
