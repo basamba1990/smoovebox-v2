@@ -312,29 +312,26 @@ Deno.serve(async (req) => {
         const videoBlob = await videoResponse.blob();
         const videoFile = new File([videoBlob], "video.mp4", { type: "video/mp4" });
         
-        console.log(`Début de la transcription avec OpenAI Whisper`);
+        console.log(`Début de la transcription avec OpenAI gpt-4o-transcribe`);
         
-        // Transcription avec OpenAI
+        // Transcription avec OpenAI - Utilisation du nouveau modèle gpt-4o-transcribe
         const transcription = await openai.audio.transcriptions.create({
           file: videoFile,
-          model: "whisper-1",
-          response_format: "verbose_json",
-          language: "fr"
+          model: "gpt-4o-transcribe",
+          response_format: "json",  // gpt-4o-transcribe ne supporte que json ou text
+          language: "fr",
+          prompt: "Cette transcription concerne une vidéo en français. Veuillez transcrire avec précision, en incluant la ponctuation et les paragraphes appropriés."
         });
         
         console.log(`Transcription terminée avec succès, longueur: ${transcription.text.length} caractères`);
         
         // Formater les données de transcription
+        // Note: gpt-4o-transcribe ne fournit pas de segments comme whisper-1 avec verbose_json
+        // Nous allons donc créer une structure compatible avec le reste du code
         const transcriptionData = {
           text: transcription.text,
-          segments: transcription.segments.map(segment => ({
-            id: segment.id,
-            start: segment.start,
-            end: segment.end,
-            text: segment.text,
-            confidence: segment.confidence
-          })),
-          language: transcription.language
+          segments: [], // Pas de segments disponibles avec gpt-4o-transcribe en format json
+          language: "fr" // Le modèle ne renvoie pas la langue détectée, on utilise celle fournie
         };
         
         // Mettre à jour la vidéo avec les données de transcription
