@@ -1,18 +1,8 @@
-// src/components/TranscriptionViewer.jsx - Version modifiée
+// src/components/TranscriptionViewer.jsx
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase.js';
-import { useAuth } from '../context/AuthContext.jsx';
-import { Button } from './ui/button.jsx';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 import { RefreshCw, AlertCircle, Loader2 } from 'lucide-react';
-
-// Constantes pour les statuts de vidéo
-const VIDEO_STATUS = {
-  PROCESSING: 'processing',
-  TRANSCRIBED: 'transcribed',
-  ANALYZED: 'analyzed',
-  ERROR: 'error',
-  READY: 'ready'
-};
 
 const TranscriptionViewer = ({ video }) => {
   const { user } = useAuth();
@@ -27,7 +17,7 @@ const TranscriptionViewer = ({ video }) => {
       fetchTranscription();
       
       // Si la vidéo est en cours de traitement, configurer un polling
-      if (video.status === VIDEO_STATUS.PROCESSING) {
+      if (video.status === 'processing') {
         startPolling();
       } else {
         stopPolling();
@@ -85,29 +75,48 @@ const TranscriptionViewer = ({ video }) => {
         throw new Error(`Erreur lors de la récupération de la transcription: ${fetchError.message}`);
       }
 
-      // Si la vidéo a changé de statut, mettre à jour le polling
-      if (data.status === VIDEO_STATUS.PROCESSING) {
-        if (!pollingInterval) {
-          startPolling();
-        }
-      } else if (data.status === VIDEO_STATUS.ERROR || 
-                data.status === VIDEO_STATUS.TRANSCRIBED || 
-                data.status === VIDEO_STATUS.ANALYZED) {
-        stopPolling();
-      }
-
       // Traiter les données de transcription
-      if (data && (data.transcription || data.transcription_data)) {
-        // Utiliser transcription_data s'il existe, sinon utiliser transcription
-        const transcriptionText = data.transcription_data?.text || data.transcription;
-        const segments = data.transcription_data?.segments || [];
+      if (data) {
+        let transcriptionText = null;
+        let segments = [];
+        let language = 'fr';
         
-        setTranscription({
-          text: transcriptionText,
-          segments: segments,
-          status: data.status,
-          error_message: data.error_message
-        });
+        // Essayer de récupérer le texte de transcription de différentes sources
+        if (data.transcription_data) {
+          if (typeof data.transcription_data === 'string') {
+            try {
+              const parsed = JSON.parse(data.transcription_data);
+              transcriptionText = parsed.text;
+              segments = parsed.segments || [];
+              language = parsed.language || 'fr';
+            } catch (e) {
+              transcriptionText = data.transcription_data;
+            }
+          } else {
+            transcriptionText = data.transcription_data.text;
+            segments = data.transcription_data.segments || [];
+            language = data.transcription_data.language || 'fr';
+          }
+        } else if (data.transcription) {
+          if (typeof data.transcription === 'string') {
+            transcriptionText = data.transcription;
+          } else if (typeof data.transcription === 'object') {
+            transcriptionText = data.transcription.text || JSON.stringify(data.transcription);
+            segments = data.transcription.segments || [];
+          }
+        }
+        
+        if (transcriptionText) {
+          setTranscription({
+            text: transcriptionText,
+            segments: segments,
+            language: language,
+            status: data.status,
+            error_message: data.error_message
+          });
+        } else {
+          setTranscription(null);
+        }
       } else {
         setTranscription(null);
       }
@@ -129,12 +138,20 @@ const TranscriptionViewer = ({ video }) => {
       setLoading(true);
       setError(null);
       
+      // Récupérer le token d'authentification
+      const { data: authData } = await supabase.auth.getSession();
+      const token = authData?.session?.access_token;
+      
+      if (!token) {
+        throw new Error("Session expirée, veuillez vous reconnecter");
+      }
+      
       // Appeler la fonction Edge pour démarrer la transcription
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-video`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabase.auth.session()?.access_token}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ videoId: video.id })
       });
@@ -151,7 +168,7 @@ const TranscriptionViewer = ({ video }) => {
       setTranscription({
         text: "Transcription en cours...",
         segments: [],
-        status: VIDEO_STATUS.PROCESSING
+        status: 'processing'
       });
       
     } catch (err) {
@@ -174,14 +191,7 @@ const TranscriptionViewer = ({ video }) => {
 
   // Si aucune vidéo n'est sélectionnée
   if (!video) {
-    return (
-      <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg">
-        <h2 className="text-xl font-bold mb-6 text-gray-800">Transcription</h2>
-        <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg">
-          <p className="text-gray-500">Veuillez sélectionner une vidéo pour voir sa transcription.</p>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   // Si la transcription est en cours de chargement
@@ -204,22 +214,20 @@ const TranscriptionViewer = ({ video }) => {
         <h2 className="text-xl font-bold mb-6 text-gray-800">Transcription</h2>
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
           <p>{error}</p>
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <button 
             onClick={() => fetchTranscription()}
-            className="mt-2"
+            className="mt-2 px-3 py-1 bg-white border border-red-300 rounded text-sm hover:bg-red-50"
           >
-            <RefreshCw className="h-4 w-4 mr-2" />
+            <RefreshCw className="h-4 w-4 inline mr-1" />
             Réessayer
-          </Button>
+          </button>
         </div>
       </div>
     );
   }
 
   // Si la transcription est en cours de traitement
-  if (transcription?.status === VIDEO_STATUS.PROCESSING || video.status === VIDEO_STATUS.PROCESSING) {
+  if (video.status === 'processing') {
     return (
       <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg mt-6">
         <h2 className="text-xl font-bold mb-6 text-gray-800">Transcription</h2>
@@ -229,22 +237,20 @@ const TranscriptionViewer = ({ video }) => {
           <p className="text-blue-600 text-sm mt-2">
             Ce processus peut prendre quelques minutes selon la durée de la vidéo.
           </p>
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <button 
             onClick={() => fetchTranscription()}
-            className="mt-4"
+            className="mt-4 px-4 py-2 bg-white border border-blue-300 rounded text-sm hover:bg-blue-50"
           >
-            <RefreshCw className="h-4 w-4 mr-2" />
+            <RefreshCw className="h-4 w-4 inline mr-1" />
             Actualiser
-          </Button>
+          </button>
         </div>
       </div>
     );
   }
 
   // Si la transcription a échoué
-  if (transcription?.status === VIDEO_STATUS.ERROR || video.status === VIDEO_STATUS.ERROR) {
+  if (video.status === 'failed' || (transcription && transcription.status === 'failed')) {
     return (
       <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg mt-6">
         <h2 className="text-xl font-bold mb-6 text-gray-800">Transcription</h2>
@@ -259,32 +265,30 @@ const TranscriptionViewer = ({ video }) => {
               </p>
             </div>
           </div>
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <button 
             onClick={startTranscription}
-            className="mt-4"
+            className="mt-4 px-4 py-2 bg-white border border-red-300 rounded text-sm hover:bg-red-50"
           >
             Réessayer la transcription
-          </Button>
+          </button>
         </div>
       </div>
     );
   }
 
   // Si aucune transcription n'est disponible
-  if (!transcription || (!transcription.text && !video.transcription)) {
+  if (!transcription || !transcription.text) {
     return (
       <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg mt-6">
         <h2 className="text-xl font-bold mb-6 text-gray-800">Transcription</h2>
         <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg">
           <p className="text-gray-500 mb-4">Aucune transcription disponible pour cette vidéo.</p>
-          <Button 
+          <button 
             onClick={startTranscription}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             Transcrire cette vidéo
-          </Button>
+          </button>
         </div>
       </div>
     );
@@ -296,21 +300,19 @@ const TranscriptionViewer = ({ video }) => {
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-bold text-gray-800">Transcription</h2>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
+          <button
             onClick={() => fetchTranscription()}
+            className="px-3 py-1 bg-gray-100 border border-gray-300 rounded text-sm hover:bg-gray-200"
           >
-            <RefreshCw className="h-4 w-4 mr-2" />
+            <RefreshCw className="h-4 w-4 inline mr-1" />
             Actualiser
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
+          </button>
+          <button
             onClick={() => setShowFullText(!showFullText)}
+            className="px-3 py-1 bg-gray-100 border border-gray-300 rounded text-sm hover:bg-gray-200"
           >
             {showFullText ? 'Afficher par segments' : 'Afficher texte complet'}
-          </Button>
+          </button>
         </div>
       </div>
       
