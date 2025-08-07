@@ -314,7 +314,7 @@ Deno.serve(async (req) => {
         
         console.log(`Début de la transcription avec OpenAI gpt-4o-transcribe`);
         
-        // Transcription avec OpenAI - Utilisation du nouveau modèle gpt-4o-transcribe
+        // Transcription avec OpenAI - Utilisation du modèle gpt-4o-transcribe
         const transcription = await openai.audio.transcriptions.create({
           file: videoFile,
           model: "gpt-4o-transcribe",
@@ -370,12 +370,12 @@ Deno.serve(async (req) => {
           // On continue malgré l'erreur
         }
         
-        // Générer l'analyse IA de la transcription
+        // Générer l'analyse IA de la transcription avec GPT-5
         try {
-          console.log(`Début de l'analyse IA du texte transcrit`);
+          console.log(`Début de l'analyse IA du texte transcrit avec GPT-5`);
           
           const analysisResponse = await openai.chat.completions.create({
-            model: "gpt-4",
+            model: "gpt-5", // Utilisation du modèle GPT-5 le plus récent
             messages: [
               {
                 role: "system",
@@ -407,7 +407,7 @@ Deno.serve(async (req) => {
           });
           
           const analysis = JSON.parse(analysisResponse.choices[0].message.content);
-          console.log(`Analyse IA générée avec succès`);
+          console.log(`Analyse IA générée avec succès avec GPT-5`);
           
           // Mettre à jour la vidéo avec l'analyse (sans changer le statut)
           const { error: analysisUpdateError } = await supabaseClient
@@ -424,8 +424,65 @@ Deno.serve(async (req) => {
             console.log(`Vidéo mise à jour avec l'analyse IA`);
           }
         } catch (analysisError) {
-          console.error("Erreur lors de l'analyse IA", analysisError);
-          // L'analyse a échoué mais la transcription a réussi
+          console.error("Erreur lors de l'analyse IA avec GPT-5", analysisError);
+          
+          // En cas d'échec avec GPT-5, essayer avec GPT-3.5 Turbo comme fallback
+          try {
+            console.log("Tentative de fallback avec GPT-3.5 Turbo pour l'analyse");
+            
+            const fallbackAnalysisResponse = await openai.chat.completions.create({
+              model: "gpt-3.5-turbo", // Fallback sur GPT-3.5 Turbo
+              messages: [
+                {
+                  role: "system",
+                  content: `Tu es un expert en analyse de discours. Analyse la transcription suivante et fournit:
+                  1. Un résumé concis (5-7 phrases)
+                  2. 5-7 points clés
+                  3. Une évaluation de la clarté et de la structure (note de 1 à 10)
+                  4. 3-5 suggestions d'amélioration
+                  5. 3-5 points forts
+                  
+                  Réponds au format JSON avec les clés suivantes:
+                  {
+                    "resume": "string",
+                    "points_cles": ["string", "string", ...],
+                    "evaluation": {
+                      "clarte": number,
+                      "structure": number
+                    },
+                    "suggestions": ["string", "string", ...],
+                    "strengths": ["string", "string", ...]
+                  }`
+                },
+                {
+                  role: "user",
+                  content: transcriptionData.text
+                }
+              ],
+              response_format: { type: "json_object" }
+            });
+            
+            const fallbackAnalysis = JSON.parse(fallbackAnalysisResponse.choices[0].message.content);
+            console.log(`Analyse IA générée avec succès avec GPT-3.5 Turbo (fallback)`);
+            
+            // Mettre à jour la vidéo avec l'analyse (sans changer le statut)
+            const { error: fallbackAnalysisUpdateError } = await supabaseClient
+              .from('videos')
+              .update({
+                analysis: fallbackAnalysis,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', videoId);
+              
+            if (fallbackAnalysisUpdateError) {
+              console.error(`Erreur lors de la mise à jour de l'analyse (fallback):`, fallbackAnalysisUpdateError);
+            } else {
+              console.log(`Vidéo mise à jour avec l'analyse IA (fallback GPT-3.5 Turbo)`);
+            }
+          } catch (fallbackError) {
+            console.error("Échec du fallback avec GPT-3.5 Turbo pour l'analyse", fallbackError);
+            // L'analyse a échoué mais la transcription a réussi
+          }
         }
         
       } catch (error) {
