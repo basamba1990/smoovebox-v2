@@ -378,7 +378,7 @@ Deno.serve(async (req) => {
           console.log(`Début de l'analyse IA du texte transcrit`);
           
           const analysisResponse = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
+            model: "gpt-4",
             messages: [
               {
                 role: "system",
