@@ -30,7 +30,7 @@ const VideoManagement = () => {
       
       const { data, error } = await supabase
         .from('videos')
-        .select('*')
+        .select('*, transcription, transcription_data, analysis')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
       
@@ -38,20 +38,22 @@ const VideoManagement = () => {
         throw new Error(`Erreur lors du chargement des vidéos: ${error.message}`);
       }
 
-      // Convertir les statuts si nécessaire (COMPLETED -> published, etc.)
-      const convertedData = data.map(video => ({
+      // Normaliser les données pour chaque vidéo
+      const normalizedData = data.map(video => ({
         ...video,
-        status: convertStatus(video.status)
+        status: normalizeStatus(video.status),
+        hasTranscription: hasTranscription(video),
+        hasAnalysis: hasAnalysis(video)
       }));
 
-      setVideos(convertedData || []);
+      setVideos(normalizedData || []);
       
       // Mettre à jour la vidéo sélectionnée
-      if (convertedData && convertedData.length > 0) {
-        if (!selectedVideo || !convertedData.some(v => v.id === selectedVideo.id)) {
-          setSelectedVideo(convertedData[0]);
+      if (normalizedData && normalizedData.length > 0) {
+        if (!selectedVideo || !normalizedData.some(v => v.id === selectedVideo.id)) {
+          setSelectedVideo(normalizedData[0]);
         } else {
-          const updatedVideo = convertedData.find(v => v.id === selectedVideo.id);
+          const updatedVideo = normalizedData.find(v => v.id === selectedVideo.id);
           if (updatedVideo) setSelectedVideo(updatedVideo);
         }
       } else {
@@ -66,30 +68,37 @@ const VideoManagement = () => {
     }
   };
   
-  // Convertir les statuts entre les formats
-  const convertStatus = (status) => {
+  // Normaliser les statuts pour l'affichage
+  const normalizeStatus = (status) => {
     if (!status) return 'draft';
     
-    switch (status.toLowerCase()) {
-      case 'completed': return 'published';
-      case 'processing': return 'processing';
-      case 'failed': return 'failed';
-      case 'pending': return 'draft';
-      default: return status.toLowerCase();
+    const statusLower = status.toLowerCase();
+    
+    if (['completed', 'analyzed', 'published'].includes(statusLower)) {
+      return 'published';
+    } else if (['processing', 'transcribing', 'analyzing'].includes(statusLower)) {
+      return 'processing';
+    } else if (['failed', 'error'].includes(statusLower)) {
+      return 'failed';
+    } else if (['pending', 'draft', 'ready'].includes(statusLower)) {
+      return 'draft';
     }
+    
+    return statusLower;
   };
   
-  // Convertir les statuts dans l'autre sens
-  const convertStatusToLegacy = (status) => {
-    if (!status) return 'PENDING';
-    
-    switch (status.toLowerCase()) {
-      case 'published': return 'COMPLETED';
-      case 'processing': return 'PROCESSING';
-      case 'failed': return 'FAILED';
-      case 'draft': return 'PENDING';
-      default: return status.toUpperCase();
-    }
+  // Vérifier si une vidéo a une transcription
+  const hasTranscription = (video) => {
+    return !!(video.transcription || 
+             (video.transcription_data && 
+              (typeof video.transcription_data === 'object' ? 
+               video.transcription_data.text : 
+               video.transcription_data)));
+  };
+  
+  // Vérifier si une vidéo a une analyse
+  const hasAnalysis = (video) => {
+    return !!video.analysis;
   };
   
   useEffect(() => {
@@ -297,6 +306,18 @@ const VideoManagement = () => {
                       <p className="text-sm text-gray-500">
                         {new Date(video.created_at).toLocaleDateString()}
                       </p>
+                      <div className="flex gap-1 mt-1">
+                        {video.hasTranscription && (
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">
+                            Transcrit
+                          </span>
+                        )}
+                        {video.hasAnalysis && (
+                          <span className="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded">
+                            Analysé
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="text-xs px-2 py-1 rounded">
                       <VideoProcessingStatus videoId={video.id} initialStatus={video.status} />
@@ -351,7 +372,7 @@ const VideoManagement = () => {
                     >
                       {transcribingVideoId === selectedVideo.id 
                         ? 'Transcription en cours...' 
-                        : (selectedVideo.status === 'published' ? 'Retranscrire' : 'Transcrire')}
+                        : (selectedVideo.hasTranscription ? 'Retranscrire' : 'Transcrire')}
                     </button>
                   )}
                   <button 
@@ -379,7 +400,7 @@ const VideoManagement = () => {
                   </div>
                 )}
                 
-                {selectedVideo.status === 'draft' && (
+                {selectedVideo.status === 'draft' && !selectedVideo.hasTranscription && (
                   <div className="mt-4 bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
                     <p className="text-blue-700">
                       La vidéo est prête pour la transcription. Cliquez sur "Transcrire" pour commencer.
@@ -387,12 +408,13 @@ const VideoManagement = () => {
                   </div>
                 )}
                 
-                {/* Résultats */}
-                {selectedVideo.status === 'published' && (
-                  <>
-                    <TranscriptionViewer video={selectedVideo} />
-                    <VideoAnalysisResults video={selectedVideo} />
-                  </>
+                {/* Résultats - Afficher indépendamment du statut si les données existent */}
+                {selectedVideo.hasTranscription && (
+                  <TranscriptionViewer video={selectedVideo} />
+                )}
+                
+                {selectedVideo.hasAnalysis && (
+                  <VideoAnalysisResults video={selectedVideo} />
                 )}
               </div>
             ) : (
