@@ -312,7 +312,7 @@ function AppContent() {
             <div className="text-center py-16">
               <div className="max-w-md mx-auto">
                 <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <Video className="h-10 w-10 text-blue-600" />
+                  <img src="/logo.png" alt="SpotBulle AI Logo" className="h-16 w-16" />
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900 mb-4">
                   Bienvenue sur SpotBulle
