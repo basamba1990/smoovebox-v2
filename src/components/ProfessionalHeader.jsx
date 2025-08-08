@@ -8,8 +8,7 @@ const ProfessionalHeader = ({
   profile, 
   connectionStatus = 'connected', 
   onSignOut, 
-  onAuthModalOpen, 
-  slogan 
+  onAuthModalOpen 
 }) => {
   return (
     <header className="bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-100 sticky top-0 z-50">
@@ -19,7 +18,7 @@ const ProfessionalHeader = ({
           <div className="flex items-center gap-4">
             <div className="relative group">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300">
-                <img src="/logo.png" alt="SpotBulle Logo" className="h-5 w-5" />
+                <Video className="h-5 w-5 text-white" />
               </div>
               <div className="absolute -top-1 -right-1 w-3 h-3 bg-gradient-to-r from-green-400 to-emerald-500 rounded-full animate-pulse"></div>
             </div>
@@ -28,7 +27,9 @@ const ProfessionalHeader = ({
               <h1 className="text-xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
                 SpotBulle
               </h1>
-              {slogan && <p className="text-xs text-gray-500 -mt-1 font-medium">{slogan}</p>}
+              <p className="text-xs text-gray-500 -mt-1 font-medium">
+                Analyse IA • Pitch Vidéo
+              </p>
             </div>
           </div>
           
