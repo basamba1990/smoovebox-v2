@@ -143,33 +143,8 @@ export const getProfileId = async (userId) => {
       
       // Si le profil n'existe pas, essayer de le créer
       if (error.code === 'PGRST301') {
-        console.warn("Profil non trouvé, tentative de création...");
-        
-        const { data: userData } = await supabase.auth.getUser();
-        if (!userData?.user) {
-          throw new Error("Utilisateur non authentifié");
-        }
-        
-        const { data: newProfile, error: createError } = await retryOperation(async () => {
-          return await supabase
-            .from('profiles')
-            .insert({
-              user_id: userId,
-              email: userData.user.email,
-              username: userData.user.email?.split('@')[0] || 'user',
-              full_name: userData.user.user_metadata?.full_name || 
-                        `${userData.user.user_metadata?.first_name || ''} ${userData.user.user_metadata?.last_name || ''}`.trim() || null
-            })
-            .select()
-            .single();
-        });
-          
-        if (createError) {
-          console.error('Erreur lors de la création du profil:', createError);
-          // En cas d'échec, retourner user_id directement
-          return userId;
-        }
-        return newProfile.id;
+        console.warn("Profil non trouvé, retour de l'ID utilisateur comme fallback.");
+        return userId;
       }
       
       throw error;
