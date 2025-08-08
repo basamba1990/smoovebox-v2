@@ -71,7 +71,7 @@ function AppContent() {
   const loadDashboardData = async () => {
     if (!user) {
       console.log('Aucun utilisateur connecté, aucune donnée à charger');
-      setDashboardData(null);
+      // setDashboardData(null); // Commenté pour supprimer le mode démo
       return;
     }
     
@@ -258,6 +258,7 @@ function AppContent() {
         connectionStatus={connectionStatus}
         onSignOut={handleSignOut}
         onAuthModalOpen={() => setIsAuthModalOpen(true)}
+        slogan="Upload your video. Get instant AI insights. Professionnel, simple, efficace"
       />
 
       {/* Main Content */}
@@ -318,7 +319,7 @@ function AppContent() {
                   Bienvenue sur SpotBulle
                 </h2>
                 <p className="text-gray-600 mb-8">
-                  Plateforme d'analyse IA pour vos pitchs vidéo
+                  Upload your video. Get instant AI insights. Professionnel, simple, efficace
                 </p>
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
