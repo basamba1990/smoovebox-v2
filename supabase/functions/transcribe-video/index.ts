@@ -1,11 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import OpenAI from 'npm:openai@4.28.0'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
 // Valeurs exactes autorisées pour le statut dans la base de données
 const VIDEO_STATUS = {
   DRAFT: 'draft',           // En attente ou prêt pour traitement
@@ -14,16 +9,22 @@ const VIDEO_STATUS = {
   FAILED: 'failed'          // Échec du traitement
 };
 
+// En-têtes CORS pour permettre les requêtes cross-origin
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
 Deno.serve(async (req) => {
-  // Handle CORS preflight requests
+  // Gérer les requêtes OPTIONS (CORS preflight)
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
     console.log("Fonction transcribe-video appelée");
     
-    // Initialiser les clients
+    // Initialiser les variables d'environnement
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
@@ -46,21 +47,48 @@ Deno.serve(async (req) => {
         }
       );
     }
+
+    // 1. AUTHENTIFICATION: Vérifier l'authentification de l'utilisateur
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Authentification requise', 
+          details: "Token d'authentification manquant ou incorrect"
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401 
+        }
+      );
+    }
+
+    const token = authHeader.replace('Bearer ', '');
     
-    // Utilisation de la clé de service avec l'option auth: { persistSession: false }
-    const supabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        persistSession: false
+    // Créer un client Supabase avec le token de l'utilisateur pour vérifier l'identité
+    const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY') || '', {
+      global: {
+        headers: { Authorization: authHeader }
       }
     });
     
-    // Initialisation du client OpenAI avec logging pour déboguer
-    console.log("Initialisation du client OpenAI avec la clé: " + openaiApiKey.substring(0, 5) + "...");
-    const openai = new OpenAI({
-      apiKey: openaiApiKey
-    });
+    // Vérifier l'authentification de l'utilisateur
+    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Authentification échouée', 
+          details: authError?.message || 'Utilisateur non trouvé'
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401 
+        }
+      );
+    }
 
-    // Récupérer les données de la requête
+    // 2. RÉCUPÉRER LES DONNÉES DE LA REQUÊTE
     let requestData;
     try {
       requestData = await req.json();
@@ -88,11 +116,20 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Vérifier si la vidéo existe et récupérer son URL
-    const { data: video, error: videoError } = await supabaseClient
+    // Créer un client Supabase avec la clé de service pour les opérations privilégiées
+    const serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        persistSession: false
+      }
+    });
+
+    // 3. VÉRIFIER L'ACCÈS À LA VIDÉO
+    // Vérifier si la vidéo existe et appartient à l'utilisateur
+    const { data: video, error: videoError } = await serviceClient
       .from('videos')
       .select('*')
       .eq('id', videoId)
+      .eq('user_id', user.id) // Vérifier que la vidéo appartient à l'utilisateur authentifié
       .single();
 
     if (videoError) {
@@ -111,7 +148,7 @@ Deno.serve(async (req) => {
 
     if (!video) {
       return new Response(
-        JSON.stringify({ error: 'Vidéo non trouvée' }),
+        JSON.stringify({ error: 'Vidéo non trouvée ou accès non autorisé' }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 404 
@@ -122,8 +159,9 @@ Deno.serve(async (req) => {
     console.log(`Vidéo trouvée: ${video.id}, titre: ${video.title}, chemin: ${video.storage_path}`);
     console.log(`Statut actuel de la vidéo: ${video.status}`);
     
+    // 4. MISE À JOUR DU STATUT
     // Mettre à jour le statut de la vidéo pour indiquer que la transcription est en cours
-    const { error: updateError } = await supabaseClient
+    const { error: updateError } = await serviceClient
       .from('videos')
       .update({
         status: VIDEO_STATUS.PROCESSING,
@@ -139,7 +177,7 @@ Deno.serve(async (req) => {
       console.log(`Statut de la vidéo ${videoId} mis à jour à '${VIDEO_STATUS.PROCESSING}'`);
     }
     
-    // Récupérer l'URL de la vidéo depuis Storage si nécessaire
+    // 5. RÉCUPÉRER L'URL DE LA VIDÉO
     let videoUrl = video.url;
     
     if (!videoUrl && video.storage_path) {
@@ -149,7 +187,7 @@ Deno.serve(async (req) => {
       let bucket = 'videos'; // Bucket par défaut
       let filePath = video.storage_path;
       
-      // CORRECTION: Gestion correcte du préfixe de bucket dans le chemin
+      // Gestion intelligente du chemin: détection du bucket dans le chemin
       if (filePath.includes('/')) {
         const parts = filePath.split('/');
         if (parts.length > 1) {
@@ -158,7 +196,7 @@ Deno.serve(async (req) => {
           
           // Vérifier si ce bucket existe dans le projet
           try {
-            const { data: buckets } = await supabaseClient.storage.listBuckets();
+            const { data: buckets } = await serviceClient.storage.listBuckets();
             console.log("Buckets disponibles:", buckets.map(b => b.name));
             const bucketExists = buckets.some(b => b.name === possibleBucket);
             
@@ -172,12 +210,11 @@ Deno.serve(async (req) => {
             }
           } catch (bucketError) {
             console.error("Erreur lors de la vérification des buckets:", bucketError);
-            // En cas d'erreur, on suppose que le premier segment n'est pas un bucket
           }
         }
       }
       
-      // Méthode alternative si la précédente échoue: vérifier si le chemin commence par le nom du bucket
+      // Méthode alternative: vérifier si le chemin commence par le nom du bucket
       if (filePath.startsWith(`${bucket}/`)) {
         filePath = filePath.substring(bucket.length + 1);
         console.log(`Préfixe de bucket détecté et supprimé. Nouveau chemin: ${filePath}`);
@@ -190,7 +227,7 @@ Deno.serve(async (req) => {
         const parentPath = filePath.split('/').slice(0, -1).join('/') || undefined;
         console.log(`Vérification du contenu du dossier: ${parentPath || '(racine)'}`);
         
-        const { data: fileList, error: fileListError } = await supabaseClient
+        const { data: fileList, error: fileListError } = await serviceClient
           .storage
           .from(bucket)
           .list(parentPath, {
@@ -214,7 +251,7 @@ Deno.serve(async (req) => {
         }
         
         // Créer l'URL signée
-        const { data: signedUrlData, error: signedUrlError } = await supabaseClient
+        const { data: signedUrlData, error: signedUrlError } = await serviceClient
           .storage
           .from(bucket)
           .createSignedUrl(filePath, 60 * 60); // 1 heure
@@ -228,7 +265,7 @@ Deno.serve(async (req) => {
       } catch (storageError) {
         console.error(`Erreur lors de la création de l'URL signée:`, storageError);
         
-        await supabaseClient
+        await serviceClient
           .from('videos')
           .update({
             status: VIDEO_STATUS.FAILED,
@@ -258,7 +295,7 @@ Deno.serve(async (req) => {
     if (!videoUrl) {
       console.error(`Aucune URL disponible pour la vidéo ${videoId}`);
       
-      await supabaseClient
+      await serviceClient
         .from('videos')
         .update({
           status: VIDEO_STATUS.FAILED,
@@ -278,6 +315,7 @@ Deno.serve(async (req) => {
     
     console.log(`URL de la vidéo obtenue pour la transcription: ${videoUrl.substring(0, 50)}...`);
     
+    // 6. PRÉPARER LA RÉPONSE IMMÉDIATE
     // Retourner immédiatement une réponse pour ne pas bloquer le client
     const responsePromise = new Response(
       JSON.stringify({ 
@@ -291,147 +329,157 @@ Deno.serve(async (req) => {
       }
     );
     
-    // Démarrer le processus de transcription en arrière-plan
-    (async () => {
-      try {
-        // Télécharger la vidéo
-        console.log(`Téléchargement de la vidéo...`);
-        const videoResponse = await fetch(videoUrl);
-        if (!videoResponse.ok) {
-          throw new Error(`Erreur lors du téléchargement de la vidéo: ${videoResponse.status} ${videoResponse.statusText}`);
-        }
-        
-        const contentLength = videoResponse.headers.get('content-length');
-        console.log(`Vidéo téléchargée avec succès, taille: ${contentLength || 'inconnue'} octets`);
-        
-        // Vérifier la taille du fichier (limite OpenAI: 25 Mo)
-        if (contentLength && parseInt(contentLength) > 25 * 1024 * 1024) {
-          throw new Error(`La vidéo est trop volumineuse (${Math.round(parseInt(contentLength) / (1024 * 1024))} Mo). La limite est de 25 Mo pour OpenAI Whisper.`);
-        }
-        
-        const videoBlob = await videoResponse.blob();
-        const videoFile = new File([videoBlob], "video.mp4", { type: "video/mp4" });
-        
-        console.log(`Début de la transcription avec OpenAI gpt-4o-transcribe`);
-        
-        // Transcription avec OpenAI - Utilisation du modèle gpt-4o-transcribe
-        const transcription = await openai.audio.transcriptions.create({
-          file: videoFile,
-          model: "gpt-4o-transcribe",
-          response_format: "json",  // gpt-4o-transcribe ne supporte que json ou text
-          language: "fr",
-          prompt: "Cette transcription concerne une vidéo en français. Veuillez transcrire avec précision, en incluant la ponctuation et les paragraphes appropriés."
-        });
-        
-        console.log(`Transcription terminée avec succès, longueur: ${transcription.text.length} caractères`);
-        
-        // Formater les données de transcription
-        // Note: gpt-4o-transcribe ne fournit pas de segments comme whisper-1 avec verbose_json
-        // Nous allons donc créer une structure compatible avec le reste du code
-        const transcriptionData = {
-          text: transcription.text,
-          segments: [], // Pas de segments disponibles avec gpt-4o-transcribe en format json
-          language: "fr" // Le modèle ne renvoie pas la langue détectée, on utilise celle fournie
-        };
-        
-        // Mettre à jour la vidéo avec les données de transcription
-        const { error: transcriptionUpdateError } = await supabaseClient
-          .from('videos')
-          .update({
-            transcription: transcriptionData.text,
-            transcription_data: transcriptionData,
-            status: VIDEO_STATUS.PUBLISHED, // Utiliser PUBLISHED pour indiquer que la transcription est terminée
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId);
-          
-        if (transcriptionUpdateError) {
-          console.error(`Erreur lors de la mise à jour de la transcription:`, transcriptionUpdateError);
-          throw transcriptionUpdateError;
-        }
-        
-        console.log(`Vidéo mise à jour avec les données de transcription`);
-        
-        // Appeler la fonction de synchronisation
+    // 7. DÉMARRER LE TRAITEMENT EN ARRIÈRE-PLAN
+    EdgeRuntime.waitUntil(
+      (async () => {
         try {
-          const { error: syncError } = await supabaseClient.rpc(
-            'sync_video_transcription',
-            { video_id: videoId }
-          );
-          
-          if (syncError) {
-            console.error(`Erreur lors de l'appel à sync_video_transcription:`, syncError);
-            // On continue malgré l'erreur
-          } else {
-            console.log(`Fonction sync_video_transcription appelée avec succès`);
+          // Télécharger la vidéo
+          console.log(`Téléchargement de la vidéo...`);
+          const videoResponse = await fetch(videoUrl);
+          if (!videoResponse.ok) {
+            throw new Error(`Erreur lors du téléchargement de la vidéo: ${videoResponse.status} ${videoResponse.statusText}`);
           }
-        } catch (syncError) {
-          console.error(`Exception lors de l'appel à sync_video_transcription:`, syncError);
-          // On continue malgré l'erreur
-        }
-        
-        // Générer l'analyse IA de la transcription avec GPT-5
-        try {
-          console.log(`Début de l'analyse IA du texte transcrit avec GPT-5`);
           
-          const analysisResponse = await openai.chat.completions.create({
-            model: "gpt-5", // Utilisation du modèle GPT-5 le plus récent
-            messages: [
-              {
-                role: "system",
-                content: `Tu es un expert en analyse de discours. Analyse la transcription suivante et fournit:
-                1. Un résumé concis (5-7 phrases)
-                2. 5-7 points clés
-                3. Une évaluation de la clarté et de la structure (note de 1 à 10)
-                4. 3-5 suggestions d'amélioration
-                5. 3-5 points forts
-                
-                Réponds au format JSON avec les clés suivantes:
-                {
-                  "resume": "string",
-                  "points_cles": ["string", "string", ...],
-                  "evaluation": {
-                    "clarte": number,
-                    "structure": number
-                  },
-                  "suggestions": ["string", "string", ...],
-                  "strengths": ["string", "string", ...]
-                }`
-              },
-              {
-                role: "user",
-                content: transcriptionData.text
-              }
-            ],
-            response_format: { type: "json_object" }
+          const contentLength = videoResponse.headers.get('content-length');
+          console.log(`Vidéo téléchargée avec succès, taille: ${contentLength || 'inconnue'} octets`);
+          
+          // Vérifier la taille du fichier (limite OpenAI: 25 Mo)
+          if (contentLength && parseInt(contentLength) > 25 * 1024 * 1024) {
+            throw new Error(`La vidéo est trop volumineuse (${Math.round(parseInt(contentLength) / (1024 * 1024))} Mo). La limite est de 25 Mo pour OpenAI Whisper.`);
+          }
+          
+          const videoBlob = await videoResponse.blob();
+          const videoFile = new File([videoBlob], "video.mp4", { type: "video/mp4" });
+          
+          // Initialiser le client OpenAI
+          const openai = new OpenAI({
+            apiKey: openaiApiKey
           });
           
-          const analysis = JSON.parse(analysisResponse.choices[0].message.content);
-          console.log(`Analyse IA générée avec succès avec GPT-5`);
+          // Sélectionner le modèle en fonction de la taille et de la complexité
+          // Whisper pour la précision des transcriptions audio complexes
+          // GPT-4o-transcribe pour les vidéos plus courtes ou moins complexes
+          const shouldUseWhisper = contentLength && parseInt(contentLength) > 10 * 1024 * 1024;
+          const transcriptionModel = shouldUseWhisper ? "whisper-1" : "gpt-4o-transcribe";
           
-          // Mettre à jour la vidéo avec l'analyse (sans changer le statut)
-          const { error: analysisUpdateError } = await supabaseClient
+          console.log(`Début de la transcription avec OpenAI ${transcriptionModel}`);
+          
+          // Options communes
+          const transcriptionOptions = {
+            file: videoFile,
+            language: "fr"
+          };
+          
+          let transcriptionData;
+          
+          // Transcription avec OpenAI - Utilisation du modèle approprié
+          if (transcriptionModel === "whisper-1") {
+            const transcription = await openai.audio.transcriptions.create({
+              ...transcriptionOptions,
+              model: "whisper-1",
+              response_format: "verbose_json",
+              timestamp_granularities: ["word", "segment"]
+            });
+            
+            transcriptionData = {
+              text: transcription.text,
+              segments: transcription.segments || [],
+              words: transcription.words || [],
+              language: transcription.language || "fr",
+              duration: transcription.duration || 0
+            };
+          } else {
+            // GPT-4o-transcribe
+            const transcription = await openai.audio.transcriptions.create({
+              ...transcriptionOptions,
+              model: "gpt-4o-transcribe",
+              response_format: "json",
+              prompt: "Cette transcription concerne une vidéo en français. Veuillez transcrire avec précision, en incluant la ponctuation et les paragraphes appropriés."
+            });
+            
+            transcriptionData = {
+              text: transcription.text,
+              segments: [], // Pas de segments disponibles avec gpt-4o-transcribe
+              language: "fr"
+            };
+          }
+          
+          console.log(`Transcription terminée avec succès, longueur: ${transcriptionData.text.length} caractères`);
+          
+          // Créer un enregistrement dans la table transcriptions
+          const { data: newTranscription, error: transcriptionInsertError } = await serviceClient
+            .from('transcriptions')
+            .insert({
+              video_id: videoId,
+              user_id: user.id,
+              language: transcriptionData.language,
+              full_text: transcriptionData.text,
+              segments: transcriptionData.segments,
+              words: transcriptionData.words || [],
+              transcription_text: transcriptionData.text,
+              confidence_score: transcriptionData.segments?.length ? 
+                transcriptionData.segments.reduce((acc, segment) => acc + (segment.confidence || 0), 0) / 
+                transcriptionData.segments.length : 
+                0.95, // Score par défaut si pas de segments
+              status: 'COMPLETED',
+              processed_at: new Date().toISOString(),
+              created_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+          
+          if (transcriptionInsertError) {
+            console.error(`Erreur lors de l'insertion de la transcription:`, transcriptionInsertError);
+          } else {
+            console.log(`Transcription insérée avec succès, id: ${newTranscription.id}`);
+          }
+          
+          // Mettre à jour la vidéo avec les données de transcription
+          const { error: transcriptionUpdateError } = await serviceClient
             .from('videos')
             .update({
-              analysis: analysis,
+              transcription: transcriptionData.text,
+              transcription_data: transcriptionData,
+              status: VIDEO_STATUS.PUBLISHED,
+              processed_at: new Date().toISOString(),
               updated_at: new Date().toISOString()
             })
             .eq('id', videoId);
             
-          if (analysisUpdateError) {
-            console.error(`Erreur lors de la mise à jour de l'analyse:`, analysisUpdateError);
-          } else {
-            console.log(`Vidéo mise à jour avec l'analyse IA`);
+          if (transcriptionUpdateError) {
+            console.error(`Erreur lors de la mise à jour de la transcription:`, transcriptionUpdateError);
+            throw transcriptionUpdateError;
           }
-        } catch (analysisError) {
-          console.error("Erreur lors de l'analyse IA avec GPT-5", analysisError);
           
-          // En cas d'échec avec GPT-5, essayer avec GPT-3.5 Turbo comme fallback
+          console.log(`Vidéo mise à jour avec les données de transcription`);
+          
+          // Essayer d'appeler la fonction de synchronisation si elle existe
           try {
-            console.log("Tentative de fallback avec GPT-3.5 Turbo pour l'analyse");
+            const { error: syncError } = await serviceClient.rpc(
+              'sync_video_transcription',
+              { video_id: videoId }
+            );
             
-            const fallbackAnalysisResponse = await openai.chat.completions.create({
-              model: "gpt-3.5-turbo", // Fallback sur GPT-3.5 Turbo
+            if (syncError) {
+              console.error(`Erreur lors de l'appel à sync_video_transcription:`, syncError);
+              // On continue malgré l'erreur
+            } else {
+              console.log(`Fonction sync_video_transcription appelée avec succès`);
+            }
+          } catch (syncError) {
+            console.error(`Exception lors de l'appel à sync_video_transcription:`, syncError);
+            // On continue malgré l'erreur
+          }
+          
+          // Générer l'analyse IA de la transcription
+          try {
+            console.log(`Début de l'analyse IA du texte transcrit`);
+            
+            // Essayer d'abord avec GPT-4 (ou GPT-3.5 Turbo si GPT-4 n'est pas disponible)
+            const analysisModel = "gpt-3.5-turbo"; // Plus largement disponible que GPT-4/GPT-5
+            
+            const analysisResponse = await openai.chat.completions.create({
+              model: analysisModel,
               messages: [
                 {
                   role: "system",
@@ -462,45 +510,63 @@ Deno.serve(async (req) => {
               response_format: { type: "json_object" }
             });
             
-            const fallbackAnalysis = JSON.parse(fallbackAnalysisResponse.choices[0].message.content);
-            console.log(`Analyse IA générée avec succès avec GPT-3.5 Turbo (fallback)`);
+            const analysis = JSON.parse(analysisResponse.choices[0].message.content);
+            console.log(`Analyse IA générée avec succès avec ${analysisModel}`);
             
-            // Mettre à jour la vidéo avec l'analyse (sans changer le statut)
-            const { error: fallbackAnalysisUpdateError } = await supabaseClient
+            // Mettre à jour la vidéo avec l'analyse
+            const { error: analysisUpdateError } = await serviceClient
               .from('videos')
               .update({
-                analysis: fallbackAnalysis,
+                analysis: analysis,
                 updated_at: new Date().toISOString()
               })
               .eq('id', videoId);
               
-            if (fallbackAnalysisUpdateError) {
-              console.error(`Erreur lors de la mise à jour de l'analyse (fallback):`, fallbackAnalysisUpdateError);
+            if (analysisUpdateError) {
+              console.error(`Erreur lors de la mise à jour de l'analyse:`, analysisUpdateError);
             } else {
-              console.log(`Vidéo mise à jour avec l'analyse IA (fallback GPT-3.5 Turbo)`);
+              console.log(`Vidéo mise à jour avec l'analyse IA`);
             }
-          } catch (fallbackError) {
-            console.error("Échec du fallback avec GPT-3.5 Turbo pour l'analyse", fallbackError);
-            // L'analyse a échoué mais la transcription a réussi
+            
+            // Créer ou mettre à jour l'entrée dans la table analyses si elle existe
+            try {
+              await serviceClient
+                .from('analyses')
+                .upsert({
+                  video_id: videoId,
+                  content: analysis,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString()
+                }, {
+                  onConflict: 'video_id'
+                });
+            } catch (analysesTableError) {
+              console.log("La table analyses n'existe pas ou a une structure incompatible", analysesTableError);
+              // Continuer sans erreur car l'analyse est déjà stockée dans la table videos
+            }
+            
+          } catch (analysisError) {
+            console.error("Erreur lors de l'analyse IA", analysisError);
+            // L'analyse a échoué mais la transcription a réussi, donc on ne considère pas ça comme un échec global
           }
+          
+        } catch (error) {
+          console.error("Erreur lors de la transcription", error);
+          
+          // Mettre à jour le statut de la vidéo pour indiquer l'échec
+          await serviceClient
+            .from('videos')
+            .update({
+              status: VIDEO_STATUS.FAILED,
+              error_message: `Erreur de transcription: ${error.message}`,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', videoId);
         }
-        
-      } catch (error) {
-        console.error("Erreur lors de la transcription", error);
-        
-        // Mettre à jour le statut de la vidéo pour indiquer l'échec
-        await supabaseClient
-          .from('videos')
-          .update({
-            status: VIDEO_STATUS.FAILED,
-            error_message: `Erreur de transcription: ${error.message}`,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId);
-      }
-    })();
+      })()
+    );
     
-    // Retourner immédiatement une réponse pour ne pas bloquer le client
+    // Retourner immédiatement la réponse pour ne pas bloquer le client
     return responsePromise;
 
   } catch (error) {
