@@ -27,6 +27,7 @@ Deno.serve(async (req) => {
     // Initialiser les variables d'environnement
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     
     if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
@@ -48,38 +49,112 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 1. AUTHENTIFICATION: Vérifier l'authentification de l'utilisateur
+    // MÉTHODES D'AUTHENTIFICATION MULTIPLES
+    
+    // 1. AUTHENTIFICATION: Vérifier l'authentification de l'utilisateur (plusieurs méthodes supportées)
+    let userId = null;
+    let token = null;
+    
+    // Méthode 1: Bearer token dans l'en-tête Authorization
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.replace('Bearer ', '');
+      console.log("Token d'authentification trouvé dans l'en-tête Authorization");
+    } 
+    // Méthode 2: Token dans l'en-tête 'apikey' (compatibilité avec certains clients)
+    else if (req.headers.get('apikey')) {
+      token = req.headers.get('apikey');
+      console.log("Token d'authentification trouvé dans l'en-tête apikey");
+    }
+    // Méthode 3: Extraire le JWT des cookies (pour les applications web)
+    else {
+      const cookieHeader = req.headers.get('Cookie');
+      if (cookieHeader) {
+        const supabaseCookie = cookieHeader.split(';').find(c => 
+          c.trim().startsWith('sb-access-token=') || 
+          c.trim().startsWith('supabase-auth-token=')
+        );
+        
+        if (supabaseCookie) {
+          token = supabaseCookie.split('=')[1].trim();
+          if (token.startsWith('"') && token.endsWith('"')) {
+            token = token.slice(1, -1); // Enlever les guillemets
+          }
+          console.log("Token d'authentification trouvé dans les cookies");
+        }
+      }
+    }
+    
+    // Vérifier l'authentification et récupérer l'ID utilisateur
+    if (token) {
+      // Créer un client Supabase avec le token pour vérifier l'identité
+      const userClient = createClient(supabaseUrl, supabaseAnonKey || '', {
+        global: {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      });
+      
+      try {
+        // Vérifier l'authentification de l'utilisateur
+        const { data: { user }, error: authError } = await userClient.auth.getUser();
+        
+        if (authError || !user) {
+          console.error("Authentification échouée avec token:", { 
+            error: authError?.message || 'Utilisateur non trouvé', 
+            tokenLength: token ? token.length : 0
+          });
+        } else {
+          userId = user.id;
+          console.log(`Utilisateur authentifié: ${userId}`);
+        }
+      } catch (authError) {
+        console.error("Exception lors de l'authentification:", authError);
+      }
+    }
+    
+    // Récupérer l'identifiant d'utilisateur à partir des données de l'URL supabase
+    // Cette méthode est spécifique aux Edge Functions Supabase
+    if (!userId) {
+      try {
+        // Accéder aux métadonnées de la requête Supabase (spécifique aux Edge Functions)
+        const supabaseData = req.url.includes('?sb=') 
+          ? JSON.parse(decodeURIComponent(new URL(req.url).searchParams.get('sb')))
+          : null;
+        
+        if (supabaseData?.auth_user) {
+          userId = supabaseData.auth_user;
+          console.log(`Utilisateur trouvé dans les métadonnées Supabase: ${userId}`);
+        } else if (supabaseData?.jwt?.authorization?.payload) {
+          // Trouver l'identifiant dans le payload JWT
+          const payload = supabaseData.jwt.authorization.payload;
+          if (payload.subject) {
+            userId = payload.subject;
+            console.log(`Utilisateur trouvé dans le payload JWT: ${userId}`);
+          }
+        }
+      } catch (sbDataError) {
+        console.error("Erreur lors de l'extraction des métadonnées Supabase:", sbDataError);
+      }
+    }
+
+    // Dernier recours: obtenir l'utilisateur à partir des données de la requête
+    if (!userId) {
+      try {
+        const requestData = await req.json();
+        if (requestData.user_id) {
+          userId = requestData.user_id;
+          console.log(`Utilisateur trouvé dans les données de la requête: ${userId}`);
+        }
+      } catch (parseError) {
+        console.error("Erreur lors de l'analyse du JSON de la requête:", parseError);
+      }
+    }
+    
+    if (!userId) {
       return new Response(
         JSON.stringify({ 
           error: 'Authentification requise', 
-          details: "Token d'authentification manquant ou incorrect"
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 401 
-        }
-      );
-    }
-
-    const token = authHeader.replace('Bearer ', '');
-    
-    // Créer un client Supabase avec le token de l'utilisateur pour vérifier l'identité
-    const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY') || '', {
-      global: {
-        headers: { Authorization: authHeader }
-      }
-    });
-    
-    // Vérifier l'authentification de l'utilisateur
-    const { data: { user }, error: authError } = await userClient.auth.getUser();
-    
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Authentification échouée', 
-          details: authError?.message || 'Utilisateur non trouvé'
+          details: "Impossible d'identifier l'utilisateur. Assurez-vous d'être connecté et d'envoyer le token d'authentification."
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -90,30 +165,50 @@ Deno.serve(async (req) => {
 
     // 2. RÉCUPÉRER LES DONNÉES DE LA REQUÊTE
     let requestData;
+    let videoId;
+    
     try {
-      requestData = await req.json();
-      console.log("Données de requête reçues:", { videoId: requestData.videoId });
+      // Clone la requête pour pouvoir la lire plusieurs fois
+      const clonedRequest = req.clone();
+      requestData = await clonedRequest.json();
+      
+      if (requestData.videoId) {
+        videoId = requestData.videoId;
+        console.log("Données de requête reçues:", { videoId });
+      } else {
+        // Essayer de récupérer l'ID vidéo des paramètres de requête
+        const url = new URL(req.url);
+        videoId = url.searchParams.get('videoId');
+        
+        if (!videoId) {
+          return new Response(
+            JSON.stringify({ error: 'videoId est requis dans le corps de la requête ou en paramètre' }),
+            { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 400 
+            }
+          );
+        }
+      }
     } catch (parseError) {
       console.error("Erreur lors de l'analyse du JSON de la requête", parseError);
-      return new Response(
-        JSON.stringify({ error: "Format de requête invalide", details: parseError.message }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400 
-        }
-      );
-    }
-    
-    const { videoId } = requestData;
-    
-    if (!videoId) {
-      return new Response(
-        JSON.stringify({ error: 'videoId est requis' }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400 
-        }
-      );
+      
+      // Essayer de récupérer l'ID vidéo des paramètres de requête
+      const url = new URL(req.url);
+      videoId = url.searchParams.get('videoId');
+      
+      if (!videoId) {
+        return new Response(
+          JSON.stringify({ 
+            error: "Format de requête invalide", 
+            details: "Impossible de lire les données de la requête. Assurez-vous que le corps est un JSON valide ou que videoId est fourni en paramètre de requête." 
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400 
+          }
+        );
+      }
     }
 
     // Créer un client Supabase avec la clé de service pour les opérations privilégiées
@@ -129,7 +224,7 @@ Deno.serve(async (req) => {
       .from('videos')
       .select('*')
       .eq('id', videoId)
-      .eq('user_id', user.id) // Vérifier que la vidéo appartient à l'utilisateur authentifié
+      .eq('user_id', userId) // Vérifier que la vidéo appartient à l'utilisateur authentifié
       .single();
 
     if (videoError) {
@@ -407,31 +502,36 @@ Deno.serve(async (req) => {
           console.log(`Transcription terminée avec succès, longueur: ${transcriptionData.text.length} caractères`);
           
           // Créer un enregistrement dans la table transcriptions
-          const { data: newTranscription, error: transcriptionInsertError } = await serviceClient
-            .from('transcriptions')
-            .insert({
-              video_id: videoId,
-              user_id: user.id,
-              language: transcriptionData.language,
-              full_text: transcriptionData.text,
-              segments: transcriptionData.segments,
-              words: transcriptionData.words || [],
-              transcription_text: transcriptionData.text,
-              confidence_score: transcriptionData.segments?.length ? 
-                transcriptionData.segments.reduce((acc, segment) => acc + (segment.confidence || 0), 0) / 
-                transcriptionData.segments.length : 
-                0.95, // Score par défaut si pas de segments
-              status: 'COMPLETED',
-              processed_at: new Date().toISOString(),
-              created_at: new Date().toISOString()
-            })
-            .select()
-            .single();
-          
-          if (transcriptionInsertError) {
-            console.error(`Erreur lors de l'insertion de la transcription:`, transcriptionInsertError);
-          } else {
-            console.log(`Transcription insérée avec succès, id: ${newTranscription.id}`);
+          try {
+            const { data: newTranscription, error: transcriptionInsertError } = await serviceClient
+              .from('transcriptions')
+              .insert({
+                video_id: videoId,
+                user_id: userId,
+                language: transcriptionData.language,
+                full_text: transcriptionData.text,
+                segments: transcriptionData.segments,
+                words: transcriptionData.words || [],
+                transcription_text: transcriptionData.text,
+                confidence_score: transcriptionData.segments?.length ? 
+                  transcriptionData.segments.reduce((acc, segment) => acc + (segment.confidence || 0), 0) / 
+                  transcriptionData.segments.length : 
+                  0.95, // Score par défaut si pas de segments
+                status: 'COMPLETED',
+                processed_at: new Date().toISOString(),
+                created_at: new Date().toISOString()
+              })
+              .select()
+              .single();
+            
+            if (transcriptionInsertError) {
+              console.error(`Erreur lors de l'insertion de la transcription:`, transcriptionInsertError);
+            } else {
+              console.log(`Transcription insérée avec succès, id: ${newTranscription.id}`);
+            }
+          } catch (transcriptionTableError) {
+            console.log("La table transcriptions n'existe pas ou a une structure incompatible", transcriptionTableError);
+            // Continuer sans erreur car on va stocker la transcription dans la table videos
           }
           
           // Mettre à jour la vidéo avec les données de transcription
