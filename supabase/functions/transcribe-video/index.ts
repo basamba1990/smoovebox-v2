@@ -49,11 +49,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Détecter l'agent utilisateur pour identifier WhatsApp
-    const userAgent = req.headers.get('user-agent') || '';
-    const isWhatsApp = userAgent.includes('WhatsApp');
-    
-    // Créer un client Supabase - Utiliser la clé service_role pour WhatsApp et requêtes GET
+    // Créer un client Supabase avec la clé de service pour les opérations privilégiées
     const serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         persistSession: false
@@ -63,6 +59,10 @@ Deno.serve(async (req) => {
     // MÉTHODES D'AUTHENTIFICATION MULTIPLES
     let userId = null;
     let token = null;
+    
+    // Détecter l'agent utilisateur pour identifier WhatsApp
+    const userAgent = req.headers.get('user-agent') || '';
+    const isWhatsApp = userAgent.includes('WhatsApp');
     
     // Pour WhatsApp ou requêtes GET, bypasser l'authentification
     if (isWhatsApp || req.method === 'GET') {
@@ -103,24 +103,15 @@ Deno.serve(async (req) => {
       
       // Vérifier l'authentification et récupérer l'ID utilisateur
       if (token) {
-        // Créer un client Supabase avec le token pour vérifier l'identité
-        const userClient = createClient(supabaseUrl, supabaseAnonKey || '', {
-          global: {
-            headers: { Authorization: `Bearer ${token}` }
-          }
-        });
-        
         try {
-          // Vérifier l'authentification de l'utilisateur
-          const { data: { user }, error: authError } = await userClient.auth.getUser();
+          // Utilisation directe du client de service pour decoder le JWT
+          // Cela évite les problèmes de session manquante
+          const { data, error } = await serviceClient.auth.getUser(token);
           
-          if (authError || !user) {
-            console.error("Authentification échouée avec token:", { 
-              error: authError?.message || 'Utilisateur non trouvé', 
-              tokenLength: token ? token.length : 0
-            });
-          } else {
-            userId = user.id;
+          if (error) {
+            console.error("Erreur de décodage du JWT:", error);
+          } else if (data.user) {
+            userId = data.user.id;
             console.log(`Utilisateur authentifié: ${userId}`);
           }
         } catch (authError) {
@@ -129,10 +120,8 @@ Deno.serve(async (req) => {
       }
       
       // Récupérer l'identifiant d'utilisateur à partir des données de l'URL supabase
-      // Cette méthode est spécifique aux Edge Functions Supabase
       if (!userId) {
         try {
-          // Accéder aux métadonnées de la requête Supabase (spécifique aux Edge Functions)
           const supabaseData = req.url.includes('?sb=') 
             ? JSON.parse(decodeURIComponent(new URL(req.url).searchParams.get('sb')))
             : null;
@@ -141,9 +130,11 @@ Deno.serve(async (req) => {
             userId = supabaseData.auth_user;
             console.log(`Utilisateur trouvé dans les métadonnées Supabase: ${userId}`);
           } else if (supabaseData?.jwt?.authorization?.payload) {
-            // Trouver l'identifiant dans le payload JWT
             const payload = supabaseData.jwt.authorization.payload;
-            if (payload.subject) {
+            if (payload.sub) {
+              userId = payload.sub;
+              console.log(`Utilisateur trouvé dans le payload JWT: ${userId}`);
+            } else if (payload.subject) {
               userId = payload.subject;
               console.log(`Utilisateur trouvé dans le payload JWT: ${userId}`);
             }
