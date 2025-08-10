@@ -261,8 +261,8 @@ function AppContent() {
       />
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="space-y-8">
+      <main className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
+        <div className="space-y-6 sm:space-y-8">
           {/* Tabs modernes */}
           <ModernTabs 
             activeTab={activeTab}
@@ -309,40 +309,40 @@ function AppContent() {
               </TabsContent>
             </Tabs>
           ) : (
-            <div className="text-center py-16">
-              <div className="max-w-md mx-auto">
-                <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <img src="/logo.png" alt="SpotBulle AI Logo" className="h-16 w-16" />
+            <div className="text-center py-8 sm:py-12 lg:py-16">
+              <div className="max-w-md mx-auto px-4">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
+                  <img src="/logo.png" alt="SpotBulle AI Logo" className="h-12 w-12 sm:h-16 sm:w-16" />
                 </div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-4">
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-3 sm:mb-4">
                   Bienvenue sur SpotBulle
                 </h2>
-                <p className="text-gray-600 mb-8">
+                <p className="text-gray-600 mb-6 sm:mb-8 text-sm sm:text-base">
                   Plateforme d'analyse IA pour vos pitchs vidéo
                 </p>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-                    <div className="bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-white/20">
-                      <Upload className="h-8 w-8 text-blue-600 mx-auto mb-2" />
-                      <h3 className="font-semibold text-gray-900 text-sm">Upload facile</h3>
+                <div className="space-y-4 sm:space-y-6">
+                  <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:mb-8">
+                    <div className="bg-white/60 backdrop-blur-sm rounded-lg p-3 sm:p-4 border border-white/20">
+                      <Upload className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600 mx-auto mb-2" />
+                      <h3 className="font-semibold text-gray-900 text-xs sm:text-sm">Upload facile</h3>
                       <p className="text-xs text-gray-600 mt-1">Téléchargez vos vidéos en quelques clics</p>
                     </div>
-                    <div className="bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-white/20">
-                      <BarChart3 className="h-8 w-8 text-blue-600 mx-auto mb-2" />
-                      <h3 className="font-semibold text-gray-900 text-sm">Analyse IA</h3>
+                    <div className="bg-white/60 backdrop-blur-sm rounded-lg p-3 sm:p-4 border border-white/20">
+                      <BarChart3 className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600 mx-auto mb-2" />
+                      <h3 className="font-semibold text-gray-900 text-xs sm:text-sm">Analyse IA</h3>
                       <p className="text-xs text-gray-600 mt-1">Obtenez des insights détaillés sur vos pitchs</p>
                     </div>
-                    <div className="bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-white/20">
-                      <FileText className="h-8 w-8 text-blue-600 mx-auto mb-2" />
-                      <h3 className="font-semibold text-gray-900 text-sm">Transcription</h3>
+                    <div className="bg-white/60 backdrop-blur-sm rounded-lg p-3 sm:p-4 border border-white/20">
+                      <FileText className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600 mx-auto mb-2" />
+                      <h3 className="font-semibold text-gray-900 text-xs sm:text-sm">Transcription</h3>
                       <p className="text-xs text-gray-600 mt-1">Transcription automatique de vos vidéos</p>
                     </div>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <div className="flex flex-col gap-3 justify-center">
                     <Button 
                       size="lg"
                       onClick={() => setIsAuthModalOpen(true)}
-                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl"
+                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl w-full sm:w-auto"
                     >
                       Commencer maintenant
                     </Button>
@@ -350,7 +350,7 @@ function AppContent() {
                       variant="outline" 
                       size="lg"
                       onClick={() => setIsAuthModalOpen(true)}
-                      className="hover:bg-blue-50 hover:border-blue-200 transition-all duration-200"
+                      className="hover:bg-blue-50 hover:border-blue-200 transition-all duration-200 w-full sm:w-auto"
                     >
                       Se connecter
                     </Button>
