@@ -491,36 +491,35 @@ Deno.serve(async (req) => {
           console.log(`Transcription réussie et statut mis à jour pour la vidéo ${videoId}`);
 
           // Déclencher l'analyse de performance en arrière-plan
-          EdgeRuntime.waitUntil(
-            (async () => {
-              try {
-                console.log(`Déclenchement de l'analyse de performance pour la vidéo ${videoId}`);
-                const response = await fetch(`${supabaseUrl}/functions/v1/analyze-video-performance`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${supabaseAnonKey}` // Utiliser la clé anon pour l'appel interne
-                  },
-                  body: JSON.stringify({ videoId: videoId })
-                });
-
-                if (!response.ok) {
-                  const errorData = await response.json();
-                  console.error(`Erreur lors du déclenchement de l'analyse de performance: ${errorData.error}`);
-                } else {
-                  console.log(`Analyse de performance déclenchée avec succès pour la vidéo ${videoId}`);
-                }
-              } catch (err) {
-                console.error(`Erreur inattendue lors du déclenchement de l'analyse de performance:`, err);
-              }
-            })()
-          );
-       // Essayer d'appeler la fonction de synchronisation si elle existe
           try {
+            console.log(`Déclenchement de l'analyse de performance pour la vidéo ${videoId}`);
+            const response = await fetch(`${supabaseUrl}/functions/v1/analyze-video-performance`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceKey}` // Utiliser la clé de service
+              },
+              body: JSON.stringify({ videoId })
+            });
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error(`Erreur lors du déclenchement de l'analyse de performance: ${response.status} - ${errorText}`);
+            } else {
+              console.log(`Analyse de performance déclenchée avec succès pour la vidéo ${videoId}`);
+            }
+          } catch (analyzeError) {
+            console.error(`Erreur inattendue lors du déclenchement de l'analyse de performance:`, analyzeError);
+          }
+          
+          // Essayer d'appeler la fonction de synchronisation si elle existe
+          try {
+            // CORRECTION: Passer uniquement l'ID de la vidéo comme paramètre
             const { error: syncError } = await serviceClient.rpc(
               'sync_video_transcription',
-              { p_video_id: videoId, p_transcription_text: transcriptionResult.text }
+              { p_video_id: videoId }
             );
+            
             if (syncError) {
               console.error("Erreur lors de la synchronisation de la transcription:", syncError);
             } else {
