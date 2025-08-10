@@ -28,7 +28,6 @@ Deno.serve(async (req) => {
     // Initialiser les variables d'environnement
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     
     if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
@@ -490,27 +489,6 @@ Deno.serve(async (req) => {
 
           console.log(`Transcription réussie et statut mis à jour pour la vidéo ${videoId}`);
           
-          // Appel direct de l'API d'analyse au lieu d'une fonction Edge
-          try {
-            console.log(`Déclenchement de l'analyse de performance pour la vidéo ${videoId}`);
-            
-            // Appel direct à l'API REST de la fonction database plutôt que l'Edge Function
-            // Cette approche permet de contourner les problèmes d'authentification entre fonctions
-            const { data: analyzeData, error: analyzeError } = await serviceClient.rpc(
-              'analyze_video_performance',
-              { p_video_id: videoId }
-            );
-            
-            if (analyzeError) {
-              console.error(`Erreur lors de l'analyse de performance:`, analyzeError);
-            } else {
-              console.log(`Analyse de performance déclenchée avec succès:`, analyzeData);
-            }
-          } catch (analyzeError) {
-            console.error(`Erreur inattendue lors de l'analyse de performance:`, analyzeError);
-            // L'échec de l'analyse ne doit pas empêcher la transcription de réussir
-          }
-          
           // Essayer d'appeler la fonction de synchronisation si elle existe
           try {
             // Vérifier d'abord si l'ID est un nombre ou un UUID
@@ -545,7 +523,31 @@ Deno.serve(async (req) => {
             console.log("La table transcriptions n'existe pas ou a une structure incompatible", transcriptionTableError);
             // Continuer sans erreur car on va stocker la transcription dans la table videos
           }
-
+          
+          // NOUVELLE PARTIE: Déclencher l'analyse de performance
+          console.log(`Déclenchement de l'analyse de performance pour la vidéo ${videoId}`);
+          
+          try {
+            // Appel direct à la fonction analyze-video-performance
+            const analyzeResponse = await fetch(`${supabaseUrl}/functions/v1/analyze-video-performance`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceKey}`
+              },
+              body: JSON.stringify({ videoId })
+            });
+            
+            if (!analyzeResponse.ok) {
+              const errorText = await analyzeResponse.text();
+              console.error(`Erreur lors du déclenchement de l'analyse: ${errorText}`);
+            } else {
+              console.log("Analyse de performance déclenchée avec succès");
+            }
+          } catch (analyzeError) {
+            console.error("Exception lors du déclenchement de l'analyse de performance:", analyzeError);
+            // Ne pas échouer la fonction principale si l'analyse échoue
+          }
         } catch (error) {
           console.error("Erreur lors de la transcription ou de la mise à jour:", error);
           
