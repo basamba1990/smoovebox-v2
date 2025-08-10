@@ -589,12 +589,12 @@ Deno.serve(async (req) => {
             // On continue malgré l'erreur
           }
           
-          // Générer l'analyse IA de la transcription
+          // Générer l'analyse IA de la transcription de base
           try {
-            console.log(`Début de l'analyse IA du texte transcrit`);
+            console.log(`Début de l'analyse IA simple du texte transcrit`);
             
-            // Essayer d'abord avec GPT-4 (ou GPT-3.5 Turbo si GPT-4 n'est pas disponible)
-            const analysisModel = "gpt-3.5-turbo"; // Plus largement disponible que GPT-4/GPT-5
+            // Analyse simple avec GPT-3.5 Turbo
+            const analysisModel = "gpt-3.5-turbo";
             
             const analysisResponse = await openai.chat.completions.create({
               model: analysisModel,
@@ -629,7 +629,7 @@ Deno.serve(async (req) => {
             });
             
             const analysis = JSON.parse(analysisResponse.choices[0].message.content);
-            console.log(`Analyse IA générée avec succès avec ${analysisModel}`);
+            console.log(`Analyse IA simple générée avec succès`);
             
             // Mettre à jour la vidéo avec l'analyse
             const { error: analysisUpdateError } = await serviceClient
@@ -643,29 +643,48 @@ Deno.serve(async (req) => {
             if (analysisUpdateError) {
               console.error(`Erreur lors de la mise à jour de l'analyse:`, analysisUpdateError);
             } else {
-              console.log(`Vidéo mise à jour avec l'analyse IA`);
-            }
-            
-            // Créer ou mettre à jour l'entrée dans la table analyses si elle existe
-            try {
-              await serviceClient
-                .from('analyses')
-                .upsert({
-                  video_id: videoId,
-                  content: analysis,
-                  created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString()
-                }, {
-                  onConflict: 'video_id'
-                });
-            } catch (analysesTableError) {
-              console.log("La table analyses n'existe pas ou a une structure incompatible", analysesTableError);
-              // Continuer sans erreur car l'analyse est déjà stockée dans la table videos
+              console.log(`Vidéo mise à jour avec l'analyse IA simple`);
             }
             
           } catch (analysisError) {
-            console.error("Erreur lors de l'analyse IA", analysisError);
+            console.error("Erreur lors de l'analyse IA simple", analysisError);
             // L'analyse a échoué mais la transcription a réussi, donc on ne considère pas ça comme un échec global
+          }
+          
+          // DÉCLENCHER L'ANALYSE IA AVANCÉE AUTOMATIQUEMENT
+          console.log("Déclenchement automatique de l'analyse IA avancée (analyze-video-performance)");
+          
+          try {
+            // Construire l'URL de l'endpoint analyze-video-performance
+            const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-video-performance`;
+            
+            // Appeler la fonction avec le videoId
+            const analyzeResponse = await fetch(analyzeEndpoint, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceKey}`,
+                'apikey': supabaseServiceKey
+              },
+              body: JSON.stringify({ videoId })
+            });
+            
+            if (analyzeResponse.ok) {
+              const analyzeResult = await analyzeResponse.json();
+              console.log("Fonction analyze-video-performance déclenchée avec succès:", analyzeResult);
+            } else {
+              const errorData = await analyzeResponse.json().catch(() => ({}));
+              console.error(`Erreur lors de l'appel à analyze-video-performance:`, {
+                status: analyzeResponse.status,
+                statusText: analyzeResponse.statusText,
+                error: errorData
+              });
+              
+              // On continue sans erreur car la transcription a réussi
+            }
+          } catch (analyzeError) {
+            console.error("Exception lors du déclenchement de analyze-video-performance:", analyzeError);
+            // On continue sans erreur car la transcription a réussi
           }
           
         } catch (error) {
