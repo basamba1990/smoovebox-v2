@@ -490,34 +490,59 @@ Deno.serve(async (req) => {
 
           console.log(`Transcription réussie et statut mis à jour pour la vidéo ${videoId}`);
 
-          // Déclencher l'analyse de performance en arrière-plan
+          // Déclencher l'analyse de performance manuellement via une requête directe
           try {
             console.log(`Déclenchement de l'analyse de performance pour la vidéo ${videoId}`);
-            const response = await fetch(`${supabaseUrl}/functions/v1/analyze-video-performance`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${supabaseServiceKey}` // Utiliser la clé de service
-              },
-              body: JSON.stringify({ videoId })
-            });
+            
+            // Créer un nouveau client pour l'appel direct
+            const analyzeClient = createClient(supabaseUrl, supabaseAnonKey);
+            
+            // Appeler directement la fonction de la base de données plutôt que l'Edge Function
+            // Note: Cette approche contourne l'Edge Function et appelle directement la logique métier
+            const { data: analyzeData, error: analyzeError } = await analyzeClient.functions.invoke(
+              'analyze-video-performance', 
+              {
+                method: 'POST',
+                body: { videoId },
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+              }
+            );
 
-            if (!response.ok) {
-              const errorText = await response.text();
-              console.error(`Erreur lors du déclenchement de l'analyse de performance: ${response.status} - ${errorText}`);
+            if (analyzeError) {
+              console.error(`Erreur lors de l'analyse de performance:`, analyzeError);
             } else {
-              console.log(`Analyse de performance déclenchée avec succès pour la vidéo ${videoId}`);
+              console.log(`Analyse de performance déclenchée avec succès:`, analyzeData);
             }
           } catch (analyzeError) {
-            console.error(`Erreur inattendue lors du déclenchement de l'analyse de performance:`, analyzeError);
+            console.error(`Erreur inattendue lors de l'analyse de performance:`, analyzeError);
+            // L'échec de l'analyse ne doit pas empêcher la transcription de réussir
           }
           
           // Essayer d'appeler la fonction de synchronisation si elle existe
           try {
-            // CORRECTION: Passer uniquement l'ID de la vidéo comme paramètre
+            // Vérifier d'abord si l'ID est un nombre ou un UUID
+            let videoIdForSync;
+            
+            // Si l'ID est un UUID, on essaie de récupérer un ID numérique à partir d'autres champs
+            if (video.numeric_id) {
+              // Si le champ numeric_id existe, l'utiliser
+              videoIdForSync = video.numeric_id;
+            } else if (!isNaN(parseInt(videoId))) {
+              // Si l'ID peut être converti en nombre, l'utiliser
+              videoIdForSync = parseInt(videoId);
+            } else {
+              console.log("L'ID de la vidéo n'est pas un nombre, la synchronisation sera ignorée");
+              // Ne pas essayer de synchroniser si nous n'avons pas d'ID numérique
+              return;
+            }
+            
+            console.log(`Tentative de synchronisation avec ID numérique: ${videoIdForSync}`);
+            
             const { error: syncError } = await serviceClient.rpc(
               'sync_video_transcription',
-              { p_video_id: videoId }
+              { p_video_id: videoIdForSync }
             );
             
             if (syncError) {
