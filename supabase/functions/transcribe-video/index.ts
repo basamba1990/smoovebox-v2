@@ -489,27 +489,18 @@ Deno.serve(async (req) => {
           }
 
           console.log(`Transcription réussie et statut mis à jour pour la vidéo ${videoId}`);
-
-          // Déclencher l'analyse de performance manuellement via une requête directe
+          
+          // Appel direct de l'API d'analyse au lieu d'une fonction Edge
           try {
             console.log(`Déclenchement de l'analyse de performance pour la vidéo ${videoId}`);
             
-            // Créer un nouveau client pour l'appel direct
-            const analyzeClient = createClient(supabaseUrl, supabaseAnonKey);
-            
-            // Appeler directement la fonction de la base de données plutôt que l'Edge Function
-            // Note: Cette approche contourne l'Edge Function et appelle directement la logique métier
-            const { data: analyzeData, error: analyzeError } = await analyzeClient.functions.invoke(
-              'analyze-video-performance', 
-              {
-                method: 'POST',
-                body: { videoId },
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-              }
+            // Appel direct à l'API REST de la fonction database plutôt que l'Edge Function
+            // Cette approche permet de contourner les problèmes d'authentification entre fonctions
+            const { data: analyzeData, error: analyzeError } = await serviceClient.rpc(
+              'analyze_video_performance',
+              { p_video_id: videoId }
             );
-
+            
             if (analyzeError) {
               console.error(`Erreur lors de l'analyse de performance:`, analyzeError);
             } else {
