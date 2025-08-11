@@ -529,30 +529,50 @@ Deno.serve(async (req) => {
           console.log(`Déclenchement de l'analyse de performance pour la vidéo ${videoId}`);
           
           try {
-            // Appel direct à la fonction analyze-video-performance avec la clé anonyme
-            // au lieu de la clé de service qui pourrait ne pas fonctionner correctement avec le format Bearer
-            const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-video-performance`;
-            console.log(`Appel de l'endpoint: ${analyzeEndpoint}`);
+            // Créer un nouveau client Supabase pour pouvoir faire une requête à la fonction Edge
+            const anonClient = createClient(supabaseUrl, supabaseAnonKey);
             
-            const analyzeResponse = await fetch(analyzeEndpoint, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'apikey': supabaseAnonKey
-              },
-              body: JSON.stringify({ videoId })
-            });
+            console.log("Tentative d'invocation directe de la fonction analyze-video-performance via le client Supabase");
+            const { data: analyzeData, error: analyzeError } = await anonClient.functions.invoke(
+              'analyze-video-performance',
+              {
+                body: { videoId }
+              }
+            );
             
-            if (!analyzeResponse.ok) {
-              const errorText = await analyzeResponse.text();
-              console.error(`Erreur lors du déclenchement de l'analyse (${analyzeResponse.status}): ${errorText}`);
+            if (analyzeError) {
+              console.error("Erreur lors de l'invocation de la fonction d'analyse:", analyzeError);
             } else {
-              const analyzeResult = await analyzeResponse.json();
-              console.log("Analyse de performance déclenchée avec succès:", analyzeResult);
+              console.log("Analyse de performance déclenchée avec succès:", analyzeData);
             }
           } catch (analyzeError) {
             console.error("Exception lors du déclenchement de l'analyse de performance:", analyzeError);
-            // Ne pas échouer la fonction principale si l'analyse échoue
+            
+            // Tentative alternative avec fetch directement
+            try {
+              console.log("Tentative alternative avec fetch et tous les en-têtes possibles");
+              const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-video-performance`;
+              
+              const analyzeResponse = await fetch(analyzeEndpoint, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'apikey': supabaseAnonKey,
+                  'Authorization': `Bearer ${supabaseAnonKey}`
+                },
+                body: JSON.stringify({ videoId })
+              });
+              
+              if (!analyzeResponse.ok) {
+                const errorText = await analyzeResponse.text();
+                console.error(`Erreur lors de la deuxième tentative d'analyse (${analyzeResponse.status}): ${errorText}`);
+              } else {
+                const analyzeResult = await analyzeResponse.json();
+                console.log("Analyse de performance déclenchée avec succès (méthode alternative):", analyzeResult);
+              }
+            } catch (fetchError) {
+              console.error("Échec de la tentative alternative:", fetchError);
+            }
           }
         } catch (error) {
           console.error("Erreur lors de la transcription ou de la mise à jour:", error);
