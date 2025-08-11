@@ -558,32 +558,33 @@ Deno.serve(async (req) => {
               Transcription:
               ${transcriptionResult.text}
               
-              Réponds au format JSON avec les champs suivants:
-              - clarity_score (note de 1 à 10)
-              - vocabulary_score (note de 1 à 10)
-              - fluidity_score (note de 1 à 10)
-              - overall_score (moyenne des scores précédents)
-              - strengths (liste de points forts)
-              - improvement_areas (liste de points à améliorer)
-              - detailed_analysis (analyse détaillée en plusieurs paragraphes)
-              - summary (résumé concis en 2-3 phrases)
+              Format de réponse:
+              {
+                "clarity_score": [note de 1 à 10],
+                "vocabulary_score": [note de 1 à 10],
+                "fluidity_score": [note de 1 à 10],
+                "overall_score": [moyenne des scores précédents],
+                "strengths": ["point fort 1", "point fort 2", ...],
+                "improvement_areas": ["point à améliorer 1", "point à améliorer 2", ...],
+                "detailed_analysis": "Analyse détaillée en plusieurs paragraphes",
+                "summary": "Résumé concis en 2-3 phrases"
+              }
             `;
             
-            // Appeler l'API d'OpenAI pour l'analyse
-            // Correction: retirer l'option response_format qui n'est pas supportée
+            // Appeler l'API d'OpenAI pour l'analyse en utilisant gpt-3.5-turbo au lieu de gpt-4
             const completion = await openai.chat.completions.create({
-              model: "gpt-4",  // Utiliser un modèle avancé pour l'analyse
+              model: "gpt-3.5-turbo",  // Utiliser gpt-3.5-turbo qui supporte response_format
               messages: [
                 {
                   role: "system",
-                  content: "Tu es un expert en communication et analyse de discours. Tu analyses des transcriptions de vidéos pour aider les orateurs à améliorer leurs performances. Réponds toujours au format JSON."
+                  content: "Tu es un expert en communication et analyse de discours. Tu analyses des transcriptions de vidéos pour aider les orateurs à améliorer leurs performances."
                 },
                 {
                   role: "user",
                   content: prompt
                 }
-              ]
-              // Suppression de response_format: { type: "json_object" }
+              ],
+              response_format: { type: "json_object" } // Cette option est supportée par gpt-3.5-turbo
             });
             
             // Extraire et parser l'analyse
@@ -594,51 +595,18 @@ Deno.serve(async (req) => {
             
             let analysis;
             try {
-              // Nettoyer le texte pour enlever les caractères JSON incorrects
-              const cleanedText = analysisText
-                .replace(/```json\s*/g, '') // Supprimer les délimiteurs markdown pour JSON
-                .replace(/```\s*$/g, '')    // Supprimer les délimiteurs de fin
-                .trim();                     // Supprimer les espaces superflus
-              
-              analysis = JSON.parse(cleanedText);
-              console.log("Analyse de performance analysée avec succès");
+              analysis = JSON.parse(analysisText);
+              console.log("Analyse de performance générée avec succès");
             } catch (parseError) {
-              console.error("Erreur lors du parsing du JSON d'analyse:", parseError, "Texte brut:", analysisText);
-              
-              // Tentative de réparation du JSON
-              const jsonRegex = /{[\s\S]*}/;
-              const match = analysisText.match(jsonRegex);
-              if (match && match[0]) {
-                try {
-                  analysis = JSON.parse(match[0]);
-                  console.log("Analyse réparée et parsée avec succès");
-                } catch (secondParseError) {
-                  // Si la réparation échoue, créer un objet avec les données brutes
-                  analysis = { 
-                    error: "Format d'analyse invalide", 
-                    raw_text: analysisText,
-                    clarity_score: 5,
-                    vocabulary_score: 5,
-                    fluidity_score: 5,
-                    overall_score: 5
-                  };
-                }
-              } else {
-                analysis = { 
-                  error: "Format d'analyse invalide", 
-                  raw_text: analysisText,
-                  clarity_score: 5,
-                  vocabulary_score: 5,
-                  fluidity_score: 5,
-                  overall_score: 5
-                };
-              }
+              console.error("Erreur lors du parsing du JSON d'analyse:", parseError);
+              analysis = { error: "Format d'analyse invalide", raw_text: analysisText };
             }
             
-            console.log("Analyse de performance générée");
+            // Pour le débogage, enregistrer le texte brut reçu également
+            console.log("Analyse brute reçue:", analysisText.substring(0, 100) + "...");
             
             // Mettre à jour la vidéo avec les résultats d'analyse
-            await serviceClient
+            const updateResult = await serviceClient
               .from('videos')
               .update({
                 performance_analysis: analysis,
@@ -646,12 +614,13 @@ Deno.serve(async (req) => {
                 vocabulary_score: analysis.vocabulary_score || 0,
                 fluidity_score: analysis.fluidity_score || 0,
                 overall_score: analysis.overall_score || 0,
+                analysis_text: analysisText, // Stockage du texte brut pour le débogage
                 status: VIDEO_STATUS.PUBLISHED,  // Marquer comme publié une fois l'analyse terminée
                 updated_at: new Date().toISOString()
               })
               .eq('id', videoId);
             
-            console.log(`Analyse de performance enregistrée pour la vidéo ${videoId}`);
+            console.log(`Analyse de performance enregistrée pour la vidéo ${videoId}, résultat:`, updateResult);
             
           } catch (analysisError) {
             console.error("Erreur lors de l'analyse de performance:", analysisError);
