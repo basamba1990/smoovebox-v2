@@ -441,205 +441,218 @@ Deno.serve(async (req) => {
         status: 200 
       }
     );
-
-    // 7. EFFECTUER LA TRANSCRIPTION EN ARRIÈRE-PLAN
+    
+    // 7. DÉMARRER LE TRAITEMENT EN ARRIÈRE-PLAN
     EdgeRuntime.waitUntil(
       (async () => {
-        let transcriptionResult = null;
         try {
-          console.log(`Début de la transcription pour la vidéo ${videoId}`);
-          const openai = new OpenAI({ apiKey: openaiApiKey });
-
-          // Télécharger le fichier audio/vidéo
-          const audioResponse = await fetch(videoUrl);
-          if (!audioResponse.ok) {
-            throw new Error(`Erreur lors du téléchargement du fichier audio: ${audioResponse.statusText}`);
+          // Télécharger la vidéo
+          console.log(`Téléchargement de la vidéo...`);
+          const videoResponse = await fetch(videoUrl);
+          if (!videoResponse.ok) {
+            throw new Error(`Erreur lors du téléchargement de la vidéo: ${videoResponse.status} ${videoResponse.statusText}`);
           }
-          const audioBlob = await audioResponse.blob();
-
-          // Créer un objet File à partir du Blob
-          const audioFile = new File([audioBlob], `video_${videoId}.mp4`, { type: audioBlob.type });
-
-          // Appeler l'API de transcription Whisper
-          const transcript = await openai.audio.transcriptions.create({
-            file: audioFile,
-            model: "whisper-1",
-            language: "fr", // Spécifier la langue française
-            response_format: "verbose_json", // Pour obtenir les segments et la confiance
-          });
-
-          transcriptionResult = transcript;
-          console.log(`Transcription terminée pour la vidéo ${videoId}`);
-
-          // Mettre à jour le statut de la vidéo à PUBLISHED après une transcription réussie
-          const { error: updateError } = await serviceClient
-            .from("videos")
-            .update({
-              transcription: transcriptionResult.text,
-              transcription_data: transcriptionResult,
-              status: VIDEO_STATUS.PUBLISHED,
-              updated_at: new Date().toISOString(),
-              error_message: null // Réinitialiser le message d'erreur en cas de succès
-            })
-            .eq("id", videoId);
-
-          if (updateError) {
-            console.error(`Erreur lors de la mise à jour de la transcription pour la vidéo ${videoId}:`, updateError);
-            throw updateError;
-          }
-
-          console.log(`Transcription réussie et statut mis à jour pour la vidéo ${videoId}`);
           
-          // Essayer d'appeler la fonction de synchronisation si elle existe
+          const contentLength = videoResponse.headers.get('content-length');
+          console.log(`Vidéo téléchargée avec succès, taille: ${contentLength || 'inconnue'} octets`);
+          
+          // Vérifier la taille du fichier (limite OpenAI: 25 Mo)
+          if (contentLength && parseInt(contentLength) > 25 * 1024 * 1024) {
+            throw new Error(`La vidéo est trop volumineuse (${Math.round(parseInt(contentLength) / (1024 * 1024))} Mo). La limite est de 25 Mo pour OpenAI Whisper.`);
+          }
+          
+          const videoBlob = await videoResponse.blob();
+          const videoFile = new File([videoBlob], "video.mp4", { type: "video/mp4" });
+          
+          // Initialiser le client OpenAI
+          const openai = new OpenAI({
+            apiKey: openaiApiKey
+          });
+          
+          // Sélectionner le modèle en fonction de la taille et de la complexité
+          // Whisper pour la précision des transcriptions audio complexes
+          const transcriptionModel = "whisper-1";
+          
+          console.log(`Début de la transcription avec OpenAI ${transcriptionModel}`);
+          
+          // Options communes
+          const transcriptionOptions = {
+            file: videoFile,
+            language: "fr"
+          };
+          
+          let transcriptionData;
+          
+          // Transcription avec OpenAI - Utilisation du modèle approprié
+          const transcription = await openai.audio.transcriptions.create({
+            ...transcriptionOptions,
+            model: "whisper-1",
+            response_format: "verbose_json",
+            timestamp_granularities: ["word", "segment"]
+          });
+          
+          transcriptionData = {
+            text: transcription.text,
+            segments: transcription.segments || [],
+            words: transcription.words || [],
+            language: transcription.language || "fr",
+            duration: transcription.duration || 0
+          };
+          
+          console.log(`Transcription terminée avec succès, longueur: ${transcriptionData.text.length} caractères`);
+          
+          // Créer un enregistrement dans la table transcriptions
           try {
-            // Vérifier d'abord si l'ID est un nombre ou un UUID
-            let videoIdForSync;
+            const { data: newTranscription, error: transcriptionInsertError } = await serviceClient
+              .from('transcriptions')
+              .insert({
+                video_id: videoId,
+                user_id: userId,
+                language: transcriptionData.language,
+                full_text: transcriptionData.text,
+                segments: transcriptionData.segments,
+                words: transcriptionData.words || [],
+                transcription_text: transcriptionData.text,
+                confidence_score: transcriptionData.segments?.length ? 
+                  transcriptionData.segments.reduce((acc, segment) => acc + (segment.confidence || 0), 0) / 
+                  transcriptionData.segments.length : 
+                  0.95, // Score par défaut si pas de segments
+                status: 'COMPLETED',
+                processed_at: new Date().toISOString(),
+                created_at: new Date().toISOString()
+              })
+              .select()
+              .single();
             
-            // Si l'ID est un UUID, on essaie de récupérer un ID numérique à partir d'autres champs
-            if (video.numeric_id) {
-              // Si le champ numeric_id existe, l'utiliser
-              videoIdForSync = video.numeric_id;
-            } else if (!isNaN(parseInt(videoId))) {
-              // Si l'ID peut être converti en nombre, l'utiliser
-              videoIdForSync = parseInt(videoId);
+            if (transcriptionInsertError) {
+              console.error(`Erreur lors de l'insertion de la transcription:`, transcriptionInsertError);
             } else {
-              console.log("L'ID de la vidéo n'est pas un nombre, la synchronisation sera ignorée");
-              // Ne pas essayer de synchroniser si nous n'avons pas d'ID numérique
-              return;
-            }
-            
-            console.log(`Tentative de synchronisation avec ID numérique: ${videoIdForSync}`);
-            
-            const { error: syncError } = await serviceClient.rpc(
-              'sync_video_transcription',
-              { p_video_id: videoIdForSync }
-            );
-            
-            if (syncError) {
-              console.error("Erreur lors de la synchronisation de la transcription:", syncError);
-            } else {
-              console.log("Transcription synchronisée avec succès dans la table 'transcriptions'");
+              console.log(`Transcription insérée avec succès, id: ${newTranscription.id}`);
             }
           } catch (transcriptionTableError) {
             console.log("La table transcriptions n'existe pas ou a une structure incompatible", transcriptionTableError);
             // Continuer sans erreur car on va stocker la transcription dans la table videos
           }
           
-          // NOUVELLE PARTIE: Effectuer l'analyse de performance directement dans cette fonction
+          // Mettre à jour la vidéo avec les données de transcription
+          const { error: transcriptionUpdateError } = await serviceClient
+            .from('videos')
+            .update({
+              transcription: transcriptionData.text,
+              transcription_data: transcriptionData,
+              status: VIDEO_STATUS.PUBLISHED,
+              processed_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', videoId);
+            
+          if (transcriptionUpdateError) {
+            console.error(`Erreur lors de la mise à jour de la transcription:`, transcriptionUpdateError);
+            throw transcriptionUpdateError;
+          }
+          
+          console.log(`Vidéo mise à jour avec les données de transcription`);
+          
+          // Essayer d'appeler la fonction de synchronisation si elle existe
           try {
-            console.log(`Début de l'analyse de performance pour la vidéo ${videoId}`);
+            const { error: syncError } = await serviceClient.rpc(
+              'sync_video_transcription',
+              { video_id: videoId }
+            );
             
-            // Mettre à jour le statut pour indiquer que l'analyse est en cours
-            await serviceClient
-              .from('videos')
-              .update({
-                status: VIDEO_STATUS.ANALYZING,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', videoId);
-              
-            console.log(`Statut de la vidéo ${videoId} mis à jour à '${VIDEO_STATUS.ANALYZING}'`);
-            
-            // Récupérer la transcription
-            if (!transcriptionResult || !transcriptionResult.text) {
-              throw new Error("Aucune transcription disponible pour l'analyse");
+            if (syncError) {
+              console.error(`Erreur lors de l'appel à sync_video_transcription:`, syncError);
+              // On continue malgré l'erreur
+            } else {
+              console.log(`Fonction sync_video_transcription appelée avec succès`);
             }
+          } catch (syncError) {
+            console.error(`Exception lors de l'appel à sync_video_transcription:`, syncError);
+            // On continue malgré l'erreur
+          }
+          
+          // Générer l'analyse IA de la transcription
+          try {
+            console.log(`Début de l'analyse IA du texte transcrit`);
             
-            // Créer un prompt pour l'analyse
-            const prompt = `
-              Analyse la transcription suivante d'une vidéo et génère un rapport d'analyse de performance oratoire.
-              Concentre-toi sur:
-              1. La clarté du message (structure, cohérence)
-              2. Le vocabulaire (richesse, précision, répétitions)
-              3. Le rythme et les hésitations (fluidité, pauses, mots parasites)
-              4. Les points forts à conserver
-              5. Les points à améliorer
-              
-              Transcription:
-              ${transcriptionResult.text}
-              
-              Format de réponse:
-              {
-                "clarity_score": [note de 1 à 10],
-                "vocabulary_score": [note de 1 à 10],
-                "fluidity_score": [note de 1 à 10],
-                "overall_score": [moyenne des scores précédents],
-                "strengths": ["point fort 1", "point fort 2", ...],
-                "improvement_areas": ["point à améliorer 1", "point à améliorer 2", ...],
-                "detailed_analysis": "Analyse détaillée en plusieurs paragraphes",
-                "summary": "Résumé concis en 2-3 phrases"
-              }
-            `;
+            // Utiliser GPT-3.5 Turbo qui est plus largement disponible
+            const analysisModel = "gpt-3.5-turbo"; 
             
-            // Appeler l'API d'OpenAI pour l'analyse en utilisant gpt-3.5-turbo au lieu de gpt-4
-            const completion = await openai.chat.completions.create({
-              model: "gpt-3.5-turbo",  // Utiliser gpt-3.5-turbo qui supporte response_format
+            const analysisResponse = await openai.chat.completions.create({
+              model: analysisModel,
               messages: [
                 {
                   role: "system",
-                  content: "Tu es un expert en communication et analyse de discours. Tu analyses des transcriptions de vidéos pour aider les orateurs à améliorer leurs performances."
+                  content: `Tu es un expert en analyse de discours. Analyse la transcription suivante et fournis une analyse au format JSON avec les champs suivants:
+                  - clarity_score: note de 1 à 10
+                  - vocabulary_score: note de 1 à 10
+                  - fluidity_score: note de 1 à 10
+                  - overall_score: moyenne des scores précédents
+                  - strengths: liste de points forts
+                  - improvement_areas: liste de points à améliorer
+                  - detailed_analysis: analyse détaillée en plusieurs paragraphes
+                  - summary: résumé concis en 2-3 phrases`
                 },
                 {
                   role: "user",
-                  content: prompt
+                  content: `Analyse cette transcription et réponds en format JSON:
+                  
+${transcriptionData.text}`
                 }
               ],
-              response_format: { type: "json_object" } // Cette option est supportée par gpt-3.5-turbo
+              response_format: { type: "json_object" }
             });
             
-            // Extraire et parser l'analyse
-            const analysisText = completion.choices[0]?.message?.content;
-            if (!analysisText) {
-              throw new Error("Aucun résultat d'analyse obtenu");
-            }
+            const analysisText = analysisResponse.choices[0].message.content;
+            const analysis = JSON.parse(analysisText);
+            console.log(`Analyse IA générée avec succès avec ${analysisModel}`);
             
-            let analysis;
-            try {
-              analysis = JSON.parse(analysisText);
-              console.log("Analyse de performance générée avec succès");
-            } catch (parseError) {
-              console.error("Erreur lors du parsing du JSON d'analyse:", parseError);
-              analysis = { error: "Format d'analyse invalide", raw_text: analysisText };
-            }
-            
-            // Pour le débogage, enregistrer le texte brut reçu également
-            console.log("Analyse brute reçue:", analysisText.substring(0, 100) + "...");
-            
-            // Mettre à jour la vidéo avec les résultats d'analyse
-            const updateResult = await serviceClient
+            // Mettre à jour la vidéo avec l'analyse
+            const { error: analysisUpdateError } = await serviceClient
               .from('videos')
               .update({
+                analysis: analysis,
                 performance_analysis: analysis,
                 clarity_score: analysis.clarity_score || 0,
                 vocabulary_score: analysis.vocabulary_score || 0,
                 fluidity_score: analysis.fluidity_score || 0,
                 overall_score: analysis.overall_score || 0,
-                analysis_text: analysisText, // Stockage du texte brut pour le débogage
-                status: VIDEO_STATUS.PUBLISHED,  // Marquer comme publié une fois l'analyse terminée
                 updated_at: new Date().toISOString()
               })
               .eq('id', videoId);
+              
+            if (analysisUpdateError) {
+              console.error(`Erreur lors de la mise à jour de l'analyse:`, analysisUpdateError);
+            } else {
+              console.log(`Vidéo mise à jour avec l'analyse IA`);
+            }
             
-            console.log(`Analyse de performance enregistrée pour la vidéo ${videoId}, résultat:`, updateResult);
+            // Créer ou mettre à jour l'entrée dans la table analyses si elle existe
+            try {
+              await serviceClient
+                .from('analyses')
+                .upsert({
+                  video_id: videoId,
+                  content: analysis,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString()
+                }, {
+                  onConflict: 'video_id'
+                });
+            } catch (analysesTableError) {
+              console.log("La table analyses n'existe pas ou a une structure incompatible", analysesTableError);
+              // Continuer sans erreur car l'analyse est déjà stockée dans la table videos
+            }
             
           } catch (analysisError) {
-            console.error("Erreur lors de l'analyse de performance:", analysisError);
-            
-            // Mettre à jour le statut en cas d'erreur mais garder le statut PUBLISHED car la transcription a réussi
-            await serviceClient
-              .from('videos')
-              .update({
-                status: VIDEO_STATUS.PUBLISHED,  // On maintient le statut PUBLISHED même si l'analyse échoue
-                analysis_error: `Erreur d'analyse: ${analysisError.message}`,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', videoId);
+            console.error("Erreur lors de l'analyse IA", analysisError);
+            // L'analyse a échoué mais la transcription a réussi, donc on ne considère pas ça comme un échec global
           }
           
         } catch (error) {
-          console.error("Erreur lors de la transcription ou de la mise à jour:", error);
+          console.error("Erreur lors de la transcription", error);
           
-          // Mettre à jour le statut de la vidéo à FAILED en cas d'erreur
+          // Mettre à jour le statut de la vidéo pour indiquer l'échec
           await serviceClient
             .from('videos')
             .update({
@@ -652,16 +665,21 @@ Deno.serve(async (req) => {
       })()
     );
     
+    // Retourner immédiatement la réponse pour ne pas bloquer le client
     return responsePromise;
 
   } catch (error) {
-    console.error("Erreur non gérée:", error);
+    console.error("Erreur générale non gérée", error);
+    
     return new Response(
       JSON.stringify({ 
         error: 'Erreur interne du serveur',
         details: error.message
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500 
+      }
     );
   }
 });
