@@ -525,55 +525,115 @@ Deno.serve(async (req) => {
             // Continuer sans erreur car on va stocker la transcription dans la table videos
           }
           
-          // NOUVELLE PARTIE: Déclencher l'analyse de performance
-          console.log(`Déclenchement de l'analyse de performance pour la vidéo ${videoId}`);
-          
+          // NOUVELLE PARTIE: Effectuer l'analyse de performance directement dans cette fonction
+          // Au lieu d'appeler une autre fonction Edge, on intègre directement l'analyse
           try {
-            // Créer un nouveau client Supabase pour pouvoir faire une requête à la fonction Edge
-            const anonClient = createClient(supabaseUrl, supabaseAnonKey);
+            console.log(`Début de l'analyse de performance pour la vidéo ${videoId}`);
             
-            console.log("Tentative d'invocation directe de la fonction analyze-video-performance via le client Supabase");
-            const { data: analyzeData, error: analyzeError } = await anonClient.functions.invoke(
-              'analyze-video-performance',
+            // Mettre à jour le statut pour indiquer que l'analyse est en cours
+            await serviceClient
+              .from('videos')
+              .update({
+                status: VIDEO_STATUS.ANALYZING,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', videoId);
+              
+            console.log(`Statut de la vidéo ${videoId} mis à jour à '${VIDEO_STATUS.ANALYZING}'`);
+            
+            // Récupérer la transcription
+            if (!transcriptionResult || !transcriptionResult.text) {
+              throw new Error("Aucune transcription disponible pour l'analyse");
+            }
+            
+            // Créer un prompt pour l'analyse
+            const prompt = `
+              Analyse la transcription suivante d'une vidéo et génère un rapport d'analyse de performance oratoire.
+              Concentre-toi sur:
+              1. La clarté du message (structure, cohérence)
+              2. Le vocabulaire (richesse, précision, répétitions)
+              3. Le rythme et les hésitations (fluidité, pauses, mots parasites)
+              4. Les points forts à conserver
+              5. Les points à améliorer
+              
+              Transcription:
+              ${transcriptionResult.text}
+              
+              Format de réponse:
               {
-                body: { videoId }
+                "clarity_score": [note de 1 à 10],
+                "vocabulary_score": [note de 1 à 10],
+                "fluidity_score": [note de 1 à 10],
+                "overall_score": [moyenne des scores précédents],
+                "strengths": ["point fort 1", "point fort 2", ...],
+                "improvement_areas": ["point à améliorer 1", "point à améliorer 2", ...],
+                "detailed_analysis": "Analyse détaillée en plusieurs paragraphes",
+                "summary": "Résumé concis en 2-3 phrases"
               }
-            );
+            `;
             
-            if (analyzeError) {
-              console.error("Erreur lors de l'invocation de la fonction d'analyse:", analyzeError);
-            } else {
-              console.log("Analyse de performance déclenchée avec succès:", analyzeData);
-            }
-          } catch (analyzeError) {
-            console.error("Exception lors du déclenchement de l'analyse de performance:", analyzeError);
-            
-            // Tentative alternative avec fetch directement
-            try {
-              console.log("Tentative alternative avec fetch et tous les en-têtes possibles");
-              const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-video-performance`;
-              
-              const analyzeResponse = await fetch(analyzeEndpoint, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'apikey': supabaseAnonKey,
-                  'Authorization': `Bearer ${supabaseAnonKey}`
+            // Appeler l'API d'OpenAI pour l'analyse
+            const completion = await openai.chat.completions.create({
+              model: "gpt-4",  // Utiliser un modèle avancé pour l'analyse
+              messages: [
+                {
+                  role: "system",
+                  content: "Tu es un expert en communication et analyse de discours. Tu analyses des transcriptions de vidéos pour aider les orateurs à améliorer leurs performances."
                 },
-                body: JSON.stringify({ videoId })
-              });
-              
-              if (!analyzeResponse.ok) {
-                const errorText = await analyzeResponse.text();
-                console.error(`Erreur lors de la deuxième tentative d'analyse (${analyzeResponse.status}): ${errorText}`);
-              } else {
-                const analyzeResult = await analyzeResponse.json();
-                console.log("Analyse de performance déclenchée avec succès (méthode alternative):", analyzeResult);
-              }
-            } catch (fetchError) {
-              console.error("Échec de la tentative alternative:", fetchError);
+                {
+                  role: "user",
+                  content: prompt
+                }
+              ],
+              response_format: { type: "json_object" }
+            });
+            
+            // Extraire et parser l'analyse
+            const analysisText = completion.choices[0]?.message?.content;
+            if (!analysisText) {
+              throw new Error("Aucun résultat d'analyse obtenu");
             }
+            
+            let analysis;
+            try {
+              analysis = JSON.parse(analysisText);
+            } catch (parseError) {
+              console.error("Erreur lors du parsing du JSON d'analyse:", parseError);
+              analysis = { error: "Format d'analyse invalide", raw_text: analysisText };
+            }
+            
+            console.log("Analyse de performance générée:", analysis);
+            
+            // Mettre à jour la vidéo avec les résultats d'analyse
+            await serviceClient
+              .from('videos')
+              .update({
+                performance_analysis: analysis,
+                clarity_score: analysis.clarity_score,
+                vocabulary_score: analysis.vocabulary_score,
+                fluidity_score: analysis.fluidity_score,
+                overall_score: analysis.overall_score,
+                status: VIDEO_STATUS.PUBLISHED,  // Marquer comme publié une fois l'analyse terminée
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', videoId);
+            
+            console.log(`Analyse de performance enregistrée pour la vidéo ${videoId}`);
+            
+          } catch (analysisError) {
+            console.error("Erreur lors de l'analyse de performance:", analysisError);
+            
+            // Mettre à jour le statut en cas d'erreur mais garder le statut PUBLISHED car la transcription a réussi
+            await serviceClient
+              .from('videos')
+              .update({
+                status: VIDEO_STATUS.PUBLISHED,  // On maintient le statut PUBLISHED même si l'analyse échoue
+                analysis_error: `Erreur d'analyse: ${analysisError.message}`,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', videoId);
           }
+          
         } catch (error) {
           console.error("Erreur lors de la transcription ou de la mise à jour:", error);
           
