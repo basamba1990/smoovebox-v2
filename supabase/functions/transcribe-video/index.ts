@@ -488,39 +488,39 @@ Deno.serve(async (req) => {
             ...transcriptionOptions,
             model: "whisper-1",
             response_format: "verbose_json",
-            timestamp_granularities: ["word", "segment"]
+            timestamp_granularities: ["segment"]
           });
           
           transcriptionData = {
             text: transcription.text,
             segments: transcription.segments || [],
-            words: transcription.words || [],
             language: transcription.language || "fr",
             duration: transcription.duration || 0
           };
           
           console.log(`Transcription terminée avec succès, longueur: ${transcriptionData.text.length} caractères`);
           
-          // Créer un enregistrement dans la table transcriptions
+          // Vérifier si la table transcriptions existe et si elle a la structure attendue
           try {
+            // Essayer d'insérer une transcription avec seulement les champs essentiels
+            const transcriptionInsert = {
+              video_id: videoId,
+              language: transcriptionData.language,
+              full_text: transcriptionData.text,
+              segments: transcriptionData.segments,
+              status: 'COMPLETED',
+              processed_at: new Date().toISOString(),
+              created_at: new Date().toISOString()
+            };
+            
+            // Si user_id est disponible, l'ajouter
+            if (userId) {
+              transcriptionInsert.user_id = userId;
+            }
+            
             const { data: newTranscription, error: transcriptionInsertError } = await serviceClient
               .from('transcriptions')
-              .insert({
-                video_id: videoId,
-                user_id: userId,
-                language: transcriptionData.language,
-                full_text: transcriptionData.text,
-                segments: transcriptionData.segments,
-                words: transcriptionData.words || [],
-                transcription_text: transcriptionData.text,
-                confidence_score: transcriptionData.segments?.length ? 
-                  transcriptionData.segments.reduce((acc, segment) => acc + (segment.confidence || 0), 0) / 
-                  transcriptionData.segments.length : 
-                  0.95, // Score par défaut si pas de segments
-                status: 'COMPLETED',
-                processed_at: new Date().toISOString(),
-                created_at: new Date().toISOString()
-              })
+              .insert(transcriptionInsert)
               .select()
               .single();
             
@@ -583,19 +583,11 @@ Deno.serve(async (req) => {
               messages: [
                 {
                   role: "system",
-                  content: `Tu es un expert en analyse de discours. Analyse la transcription suivante et fournis une analyse au format JSON avec les champs suivants:
-                  - clarity_score: note de 1 à 10
-                  - vocabulary_score: note de 1 à 10
-                  - fluidity_score: note de 1 à 10
-                  - overall_score: moyenne des scores précédents
-                  - strengths: liste de points forts
-                  - improvement_areas: liste de points à améliorer
-                  - detailed_analysis: analyse détaillée en plusieurs paragraphes
-                  - summary: résumé concis en 2-3 phrases`
+                  content: "Tu es un expert en analyse de discours. Analyse la transcription et fournis une évaluation détaillée en format JSON."
                 },
                 {
                   role: "user",
-                  content: `Analyse cette transcription et réponds en format JSON:
+                  content: `Analyse cette transcription et réponds avec un JSON structuré incluant une évaluation globale, des points forts et des points à améliorer:
                   
 ${transcriptionData.text}`
                 }
@@ -607,24 +599,43 @@ ${transcriptionData.text}`
             const analysis = JSON.parse(analysisText);
             console.log(`Analyse IA générée avec succès avec ${analysisModel}`);
             
-            // Mettre à jour la vidéo avec l'analyse
-            const { error: analysisUpdateError } = await serviceClient
-              .from('videos')
-              .update({
-                analysis: analysis,
-                performance_analysis: analysis,
-                clarity_score: analysis.clarity_score || 0,
-                vocabulary_score: analysis.vocabulary_score || 0,
-                fluidity_score: analysis.fluidity_score || 0,
-                overall_score: analysis.overall_score || 0,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', videoId);
-              
-            if (analysisUpdateError) {
-              console.error(`Erreur lors de la mise à jour de l'analyse:`, analysisUpdateError);
-            } else {
-              console.log(`Vidéo mise à jour avec l'analyse IA`);
+            // Vérifier la structure de la table videos avant de mettre à jour
+            try {
+              // D'abord, vérifions si la colonne 'analysis' existe dans la table videos
+              const { error: analysisUpdateError } = await serviceClient
+                .from('videos')
+                .update({
+                  analysis: analysis,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', videoId);
+                
+              if (analysisUpdateError) {
+                console.error(`Erreur lors de la mise à jour de l'analyse dans le champ 'analysis':`, analysisUpdateError);
+              } else {
+                console.log(`Vidéo mise à jour avec l'analyse IA dans le champ 'analysis'`);
+              }
+            } catch (analysisTableError) {
+              console.error(`Erreur lors de la mise à jour du champ 'analysis':`, analysisTableError);
+            }
+            
+            // Essayer de mettre à jour performance_analysis si disponible
+            try {
+              const { error: perfAnalysisUpdateError } = await serviceClient
+                .from('videos')
+                .update({
+                  performance_analysis: analysis,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', videoId);
+                
+              if (perfAnalysisUpdateError) {
+                console.error(`Erreur lors de la mise à jour de performance_analysis:`, perfAnalysisUpdateError);
+              } else {
+                console.log(`Vidéo mise à jour avec l'analyse IA dans performance_analysis`);
+              }
+            } catch (perfAnalysisError) {
+              console.error(`Erreur lors de la mise à jour du champ performance_analysis:`, perfAnalysisError);
             }
             
             // Créer ou mettre à jour l'entrée dans la table analyses si elle existe
@@ -639,6 +650,8 @@ ${transcriptionData.text}`
                 }, {
                   onConflict: 'video_id'
                 });
+                
+              console.log(`Analyse ajoutée dans la table 'analyses'`);
             } catch (analysesTableError) {
               console.log("La table analyses n'existe pas ou a une structure incompatible", analysesTableError);
               // Continuer sans erreur car l'analyse est déjà stockée dans la table videos
