@@ -5,7 +5,6 @@ import OpenAI from 'npm:openai@4.28.0'
 const VIDEO_STATUS = {
   DRAFT: 'draft',           // En attente ou prêt pour traitement
   PROCESSING: 'processing', // En cours de traitement
-  ANALYZING: 'analyzing',   // Analyse en cours après transcription
   PUBLISHED: 'published',   // Traitement terminé avec succès
   FAILED: 'failed'          // Échec du traitement
 };
@@ -471,7 +470,9 @@ Deno.serve(async (req) => {
           
           // Sélectionner le modèle en fonction de la taille et de la complexité
           // Whisper pour la précision des transcriptions audio complexes
-          const transcriptionModel = "whisper-1";
+          // GPT-4o-transcribe pour les vidéos plus courtes ou moins complexes
+          const shouldUseWhisper = contentLength && parseInt(contentLength) > 10 * 1024 * 1024;
+          const transcriptionModel = shouldUseWhisper ? "whisper-1" : "gpt-4o-transcribe";
           
           console.log(`Début de la transcription avec OpenAI ${transcriptionModel}`);
           
@@ -484,43 +485,59 @@ Deno.serve(async (req) => {
           let transcriptionData;
           
           // Transcription avec OpenAI - Utilisation du modèle approprié
-          const transcription = await openai.audio.transcriptions.create({
-            ...transcriptionOptions,
-            model: "whisper-1",
-            response_format: "verbose_json",
-            timestamp_granularities: ["segment"]
-          });
-          
-          transcriptionData = {
-            text: transcription.text,
-            segments: transcription.segments || [],
-            language: transcription.language || "fr",
-            duration: transcription.duration || 0
-          };
+          if (transcriptionModel === "whisper-1") {
+            const transcription = await openai.audio.transcriptions.create({
+              ...transcriptionOptions,
+              model: "whisper-1",
+              response_format: "verbose_json",
+              timestamp_granularities: ["word", "segment"]
+            });
+            
+            transcriptionData = {
+              text: transcription.text,
+              segments: transcription.segments || [],
+              words: transcription.words || [],
+              language: transcription.language || "fr",
+              duration: transcription.duration || 0
+            };
+          } else {
+            // GPT-4o-transcribe
+            const transcription = await openai.audio.transcriptions.create({
+              ...transcriptionOptions,
+              model: "gpt-4o-transcribe",
+              response_format: "json",
+              prompt: "Cette transcription concerne une vidéo en français. Veuillez transcrire avec précision, en incluant la ponctuation et les paragraphes appropriés."
+            });
+            
+            transcriptionData = {
+              text: transcription.text,
+              segments: [], // Pas de segments disponibles avec gpt-4o-transcribe
+              language: "fr"
+            };
+          }
           
           console.log(`Transcription terminée avec succès, longueur: ${transcriptionData.text.length} caractères`);
           
-          // Vérifier si la table transcriptions existe et si elle a la structure attendue
+          // Créer un enregistrement dans la table transcriptions
           try {
-            // Essayer d'insérer une transcription avec seulement les champs essentiels
-            const transcriptionInsert = {
-              video_id: videoId,
-              language: transcriptionData.language,
-              full_text: transcriptionData.text,
-              segments: transcriptionData.segments,
-              status: 'COMPLETED',
-              processed_at: new Date().toISOString(),
-              created_at: new Date().toISOString()
-            };
-            
-            // Si user_id est disponible, l'ajouter
-            if (userId) {
-              transcriptionInsert.user_id = userId;
-            }
-            
             const { data: newTranscription, error: transcriptionInsertError } = await serviceClient
               .from('transcriptions')
-              .insert(transcriptionInsert)
+              .insert({
+                video_id: videoId,
+                user_id: userId,
+                language: transcriptionData.language,
+                full_text: transcriptionData.text,
+                segments: transcriptionData.segments,
+                words: transcriptionData.words || [],
+                transcription_text: transcriptionData.text,
+                confidence_score: transcriptionData.segments?.length ? 
+                  transcriptionData.segments.reduce((acc, segment) => acc + (segment.confidence || 0), 0) / 
+                  transcriptionData.segments.length : 
+                  0.95, // Score par défaut si pas de segments
+                status: 'COMPLETED',
+                processed_at: new Date().toISOString(),
+                created_at: new Date().toISOString()
+              })
               .select()
               .single();
             
@@ -575,31 +592,45 @@ Deno.serve(async (req) => {
           try {
             console.log(`Début de l'analyse IA du texte transcrit`);
             
-            // Utiliser GPT-3.5 Turbo qui est plus largement disponible
-            const analysisModel = "gpt-3.5-turbo"; 
+            // Essayer d'abord avec GPT-4 (ou GPT-3.5 Turbo si GPT-4 n'est pas disponible)
+            const analysisModel = "gpt-3.5-turbo"; // Plus largement disponible que GPT-4/GPT-5
             
             const analysisResponse = await openai.chat.completions.create({
               model: analysisModel,
               messages: [
                 {
                   role: "system",
-                  content: "Tu es un expert en analyse de discours. Analyse la transcription et fournis une évaluation détaillée en format JSON."
+                  content: `Tu es un expert en analyse de discours. Analyse la transcription suivante et fournit:
+                  1. Un résumé concis (5-7 phrases)
+                  2. 5-7 points clés
+                  3. Une évaluation de la clarté et de la structure (note de 1 à 10)
+                  4. 3-5 suggestions d'amélioration
+                  5. 3-5 points forts
+                  
+                  Réponds au format JSON avec les clés suivantes:
+                  {
+                    "resume": "string",
+                    "points_cles": ["string", "string", ...],
+                    "evaluation": {
+                      "clarte": number,
+                      "structure": number
+                    },
+                    "suggestions": ["string", "string", ...],
+                    "strengths": ["string", "string", ...]
+                  }`
                 },
                 {
                   role: "user",
-                  content: `Analyse cette transcription et réponds avec un JSON structuré incluant une évaluation globale, des points forts et des points à améliorer:
-                  
-${transcriptionData.text}`
+                  content: transcriptionData.text
                 }
               ],
               response_format: { type: "json_object" }
             });
             
-            const analysisText = analysisResponse.choices[0].message.content;
-            const analysis = JSON.parse(analysisText);
+            const analysis = JSON.parse(analysisResponse.choices[0].message.content);
             console.log(`Analyse IA générée avec succès avec ${analysisModel}`);
             
-            // Mise à jour uniquement de la colonne 'analysis' qui est la seule que nous savons exister
+            // Mettre à jour la vidéo avec l'analyse
             const { error: analysisUpdateError } = await serviceClient
               .from('videos')
               .update({
@@ -626,8 +657,6 @@ ${transcriptionData.text}`
                 }, {
                   onConflict: 'video_id'
                 });
-                
-              console.log(`Analyse ajoutée dans la table 'analyses'`);
             } catch (analysesTableError) {
               console.log("La table analyses n'existe pas ou a une structure incompatible", analysesTableError);
               // Continuer sans erreur car l'analyse est déjà stockée dans la table videos
