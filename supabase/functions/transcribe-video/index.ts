@@ -599,43 +599,19 @@ ${transcriptionData.text}`
             const analysis = JSON.parse(analysisText);
             console.log(`Analyse IA générée avec succès avec ${analysisModel}`);
             
-            // Vérifier la structure de la table videos avant de mettre à jour
-            try {
-              // D'abord, vérifions si la colonne 'analysis' existe dans la table videos
-              const { error: analysisUpdateError } = await serviceClient
-                .from('videos')
-                .update({
-                  analysis: analysis,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', videoId);
-                
-              if (analysisUpdateError) {
-                console.error(`Erreur lors de la mise à jour de l'analyse dans le champ 'analysis':`, analysisUpdateError);
-              } else {
-                console.log(`Vidéo mise à jour avec l'analyse IA dans le champ 'analysis'`);
-              }
-            } catch (analysisTableError) {
-              console.error(`Erreur lors de la mise à jour du champ 'analysis':`, analysisTableError);
-            }
-            
-            // Essayer de mettre à jour performance_analysis si disponible
-            try {
-              const { error: perfAnalysisUpdateError } = await serviceClient
-                .from('videos')
-                .update({
-                  performance_analysis: analysis,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', videoId);
-                
-              if (perfAnalysisUpdateError) {
-                console.error(`Erreur lors de la mise à jour de performance_analysis:`, perfAnalysisUpdateError);
-              } else {
-                console.log(`Vidéo mise à jour avec l'analyse IA dans performance_analysis`);
-              }
-            } catch (perfAnalysisError) {
-              console.error(`Erreur lors de la mise à jour du champ performance_analysis:`, perfAnalysisError);
+            // Mise à jour uniquement de la colonne 'analysis' qui est la seule que nous savons exister
+            const { error: analysisUpdateError } = await serviceClient
+              .from('videos')
+              .update({
+                analysis: analysis,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', videoId);
+              
+            if (analysisUpdateError) {
+              console.error(`Erreur lors de la mise à jour de l'analyse:`, analysisUpdateError);
+            } else {
+              console.log(`Vidéo mise à jour avec l'analyse IA`);
             }
             
             // Créer ou mettre à jour l'entrée dans la table analyses si elle existe
