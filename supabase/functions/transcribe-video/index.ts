@@ -28,6 +28,7 @@ Deno.serve(async (req) => {
     // Initialiser les variables d'environnement
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     
     if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
@@ -528,21 +529,26 @@ Deno.serve(async (req) => {
           console.log(`Déclenchement de l'analyse de performance pour la vidéo ${videoId}`);
           
           try {
-            // Appel direct à la fonction analyze-video-performance
-            const analyzeResponse = await fetch(`${supabaseUrl}/functions/v1/analyze-video-performance`, {
+            // Appel direct à la fonction analyze-video-performance avec la clé anonyme
+            // au lieu de la clé de service qui pourrait ne pas fonctionner correctement avec le format Bearer
+            const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-video-performance`;
+            console.log(`Appel de l'endpoint: ${analyzeEndpoint}`);
+            
+            const analyzeResponse = await fetch(analyzeEndpoint, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${supabaseServiceKey}`
+                'apikey': supabaseAnonKey
               },
               body: JSON.stringify({ videoId })
             });
             
             if (!analyzeResponse.ok) {
               const errorText = await analyzeResponse.text();
-              console.error(`Erreur lors du déclenchement de l'analyse: ${errorText}`);
+              console.error(`Erreur lors du déclenchement de l'analyse (${analyzeResponse.status}): ${errorText}`);
             } else {
-              console.log("Analyse de performance déclenchée avec succès");
+              const analyzeResult = await analyzeResponse.json();
+              console.log("Analyse de performance déclenchée avec succès:", analyzeResult);
             }
           } catch (analyzeError) {
             console.error("Exception lors du déclenchement de l'analyse de performance:", analyzeError);
