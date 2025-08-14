@@ -4,6 +4,8 @@ import AuthModal from './AuthModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import VideoManagement from './pages/VideoManagement.jsx';
 import VideoUploader from './components/VideoUploader.jsx';
+import EnhancedVideoUploader from './components/EnhancedVideoUploader.jsx';
+import ProgressTracking from './components/ProgressTracking.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import EmptyState from './components/EmptyState.jsx';
 import ProfessionalHeader from './components/ProfessionalHeader.jsx';
@@ -305,7 +307,11 @@ function AppContent() {
               </TabsContent>
 
               <TabsContent value="upload" className="space-y-6">
-                <VideoUploader />
+                <EnhancedVideoUploader />
+              </TabsContent>
+
+              <TabsContent value="progress" className="space-y-6">
+                <ProgressTracking userId={user.id} userProfile={profile} isVisible={true} />
               </TabsContent>
             </Tabs>
           ) : (
