@@ -21,6 +21,12 @@ const ModernTabs = ({ activeTab, onTabChange, user }) => {
       label: 'Upload',
       icon: Upload,
       description: 'Nouvelle vidéo'
+    },
+    {
+      value: 'progress',
+      label: 'Progression',
+      icon: TrendingUp,
+      description: 'Mes progrès'
     }
   ];
 
@@ -43,7 +49,7 @@ const ModernTabs = ({ activeTab, onTabChange, user }) => {
   return (
     <div className="flex justify-center mb-6 sm:mb-8 px-2 sm:px-4">
       <Tabs value={activeTab} onValueChange={onTabChange} className="w-full max-w-2xl">
-        <TabsList className="grid grid-cols-3 bg-white/80 backdrop-blur-sm border border-gray-200 shadow-lg rounded-xl p-1 sm:p-1.5 h-auto">
+        <TabsList className="grid grid-cols-4 bg-white/80 backdrop-blur-sm border border-gray-200 shadow-lg rounded-xl p-1 sm:p-1.5 h-auto">
           {tabs.map((tab) => {
             const IconComponent = tab.icon;
             return (
