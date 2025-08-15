@@ -174,14 +174,14 @@ export const AuthProvider = ({ children }) => {
           authTimeout = null;
         }
         
-        const { data: { session }, error: sessionError } = sessionResult;
+        const { data: { session }, error } = sessionResult;
         
-        if (sessionError) {
-          console.error("Erreur de session:", sessionError.message);
+        if (error) {
+          console.error('Erreur de session:', error.message);
           if (mounted) {
-            setError(sessionError.message);
+            setError(error.message);
             setLoading(false);
-            setConnectionStatus("error");
+            setConnectionStatus('error');
           }
           return;
         }
