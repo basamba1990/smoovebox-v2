@@ -1,5 +1,5 @@
 // src/context/AuthContext.jsx
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase.js';
 
 const AuthContext = createContext({});
@@ -424,8 +424,19 @@ export const AuthProvider = ({ children }) => {
     return hasRole('admin');
   };
 
+  const handleAuthError = useCallback((error) => {
+    console.error("Erreur d'authentification:", error);
+    setError(error.message || "Erreur d'authentification");
+
+    // Réinitialiser l'état en cas d'erreur critique
+    if (error.message?.includes("Invalid token") || error.message?.includes("JWT expired")) {
+      setUser(null);
+      setProfile(null);
+    }
+  }, []);
+
   // Valeurs exposées par le contexte
-  const value = {
+  const value = useMemo(() => ({
     user,
     profile,
     loading,
@@ -440,13 +451,6 @@ export const AuthProvider = ({ children }) => {
     updateUserProfile,
     hasRole,
     isAdmin
-  };
-
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
-};
+  }), [user, profile, loading, error, connectionStatus, signUp, signIn, signInWithProvider, signOut, resetPassword, updatePassword, updateUserProfile, hasRole, isAdmin]);
 
 export default AuthContext;
