@@ -7,7 +7,7 @@ const VIDEO_STATUS = {
   PROCESSING: 'processing', // En cours de traitement
   PUBLISHED: 'published',   // Traitement terminé avec succès
   FAILED: 'failed',         // Échec du traitement
-  ANALYZING: 'processing'   // Statut spécial pour l'analyse en cours
+  ANALYZING: 'analyzing'   // Statut spécial pour l'analyse en cours
 };
 
 const corsHeaders = {
@@ -281,14 +281,27 @@ Deno.serve(async (req) => {
         };
         
         // Mettre à jour la vidéo avec l'analyse
-        await supabaseClient
-          .from('videos')
-          .update({
-            analysis: completeAnalysis,
-            status: VIDEO_STATUS.PUBLISHED,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId);
+        try {
+          await supabaseClient
+            .from("videos")
+            .update({
+              analysis: completeAnalysis,
+              status: VIDEO_STATUS.PUBLISHED,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", videoId);
+        } catch (updateError) {
+          console.error("Erreur lors de la mise à jour de la vidéo avec l'analyse", updateError);
+          await supabaseClient
+            .from("videos")
+            .update({
+              status: VIDEO_STATUS.FAILED,
+              error_message: `Erreur de mise à jour: ${updateError.message}`,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", videoId);
+          throw updateError; // Re-throw the error to be caught by the outer catch block
+        }
         
         // Vérifier si la table analyses existe et y ajouter l'analyse
         try {
