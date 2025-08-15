@@ -31,7 +31,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   realtime: {
     params: {
       eventsPerSecond: 10
-    }
+    },
+    timeout: 30000 // Timeout de 30 secondes
   },
   db: {
     schema: 'public'
@@ -45,27 +46,28 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
  * @param {number} delay - Délai entre les tentatives en ms
  * @returns {Promise} - Le résultat de l'opération
  */
-export const retryOperation = async (operation, maxRetries = 3, delay = 1000) => {
+export const retryOperation = async (operation, maxRetries = 3, baseDelay = 1000) => {
   let lastError;
   
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      // Tentative d'exécution de l'opération
-      return await operation();
+      return await Promise.race([
+        operation(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Operation timeout')), 10000)
+        )
+      ]);
     } catch (error) {
       console.warn(`Tentative ${attempt + 1}/${maxRetries} échouée:`, error);
       lastError = error;
       
-      // Si ce n'est pas la dernière tentative, attendre avant de réessayer
       if (attempt < maxRetries - 1) {
-        // Backoff exponentiel avec jitter
-        const backoffDelay = delay * Math.pow(2, attempt) + Math.random() * 1000;
-        await new Promise(resolve => setTimeout(resolve, backoffDelay));
+        const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
   }
   
-  // Si toutes les tentatives ont échoué, lancer l'erreur
   throw lastError;
 };
 
