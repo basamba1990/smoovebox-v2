@@ -52,7 +52,6 @@ function AppContent() {
           } else {
             console.warn('Connexion Supabase échouée:', connectionResult.error);
             setConnectionStatus('connected');
-            setSupabaseError(connectionResult.error);
           }
         } catch (error) {
           console.error('Erreur lors de la vérification de connexion:', error);
@@ -70,100 +69,81 @@ function AppContent() {
   }, [loading]);
 
   // Récupérer les données du dashboard avec gestion d'erreur robuste
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     if (!user) {
-      console.log('Aucun utilisateur connecté, aucune donnée à charger');
+      console.log("Aucun utilisateur connecté, aucune donnée à charger");
       setDashboardData(null);
       return;
     }
-    
+
     try {
       setDashboardLoading(true);
       setDashboardError(null);
-      
-      console.log('Chargement des données dashboard pour:', user.id);
-      
+
+      console.log("Chargement des données dashboard pour:", user.id);
+
       const data = await retryOperation(async () => {
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Timeout de récupération des données')), 8000)
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout de récupération des données")), 8000)
         );
-        
+
         return await Promise.race([
           fetchDashboardData(user.id),
           timeoutPromise
         ]);
       }, 2);
-      
+
       setDashboardData(data);
-      console.log('Données dashboard chargées avec succès:', data);
+      console.log("Données dashboard chargées avec succès:", data);
     } catch (err) {
-      console.error('Erreur lors du chargement des données dashboard:', err);
+      console.error("Erreur lors du chargement des données dashboard:", err);
       setDashboardData(null);
-      setDashboardError(err.message || 'Erreur lors de la récupération des données');
+      setDashboardError(err.message || "Erreur lors de la récupération des données");
     } finally {
       setDashboardLoading(false);
     }
-  };
+  }, [user]);
 
   // Charger les données du dashboard avec gestion des erreurs
   useEffect(() => {
     let mounted = true;
-    let dataTimeout = null;
-    
-    if (activeTab === 'dashboard') {
-      dataTimeout = setTimeout(() => {
-        if (mounted) {
-          loadDashboardData().catch(err => {
-            console.error('Erreur non gérée lors du chargement des données:', err);
-            if (mounted) {
-              setDashboardError(err.message || 'Erreur inattendue');
-              setDashboardLoading(false);
-            }
-          });
-        }
-      }, 200);
-      
-      let videosChannel = null;
-      if (user && connectionStatus === 'connected') {
-        try {
-          videosChannel = supabase
-            .channel('videos_changes')
-            .on('postgres_changes', { 
-              event: '*', 
-              schema: 'public', 
-              table: 'videos',
-              filter: `user_id=eq.${user.id}`
-            }, payload => {
-              console.log('Changement détecté dans la table videos:', payload);
-              if (mounted) {
-                loadDashboardData().catch(err => {
-                  console.error('Erreur lors du rechargement après changement:', err);
-                });
-              }
-            })
-            .subscribe((status) => {
-              console.log('Statut de souscription aux changements videos:', status);
+    let videosChannel = null;
+
+    if (activeTab === "dashboard" && user) {
+      loadDashboardData();
+
+      // Configuration du canal realtime avec nettoyage
+      videosChannel = supabase
+        .channel("videos_changes")
+        .on("postgres_changes", {
+          event: "*",
+          schema: "public",
+          table: "videos",
+          filter: `user_id=eq.${user.id}`
+        }, payload => {
+          console.log("Changement détecté dans la table videos:", payload);
+          if (mounted) {
+            loadDashboardData().catch(err => {
+              console.error("Erreur lors du rechargement après changement:", err);
             });
+          }
+        })
+        .subscribe((status) => {
+          console.log("Statut de souscription aux changements videos:", status);
+        });
+    }
+
+    return () => {
+      mounted = false;
+      if (videosChannel) {
+        try {
+          supabase.removeChannel(videosChannel);
         } catch (err) {
-          console.error('Erreur lors de la configuration du canal realtime:', err);
+          console.error("Erreur lors de la suppression du canal:", err);
         }
       }
-
-      return () => {
-        mounted = false;
-        if (dataTimeout) {
-          clearTimeout(dataTimeout);
-        }
-        if (videosChannel) {
-          try {
-            supabase.removeChannel(videosChannel);
-          } catch (err) {
-            console.error('Erreur lors de la suppression du canal:', err);
-          }
-        }
-      };
-    }
-  }, [user, activeTab, connectionStatus]);
+    };
+  }, [user, activeTab, loadDashboardData]);
 
   const handleAuthSuccess = (user) => {
     console.log('Utilisateur authentifié avec succès:', user.id);
@@ -208,8 +188,7 @@ function AppContent() {
         setConnectionStatus('connected');
         setSupabaseError(null);
       } else {
-        setConnectionStatus('connected');
-        setSupabaseError(connectionResult.error);
+        setConnectionStatus("connected");
       }
     } catch (error) {
       setConnectionStatus('connected');
@@ -389,4 +368,3 @@ function App() {
 }
 
 export default App;
-
