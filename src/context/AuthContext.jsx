@@ -451,6 +451,17 @@ export const AuthProvider = ({ children }) => {
     updateUserProfile,
     hasRole,
     isAdmin
-  }), [user, profile, loading, error, connectionStatus, signUp, signIn, signInWithProvider, signOut, resetPassword, updatePassword, updateUserProfile, hasRole, isAdmin]);
+  }), [
+    user, profile, loading, error, connectionStatus,
+    signUp, signIn, signInWithProvider, signOut,
+    resetPassword, updatePassword, updateUserProfile, hasRole, isAdmin
+  ]);
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
 
 export default AuthContext;
