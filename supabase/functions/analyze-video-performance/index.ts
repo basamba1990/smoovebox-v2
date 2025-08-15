@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
           
           // Première analyse: évaluation des performances oratoires
           const performanceResponse = await openai.chat.completions.create({
-            model: "gpt-4",
+            model: "gpt-3.5-turbo", // Au lieu de gpt-4
             messages: [
               {
                 role: "system",
@@ -208,9 +208,11 @@ Deno.serve(async (req) => {
               },
               {
                 role: "user",
-                content: transcriptionText
+                content: transcriptionText.substring(0, 8000) // Limiter la taille
               }
             ],
+            max_tokens: 1000, // Limiter les tokens de sortie
+            temperature: 0.3, // Réduire la créativité pour plus de cohérence
             response_format: { type: "json_object" }
           });
           
