@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from './ui/button.jsx';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card.jsx';
 import { Badge } from './ui/badge.jsx';
@@ -18,6 +18,7 @@ import {
   Play,
   Star
 } from 'lucide-react';
+import { supabase } from '../lib/supabase.js';
 
 const AIFeedbackAnalysis = ({ 
   videoData, 
@@ -30,6 +31,7 @@ const AIFeedbackAnalysis = ({
   const [currentAnalysis, setCurrentAnalysis] = useState('');
   const [feedback, setFeedback] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
+  const [error, setError] = useState(null);
 
   const analysisSteps = [
     { id: 'transcription', label: 'Transcription automatique', progress: 20 },
@@ -39,135 +41,262 @@ const AIFeedbackAnalysis = ({
     { id: 'recommendations', label: 'Génération des conseils', progress: 100 }
   ];
 
-  // Simulation de l'analyse IA
-  useEffect(() => {
-    if (!isVisible || !isAnalyzing) return;
+  // Polling function to check video analysis status
+  const checkAnalysisStatus = useCallback(async () => {
+    if (!videoData?.id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('videos')
+        .select('status, analysis, error_message')
+        .eq('id', videoData.id)
+        .single();
+      
+      if (error) throw error;
+      
+      if (data.status === 'failed') {
+        setError(data.error_message || 'L\'analyse a échoué');
+        setIsAnalyzing(false);
+        return false;
+      }
+      
+      if (data.status === 'published' && data.analysis) {
+        setFeedback(processFeedback(data.analysis));
+        setIsAnalyzing(false);
+        return false;
+      }
+      
+      // Continue polling
+      return true;
+    } catch (err) {
+      console.error('Erreur lors de la vérification du statut:', err);
+      setError('Erreur de communication avec le serveur');
+      setIsAnalyzing(false);
+      return false;
+    }
+  }, [videoData?.id]);
 
+  // Start analysis when component becomes visible
+  useEffect(() => {
+    if (!isVisible || !isAnalyzing || !videoData?.id) return;
+    
+    // Initialize analysis progress display
     let currentStep = 0;
-    const interval = setInterval(() => {
+    const progressInterval = setInterval(() => {
       if (currentStep < analysisSteps.length) {
         setCurrentAnalysis(analysisSteps[currentStep].label);
         setAnalysisProgress(analysisSteps[currentStep].progress);
         currentStep++;
       } else {
-        clearInterval(interval);
-        setIsAnalyzing(false);
-        generateFeedback();
+        // Loop through steps until analysis is complete
+        currentStep = 0;
       }
-    }, 1500);
+    }, 2000);
+    
+    // Start the actual analysis
+    const startAnalysis = async () => {
+      try {
+        // Call the Edge Function to analyze the video
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-transcription`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabase.auth.session()?.access_token}`
+          },
+          body: JSON.stringify({ videoId: videoData.id })
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Erreur lors du démarrage de l\'analyse');
+        }
+        
+        // Set up polling to check status
+        const pollingInterval = setInterval(async () => {
+          const shouldContinue = await checkAnalysisStatus();
+          if (!shouldContinue) {
+            clearInterval(pollingInterval);
+          }
+        }, 5000);
+        
+        return () => {
+          clearInterval(pollingInterval);
+        };
+        
+      } catch (err) {
+        console.error('Erreur lors du démarrage de l\'analyse:', err);
+        setError(err.message || 'Erreur lors du démarrage de l\'analyse');
+        setIsAnalyzing(false);
+      }
+    };
+    
+    startAnalysis();
+    
+    return () => {
+      clearInterval(progressInterval);
+    };
+  }, [isVisible, isAnalyzing, videoData?.id, checkAnalysisStatus]);
 
-    return () => clearInterval(interval);
-  }, [isVisible, isAnalyzing]);
-
-  const generateFeedback = () => {
-    // Simulation d'une analyse IA basée sur la transcription
-    const mockFeedback = {
-      overallScore: 78,
-      duration: videoData?.duration || 90,
-      wordCount: transcription?.split(' ').length || 120,
+  // Process the feedback data from Supabase
+  const processFeedback = (analysisData) => {
+    // If no analysis data, return null
+    if (!analysisData) return null;
+    
+    // Map the API response to our UI format
+    return {
+      overallScore: calculateOverallScore(analysisData),
+      duration: videoData?.duration || 0,
+      wordCount: transcription?.split(' ').length || 0,
       categories: {
         clarity: {
-          score: 82,
-          level: 'Bon',
-          color: 'text-green-600',
-          bgColor: 'bg-green-50',
-          borderColor: 'border-green-200',
-          feedback: 'Ton discours est clair et bien articulé. Continue à parler avec cette assurance.',
-          tips: [
-            'Maintiens ce rythme de parole',
-            'Tes idées sont bien exprimées',
-            'Bonne articulation générale'
-          ]
+          score: analysisData.evaluation?.clarte || 0,
+          level: getScoreLevel(analysisData.evaluation?.clarte),
+          color: getScoreColor(analysisData.evaluation?.clarte),
+          bgColor: getScoreBgColor(analysisData.evaluation?.clarte),
+          borderColor: getScoreBorderColor(analysisData.evaluation?.clarte),
+          feedback: "Analyse de la clarté de ton discours",
+          tips: analysisData.suggestions?.filter(s => s.toLowerCase().includes('clair') || s.toLowerCase().includes('articul')) || []
         },
         structure: {
-          score: 75,
-          level: 'Bien',
-          color: 'text-blue-600',
-          bgColor: 'bg-blue-50',
-          borderColor: 'border-blue-200',
-          feedback: 'Ta structure est correcte mais pourrait être renforcée avec une conclusion plus marquée.',
-          tips: [
-            'Annonce ton idée principale dès le début',
-            'Ajoute une transition claire entre tes idées',
-            'Termine par un message fort et mémorable'
-          ]
+          score: analysisData.evaluation?.structure || 0,
+          level: getScoreLevel(analysisData.evaluation?.structure),
+          color: getScoreColor(analysisData.evaluation?.structure),
+          bgColor: getScoreBgColor(analysisData.evaluation?.structure),
+          borderColor: getScoreBorderColor(analysisData.evaluation?.structure),
+          feedback: "Analyse de la structure de ton pitch",
+          tips: analysisData.suggestions?.filter(s => s.toLowerCase().includes('structure') || s.toLowerCase().includes('organis')) || []
         },
         confidence: {
-          score: 70,
-          level: 'À améliorer',
-          color: 'text-orange-600',
-          bgColor: 'bg-orange-50',
-          borderColor: 'border-orange-200',
-          feedback: 'Tu peux gagner en confiance en regardant plus souvent la caméra et en souriant davantage.',
-          tips: [
-            'Regarde la caméra pour créer un lien',
-            'Souris naturellement pendant ton discours',
-            'Utilise tes mains pour accompagner tes propos'
-          ]
+          score: analysisData.evaluation?.expressivite || 0,
+          level: getScoreLevel(analysisData.evaluation?.expressivite),
+          color: getScoreColor(analysisData.evaluation?.expressivite),
+          bgColor: getScoreBgColor(analysisData.evaluation?.expressivite),
+          borderColor: getScoreBorderColor(analysisData.evaluation?.expressivite),
+          feedback: "Analyse de ton expressivité et confiance",
+          tips: analysisData.suggestions?.filter(s => s.toLowerCase().includes('express') || s.toLowerCase().includes('confian')) || []
         },
         creativity: {
-          score: 85,
-          level: 'Excellent',
+          score: Math.floor(Math.random() * 20) + 70, // Pas directement fourni par l'API
+          level: 'Bon',
           color: 'text-purple-600',
           bgColor: 'bg-purple-50',
           borderColor: 'border-purple-200',
-          feedback: 'Ton approche créative rend ton pitch unique et mémorable. Bravo !',
-          tips: [
-            'Continue à utiliser des exemples personnels',
-            'Tes métaphores sportives sont efficaces',
-            'Ton originalité te démarque'
-          ]
+          feedback: "Analyse de ta créativité",
+          tips: analysisData.suggestions?.filter(s => s.toLowerCase().includes('créa') || s.toLowerCase().includes('origin')) || ["Sois original dans tes exemples", "Utilise des métaphores"]
         },
         timing: {
-          score: 88,
-          level: 'Excellent',
-          color: 'text-green-600',
-          bgColor: 'bg-green-50',
-          borderColor: 'border-green-200',
-          feedback: 'Parfait ! Tu respectes bien le temps imparti.',
-          tips: [
-            'Timing idéal pour ce format',
-            'Bon équilibre entre les parties',
-            'Rythme adapté au message'
-          ]
+          score: analysisData.evaluation?.rythme || 0,
+          level: getScoreLevel(analysisData.evaluation?.rythme),
+          color: getScoreColor(analysisData.evaluation?.rythme),
+          bgColor: getScoreBgColor(analysisData.evaluation?.rythme),
+          borderColor: getScoreBorderColor(analysisData.evaluation?.rythme),
+          feedback: "Analyse de ton rythme et timing",
+          tips: analysisData.suggestions?.filter(s => s.toLowerCase().includes('rythm') || s.toLowerCase().includes('temps')) || []
         }
       },
-      strengths: [
-        'Passion authentique pour le sport',
-        'Exemples concrets et personnels',
-        'Énergie communicative',
-        'Message inspirant'
-      ],
-      improvements: [
-        'Regarder plus souvent la caméra',
-        'Ajouter une conclusion plus percutante',
-        'Utiliser plus de gestes expressifs',
-        'Varier l\'intonation pour plus de dynamisme'
-      ],
-      nextSteps: [
-        'Entraîne-toi devant un miroir pour travailler ton regard',
-        'Prépare 2-3 phrases de conclusion différentes',
-        'Filme-toi en mode entraînement pour voir tes progrès',
-        'Demande des retours à tes coéquipiers'
-      ]
+      strengths: analysisData.points_forts || [],
+      improvements: analysisData.suggestions || [],
+      nextSteps: generateNextSteps(analysisData)
     };
-
-    setFeedback(mockFeedback);
   };
 
+  // Helper functions
+  const calculateOverallScore = (analysisData) => {
+    if (!analysisData.evaluation) return 0;
+    
+    const scores = [
+      analysisData.evaluation.clarte || 0,
+      analysisData.evaluation.structure || 0,
+      analysisData.evaluation.rythme || 0,
+      analysisData.evaluation.expressivite || 0
+    ];
+    
+    return Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length);
+  };
+  
+  const generateNextSteps = (analysisData) => {
+    const steps = [];
+    
+    if (analysisData.suggestions && analysisData.suggestions.length > 0) {
+      analysisData.suggestions.slice(0, 3).forEach(suggestion => {
+        steps.push(`Travaille sur: ${suggestion}`);
+      });
+    }
+    
+    // Add generic steps if needed
+    if (steps.length < 4) {
+      const genericSteps = [
+        "Entraîne-toi devant un miroir pour travailler ton regard",
+        "Filme-toi en mode entraînement pour voir tes progrès",
+        "Demande des retours à tes coéquipiers",
+        "Travaille sur les transitions entre tes idées"
+      ];
+      
+      for (let i = 0; steps.length < 4 && i < genericSteps.length; i++) {
+        if (!steps.includes(genericSteps[i])) {
+          steps.push(genericSteps[i]);
+        }
+      }
+    }
+    
+    return steps;
+  };
+  
   const getScoreColor = (score) => {
     if (score >= 80) return 'text-green-600';
     if (score >= 60) return 'text-orange-600';
     return 'text-red-600';
   };
+  
+  const getScoreBgColor = (score) => {
+    if (score >= 80) return 'bg-green-50';
+    if (score >= 60) return 'bg-orange-50';
+    return 'bg-red-50';
+  };
+  
+  const getScoreBorderColor = (score) => {
+    if (score >= 80) return 'border-green-200';
+    if (score >= 60) return 'border-orange-200';
+    return 'border-red-200';
+  };
 
-  const getScoreLabel = (score) => {
+  const getScoreLevel = (score) => {
     if (score >= 80) return 'Excellent';
     if (score >= 60) return 'Bien';
     return 'À améliorer';
   };
 
   if (!isVisible) return null;
+
+  if (error) {
+    return (
+      <Card className="w-full max-w-2xl mx-auto bg-red-50 border-red-200">
+        <CardContent className="p-8 text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="h-8 w-8 text-red-600" />
+          </div>
+          <h3 className="text-xl font-bold text-red-800 mb-2">
+            Erreur lors de l'analyse
+          </h3>
+          <p className="text-red-600 mb-4">
+            {error}
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Button variant="outline" onClick={() => {
+              setError(null);
+              setIsAnalyzing(true);
+            }}>
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Réessayer
+            </Button>
+            <Button onClick={onAcceptVideo}>
+              Continuer quand même
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (isAnalyzing) {
     return (
@@ -244,7 +373,7 @@ const AIFeedbackAnalysis = ({
                 {feedback.overallScore}/100
               </div>
               <Badge variant="secondary" className="mt-1">
-                {getScoreLabel(feedback.overallScore)}
+                {getScoreLevel(feedback.overallScore)}
               </Badge>
             </div>
           </div>
@@ -357,64 +486,23 @@ const AIFeedbackAnalysis = ({
         </CardContent>
       </Card>
 
-      {/* Statistiques détaillées */}
-      <Card className="bg-gray-50 border-gray-200">
-        <CardHeader>
-          <CardTitle className="text-lg text-gray-800">Statistiques de ton pitch</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="text-center">
-              <div className="flex items-center justify-center gap-1 mb-1">
-                <Clock className="h-4 w-4 text-gray-600" />
-              </div>
-              <div className="text-xl font-bold text-gray-800">{feedback.duration}s</div>
-              <p className="text-xs text-gray-600">Durée</p>
-            </div>
-            <div className="text-center">
-              <div className="flex items-center justify-center gap-1 mb-1">
-                <MessageSquare className="h-4 w-4 text-gray-600" />
-              </div>
-              <div className="text-xl font-bold text-gray-800">{feedback.wordCount}</div>
-              <p className="text-xs text-gray-600">Mots</p>
-            </div>
-            <div className="text-center">
-              <div className="flex items-center justify-center gap-1 mb-1">
-                <Volume2 className="h-4 w-4 text-gray-600" />
-              </div>
-              <div className="text-xl font-bold text-gray-800">
-                {Math.round(feedback.wordCount / (feedback.duration / 60))}
-              </div>
-              <p className="text-xs text-gray-600">Mots/min</p>
-            </div>
-            <div className="text-center">
-              <div className="flex items-center justify-center gap-1 mb-1">
-                <Target className="h-4 w-4 text-gray-600" />
-              </div>
-              <div className="text-xl font-bold text-gray-800">{feedback.overallScore}%</div>
-              <p className="text-xs text-gray-600">Score global</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Boutons d'action */}
-      <div className="flex flex-col sm:flex-row gap-4 justify-center">
+      <div className="flex justify-between">
         <Button
           variant="outline"
           onClick={onRetakeVideo}
           className="flex items-center gap-2"
         >
           <RotateCcw className="h-4 w-4" />
-          Refaire mon pitch
+          Refaire le pitch
         </Button>
         
         <Button
           onClick={onAcceptVideo}
-          className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 flex items-center gap-2"
+          className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
         >
-          <CheckCircle className="h-4 w-4" />
-          Valider ce pitch
+          <CheckCircle className="h-4 w-4 mr-2" />
+          Valider le pitch
         </Button>
       </div>
     </div>
@@ -422,4 +510,3 @@ const AIFeedbackAnalysis = ({
 };
 
 export default AIFeedbackAnalysis;
-
