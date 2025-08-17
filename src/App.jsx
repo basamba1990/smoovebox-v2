@@ -83,19 +83,58 @@ function AppContent() {
       
       console.log('Chargement des données dashboard pour:', user.id);
       
-      const data = await retryOperation(async () => {
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Timeout de récupération des données')), 8000)
-        );
+      // Requête principale pour les données du tableau de bord
+      const { data: videos, error: videosError } = await supabase
+        .from('videos')
+        .select('id, title, created_at, duration, status, analysis, transcription_text, thumbnail_url')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
         
-        return await Promise.race([
-          fetchDashboardData(user.id),
-          timeoutPromise
-        ]);
-      }, 2);
+      if (videosError) throw videosError;
       
-      setDashboardData(data);
-      console.log('Données dashboard chargées avec succès:', data);
+      // Récupération des transcriptions associées
+      const { data: transcriptions, error: transcriptionsError } = await supabase
+        .from('transcriptions')
+        .select('video_id, created_at, full_text')
+        .in('video_id', videos.map(video => video.id) || []);
+        
+      if (transcriptionsError) {
+        console.warn('Erreur lors de la récupération des transcriptions:', transcriptionsError);
+        // Continue even with transcription error
+      }
+      
+      // Récupération des statistiques globales
+      const { data: stats, error: statsError } = await supabase
+        .rpc('get_user_video_stats', { user_id_param: user.id });
+        
+      if (statsError) {
+        console.warn('Erreur lors de la récupération des statistiques:', statsError);
+        // Continue even with stats error
+      }
+      
+      // Construction des données pour le dashboard
+      const dashboardData = {
+        totalVideos: videos.length,
+        recentVideos: videos.slice(0, 5),
+        videosByStatus: {
+          draft: videos.filter(v => v.status === 'draft').length,
+          processing: videos.filter(v => v.status === 'processing' || v.status === 'analyzing').length,
+          published: videos.filter(v => v.status === 'published').length,
+          failed: videos.filter(v => v.status === 'failed').length
+        },
+        totalDuration: videos.reduce((sum, video) => sum + (video.duration || 0), 0),
+        transcriptionsCount: transcriptions ? transcriptions.length : 0,
+        analysisCount: videos.filter(v => v.analysis).length,
+        videoPerformance: stats?.performance_data || [],
+        progressStats: stats?.progress_stats || {
+          completed: 0,
+          inProgress: 0,
+          totalTime: 0
+        }
+      };
+      
+      setDashboardData(dashboardData);
+      console.log('Données dashboard chargées avec succès:', dashboardData);
     } catch (err) {
       console.error('Erreur lors du chargement des données dashboard:', err);
       setDashboardData(null);
