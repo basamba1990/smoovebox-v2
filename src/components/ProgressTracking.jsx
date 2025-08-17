@@ -123,110 +123,50 @@ const ProgressTracking = ({ userId, userProfile, isVisible = true }) => {
     
     // Si aucune compétence n'existe, créer des données par défaut
     if (Object.keys(formattedSkills).length === 0) {
-      // Extraire les scores des analyses de vidéos si disponibles
-      const videoAnalysisData = videos
-        .filter(v => v.analysis && typeof v.analysis === 'object')
-        .map(v => v.analysis);
-      
-      if (videoAnalysisData.length > 0) {
-        // Essayer d'extraire les scores depuis les analyses
-        const latestAnalysis = videoAnalysisData[0];
-        
-        if (latestAnalysis.performance && latestAnalysis.performance.scores) {
-          const scores = latestAnalysis.performance.scores;
-          
-          // Conversion des scores de l'analyse en compétences
-          if (scores.clarte) formattedSkills.clarity = { current: scores.clarte.note, previous: scores.clarte.note - 5, trend: 'up' };
-          if (scores.structure) formattedSkills.structure = { current: scores.structure.note, previous: scores.structure.note - 3, trend: 'up' };
-          if (scores.expressivite) formattedSkills.confidence = { current: scores.expressivite.note, previous: scores.expressivite.note - 4, trend: 'up' };
-          if (scores.persuasion) formattedSkills.persuasion = { current: scores.persuasion.note, previous: scores.persuasion.note - 2, trend: 'up' };
-          if (scores.rythme) formattedSkills.timing = { current: scores.rythme.note, previous: scores.rythme.note - 3, trend: 'up' };
-        }
-      }
-      
-      // Si toujours pas de compétences, utiliser des valeurs par défaut
-      if (Object.keys(formattedSkills).length === 0) {
-        formattedSkills.clarity = { current: 75, previous: 70, trend: 'up' };
-        formattedSkills.structure = { current: 70, previous: 65, trend: 'up' };
-        formattedSkills.confidence = { current: 80, previous: 75, trend: 'up' };
-        formattedSkills.creativity = { current: 85, previous: 80, trend: 'up' };
-        formattedSkills.timing = { current: 82, previous: 78, trend: 'up' };
-      }
+      formattedSkills.clarity = { current: 75, previous: 70, trend: 'up' };
+      formattedSkills.structure = { current: 70, previous: 65, trend: 'up' };
+      formattedSkills.confidence = { current: 80, previous: 75, trend: 'up' };
+      formattedSkills.creativity = { current: 85, previous: 80, trend: 'up' };
+      formattedSkills.timing = { current: 82, previous: 78, trend: 'up' };
     }
     
     // Transformer les vidéos récentes
     const formattedVideos = videos.map(video => {
-      const improvements = [];
-      let score = video.performance_score || 0;
-      
-      // Extraire les suggestions d'amélioration si disponibles
-      if (video.analysis && video.analysis.performance && video.analysis.performance.suggestions) {
-        // Extraire les catégories depuis les suggestions
-        const suggestions = video.analysis.performance.suggestions;
-        suggestions.forEach(suggestion => {
-          const suggestion_lower = suggestion.toLowerCase();
-          if (suggestion_lower.includes('clar') || suggestion_lower.includes('articul')) improvements.push('Clarté');
-          else if (suggestion_lower.includes('structur') || suggestion_lower.includes('organis')) improvements.push('Structure');
-          else if (suggestion_lower.includes('conf') || suggestion_lower.includes('express')) improvements.push('Confiance');
-          else if (suggestion_lower.includes('rythm') || suggestion_lower.includes('temps')) improvements.push('Timing');
-          else improvements.push('Expression');
-        });
-      }
-      
-      // Si pas de suggestions, utiliser des valeurs par défaut
-      if (improvements.length === 0) {
-        improvements.push('Général');
-      }
-      
-      // Limiter à 2 suggestions maximum
-      const limitedImprovements = improvements.slice(0, 2);
-      
       return {
         id: video.id,
         title: video.title || 'Pitch sans titre',
         date: video.created_at,
-        score: score || Math.floor(Math.random() * 20) + 70, // Fallback pour score
-        improvements: limitedImprovements
+        score: video.performance_score || Math.floor(Math.random() * 20) + 70,
+        improvements: ['Général']
       };
     });
     
-    // Générer les données d'accomplissement
-    let formattedAchievements = [];
-    
-    // Si des accomplissements existent dans la base de données
-    if (achievements.length > 0) {
-      formattedAchievements = achievements.map(achievement => {
-        return {
-          id: achievement.achievements.id || achievement.achievement_id,
-          title: achievement.achievements.title || 'Succès',
-          description: achievement.achievements.description || '',
-          icon: getAchievementIcon(achievement.achievements.id || achievement.achievement_id),
-          earned: achievement.is_earned,
-          earnedDate: achievement.earned_at,
-          progress: achievement.progress,
-          total: achievement.achievements.target_value || 100,
-          rarity: achievement.achievements.rarity || 'common'
-        };
-      });
-    } 
-    // Sinon, générer des accomplissements par défaut basés sur les vidéos
-    else {
-      formattedAchievements = generateDefaultAchievements(videos);
-    }
+    // Générer les données d'accomplissement par défaut
+    const formattedAchievements = [
+      {
+        id: 'first_pitch',
+        title: 'Premier Pitch',
+        description: 'Tu as enregistré ton premier pitch !',
+        icon: Star,
+        earned: videos.length > 0,
+        earnedDate: videos.length > 0 ? videos[videos.length - 1].created_at : null,
+        rarity: 'common'
+      }
+    ];
     
     // Calculer les statistiques du mois
     const monthlyStats = {
-      pitchesCount: stats.monthly_pitches_count || videos.length,
-      averageScore: stats.monthly_average_score || calculateAverageScore(videos),
-      bestScore: stats.monthly_best_score || calculateBestScore(videos),
-      totalWatchTime: stats.monthly_watch_time || calculateTotalDuration(videos),
-      skillsImproved: stats.monthly_skills_improved || Math.min(Object.keys(formattedSkills).length, 3)
+      pitchesCount: videos.length,
+      averageScore: videos.length > 0 ? Math.round(videos.reduce((sum, v) => sum + (v.performance_score || 70), 0) / videos.length) : 0,
+      bestScore: videos.length > 0 ? Math.max(...videos.map(v => v.performance_score || 0)) : 0,
+      totalWatchTime: videos.reduce((total, video) => total + (video.duration || 0), 0),
+      skillsImproved: Math.min(Object.keys(formattedSkills).length, 3)
     };
 
     // Construire et retourner l'objet de données formaté
     return {
       profile: {
-        level: calculateUserLevel(videos.length, calculateAverageScore(videos)),
+        level: videos.length === 0 ? 'Débutant' : 'Orateur Novice',
         totalPitches: videos.length,
         joinDate: userProfile?.created_at || new Date().toISOString(),
         currentStreak: streakData.current_streak || 0,
@@ -244,166 +184,6 @@ const ProgressTracking = ({ userId, userProfile, isVisible = true }) => {
     if (!isVisible || !userId) return;
     loadProgressData();
   }, [isVisible, userId, loadProgressData]);
-
-  // Fonctions utilitaires
-  const getAchievementIcon = (achievementId) => {
-    const iconMap = {
-      'first_pitch': Star,
-      'creative_master': Zap,
-      'consistent_performer': Target,
-      'team_player': Users,
-      'pitch_master': Trophy
-    };
-    
-    return iconMap[achievementId] || Award;
-  };
-  
-  const generateDefaultAchievements = (videos) => {
-    const achievements = [];
-    const hasVideos = videos.length > 0;
-    const averageScore = calculateAverageScore(videos);
-    
-    // Premier pitch
-    achievements.push({
-      id: 'first_pitch',
-      title: 'Premier Pitch',
-      description: 'Tu as enregistré ton premier pitch !',
-      icon: Star,
-      earned: hasVideos,
-      earnedDate: hasVideos ? videos[videos.length - 1].created_at : null,
-      rarity: 'common'
-    });
-    
-    // Maître Créatif (score > 85)
-    const hasHighCreativity = hasVideos && videos.some(v => 
-      (v.analysis && v.analysis.performance && v.analysis.performance.scores && 
-       v.analysis.performance.scores.creativite && v.analysis.performance.scores.creativite.note > 85) || 
-      (v.performance_score > 85)
-    );
-    
-    achievements.push({
-      id: 'creative_master',
-      title: 'Maître Créatif',
-      description: 'Score de créativité supérieur à 85',
-      icon: Zap,
-      earned: hasHighCreativity,
-      earnedDate: hasHighCreativity ? findFirstVideoWithHighScore(videos, 85).created_at : null,
-      rarity: 'rare',
-      progress: hasVideos ? Math.min(averageScore, 85) : 0,
-      total: 85
-    });
-    
-    // Performeur Régulier (5 pitches consécutifs avec score > 80)
-    const consecutiveHighScores = countConsecutiveHighScores(videos, 80);
-    achievements.push({
-      id: 'consistent_performer',
-      title: 'Performeur Régulier',
-      description: '5 pitches consécutifs avec un score > 80',
-      icon: Target,
-      earned: consecutiveHighScores >= 5,
-      earnedDate: consecutiveHighScores >= 5 ? videos[0].created_at : null,
-      rarity: 'epic',
-      progress: Math.min(consecutiveHighScores, 5),
-      total: 5
-    });
-    
-    // Esprit d'Équipe (pitches collectifs)
-    achievements.push({
-      id: 'team_player',
-      title: 'Esprit d\'Équipe',
-      description: 'Participe à 3 pitches collectifs',
-      icon: Users,
-      earned: false,
-      progress: hasVideos ? Math.min(countCollectivePitches(videos), 3) : 0,
-      total: 3,
-      rarity: 'rare'
-    });
-    
-    // Maître du Pitch (score global de 95)
-    const hasExcellentScore = hasVideos && videos.some(v => 
-      (v.performance_score && v.performance_score >= 95)
-    );
-    
-    achievements.push({
-      id: 'pitch_master',
-      title: 'Maître du Pitch',
-      description: 'Atteins un score global de 95',
-      icon: Trophy,
-      earned: hasExcellentScore,
-      earnedDate: hasExcellentScore ? findFirstVideoWithHighScore(videos, 95).created_at : null,
-      progress: hasVideos ? Math.min(findHighestScore(videos), 95) : 0,
-      total: 95,
-      rarity: 'legendary'
-    });
-    
-    return achievements;
-  };
-  
-  const calculateUserLevel = (pitchCount, averageScore) => {
-    if (pitchCount === 0) return 'Débutant';
-    if (pitchCount < 3) return 'Orateur Novice';
-    if (pitchCount < 10) {
-      if (averageScore >= 80) return 'Orateur Prometteur';
-      return 'Orateur Amateur';
-    }
-    if (averageScore >= 85) return 'Orateur Expert';
-    if (averageScore >= 75) return 'Orateur Confirmé';
-    return 'Orateur Régulier';
-  };
-  
-  const calculateAverageScore = (videos) => {
-    if (!videos || videos.length === 0) return 0;
-    const validVideos = videos.filter(v => v.performance_score);
-    if (validVideos.length === 0) return 0;
-    
-    const sum = validVideos.reduce((total, video) => total + video.performance_score, 0);
-    return Math.round(sum / validVideos.length);
-  };
-  
-  const calculateBestScore = (videos) => {
-    if (!videos || videos.length === 0) return 0;
-    return Math.max(...videos.map(v => v.performance_score || 0));
-  };
-  
-  const calculateTotalDuration = (videos) => {
-    if (!videos || videos.length === 0) return 0;
-    return videos.reduce((total, video) => total + (video.duration || 0), 0);
-  };
-  
-  const findFirstVideoWithHighScore = (videos, threshold) => {
-    return videos.find(v => (v.performance_score || 0) >= threshold) || {};
-  };
-  
-  const findHighestScore = (videos) => {
-    return Math.max(...videos.map(v => v.performance_score || 0));
-  };
-  
-  const countConsecutiveHighScores = (videos, threshold) => {
-    if (!videos || videos.length === 0) return 0;
-    let count = 0;
-    
-    // Les vidéos sont déjà triées par date décroissante
-    for (const video of videos) {
-      if ((video.performance_score || 0) > threshold) {
-        count++;
-      } else {
-        break; // Interrompre lorsqu'on trouve une vidéo en-dessous du seuil
-      }
-    }
-    
-    return count;
-  };
-  
-  const countCollectivePitches = (videos) => {
-    if (!videos || videos.length === 0) return 0;
-    // Détecter les pitches collectifs (soit par un tag, un meta-data ou une propriété)
-    return videos.filter(v => 
-      (v.tags && v.tags.includes('collectif')) ||
-      (v.metadata && v.metadata.is_collective) ||
-      (v.title && v.title.toLowerCase().includes('équipe')) ||
-      (v.title && v.title.toLowerCase().includes('collectif'))
-    ).length;
-  };
 
   const getSkillIcon = (skillName) => {
     const icons = {
@@ -446,8 +226,8 @@ const ProgressTracking = ({ userId, userProfile, isVisible = true }) => {
       <div className="w-full max-w-6xl mx-auto">
         <Card className="bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
           <CardContent className="p-8 text-center">
-            <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-            <p className="text-blue-600">Chargement de tes statistiques...</p>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Chargement de vos données de progression...</p>
           </CardContent>
         </Card>
       </div>
@@ -459,17 +239,10 @@ const ProgressTracking = ({ userId, userProfile, isVisible = true }) => {
       <div className="w-full max-w-6xl mx-auto">
         <Card className="bg-gradient-to-br from-red-50 to-orange-50 border-red-200">
           <CardContent className="p-8 text-center">
-            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle className="h-6 w-6 text-red-600" />
-            </div>
-            <h3 className="text-xl font-bold text-red-800 mb-2">
-              Erreur de chargement
-            </h3>
+            <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-red-800 mb-2">Erreur de chargement</h3>
             <p className="text-red-600 mb-4">{error}</p>
-            <Button 
-              onClick={loadProgressData} 
-              className="bg-red-600 hover:bg-red-700"
-            >
+            <Button onClick={loadProgressData} variant="outline" className="border-red-300 text-red-700 hover:bg-red-50">
               Réessayer
             </Button>
           </CardContent>
@@ -481,14 +254,9 @@ const ProgressTracking = ({ userId, userProfile, isVisible = true }) => {
   if (!progressData) {
     return (
       <div className="w-full max-w-6xl mx-auto">
-        <Card className="bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
+        <Card className="bg-gradient-to-br from-gray-50 to-slate-50 border-gray-200">
           <CardContent className="p-8 text-center">
-            <h3 className="text-xl font-bold text-blue-800 mb-2">
-              Pas encore de données disponibles
-            </h3>
-            <p className="text-blue-600 mb-4">
-              Enregistre ton premier pitch pour voir tes statistiques !
-            </p>
+            <p className="text-gray-600">Aucune donnée de progression disponible.</p>
           </CardContent>
         </Card>
       </div>
@@ -497,179 +265,133 @@ const ProgressTracking = ({ userId, userProfile, isVisible = true }) => {
 
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6">
-      {/* En-tête du profil */}
+      {/* En-tête avec profil utilisateur */}
       <Card className="bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
-        <CardHeader>
+        <CardContent className="p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center">
-                <TrendingUp className="h-8 w-8 text-blue-600" />
+              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                <span className="text-white font-bold text-xl">
+                  {userProfile?.email?.charAt(0).toUpperCase() || 'U'}
+                </span>
               </div>
               <div>
-                <CardTitle className="text-2xl text-blue-800">
-                  {userProfile?.full_name || userProfile?.username || 'Ton Profil'}
-                </CardTitle>
-                <div className="flex items-center gap-2 mt-1">
-                  <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-                    {progressData.profile.level}
+                <h2 className="text-2xl font-bold text-gray-900">{progressData.profile.level}</h2>
+                <p className="text-gray-600">{progressData.profile.totalPitches} pitchs réalisés</p>
+                <div className="flex items-center gap-4 mt-2">
+                  <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50">
+                    🔥 {progressData.profile.currentStreak} jours
                   </Badge>
-                  <span className="text-blue-600 text-sm">
-                    {progressData.profile.totalPitches} pitches réalisés
+                  <span className="text-sm text-gray-500">
+                    Record: {progressData.profile.bestStreak} jours
                   </span>
                 </div>
               </div>
             </div>
             <div className="text-right">
-              <div className="text-2xl font-bold text-blue-600">
-                {progressData.profile.currentStreak}
+              <div className="text-sm text-gray-500">Membre depuis</div>
+              <div className="font-medium">
+                {new Date(progressData.profile.joinDate).toLocaleDateString('fr-FR', { 
+                  month: 'long', 
+                  year: 'numeric' 
+                })}
               </div>
-              <p className="text-sm text-blue-600">jours consécutifs</p>
             </div>
           </div>
-        </CardHeader>
+        </CardContent>
       </Card>
 
       {/* Statistiques du mois */}
-      <Card className="bg-white shadow-lg">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                <BarChart3 className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Pitchs ce mois</p>
+                <p className="text-xl font-bold">{progressData.monthlyStats.pitchesCount}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                <Target className="h-5 w-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Score moyen</p>
+                <p className="text-xl font-bold">{progressData.monthlyStats.averageScore}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                <Trophy className="h-5 w-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Meilleur score</p>
+                <p className="text-xl font-bold">{progressData.monthlyStats.bestScore}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                <Clock className="h-5 w-5 text-orange-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Temps total</p>
+                <p className="text-xl font-bold">{Math.round(progressData.monthlyStats.totalWatchTime / 60)}min</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Compétences */}
+      <Card>
         <CardHeader>
-          <CardTitle className="text-lg text-gray-800 flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
-            Statistiques du mois
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            Progression des compétences
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-blue-600">
-                {progressData.monthlyStats.pitchesCount}
-              </div>
-              <p className="text-sm text-gray-600">Pitches</p>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">
-                {progressData.monthlyStats.averageScore}
-              </div>
-              <p className="text-sm text-gray-600">Score moyen</p>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-purple-600">
-                {progressData.monthlyStats.bestScore}
-              </div>
-              <p className="text-sm text-gray-600">Meilleur score</p>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-orange-600">
-                {Math.floor(progressData.monthlyStats.totalWatchTime / 60)}m
-              </div>
-              <p className="text-sm text-gray-600">Temps total</p>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-red-600">
-                {progressData.monthlyStats.skillsImproved}
-              </div>
-              <p className="text-sm text-gray-600">Compétences améliorées</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Évolution des compétences */}
-      <Card className="bg-white shadow-lg">
-        <CardHeader>
-          <CardTitle className="text-lg text-gray-800 flex items-center gap-2">
-            <BarChart3 className="h-5 w-5" />
-            Évolution de tes compétences
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {Object.entries(progressData.skills).map(([skillName, skill]) => {
-            const SkillIcon = getSkillIcon(skillName);
-            const improvement = skill.current - skill.previous;
-            
-            return (
-              <div key={skillName} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <SkillIcon className="h-4 w-4 text-gray-600" />
-                    <span className="font-medium text-gray-800">
-                      {getSkillLabel(skillName)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600">
-                      {skill.previous} → {skill.current}
-                    </span>
-                    <Badge 
-                      variant={improvement > 0 ? "default" : "secondary"}
-                      className={improvement > 0 ? "bg-green-100 text-green-800" : ""}
-                    >
-                      {improvement > 0 ? `+${improvement}` : improvement}
-                    </Badge>
-                  </div>
-                </div>
-                <Progress value={skill.current} className="h-2" />
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
-
-      {/* Réalisations */}
-      <Card className="bg-white shadow-lg">
-        <CardHeader>
-          <CardTitle className="text-lg text-gray-800 flex items-center gap-2">
-            <Award className="h-5 w-5" />
-            Tes réalisations
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {progressData.achievements.map((achievement) => {
-              const AchievementIcon = achievement.icon;
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Object.entries(progressData.skills).map(([skillName, skillData]) => {
+              const IconComponent = getSkillIcon(skillName);
               return (
-                <div
-                  key={achievement.id}
-                  className={`p-4 rounded-lg border-2 ${
-                    achievement.earned 
-                      ? getRarityColor(achievement.rarity)
-                      : 'bg-gray-50 border-gray-200 text-gray-400'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      achievement.earned ? 'bg-white' : 'bg-gray-200'
-                    }`}>
-                      <AchievementIcon className="h-5 w-5" />
+                <div key={skillName} className="p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <IconComponent className="h-4 w-4 text-gray-600" />
+                      <span className="font-medium">{getSkillLabel(skillName)}</span>
                     </div>
-                    <div className="flex-1">
-                      <h3 className="font-medium text-sm mb-1">
-                        {achievement.title}
-                      </h3>
-                      <p className="text-xs mb-2">
-                        {achievement.description}
-                      </p>
-                      {achievement.earned ? (
-                        <Badge variant="outline" className="text-xs">
-                          Obtenu le {new Date(achievement.earnedDate).toLocaleDateString('fr-FR')}
-                        </Badge>
-                      ) : achievement.progress !== undefined ? (
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-xs">
-                            <span>Progression</span>
-                            <span>{achievement.progress}/{achievement.total}</span>
-                          </div>
-                          <Progress 
-                            value={(achievement.progress / achievement.total) * 100} 
-                            className="h-1"
-                          />
-                        </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-lg font-bold">{skillData.current}</span>
+                      {skillData.trend === 'up' ? (
+                        <TrendingUp className="h-4 w-4 text-green-500" />
                       ) : (
-                        <Badge variant="outline" className="text-xs">
-                          À débloquer
-                        </Badge>
+                        <TrendingUp className="h-4 w-4 text-red-500 rotate-180" />
                       )}
                     </div>
                   </div>
+                  <Progress value={skillData.current} className="h-2" />
+                  <p className="text-xs text-gray-500 mt-1">
+                    {skillData.trend === 'up' ? '+' : ''}{skillData.current - skillData.previous} depuis le dernier pitch
+                  </p>
                 </div>
               );
             })}
@@ -677,28 +399,68 @@ const ProgressTracking = ({ userId, userProfile, isVisible = true }) => {
         </CardContent>
       </Card>
 
-      {/* Historique récent */}
+      {/* Accomplissements */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Award className="h-5 w-5" />
+            Accomplissements
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {progressData.achievements.map((achievement) => {
+              const IconComponent = achievement.icon;
+              return (
+                <div 
+                  key={achievement.id} 
+                  className={`p-4 rounded-lg border-2 ${
+                    achievement.earned 
+                      ? getRarityColor(achievement.rarity)
+                      : 'bg-gray-50 border-gray-200 text-gray-400'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <IconComponent className="h-6 w-6" />
+                    <div>
+                      <h4 className="font-semibold">{achievement.title}</h4>
+                      <p className="text-sm opacity-75">{achievement.description}</p>
+                    </div>
+                  </div>
+                  {achievement.earned ? (
+                    <Badge variant="outline" className="text-xs">
+                      Obtenu le {new Date(achievement.earnedDate).toLocaleDateString('fr-FR')}
+                    </Badge>
+                  ) : achievement.progress !== undefined ? (
+                    <div className="mt-2">
+                      <Progress value={(achievement.progress / achievement.total) * 100} className="h-2" />
+                      <p className="text-xs mt-1">{achievement.progress}/{achievement.total}</p>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Pitchs récents */}
       {progressData.recentPitches.length > 0 && (
-        <Card className="bg-white shadow-lg">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-lg text-gray-800 flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Tes derniers pitches
+            <CardTitle className="flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              Pitchs récents
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
+            <div className="space-y-4">
               {progressData.recentPitches.map((pitch) => (
-                <div
-                  key={pitch.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                >
+                <div key={pitch.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                   <div className="flex-1">
-                    <h3 className="font-medium text-gray-800 text-sm mb-1">
-                      {pitch.title}
-                    </h3>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-600">
+                    <h4 className="font-medium">{pitch.title}</h4>
+                    <div className="flex items-center gap-4 mt-1">
+                      <span className="text-sm text-gray-600">
                         {new Date(pitch.date).toLocaleDateString('fr-FR')}
                       </span>
                       <div className="flex gap-1">
@@ -711,3 +473,18 @@ const ProgressTracking = ({ userId, userProfile, isVisible = true }) => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <span className="text-lg font-bold text-blue-600">{pitch.score}</span>
+                    <ChevronRight className="h-4 w-4 text-gray-400" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+};
+
+export default ProgressTracking;
+
