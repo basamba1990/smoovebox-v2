@@ -658,4 +658,4 @@ const ProgressTracking = ({ userId, userProfile, isVisible = true }) => {
                   className={`p-4 rounded-lg border-2 ${
                     achievement.earned 
                       ? getRarityColor(achievement.rarity)
-                      : 'bg-gray
+                      : 'bg-gray-200'
