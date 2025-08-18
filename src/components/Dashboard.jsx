@@ -32,14 +32,14 @@ const Dashboard = () => {
     try {
       // Requête flexible qui recherche par user_id OU par profile_id associé à l\'utilisateur
       const profileQuery = supabase
-        .from(\'profiles\')
-        .select(\'id\')
-        .eq(\'user_id\', user.id)
+        .from('profiles')
+        .select('id')
+        .eq('user_id', user.id)
         .single();
       
       // D\'abord essayer de récupérer les vidéos directement par user_id
       const { data: directVideos, error: directError } = await supabase
-        .from(\'videos\')
+        .from("videos")
         .select(`
           *,
           transcriptions (
@@ -51,8 +51,8 @@ const Dashboard = () => {
             error_message
           )
         `)
-        .eq(\'user_id\', user.id)
-        .order(\'created_at\', { ascending: false });
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
       
       // Si nous avons des résultats directs, les utiliser
       if (!directError && directVideos && directVideos.length > 0) {
@@ -75,7 +75,7 @@ const Dashboard = () => {
       
       if (!profileError && profileData) {
         const { data: profileVideos, error: profileVideosError } = await supabase
-          .from(\'videos\')
+          .from("videos")
           .select(`
             *,
             transcriptions (
@@ -87,8 +87,8 @@ const Dashboard = () => {
               error_message
             )
           `)
-          .eq(\'profile_id\', profileData.id)
-          .order(\'created_at\', { ascending: false });
+          .eq("profile_id", profileData.id)
+          .order("created_at", { ascending: false });
         
         if (!profileVideosError) {
           setVideos(profileVideos || []);
