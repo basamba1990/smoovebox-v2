@@ -14,6 +14,7 @@ const Dashboard = () => {
   const { user } = useAuth();
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('videos');
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
@@ -29,7 +30,11 @@ const Dashboard = () => {
     if (!user) return;
     
     setLoading(true);
+    setError(null);
+    
     try {
+      console.log('Récupération des vidéos pour user_id:', user.id);
+      
       // Essayer de récupérer les vidéos directement par user_id
       const { data: directVideos, error: directError } = await supabase
         .from('videos')
@@ -47,22 +52,75 @@ const Dashboard = () => {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
       
-      if (!directError) {
-        setVideos(directVideos || []);
+      if (directError) {
+        console.error('Erreur lors du chargement des vidéos par user_id:', directError);
         
-        // Mise à jour de la vidéo sélectionnée si nécessaire
-        if (selectedVideo && directVideos) {
-          const updatedSelectedVideo = directVideos.find(v => v.id === selectedVideo.id);
-          if (updatedSelectedVideo) {
-            setSelectedVideo(updatedSelectedVideo);
+        // Si l'erreur est liée à la colonne user_id qui n'existe pas, essayer avec profile_id
+        if (directError.code === '42703' || directError.message.includes('user_id')) {
+          console.log('Tentative de récupération via profile_id...');
+          
+          // Récupérer le profile_id de l'utilisateur
+          const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('user_id', user.id)
+            .single();
+          
+          if (profileError) {
+            console.error('Erreur lors de la récupération du profil:', profileError);
+            throw new Error('Impossible de récupérer le profil utilisateur');
           }
+          
+          if (!profileData) {
+            console.warn('Aucun profil trouvé pour cet utilisateur');
+            setVideos([]);
+            return;
+          }
+          
+          // Récupérer les vidéos via profile_id
+          const { data: profileVideos, error: profileVideosError } = await supabase
+            .from('videos')
+            .select(`
+              *,
+              transcriptions (
+                id,
+                status,
+                confidence_score,
+                processed_at,
+                analysis_result,
+                error_message
+              )
+            `)
+            .eq('profile_id', profileData.id)
+            .order('created_at', { ascending: false });
+          
+          if (profileVideosError) {
+            console.error('Erreur lors du chargement des vidéos par profile_id:', profileVideosError);
+            throw profileVideosError;
+          }
+          
+          setVideos(profileVideos || []);
+          console.log('Vidéos récupérées via profile_id:', profileVideos?.length || 0);
+        } else {
+          throw directError;
         }
       } else {
-        console.error('Erreur lors du chargement des vidéos:', directError);
-        setVideos([]);
+        setVideos(directVideos || []);
+        console.log('Vidéos récupérées via user_id:', directVideos?.length || 0);
       }
+      
+      // Mise à jour de la vidéo sélectionnée si nécessaire
+      if (selectedVideo) {
+        const allVideos = directVideos || [];
+        const updatedSelectedVideo = allVideos.find(v => v.id === selectedVideo.id);
+        if (updatedSelectedVideo) {
+          setSelectedVideo(updatedSelectedVideo);
+        }
+      }
+      
     } catch (error) {
       console.error('Erreur lors du chargement des vidéos:', error);
+      setError(`Erreur de chargement: ${error.message}`);
       setVideos([]);
     } finally {
       setLoading(false);
@@ -287,6 +345,20 @@ const Dashboard = () => {
       );
     }
 
+    if (error) {
+      return (
+        <div className="bg-red-50 p-8 rounded-lg shadow-sm border text-center">
+          <AlertCircle className="h-16 w-16 text-red-400 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2 text-red-800">Erreur de chargement</h3>
+          <p className="text-red-600 mb-4">{error}</p>
+          <Button onClick={fetchVideos} variant="outline">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Réessayer
+          </Button>
+        </div>
+      );
+    }
+
     if (videos.length === 0) {
       return (
         <div className="bg-white p-8 rounded-lg shadow-sm border text-center">
@@ -416,233 +488,126 @@ const Dashboard = () => {
         <div className="p-6">
           <div className="flex justify-between items-start mb-4">
             <div>
-              <h3 className="font-semibold text-xl">{selectedVideo.title || 'Vidéo sans nom'}</h3>
+              <h2 className="text-xl font-semibold">{selectedVideo.title || 'Vidéo sans nom'}</h2>
               <p className="text-sm text-gray-500">{formatDate(selectedVideo.created_at)}</p>
             </div>
             <div className="flex items-center gap-2">
-              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(selectedVideo.status)}`}>
+              <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusBadge(selectedVideo.status)}`}>
                 {getStatusText(selectedVideo.status)}
               </span>
-              
-              {/* Bouton de transcription manuelle */}
-              {canTranscribe && (
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => startTranscription(selectedVideo.id)}
-                  disabled={transcribing}
-                >
-                  {transcribing ? 'Transcription en cours...' : 'Démarrer la transcription'}
-                </Button>
-              )}
             </div>
           </div>
-          
-          {videoUrl ? (
-            <div className="mb-6">
-              <VideoPlayer video={selectedVideo} />
-            </div>
-          ) : (
-            <div className="mb-6 bg-gray-100 aspect-video flex items-center justify-center rounded-lg">
-              <p className="text-gray-500">Vidéo non disponible</p>
+
+          {selectedVideo.description && (
+            <div className="mb-4">
+              <h3 className="font-medium mb-2">Description</h3>
+              <p className="text-gray-700">{selectedVideo.description}</p>
             </div>
           )}
-          
-          <div className="space-y-4">
-            {selectedVideo.transcriptions && selectedVideo.transcriptions.length > 0 ? (
-              <div>
-                <h4 className="font-medium mb-2">Statut de la transcription:</h4>
-                <div className="flex items-center gap-2">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    getStatusBadge(selectedVideo.transcriptions[0].status)
-                  }`}>
-                    {getStatusText(selectedVideo.transcriptions[0].status)}
-                  </span>
-                  
-                  {selectedVideo.transcriptions[0].status === TRANSCRIPTION_STATUS.COMPLETED && (
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => {
-                        setActiveTab('transcriptions');
-                        // Passer la vidéo sélectionnée au composant TranscriptionViewer via l'état local
-                        // ou utiliser un contexte global si nécessaire
-                      }}
-                    >
-                      <FileText className="h-4 w-4 mr-2" />
-                      Voir l'analyse
-                    </Button>
-                  )}
-                </div>
-                
-                {selectedVideo.transcriptions[0].status === TRANSCRIPTION_STATUS.FAILED && (
-                  <div className="mt-3 p-3 bg-red-50 rounded-md flex items-start gap-2">
-                    <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium text-red-800">Échec de la transcription</p>
-                      <p className="text-xs text-red-700 mt-1">
-                        {selectedVideo.transcriptions[0].error_message || 
-                         "Une erreur s'est produite lors de la transcription de cette vidéo."}
-                      </p>
-                      
-                      {/* Bouton pour réessayer la transcription */}
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        className="mt-2"
-                        onClick={() => startTranscription(selectedVideo.id)}
-                        disabled={transcribing}
-                      >
-                        {transcribing ? 'Transcription en cours...' : 'Réessayer la transcription'}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="p-3 bg-yellow-50 rounded-md flex items-start gap-2">
-                <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-yellow-800">Aucune transcription disponible</p>
-                  <p className="text-xs text-yellow-700 mt-1">
-                    La transcription n'a pas encore été initiée ou est en attente de traitement.
-                  </p>
-                  
-                  {/* Bouton pour démarrer la transcription */}
-                  {canTranscribe && (
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      className="mt-2"
-                      onClick={() => startTranscription(selectedVideo.id)}
-                      disabled={transcribing}
-                    >
-                      {transcribing ? 'Transcription en cours...' : 'Démarrer la transcription'}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            <div>
-              <h4 className="font-medium mb-2">Détails:</h4>
-              <div className="bg-gray-50 p-3 rounded-md">
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="text-gray-600">ID:</div>
-                  <div>{selectedVideo.id}</div>
-                  <div className="text-gray-600">Durée:</div>
-                  <div>{selectedVideo.duration ? `${selectedVideo.duration}s` : 'Non disponible'}</div>
-                  <div className="text-gray-600">Format:</div>
-                  <div>{selectedVideo.format || 'Non disponible'}</div>
-                  <div className="text-gray-600">Taille:</div>
-                  <div>{selectedVideo.file_size ? `${(selectedVideo.file_size / (1024 * 1024)).toFixed(2)} MB` : 'Non disponible'}</div>
-                </div>
-              </div>
+
+          {videoUrl && (
+            <div className="mb-6">
+              <h3 className="font-medium mb-2">Aperçu vidéo</h3>
+              <VideoPlayer src={videoUrl} />
             </div>
+          )}
+
+          <div className="flex gap-2 mb-6">
+            <Button 
+              onClick={() => fetchVideos()} 
+              variant="outline"
+              disabled={loading}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Actualiser
+            </Button>
             
-            {/* Afficher les erreurs de la vidéo si présentes */}
-            {selectedVideo.status === 'error' && selectedVideo.error_message && (
-              <div className="p-3 bg-red-50 rounded-md">
-                <h4 className="font-medium text-red-800 mb-1">Erreur:</h4>
-                <p className="text-sm text-red-700">{selectedVideo.error_message}</p>
-              </div>
-            )}
-            
-            {/* Afficher la transcription directe si disponible */}
-            {selectedVideo.transcription && (
-              <div>
-                <h4 className="font-medium mb-2">Transcription:</h4>
-                <div className="bg-gray-50 p-3 rounded-md">
-                  <p className="text-sm whitespace-pre-wrap">{selectedVideo.transcription}</p>
-                </div>
-              </div>
+            {canTranscribe && (
+              <Button 
+                onClick={() => startTranscription(selectedVideo.id)}
+                disabled={transcribing}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                {transcribing ? 'Transcription...' : 'Démarrer transcription'}
+              </Button>
             )}
           </div>
+
+          {selectedVideo.transcriptions && selectedVideo.transcriptions.length > 0 && (
+            <div>
+              <h3 className="font-medium mb-2">Transcription</h3>
+              <TranscriptionViewer transcription={selectedVideo.transcriptions[0]} />
+            </div>
+          )}
         </div>
       </div>
     );
   };
 
-  return (
-    <div className="container mx-auto py-8 px-4">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <div className="flex justify-between items-center mb-6">
-          <TabsList>
-            <TabsTrigger value="videos" className="flex items-center gap-2">
-              <Video className="h-4 w-4" />
-              <span>Mes Vidéos</span>
-            </TabsTrigger>
-            <TabsTrigger value="transcriptions" className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              <span>Analyses IA</span>
-            </TabsTrigger>
-            <TabsTrigger value="upload" className="flex items-center gap-2">
-              <Upload className="h-4 w-4" />
-              <span>Upload</span>
-            </TabsTrigger>
-          </TabsList>
-          
-          {activeTab === 'videos' && (
-            <Button variant="outline" size="sm" onClick={fetchVideos}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Actualiser
-            </Button>
-          )}
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h2 className="text-2xl font-semibold mb-2">Connexion requise</h2>
+          <p className="text-gray-600">Veuillez vous connecter pour accéder au dashboard</p>
         </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
+        <p className="text-gray-600">Gérez vos vidéos et analysez vos performances</p>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="videos">Mes Vidéos</TabsTrigger>
+          <TabsTrigger value="upload">Upload</TabsTrigger>
+          <TabsTrigger value="analytics">Analyses</TabsTrigger>
+        </TabsList>
 
         <TabsContent value="videos" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-1 space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Mes Vidéos</CardTitle>
-                  <CardDescription>
-                    {videos.length} vidéo(s) disponible(s)
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {renderVideoList()}
-                </CardContent>
-              </Card>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <h2 className="text-xl font-semibold mb-4">Liste des vidéos</h2>
+              {renderVideoList()}
             </div>
-            
-            <div className="lg:col-span-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Détails de la vidéo</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {renderVideoDetails()}
-                </CardContent>
-              </Card>
+            <div>
+              <h2 className="text-xl font-semibold mb-4">Détails de la vidéo</h2>
+              {renderVideoDetails()}
             </div>
           </div>
         </TabsContent>
-        
-        <TabsContent value="transcriptions">
-          <Card>
-            <CardHeader>
-              <CardTitle>Analyses IA</CardTitle>
-              <CardDescription>
-                Visualisez les transcriptions et analyses de vos vidéos
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <TranscriptionViewer video={selectedVideo} />
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
+
         <TabsContent value="upload">
           <Card>
             <CardHeader>
-              <CardTitle>Upload de vidéo</CardTitle>
+              <CardTitle>Uploader une nouvelle vidéo</CardTitle>
               <CardDescription>
-                Uploadez une vidéo pour l'analyser avec notre IA
+                Ajoutez une vidéo pour l'analyser avec notre IA
               </CardDescription>
             </CardHeader>
             <CardContent>
               <VideoUploader onUploadComplete={fetchVideos} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="analytics">
+          <Card>
+            <CardHeader>
+              <CardTitle>Analyses et statistiques</CardTitle>
+              <CardDescription>
+                Consultez les performances de vos vidéos
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-gray-600">
+                Les analyses détaillées seront disponibles prochainement.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
