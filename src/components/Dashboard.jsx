@@ -30,14 +30,7 @@ const Dashboard = () => {
     
     setLoading(true);
     try {
-      // Requête flexible qui recherche par user_id OU par profile_id associé à l'utilisateur
-      const profileQuery = supabase
-        .from('profiles')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
-      
-      // D'abord essayer de récupérer les vidéos directement par user_id
+      // Essayer de récupérer les vidéos directement par user_id
       const { data: directVideos, error: directError } = await supabase
         .from('videos')
         .select(`
@@ -54,58 +47,18 @@ const Dashboard = () => {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
       
-      // Si nous avons des résultats directs, les utiliser
-      if (!directError && directVideos && directVideos.length > 0) {
-        setVideos(directVideos);
+      if (!directError) {
+        setVideos(directVideos || []);
         
         // Mise à jour de la vidéo sélectionnée si nécessaire
-        if (selectedVideo) {
+        if (selectedVideo && directVideos) {
           const updatedSelectedVideo = directVideos.find(v => v.id === selectedVideo.id);
           if (updatedSelectedVideo) {
             setSelectedVideo(updatedSelectedVideo);
           }
         }
-        
-        setLoading(false);
-        return;
-      }
-      
-      // Sinon, essayer via profile_id
-      const { data: profileData, error: profileError } = await profileQuery;
-      
-      if (!profileError && profileData) {
-        const { data: profileVideos, error: profileVideosError } = await supabase
-          .from('videos')
-          .select(`
-            *,
-            transcriptions (
-              id,
-              status,
-              confidence_score,
-              processed_at,
-              analysis_result,
-              error_message
-            )
-          `)
-          .eq('profile_id', profileData.id)
-          .order('created_at', { ascending: false });
-        
-        if (!profileVideosError) {
-          setVideos(profileVideos || []);
-          
-          // Mise à jour de la vidéo sélectionnée si nécessaire
-          if (selectedVideo && profileVideos) {
-            const updatedSelectedVideo = profileVideos.find(v => v.id === selectedVideo.id);
-            if (updatedSelectedVideo) {
-              setSelectedVideo(updatedSelectedVideo);
-            }
-          }
-        } else {
-          console.error('Erreur lors du chargement des vidéos par profile_id:', profileVideosError);
-          setVideos([]);
-        }
       } else {
-        // Ni user_id ni profile_id n'ont fonctionné, renvoyer un tableau vide
+        console.error('Erreur lors du chargement des vidéos:', directError);
         setVideos([]);
       }
     } catch (error) {
