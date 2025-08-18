@@ -35,8 +35,8 @@ const Dashboard = () => {
     try {
       console.log('Récupération des vidéos pour user_id:', user.id);
       
-      // Essayer de récupérer les vidéos directement par user_id
-      const { data: directVideos, error: directError } = await supabase
+      // Requête simplifiée utilisant uniquement user_id
+      const { data, error } = await supabase
         .from('videos')
         .select(`
           *,
@@ -52,67 +52,17 @@ const Dashboard = () => {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
       
-      if (directError) {
-        console.error('Erreur lors du chargement des vidéos par user_id:', directError);
-        
-        // Si l'erreur est liée à la colonne user_id qui n'existe pas, essayer avec profile_id
-        if (directError.code === '42703' || directError.message.includes('user_id')) {
-          console.log('Tentative de récupération via profile_id...');
-          
-          // Récupérer le profile_id de l'utilisateur
-          const { data: profileData, error: profileError } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('user_id', user.id)
-            .single();
-          
-          if (profileError) {
-            console.error('Erreur lors de la récupération du profil:', profileError);
-            throw new Error('Impossible de récupérer le profil utilisateur');
-          }
-          
-          if (!profileData) {
-            console.warn('Aucun profil trouvé pour cet utilisateur');
-            setVideos([]);
-            return;
-          }
-          
-          // Récupérer les vidéos via profile_id
-          const { data: profileVideos, error: profileVideosError } = await supabase
-            .from('videos')
-            .select(`
-              *,
-              transcriptions (
-                id,
-                status,
-                confidence_score,
-                processed_at,
-                analysis_result,
-                error_message
-              )
-            `)
-            .eq('profile_id', profileData.id)
-            .order('created_at', { ascending: false });
-          
-          if (profileVideosError) {
-            console.error('Erreur lors du chargement des vidéos par profile_id:', profileVideosError);
-            throw profileVideosError;
-          }
-          
-          setVideos(profileVideos || []);
-          console.log('Vidéos récupérées via profile_id:', profileVideos?.length || 0);
-        } else {
-          throw directError;
-        }
-      } else {
-        setVideos(directVideos || []);
-        console.log('Vidéos récupérées via user_id:', directVideos?.length || 0);
+      if (error) {
+        console.error('Erreur lors du chargement des vidéos:', error);
+        throw error;
       }
+      
+      setVideos(data || []);
+      console.log('Vidéos récupérées:', data?.length || 0);
       
       // Mise à jour de la vidéo sélectionnée si nécessaire
       if (selectedVideo) {
-        const allVideos = directVideos || [];
-        const updatedSelectedVideo = allVideos.find(v => v.id === selectedVideo.id);
+        const updatedSelectedVideo = data?.find(v => v.id === selectedVideo.id);
         if (updatedSelectedVideo) {
           setSelectedVideo(updatedSelectedVideo);
         }
@@ -473,73 +423,79 @@ const Dashboard = () => {
           <Video className="h-16 w-16 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-semibold mb-2">Aucune vidéo sélectionnée</h3>
           <p className="text-gray-600">
-            Sélectionnez une vidéo dans la liste pour voir les détails
+            Sélectionnez une vidéo dans la liste pour voir ses détails
           </p>
         </div>
       );
     }
 
     const videoUrl = getVideoUrl(selectedVideo);
-    const canTranscribe = selectedVideo.status !== 'processing' && 
-                         (!selectedVideo.transcription || selectedVideo.status === 'error');
+    const canTranscribe = selectedVideo.status === VIDEO_STATUS.COMPLETED && 
+                         (!selectedVideo.transcriptions || 
+                          selectedVideo.transcriptions.length === 0 || 
+                          selectedVideo.transcriptions[0].status === TRANSCRIPTION_STATUS.FAILED);
 
     return (
-      <div className="bg-white rounded-lg shadow-sm border">
-        <div className="p-6">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <h2 className="text-xl font-semibold">{selectedVideo.title || 'Vidéo sans nom'}</h2>
-              <p className="text-sm text-gray-500">{formatDate(selectedVideo.created_at)}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusBadge(selectedVideo.status)}`}>
-                {getStatusText(selectedVideo.status)}
-              </span>
-            </div>
-          </div>
-
-          {selectedVideo.description && (
-            <div className="mb-4">
-              <h3 className="font-medium mb-2">Description</h3>
-              <p className="text-gray-700">{selectedVideo.description}</p>
-            </div>
-          )}
-
-          {videoUrl && (
-            <div className="mb-6">
-              <h3 className="font-medium mb-2">Aperçu vidéo</h3>
-              <VideoPlayer src={videoUrl} />
-            </div>
-          )}
-
-          <div className="flex gap-2 mb-6">
-            <Button 
-              onClick={() => fetchVideos()} 
-              variant="outline"
-              disabled={loading}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Actualiser
-            </Button>
+      <div className="bg-white p-6 rounded-lg shadow-sm border">
+        <div className="mb-4">
+          <h3 className="text-xl font-semibold">{selectedVideo.title || 'Vidéo sans nom'}</h3>
+          <p className="text-sm text-gray-500">{formatDate(selectedVideo.created_at)}</p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(selectedVideo.status)}`}>
+              {getStatusText(selectedVideo.status)}
+            </span>
             
-            {canTranscribe && (
-              <Button 
-                onClick={() => startTranscription(selectedVideo.id)}
-                disabled={transcribing}
-              >
-                <FileText className="h-4 w-4 mr-2" />
-                {transcribing ? 'Transcription...' : 'Démarrer transcription'}
-              </Button>
+            {selectedVideo.transcriptions && selectedVideo.transcriptions.length > 0 && (
+              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                getStatusBadge(selectedVideo.transcriptions[0].status)
+              }`}>
+                Transcription: {getStatusText(selectedVideo.transcriptions[0].status)}
+              </span>
             )}
           </div>
+        </div>
 
-          {selectedVideo.transcriptions && selectedVideo.transcriptions.length > 0 && (
-            <div>
-              <h3 className="font-medium mb-2">Transcription</h3>
-              <TranscriptionViewer transcription={selectedVideo.transcriptions[0]} />
-            </div>
+        {selectedVideo.description && (
+          <div className="mb-4">
+            <h3 className="font-medium mb-2">Description</h3>
+            <p className="text-gray-700">{selectedVideo.description}</p>
+          </div>
+        )}
+
+        {videoUrl && (
+          <div className="mb-6">
+            <h3 className="font-medium mb-2">Aperçu vidéo</h3>
+            <VideoPlayer src={videoUrl} />
+          </div>
+        )}
+
+        <div className="flex gap-2 mb-6">
+          <Button 
+            onClick={() => fetchVideos()} 
+            variant="outline"
+            disabled={loading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Actualiser
+          </Button>
+          
+          {canTranscribe && (
+            <Button 
+              onClick={() => startTranscription(selectedVideo.id)}
+              disabled={transcribing}
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              {transcribing ? 'Transcription...' : 'Démarrer transcription'}
+            </Button>
           )}
         </div>
+
+        {selectedVideo.transcriptions && selectedVideo.transcriptions.length > 0 && (
+          <div>
+            <h3 className="font-medium mb-2">Transcription</h3>
+            <TranscriptionViewer transcription={selectedVideo.transcriptions[0]} />
+          </div>
+        )}
       </div>
     );
   };
