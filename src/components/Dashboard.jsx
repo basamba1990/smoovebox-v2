@@ -30,10 +30,16 @@ const Dashboard = () => {
     
     setLoading(true);
     try {
-      // Approche unifiée pour récupérer les vidéos
-      // Essayer d'abord avec la relation directe user_id
-      const { data: directData, error: directError } = await supabase
-        .from('videos')
+      // Requête flexible qui recherche par user_id OU par profile_id associé à l\'utilisateur
+      const profileQuery = supabase
+        .from(\'profiles\')
+        .select(\'id\')
+        .eq(\'user_id\', user.id)
+        .single();
+      
+      // D\'abord essayer de récupérer les vidéos directement par user_id
+      const { data: directVideos, error: directError } = await supabase
+        .from(\'videos\')
         .select(`
           *,
           transcriptions (
@@ -42,19 +48,19 @@ const Dashboard = () => {
             confidence_score,
             processed_at,
             analysis_result,
-            error_message,
-            full_text
+            error_message
           )
         `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (!directError && directData && directData.length > 0) {
-        setVideos(directData);
+        .eq(\'user_id\', user.id)
+        .order(\'created_at\', { ascending: false });
+      
+      // Si nous avons des résultats directs, les utiliser
+      if (!directError && directVideos && directVideos.length > 0) {
+        setVideos(directVideos);
         
-        // Si une vidéo était sélectionnée, mettre à jour ses données
+        // Mise à jour de la vidéo sélectionnée si nécessaire
         if (selectedVideo) {
-          const updatedSelectedVideo = directData.find(v => v.id === selectedVideo.id);
+          const updatedSelectedVideo = directVideos.find(v => v.id === selectedVideo.id);
           if (updatedSelectedVideo) {
             setSelectedVideo(updatedSelectedVideo);
           }
@@ -63,71 +69,13 @@ const Dashboard = () => {
         setLoading(false);
         return;
       }
-
-      // Si la première approche échoue, essayer avec profile_id
-      // D'abord récupérer le profil de l'utilisateur
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
-        
-      if (profileError) {
-        // Si le profil n'existe pas, essayer de le créer
-        if (profileError.code === 'PGRST116' || profileError.code === 'PGRST301') {
-          const { data: newProfile, error: createError } = await supabase
-            .from('profiles')
-            .insert({
-              user_id: user.id,
-              email: user.email,
-              username: user.email?.split('@')[0] || 'user',
-              full_name: user.user_metadata?.full_name || 
-                        `${user.user_metadata?.first_name || ''} ${user.user_metadata?.last_name || ''}`.trim() || null
-            })
-            .select()
-            .single();
-            
-          if (!createError && newProfile) {
-            // Récupérer les vidéos avec le nouveau profile_id
-            const { data, error } = await supabase
-              .from('videos')
-              .select(`
-                *,
-                transcriptions (
-                  id,
-                  status,
-                  confidence_score,
-                  processed_at,
-                  analysis_result,
-                  error_message
-                )
-              `)
-              .eq('profile_id', newProfile.id)
-              .order('created_at', { ascending: false });
-
-            if (!error) {
-              setVideos(data || []);
-              
-              // Si une vidéo était sélectionnée, mettre à jour ses données
-              if (selectedVideo && data) {
-                const updatedSelectedVideo = data.find(v => v.id === selectedVideo.id);
-                if (updatedSelectedVideo) {
-                  setSelectedVideo(updatedSelectedVideo);
-                }
-              }
-            }
-          } else {
-            console.error('Erreur lors de la création du profil:', createError);
-            setVideos([]);
-          }
-        } else {
-          console.error('Erreur lors de la récupération du profil:', profileError);
-          setVideos([]);
-        }
-      } else if (profileData) {
-        // Récupérer les vidéos avec le profile_id existant
-        const { data, error } = await supabase
-          .from('videos')
+      
+      // Sinon, essayer via profile_id
+      const { data: profileData, error: profileError } = await profileQuery;
+      
+      if (!profileError && profileData) {
+        const { data: profileVideos, error: profileVideosError } = await supabase
+          .from(\'videos\')
           .select(`
             *,
             transcriptions (
@@ -139,26 +87,29 @@ const Dashboard = () => {
               error_message
             )
           `)
-          .eq('profile_id', profileData.id)
-          .order('created_at', { ascending: false });
-
-        if (!error) {
-          setVideos(data || []);
+          .eq(\'profile_id\', profileData.id)
+          .order(\'created_at\', { ascending: false });
+        
+        if (!profileVideosError) {
+          setVideos(profileVideos || []);
           
-          // Si une vidéo était sélectionnée, mettre à jour ses données
-          if (selectedVideo && data) {
-            const updatedSelectedVideo = data.find(v => v.id === selectedVideo.id);
+          // Mise à jour de la vidéo sélectionnée si nécessaire
+          if (selectedVideo && profileVideos) {
+            const updatedSelectedVideo = profileVideos.find(v => v.id === selectedVideo.id);
             if (updatedSelectedVideo) {
               setSelectedVideo(updatedSelectedVideo);
             }
           }
         } else {
-          console.error('Erreur lors du chargement des vidéos:', error);
+          console.error(\'Erreur lors du chargement des vidéos par profile_id:\', profileVideosError);
           setVideos([]);
         }
+      } else {
+        // Ni user_id ni profile_id n\'ont fonctionné, renvoyer un tableau vide
+        setVideos([]);
       }
     } catch (error) {
-      console.error('Erreur lors du chargement des vidéos:', error);
+      console.error(\'Erreur lors du chargement des vidéos:\', error);
       setVideos([]);
     } finally {
       setLoading(false);
