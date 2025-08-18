@@ -42,7 +42,8 @@ const Dashboard = () => {
             confidence_score,
             processed_at,
             analysis_result,
-            error_message
+            error_message,
+            full_text
           )
         `)
         .eq('user_id', user.id)
