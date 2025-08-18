@@ -588,4 +588,3 @@ const ProgressTracking = ({ userId, userProfile, isVisible = true }) => {
 
 export default ProgressTracking;
 
-
