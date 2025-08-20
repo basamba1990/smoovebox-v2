@@ -109,27 +109,19 @@ function AppContent() {
       
       console.log('Chargement des données dashboard pour:', user.id);
       
-      // Requête principale pour les données du tableau de bord
+      // CORRECTION: Utilisation de la vue 'video_details' pour récupérer toutes les informations consolidées
       const { data: videos, error: videosError } = await supabase
-        .from('videos')
-        .select('id, title, created_at, duration, status, analysis, transcription_text, thumbnail_url')
+        .from('video_details') // Changement ici: de 'videos' à 'video_details'
+        .select('*') // Sélectionner toutes les colonnes de la vue
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
         
       if (videosError) throw videosError;
       
-      // Récupération des transcriptions associées
-      const { data: transcriptions, error: transcriptionsError } = await supabase
-        .from('transcriptions')
-        .select('video_id, created_at, full_text')
-        .in('video_id', videos.map(video => video.id) || []);
-        
-      if (transcriptionsError) {
-        console.warn('Erreur lors de la récupération des transcriptions:', transcriptionsError);
-        // Continue even with transcription error
-      }
+      // Les transcriptions et analyses sont déjà jointes dans la vue, donc pas besoin de requêtes séparées
       
-      // Récupération des statistiques globales
+      // Récupération des statistiques globales (si la fonction RPC est toujours nécessaire)
+      // Assurez-vous que 'get_user_video_stats' est à jour avec la structure de 'video_details'
       const { data: stats, error: statsError } = await supabase
         .rpc('get_user_video_stats', { user_id_param: user.id });
         
@@ -145,13 +137,16 @@ function AppContent() {
         videosByStatus: {
           uploaded: videos.filter(v => v.status === 'uploaded' || v.status === 'pending').length,
           processing: videos.filter(v => v.status === 'processing' || v.status === 'analyzing').length,
-          transcribed: videos.filter(v => v.status === 'transcribed' || (v.transcription_text && v.transcription_text.length > 0)).length,
-          analyzed: videos.filter(v => v.status === 'analyzed' || v.analysis).length,
+          // CORRECTION: Utiliser transcription_text de la vue pour le statut transcrit
+          transcribed: videos.filter(v => v.transcription_text && v.transcription_text.length > 0).length,
+          // CORRECTION: Utiliser analysis_summary de la vue pour le statut analysé
+          analyzed: videos.filter(v => v.analysis_summary).length,
           failed: videos.filter(v => v.status === 'failed').length
         },
         totalDuration: videos.reduce((sum, video) => sum + (video.duration || 0), 0),
-        transcriptionsCount: transcriptions ? transcriptions.length : 0,
-        analysisCount: videos.filter(v => v.analysis).length,
+        // CORRECTION: Compter les transcriptions et analyses basées sur la vue
+        transcriptionsCount: videos.filter(v => v.transcription_text && v.transcription_text.length > 0).length,
+        analysisCount: videos.filter(v => v.analysis_summary).length,
         videoPerformance: stats?.performance_data || [],
         progressStats: stats?.progress_stats || {
           completed: 0,
@@ -197,7 +192,7 @@ function AppContent() {
             .on('postgres_changes', { 
               event: '*', 
               schema: 'public', 
-              table: 'videos',
+              table: 'videos', // Le canal écoute toujours la table 'videos' pour les changements
               filter: `user_id=eq.${user.id}`
             }, payload => {
               console.log('Changement détecté dans la table videos:', payload);
@@ -415,19 +410,10 @@ function AppContent() {
                   </div>
                   <div className="flex flex-col gap-3 justify-center">
                     <Button 
-                      size="lg"
                       onClick={() => setIsAuthModalOpen(true)}
-                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl w-full sm:w-auto"
+                      className="w-full sm:w-auto px-6 py-3 text-base sm:text-lg"
                     >
-                      Commencer maintenant
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="lg"
-                      onClick={() => setIsAuthModalOpen(true)}
-                      className="hover:bg-blue-50 hover:border-blue-200 transition-all duration-200 w-full sm:w-auto"
-                    >
-                      Se connecter
+                      Commencer l'aventure
                     </Button>
                   </div>
                 </div>
@@ -437,17 +423,16 @@ function AppContent() {
         </div>
       </main>
 
-      {/* Modal d'authentification */}
       <AuthModal 
-        isOpen={isAuthModalOpen} 
+        isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
-        onSuccess={handleAuthSuccess}
+        onAuthSuccess={handleAuthSuccess}
       />
     </div>
   );
 }
 
-function App() {
+export default function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
@@ -456,6 +441,3 @@ function App() {
     </ErrorBoundary>
   );
 }
-
-export default App;
-
