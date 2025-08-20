@@ -109,63 +109,125 @@ function AppContent() {
       
       console.log('Chargement des données dashboard pour:', user.id);
       
-      // CORRECTION: Utilisation de la vue 'video_details' pour récupérer toutes les informations consolidées
+      // Requête principale pour les données du tableau de bord
       const { data: videos, error: videosError } = await supabase
-        .from('video_details') // Changement ici: de 'videos' à 'video_details'
-        .select('*') // Sélectionner toutes les colonnes de la vue
+        .from('videos')
+        .select('id, title, created_at, duration, status, analysis, transcription_text, thumbnail_url')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
         
       if (videosError) throw videosError;
       
-      // Les transcriptions et analyses sont déjà jointes dans la vue, donc pas besoin de requêtes séparées
+      // Récupération des transcriptions associées
+      const { data: transcriptions, error: transcriptionsError } = await supabase
+        .from('transcriptions')
+        .select('video_id, created_at, full_text')
+        .in('video_id', videos.map(video => video.id) || []);
+        
+      if (transcriptionsError) {
+        console.warn('Erreur lors de la récupération des transcriptions:', transcriptionsError);
+        // Continue even with transcription error
+      }
       
-      // Récupération des statistiques globales (si la fonction RPC est toujours nécessaire)
-      // Assurez-vous que 'get_user_video_stats' est à jour avec la structure de 'video_details'
+      // Récupération des statistiques globales
       const { data: stats, error: statsError } = await supabase
         .rpc('get_user_video_stats', { user_id_param: user.id });
         
       if (statsError) {
         console.warn('Erreur lors de la récupération des statistiques:', statsError);
-        // Continuer même en cas d'erreur sur les stats, car les vidéos sont plus importantes
+        // Continue even with stats error
       }
-
-      // CORRECTION: Calcul des statistiques à partir des vidéos récupérées
-      const totalVideos = videos.length;
-      const videosByStatus = videos.reduce((acc, video) => {
-        const status = video.status.toLowerCase();
-        acc[status] = (acc[status] || 0) + 1;
-        
-        // Vérifier si la vidéo a une transcription
-        if (video.transcription_text && video.transcription_text.length > 0) {
-          acc.transcribed = (acc.transcribed || 0) + 1;
-        }
-        // Vérifier si la vidéo a une analyse
-        if (video.analysis_summary && Object.keys(video.analysis_summary).length > 0) {
-          acc.analyzed = (acc.analyzed || 0) + 1;
-        }
-        return acc;
-      }, {});
-
-      setDashboardData({
-        totalVideos,
-        videosByStatus,
-        videoPerformance: stats?.video_performance || [], // Assurez-vous que le nom du champ correspond
-        videosList: videos // Ajouter la liste complète des vidéos pour le Dashboard component
-      });
       
-    } catch (error) {
-      console.error('Erreur lors du chargement des données du dashboard:', error);
-      setDashboardError(`Erreur de chargement des données: ${error.message}`);
+      // Construction des données pour le dashboard
+      const dashboardData = {
+        totalVideos: videos.length,
+        recentVideos: videos.slice(0, 5),
+        videosByStatus: {
+          uploaded: videos.filter(v => v.status === 'uploaded' || v.status === 'pending').length,
+          processing: videos.filter(v => v.status === 'processing' || v.status === 'analyzing').length,
+          transcribed: videos.filter(v => v.status === 'transcribed' || (v.transcription_text && v.transcription_text.length > 0)).length,
+          analyzed: videos.filter(v => v.status === 'analyzed' || v.analysis).length,
+          failed: videos.filter(v => v.status === 'failed').length
+        },
+        totalDuration: videos.reduce((sum, video) => sum + (video.duration || 0), 0),
+        transcriptionsCount: transcriptions ? transcriptions.length : 0,
+        analysisCount: videos.filter(v => v.analysis).length,
+        videoPerformance: stats?.performance_data || [],
+        progressStats: stats?.progress_stats || {
+          completed: 0,
+          inProgress: 0,
+          totalTime: 0
+        }
+      };
+      
+      setDashboardData(dashboardData);
+      console.log('Données dashboard chargées avec succès:', dashboardData);
+    } catch (err) {
+      console.error('Erreur lors du chargement des données dashboard:', err);
       setDashboardData(null);
+      setDashboardError(err.message || 'Erreur lors de la récupération des données');
     } finally {
       setDashboardLoading(false);
     }
   };
 
+  // Charger les données du dashboard avec gestion des erreurs
   useEffect(() => {
-    if (isAuthenticated && user && activeTab === 'dashboard') {
-      loadDashboardData();
+    let mounted = true;
+    let dataTimeout = null;
+    
+    if (activeTab === 'dashboard' && isAuthenticated) {
+      dataTimeout = setTimeout(() => {
+        if (mounted) {
+          loadDashboardData().catch(err => {
+            console.error('Erreur non gérée lors du chargement des données:', err);
+            if (mounted) {
+              setDashboardError(err.message || 'Erreur inattendue');
+              setDashboardLoading(false);
+            }
+          });
+        }
+      }, 200);
+      
+      let videosChannel = null;
+      if (user && connectionStatus === 'connected') {
+        try {
+          videosChannel = supabase
+            .channel('videos_changes')
+            .on('postgres_changes', { 
+              event: '*', 
+              schema: 'public', 
+              table: 'videos',
+              filter: `user_id=eq.${user.id}`
+            }, payload => {
+              console.log('Changement détecté dans la table videos:', payload);
+              if (mounted) {
+                loadDashboardData().catch(err => {
+                  console.error('Erreur lors du rechargement après changement:', err);
+                });
+              }
+            })
+            .subscribe((status) => {
+              console.log('Statut de souscription aux changements videos:', status);
+            });
+        } catch (err) {
+          console.error('Erreur lors de la configuration du canal realtime:', err);
+        }
+      }
+
+      return () => {
+        mounted = false;
+        if (dataTimeout) {
+          clearTimeout(dataTimeout);
+        }
+        if (videosChannel) {
+          try {
+            supabase.removeChannel(videosChannel);
+          } catch (err) {
+            console.error('Erreur lors de la suppression du canal:', err);
+          }
+        }
+      };
     }
   }, [user, activeTab, connectionStatus, isAuthenticated]);
 
@@ -353,10 +415,19 @@ function AppContent() {
                   </div>
                   <div className="flex flex-col gap-3 justify-center">
                     <Button 
+                      size="lg"
                       onClick={() => setIsAuthModalOpen(true)}
-                      className="w-full sm:w-auto px-6 py-3 text-base sm:text-lg"
+                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl w-full sm:w-auto"
                     >
-                      Commencer l'aventure
+                      Commencer maintenant
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="lg"
+                      onClick={() => setIsAuthModalOpen(true)}
+                      className="hover:bg-blue-50 hover:border-blue-200 transition-all duration-200 w-full sm:w-auto"
+                    >
+                      Se connecter
                     </Button>
                   </div>
                 </div>
@@ -366,16 +437,17 @@ function AppContent() {
         </div>
       </main>
 
+      {/* Modal d'authentification */}
       <AuthModal 
-        isOpen={isAuthModalOpen}
+        isOpen={isAuthModalOpen} 
         onClose={() => setIsAuthModalOpen(false)}
-        onAuthSuccess={handleAuthSuccess}
+        onSuccess={handleAuthSuccess}
       />
     </div>
   );
 }
 
-export default function App() {
+function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
@@ -385,4 +457,5 @@ export default function App() {
   );
 }
 
+export default App;
 
