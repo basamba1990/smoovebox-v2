@@ -547,17 +547,13 @@ const Dashboard = ({ data }) => {
           <h3 className="text-xl font-semibold">{selectedVideo.title || 'Vidéo sans nom'}</h3>
           <p className="text-sm text-gray-500">{formatDate(selectedVideo.created_at)}</p>
           <div className="flex items-center gap-2 mt-2">
-            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-              getStatusBadge(selectedVideo.status, hasTranscription, hasAnalysis)
-            }`}>
+            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(selectedVideo.status, hasTranscription, hasAnalysis)}`}>
               {getStatusText(selectedVideo.status, hasTranscription, hasAnalysis)}
             </span>
             
             {/* CORRECTION: Afficher le statut de transcription si disponible */}
             {selectedVideo.transcription_status && (
-              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                getStatusBadge(selectedVideo.transcription_status)
-              }`}>
+              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(selectedVideo.transcription_status)}`}>
                 Transcription: {getStatusText(selectedVideo.transcription_status)}
               </span>
             )}
@@ -701,3 +697,4 @@ const Dashboard = ({ data }) => {
 };
 
 export default Dashboard;
+
