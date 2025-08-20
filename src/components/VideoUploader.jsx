@@ -15,7 +15,8 @@ const VideoUploader = ({ onUploadComplete }) => {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  const [uploadPhase, setUploadPhase] = useState('idle');
+  const [transcribing, setTranscribing] = useState(false);
+  const [uploadPhase, setUploadPhase] = useState('idle'); // idle, uploading, processing, success, error
   const fileInputRef = useRef(null);
   
   const handleFileChange = (e) => {
@@ -51,7 +52,7 @@ const VideoUploader = ({ onUploadComplete }) => {
     
     // Utiliser le nom du fichier comme titre par défaut si aucun titre n'est défini
     if (!title) {
-      const fileName = selectedFile.name.replace(/\.[^/.]+$/, '');
+      const fileName = selectedFile.name.replace(/\.[^/.]+$/, ''); // Enlever l'extension
       setTitle(fileName);
     }
   };
@@ -61,7 +62,6 @@ const VideoUploader = ({ onUploadComplete }) => {
     setError(null);
     setSuccess(null);
     
-    // Vérifications préliminaires
     if (!user) {
       setError('Vous devez être connecté pour uploader une vidéo');
       return;
@@ -76,28 +76,64 @@ const VideoUploader = ({ onUploadComplete }) => {
       setError('Veuillez entrer un titre pour la vidéo');
       return;
     }
-
-    // Vérifier la session utilisateur
-    try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session) {
-        setError('Session expirée. Veuillez vous reconnecter.');
-        return;
-      }
-    } catch (err) {
-      setError('Erreur de vérification de session. Veuillez vous reconnecter.');
-      return;
-    }
     
-    let videoId = null; // Pour stocker l'ID de la vidéo si l'insertion réussit
-
     try {
       setUploading(true);
       setUploadPhase('uploading');
       setProgress(0);
       
-      // 1. Créer d'abord l'entrée dans la base de données avec un statut initial
-      console.log('Creating database entry first...');
+      // CORRECTION 5: Barre de progression fiable avec événements réels
+      const filePath = `${user.id}/${Date.now()}_${file.name}`;
+      console.log('Uploading file to path:', filePath);
+      
+      // Utiliser XMLHttpRequest pour avoir un contrôle précis sur la progression
+      const uploadPromise = new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        
+        // Gestionnaire de progression
+        xhr.upload.addEventListener('progress', (event) => {
+          if (event.lengthComputable) {
+            const percentComplete = Math.round((event.loaded / event.total) * 100);
+            setProgress(percentComplete);
+            console.log(`Upload progress: ${percentComplete}%`);
+          }
+        });
+        
+        // Gestionnaire de succès
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(xhr.response);
+          } else {
+            reject(new Error(`Upload failed with status: ${xhr.status}`));
+          }
+        });
+        
+        // Gestionnaire d'erreur
+        xhr.addEventListener('error', () => {
+          reject(new Error('Upload failed due to network error'));
+        });
+        
+        // Configuration de la requête
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        
+        xhr.open('POST', `${supabaseUrl}/storage/v1/object/videos/${filePath}`);
+        xhr.setRequestHeader('Authorization', `Bearer ${supabaseKey}`);
+        xhr.setRequestHeader('Content-Type', file.type);
+        xhr.setRequestHeader('Cache-Control', '3600');
+        
+        // Envoyer le fichier
+        xhr.send(file);
+      });
+      
+      // Attendre la fin de l'upload
+      await uploadPromise;
+      
+      setProgress(100);
+      setUploadPhase('processing');
+      
+      // 2. Créer l'entrée dans la base de données
+      console.log('Creating database entry...');
       
       const { data: videoData, error: dbError } = await supabase
         .from('videos')
@@ -106,7 +142,9 @@ const VideoUploader = ({ onUploadComplete }) => {
             user_id: user.id,
             title: title.trim(),
             description: description.trim() || null,
-            status: 'uploading', // Statut initial
+            file_path: filePath,
+            storage_path: filePath,
+            status: 'uploaded', // CORRECTION: Utiliser le statut 'uploaded' au lieu de 'pending'
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           }
@@ -115,89 +153,16 @@ const VideoUploader = ({ onUploadComplete }) => {
         .single();
       
       if (dbError) {
-        console.error('Erreur base de données:', dbError);
         throw new Error(`Erreur lors de la création de l'entrée: ${dbError.message}`);
       }
       
-      videoId = videoData.id; // Stocker l'ID de la vidéo
-      console.log('Video entry created:', videoData);
-      setProgress(20);
+      console.log('Video entry created successfully:', videoData);
       
-      // 2. Upload du fichier avec un nom basé sur l'ID de la vidéo
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${videoId}_${Date.now()}.${fileExt}`;
-      const filePath = `${user.id}/${fileName}`;
-      console.log('Uploading file to path:', filePath);
-      
-      // Simuler la progression
-      const progressInterval = setInterval(() => {
-        setProgress(prev => {
-          if (prev < 80) {
-            return prev + Math.random() * 10;
-          }
-          return prev;
-        });
-      }, 300);
-      
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('videos')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-          contentType: file.type
-        });
-      
-      clearInterval(progressInterval);
-      
-      if (uploadError) {
-        console.error('Erreur d\'upload Supabase:', uploadError);
-        
-        // Mettre à jour le statut de la vidéo en 'failed' en cas d'échec d'upload
-        await supabase.from('videos').update({ status: 'failed', error_message: `Erreur d'upload: ${uploadError.message}` }).eq('id', videoId);
-        
-        // Messages d'erreur spécifiques
-        if (uploadError.message.includes('Duplicate')) {
-          throw new Error('Un fichier avec ce nom existe déjà. Veuillez renommer votre fichier.');
-        } else if (uploadError.message.includes('size')) {
-          throw new Error('Le fichier est trop volumineux pour être uploadé.');
-        } else if (uploadError.message.includes('type')) {
-          throw new Error('Type de fichier non autorisé.');
-        } else {
-          throw new Error(`Erreur d'upload: ${uploadError.message}`);
-        }
-      }
-      
-      console.log('Upload Supabase réussi:', uploadData);
-      setProgress(90);
-      
-      // 3. Générer l'URL publique après l'upload réussi
-      const { data: publicUrlData } = supabase.storage
-        .from('videos')
-        .getPublicUrl(uploadData.path);
-
-      // 4. Mettre à jour l'entrée avec les informations d'upload et le statut 'uploaded'
-      const { error: updateError } = await supabase
-        .from('videos')
-        .update({
-          file_path: uploadData.path,
-          storage_path: uploadData.path,
-          public_url: publicUrlData?.publicUrl || null, // Assurez-vous que public_url est bien défini
-          status: 'uploaded',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId);
-      
-      if (updateError) {
-        console.error('Erreur mise à jour:', updateError);
-        throw new Error(`Erreur lors de la mise à jour: ${updateError.message}`);
-      }
-      
-      setProgress(100);
       setUploadPhase('success');
       setSuccess({
         message: 'Vidéo uploadée avec succès !',
         details: `La vidéo "${title}" a été uploadée et est prête pour la transcription.`,
-        videoId: videoId
+        videoId: videoData.id
       });
       
       // Réinitialiser le formulaire
@@ -211,23 +176,13 @@ const VideoUploader = ({ onUploadComplete }) => {
       
       // Notifier le parent du succès
       if (onUploadComplete) {
-        onUploadComplete({ ...videoData, file_path: uploadData.path, storage_path: uploadData.path, public_url: publicUrlData?.publicUrl });
+        onUploadComplete(videoData);
       }
       
     } catch (err) {
       console.error('Erreur lors de l\'upload:', err);
       setUploadPhase('error');
-      setError(err.message || 'Une erreur inattendue s\'est produite');
-      
-      // Si une vidéo a été insérée mais l'upload ou la mise à jour a échoué, la supprimer
-      if (videoId) {
-        try {
-          await supabase.from('videos').delete().eq('id', videoId);
-          console.log('Vidéo partiellement uploadée supprimée:', videoId);
-        } catch (deleteErr) {
-          console.error('Erreur lors de la suppression de la vidéo partiellement uploadée:', deleteErr);
-        }
-      }
+      setError(`Erreur lors de l'upload: ${err.message}`);
     } finally {
       setUploading(false);
     }
@@ -249,7 +204,9 @@ const VideoUploader = ({ onUploadComplete }) => {
   const getPhaseMessage = () => {
     switch (uploadPhase) {
       case 'uploading':
-        return `Upload en cours... ${Math.round(progress)}%`;
+        return `Upload en cours... ${progress}%`;
+      case 'processing':
+        return 'Traitement de la vidéo...';
       case 'success':
         return 'Upload terminé avec succès !';
       case 'error':
@@ -262,6 +219,7 @@ const VideoUploader = ({ onUploadComplete }) => {
   const getPhaseColor = () => {
     switch (uploadPhase) {
       case 'uploading':
+      case 'processing':
         return 'text-blue-600';
       case 'success':
         return 'text-green-600';
@@ -298,11 +256,11 @@ const VideoUploader = ({ onUploadComplete }) => {
         </div>
 
         {/* Barre de progression */}
-        {uploading && (
+        {(uploading || uploadPhase === 'processing') && (
           <div className="space-y-2">
             <Progress value={progress} className="w-full" />
             <p className="text-sm text-gray-600 text-center">
-              {Math.round(progress)}% uploadé
+              {uploadPhase === 'uploading' ? `${progress}% uploadé` : 'Traitement en cours...'}
             </p>
           </div>
         )}
@@ -339,15 +297,6 @@ const VideoUploader = ({ onUploadComplete }) => {
               <div className="flex-1">
                 <h4 className="font-medium text-red-800">Erreur d'upload</h4>
                 <p className="text-sm text-red-700 mt-1">{error}</p>
-                <div className="mt-2 text-xs text-red-600">
-                  <p>Vérifications à effectuer :</p>
-                  <ul className="list-disc list-inside mt-1">
-                    <li>Connexion internet stable</li>
-                    <li>Fichier non corrompu</li>
-                    <li>Espace de stockage suffisant</li>
-                    <li>Session utilisateur valide</li>
-                  </ul>
-                </div>
               </div>
               <Button
                 variant="ghost"
@@ -422,7 +371,7 @@ const VideoUploader = ({ onUploadComplete }) => {
               {uploading ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Upload en cours...
+                  {uploadPhase === 'uploading' ? 'Upload...' : 'Traitement...'}
                 </>
               ) : (
                 <>
@@ -462,3 +411,4 @@ const VideoUploader = ({ onUploadComplete }) => {
 };
 
 export default VideoUploader;
+
