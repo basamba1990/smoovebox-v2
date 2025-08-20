@@ -37,7 +37,7 @@ const Dashboard = ({ data }) => {
       
       // CORRECTION: Utilisation de la vue 'video_details' pour récupérer toutes les informations consolidées
       const { data, error } = await supabase
-        .from('video_details') // Changement ici: de 'videos' à 'video_details'
+        .from('video_details') // Utilisation de la vue video_details
         .select(`*`)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
@@ -127,7 +127,7 @@ const Dashboard = ({ data }) => {
     }
   };
 
-  // Nouvelle fonction pour démarrer manuellement la transcription
+  // Fonction pour démarrer manuellement la transcription
   const startTranscription = async (videoId) => {
     try {
       setTranscribing(true);
@@ -205,7 +205,7 @@ const Dashboard = ({ data }) => {
     });
   };
 
-  // CORRECTION: Amélioration du mapping des statuts avec les étapes demandées
+  // CORRECTION: Amélioration du mapping des statuts avec les données de la vue video_details
   const getStatusBadge = (status, hasTranscription = false, hasAnalysis = false) => {
     if (!status) return 'bg-gray-100 text-gray-800';
     
@@ -460,41 +460,42 @@ const Dashboard = ({ data }) => {
                   {deleteConfirm === video.id ? (
                     <>
                       <Button 
-                        variant="destructive" 
-                        size="sm" 
                         onClick={(e) => {
                           e.stopPropagation();
                           deleteVideo(video.id);
                         }}
+                        variant="destructive"
+                        size="sm"
                       >
-                        Confirmer la suppression
+                        Confirmer
                       </Button>
                       <Button 
-                        variant="outline" 
-                        size="sm" 
                         onClick={(e) => {
                           e.stopPropagation();
                           setDeleteConfirm(null);
                         }}
+                        variant="outline"
+                        size="sm"
                       >
                         Annuler
                       </Button>
                     </>
                   ) : (
                     <Button 
-                      variant="ghost" 
-                      size="sm" 
                       onClick={(e) => {
                         e.stopPropagation();
                         setDeleteConfirm(video.id);
                       }}
+                      variant="outline"
+                      size="sm"
                     >
-                      <Trash2 className="h-4 w-4 text-gray-500" />
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   )}
                 </div>
               </div>
               
+              {/* CORRECTION: Afficher l'erreur de vidéo si disponible */}
               {video.status === VIDEO_STATUS.FAILED && (
                 <div className="mt-3 p-2 bg-red-50 rounded-md flex items-start gap-2">
                   <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
@@ -509,7 +510,7 @@ const Dashboard = ({ data }) => {
                 <div className="mt-3 p-2 bg-red-50 rounded-md flex items-start gap-2">
                   <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
                   <p className="text-xs text-red-700">
-                    {video.transcription_error_message || "Une erreur s'est produite lors de la transcription."}
+                    {video.transcription_error || "Une erreur s'est produite lors de la transcription."}
                   </p>
                 </div>
               )}
