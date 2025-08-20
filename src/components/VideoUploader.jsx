@@ -89,12 +89,14 @@ const VideoUploader = ({ onUploadComplete }) => {
       return;
     }
     
+    let videoId = null; // Pour stocker l'ID de la vidéo si l'insertion réussit
+
     try {
       setUploading(true);
       setUploadPhase('uploading');
       setProgress(0);
       
-      // Créer d'abord l'entrée dans la base de données
+      // 1. Créer d'abord l'entrée dans la base de données avec un statut initial
       console.log('Creating database entry first...');
       
       const { data: videoData, error: dbError } = await supabase
@@ -104,7 +106,7 @@ const VideoUploader = ({ onUploadComplete }) => {
             user_id: user.id,
             title: title.trim(),
             description: description.trim() || null,
-            status: 'uploading',
+            status: 'uploading', // Statut initial
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           }
@@ -117,11 +119,14 @@ const VideoUploader = ({ onUploadComplete }) => {
         throw new Error(`Erreur lors de la création de l'entrée: ${dbError.message}`);
       }
       
+      videoId = videoData.id; // Stocker l'ID de la vidéo
       console.log('Video entry created:', videoData);
       setProgress(20);
       
-      // Upload du fichier avec un nom basé sur l'ID de la vidéo
-      const filePath = `${user.id}/${videoData.id}_${Date.now()}_${file.name}`;
+      // 2. Upload du fichier avec un nom basé sur l'ID de la vidéo
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${videoId}_${Date.now()}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
       console.log('Uploading file to path:', filePath);
       
       // Simuler la progression
@@ -147,8 +152,8 @@ const VideoUploader = ({ onUploadComplete }) => {
       if (uploadError) {
         console.error('Erreur d\'upload Supabase:', uploadError);
         
-        // Supprimer l'entrée de la base de données en cas d'échec d'upload
-        await supabase.from('videos').delete().eq('id', videoData.id);
+        // Mettre à jour le statut de la vidéo en 'failed' en cas d'échec d'upload
+        await supabase.from('videos').update({ status: 'failed', error_message: `Erreur d'upload: ${uploadError.message}` }).eq('id', videoId);
         
         // Messages d'erreur spécifiques
         if (uploadError.message.includes('Duplicate')) {
@@ -165,16 +170,22 @@ const VideoUploader = ({ onUploadComplete }) => {
       console.log('Upload Supabase réussi:', uploadData);
       setProgress(90);
       
-      // Mettre à jour l'entrée avec les informations d'upload
+      // 3. Générer l'URL publique après l'upload réussi
+      const { data: publicUrlData } = supabase.storage
+        .from('videos')
+        .getPublicUrl(uploadData.path);
+
+      // 4. Mettre à jour l'entrée avec les informations d'upload et le statut 'uploaded'
       const { error: updateError } = await supabase
         .from('videos')
         .update({
           file_path: uploadData.path,
           storage_path: uploadData.path,
+          public_url: publicUrlData?.publicUrl || null, // Assurez-vous que public_url est bien défini
           status: 'uploaded',
           updated_at: new Date().toISOString()
         })
-        .eq('id', videoData.id);
+        .eq('id', videoId);
       
       if (updateError) {
         console.error('Erreur mise à jour:', updateError);
@@ -186,7 +197,7 @@ const VideoUploader = ({ onUploadComplete }) => {
       setSuccess({
         message: 'Vidéo uploadée avec succès !',
         details: `La vidéo "${title}" a été uploadée et est prête pour la transcription.`,
-        videoId: videoData.id
+        videoId: videoId
       });
       
       // Réinitialiser le formulaire
@@ -200,13 +211,23 @@ const VideoUploader = ({ onUploadComplete }) => {
       
       // Notifier le parent du succès
       if (onUploadComplete) {
-        onUploadComplete({ ...videoData, file_path: uploadData.path, storage_path: uploadData.path });
+        onUploadComplete({ ...videoData, file_path: uploadData.path, storage_path: uploadData.path, public_url: publicUrlData?.publicUrl });
       }
       
     } catch (err) {
       console.error('Erreur lors de l\'upload:', err);
       setUploadPhase('error');
       setError(err.message || 'Une erreur inattendue s\'est produite');
+      
+      // Si une vidéo a été insérée mais l'upload ou la mise à jour a échoué, la supprimer
+      if (videoId) {
+        try {
+          await supabase.from('videos').delete().eq('id', videoId);
+          console.log('Vidéo partiellement uploadée supprimée:', videoId);
+        } catch (deleteErr) {
+          console.error('Erreur lors de la suppression de la vidéo partiellement uploadée:', deleteErr);
+        }
+      }
     } finally {
       setUploading(false);
     }
