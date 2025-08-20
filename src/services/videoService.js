@@ -7,19 +7,17 @@ import { VIDEO_STATUS, toDatabaseStatus } from '../constants/videoStatus';
  */
 export const videoService = {
   /**
-   * Récupère une vidéo par son ID
+   * CORRECTION: Récupère une vidéo par son ID depuis la vue video_details
    * @param {string} id - ID de la vidéo
    * @returns {Promise<Object>} - Données de la vidéo
    */
   async getVideoById(id) {
     if (!id) throw new Error('ID de vidéo requis');
     
+    // CORRECTION: Utiliser la vue video_details pour récupérer toutes les informations consolidées
     const { data, error } = await supabase
-      .from('videos')
-      .select(`
-        *,
-        profiles:profile_id(username, avatar_url, full_name)
-      `)
+      .from('video_details') // Changement ici: utilisation de la vue
+      .select('*') // Toutes les colonnes de la vue sont déjà jointes
       .eq('id', id)
       .single();
     
@@ -28,18 +26,16 @@ export const videoService = {
   },
 
   /**
-   * Récupère les vidéos publiques
+   * CORRECTION: Récupère les vidéos publiques depuis la vue video_details
    * @param {number} limit - Nombre de vidéos à récupérer
    * @param {number} page - Numéro de page
    * @returns {Promise<Array>} - Liste des vidéos
    */
   async getPublicVideos(limit = 10, page = 0) {
+    // CORRECTION: Utiliser la vue video_details
     const { data, error } = await supabase
-      .from('videos')
-      .select(`
-        *,
-        profiles:profile_id(username, avatar_url, full_name)
-      `)
+      .from('video_details') // Changement ici: utilisation de la vue
+      .select('*') // Toutes les colonnes de la vue sont déjà jointes
       .eq('is_public', true)
       .eq('status', 'published')
       .order('created_at', { ascending: false })
@@ -50,19 +46,17 @@ export const videoService = {
   },
 
   /**
-   * Récupère les vidéos de l'utilisateur connecté
+   * CORRECTION: Récupère les vidéos de l'utilisateur connecté depuis la vue video_details
    * @returns {Promise<Array>} - Liste des vidéos
    */
   async getUserVideos() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Utilisateur non connecté');
     
+    // CORRECTION: Utiliser la vue video_details
     const { data, error } = await supabase
-      .from('videos')
-      .select(`
-        *,
-        profiles:profile_id(username, avatar_url, full_name)
-      `)
+      .from('video_details') // Changement ici: utilisation de la vue
+      .select('*') // Toutes les colonnes de la vue sont déjà jointes
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
     
@@ -97,9 +91,9 @@ export const videoService = {
       
       const profileId = profileData?.id || null;
 
-      // 2. Créer l'entrée vidéo dans la base de données
+      // 2. Créer l'entrée vidéo dans la base de données (table videos, pas la vue)
       const { data: videoData, error: videoError } = await supabase
-        .from('videos')
+        .from('videos') // Utiliser la table videos pour l'insertion
         .insert({
           title: metadata.title.trim(),
           description: metadata.description?.trim() || null,
@@ -136,7 +130,7 @@ export const videoService = {
           .from('videos')
           .update({ 
             status: toDatabaseStatus(VIDEO_STATUS.ERROR),
-            transcription_error: `Erreur d'upload: ${uploadError.message}`
+            error_message: `Erreur d'upload: ${uploadError.message}` // CORRECTION: Utiliser error_message
           })
           .eq('id', videoData.id);
           
@@ -179,7 +173,7 @@ export const videoService = {
     if (!videoId) throw new Error('ID de vidéo requis');
     
     try {
-      // 1. Mettre à jour le statut de la vidéo
+      // 1. Mettre à jour le statut de la vidéo (table videos)
       await this.updateVideoStatus(videoId, VIDEO_STATUS.TRANSCRIBING);
       
       // 2. Appeler la fonction Edge pour la transcription
@@ -206,7 +200,7 @@ export const videoService = {
           .from('videos')
           .update({ 
             status: toDatabaseStatus(VIDEO_STATUS.ERROR),
-            transcription_error: errorData.error || `Erreur HTTP ${response.status}`
+            error_message: errorData.error || `Erreur HTTP ${response.status}` // CORRECTION: Utiliser error_message
           })
           .eq('id', videoId);
           
@@ -224,7 +218,7 @@ export const videoService = {
           .from('videos')
           .update({ 
             status: toDatabaseStatus(VIDEO_STATUS.ERROR),
-            transcription_error: result.error || 'Échec de la transcription'
+            error_message: result.error || 'Échec de la transcription' // CORRECTION: Utiliser error_message
           })
           .eq('id', videoId);
           
@@ -239,7 +233,7 @@ export const videoService = {
           .from('videos')
           .update({ 
             status: toDatabaseStatus(VIDEO_STATUS.ERROR),
-            transcription_error: error.message || 'Erreur inconnue lors de la transcription'
+            error_message: error.message || 'Erreur inconnue lors de la transcription' // CORRECTION: Utiliser error_message
           })
           .eq('id', videoId);
       } catch (updateError) {
@@ -251,21 +245,22 @@ export const videoService = {
   },
 
   /**
-   * Récupère la transcription d'une vidéo
+   * CORRECTION: Récupère la transcription d'une vidéo depuis la vue video_details
    * @param {string} videoId - ID de la vidéo
    * @returns {Promise<Object>} - Données de transcription
    */
   async getTranscription(videoId) {
     if (!videoId) throw new Error('ID de vidéo requis');
     
+    // CORRECTION: Utiliser la vue video_details pour récupérer la transcription
     const { data, error } = await supabase
-      .from('transcriptions')
-      .select('*')
-      .eq('video_id', videoId)
-      .order('start_time', { ascending: true });
+      .from('video_details')
+      .select('transcription_text, transcription_data, transcription_id, transcription_status')
+      .eq('id', videoId)
+      .single();
     
     if (error) throw error;
-    return data || [];
+    return data || null;
   },
 
   /**
@@ -285,7 +280,7 @@ export const videoService = {
       if (!session) throw new Error('Session non disponible');
       
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-video`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-transcription`,
         {
           method: 'POST',
           headers: {
@@ -304,7 +299,7 @@ export const videoService = {
           .from('videos')
           .update({ 
             status: toDatabaseStatus(VIDEO_STATUS.ERROR),
-            analysis_error: errorData.error || `Erreur HTTP ${response.status}`
+            error_message: errorData.error || `Erreur HTTP ${response.status}` // CORRECTION: Utiliser error_message
           })
           .eq('id', videoId);
           
@@ -322,7 +317,7 @@ export const videoService = {
           .from('videos')
           .update({ 
             status: toDatabaseStatus(VIDEO_STATUS.ERROR),
-            analysis_error: result.error || 'Échec de l\'analyse'
+            error_message: result.error || 'Échec de l\'analyse' // CORRECTION: Utiliser error_message
           })
           .eq('id', videoId);
           
@@ -337,7 +332,7 @@ export const videoService = {
           .from('videos')
           .update({ 
             status: toDatabaseStatus(VIDEO_STATUS.ERROR),
-            analysis_error: error.message || 'Erreur inconnue lors de l\'analyse'
+            error_message: error.message || 'Erreur inconnue lors de l\'analyse' // CORRECTION: Utiliser error_message
           })
           .eq('id', videoId);
       } catch (updateError) {
@@ -349,17 +344,18 @@ export const videoService = {
   },
 
   /**
-   * Récupère l'analyse d'une vidéo
+   * CORRECTION: Récupère l'analyse d'une vidéo depuis la vue video_details
    * @param {string} videoId - ID de la vidéo
    * @returns {Promise<Object>} - Données d'analyse
    */
   async getAnalysis(videoId) {
     if (!videoId) throw new Error('ID de vidéo requis');
     
+    // CORRECTION: Utiliser la vue video_details pour récupérer l'analyse
     const { data, error } = await supabase
-      .from('video_analyses')
-      .select('*')
-      .eq('video_id', videoId)
+      .from('video_details')
+      .select('analysis_id, analysis_summary, analysis_keywords, analysis_sentiment, analysis_created_at')
+      .eq('id', videoId)
       .single();
     
     if (error && error.code !== 'PGRST116') throw error;
@@ -378,8 +374,9 @@ export const videoService = {
     
     const dbStatus = toDatabaseStatus(status);
     
+    // CORRECTION: Mettre à jour la table videos (pas la vue)
     const { data, error } = await supabase
-      .from('videos')
+      .from('videos') // Utiliser la table videos pour la mise à jour
       .update({ status: dbStatus })
       .eq('id', videoId)
       .select()
@@ -399,8 +396,9 @@ export const videoService = {
     if (!videoId) throw new Error('ID de vidéo requis');
     if (!metadata) throw new Error('Métadonnées requises');
     
+    // CORRECTION: Mettre à jour la table videos (pas la vue)
     const { data, error } = await supabase
-      .from('videos')
+      .from('videos') // Utiliser la table videos pour la mise à jour
       .update({
         title: metadata.title?.trim() || undefined,
         description: metadata.description?.trim() || undefined,
@@ -423,8 +421,9 @@ export const videoService = {
   async publishVideo(videoId) {
     if (!videoId) throw new Error('ID de vidéo requis');
     
+    // CORRECTION: Mettre à jour la table videos (pas la vue)
     const { data, error } = await supabase
-      .from('videos')
+      .from('videos') // Utiliser la table videos pour la mise à jour
       .update({ 
         status: toDatabaseStatus(VIDEO_STATUS.PUBLISHED),
         published_at: new Date().toISOString()
@@ -446,9 +445,9 @@ export const videoService = {
     if (!videoId) throw new Error('ID de vidéo requis');
     
     try {
-      // 1. Récupérer les informations de la vidéo
+      // 1. Récupérer les informations de la vidéo depuis la table videos
       const { data: video, error: fetchError } = await supabase
-        .from('videos')
+        .from('videos') // Utiliser la table videos pour récupérer les infos
         .select('storage_path, file_path')
         .eq('id', videoId)
         .single();
@@ -495,9 +494,9 @@ export const videoService = {
         // Continuer même si la suppression des analyses échoue
       }
       
-      // 5. Supprimer l'entrée de la base de données
+      // 5. Supprimer l'entrée de la base de données (table videos)
       const { error: deleteError } = await supabase
-        .from('videos')
+        .from('videos') // Utiliser la table videos pour la suppression
         .delete()
         .eq('id', videoId);
       
@@ -509,24 +508,27 @@ export const videoService = {
   },
 
   /**
-   * Vérifie le statut d'une vidéo
+   * CORRECTION: Vérifie le statut d'une vidéo depuis la vue video_details
    * @param {string} videoId - ID de la vidéo
-   * @returns {Promise<string>} - Statut actuel de la vidéo
+   * @returns {Promise<Object>} - Statut actuel de la vidéo avec informations détaillées
    */
   async checkVideoStatus(videoId) {
     if (!videoId) throw new Error('ID de vidéo requis');
     
+    // CORRECTION: Utiliser la vue video_details pour récupérer toutes les informations de statut
     const { data, error } = await supabase
-      .from('videos')
-      .select('status, transcription_error, analysis_error')
+      .from('video_details')
+      .select('status, error_message, transcription_status, transcription_error, analysis_id')
       .eq('id', videoId)
       .single();
     
     if (error) throw error;
     return {
       status: data.status,
+      errorMessage: data.error_message,
+      transcriptionStatus: data.transcription_status,
       transcriptionError: data.transcription_error,
-      analysisError: data.analysis_error
+      hasAnalysis: !!data.analysis_id
     };
   }
 };
