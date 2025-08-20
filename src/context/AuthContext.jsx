@@ -159,11 +159,10 @@ export const AuthProvider = ({ children }) => {
         // Ajouter un timeout pour éviter de bloquer indéfiniment
         const timeoutPromise = new Promise((_, reject) => {
           authTimeout = setTimeout(() => {
-            reject(new Error('Timeout lors de la récupération de la session'));
-          }, 10000); // 10 secondes maximum
+            reject(new Error("Timeout lors de la récupération de la session Supabase."));
+          }, 15000); // Augmenter le timeout à 15 secondes pour les connexions lentes
         });
         
-        // Utiliser Promise.race pour limiter le temps d'attente
         const sessionResult = await Promise.race([
           supabase.auth.getSession(),
           timeoutPromise
@@ -177,10 +176,11 @@ export const AuthProvider = ({ children }) => {
         const { data: { session }, error } = sessionResult;
         
         if (error) {
-          console.error('Erreur de session:', error.message);
+          console.error(`AuthContext: Erreur de session Supabase: ${error.message} (Code: ${error.code || 'N/A'})`);
           if (mounted) {
-            setError(error.message);
-            setLoading(false);
+            setError(`Erreur de connexion: ${error.message}`);
+            setUser(null);
+            setProfile(null);
             setConnectionStatus('error');
           }
           return;
@@ -188,36 +188,40 @@ export const AuthProvider = ({ children }) => {
         
         if (mounted) {
           if (session?.user) {
-            console.log('Session utilisateur trouvée:', session.user.id);
+            console.log('AuthContext: Session utilisateur trouvée:', session.user.id);
             setUser(session.user);
             const profileData = await fetchUserProfile(session.user.id, session.user);
             setProfile(profileData);
             setConnectionStatus('connected');
+            setError(null); // Réinitialiser l'erreur en cas de succès
           } else {
-            console.log('Aucune session utilisateur trouvée');
+            console.log('AuthContext: Aucune session utilisateur trouvée.');
             setUser(null);
             setProfile(null);
+            setConnectionStatus('disconnected');
+            setError(null); // Réinitialiser l'erreur si pas de session
           }
           setLoading(false);
         }
       } catch (error) {
-        console.error('Erreur lors de la récupération de la session:', error);
+        console.error('AuthContext: Exception lors de la récupération de la session:', error);
         if (mounted) {
           setError(error.message);
           setLoading(false);
           setConnectionStatus(error.message.includes('Timeout') ? 'timeout' : 'error');
+          setUser(null); // S'assurer que l'utilisateur est null en cas d'erreur critique
+          setProfile(null);
         }
       }
     };
 
     getSession();
 
-    // Écouter les changements d'état d'authentification
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
         
-        console.log('Événement d\'authentification:', event, session?.user?.id);
+        console.log('AuthContext: Événement d\'authentification:', event, session?.user?.id);
         
         try {
           if (session?.user) {
@@ -225,14 +229,16 @@ export const AuthProvider = ({ children }) => {
             const profileData = await fetchUserProfile(session.user.id, session.user);
             setProfile(profileData);
             setConnectionStatus('connected');
+            setError(null);
           } else {
             setUser(null);
             setProfile(null);
+            setConnectionStatus('disconnected');
+            setError(null);
           }
           setLoading(false);
-          setError(null);
         } catch (error) {
-          console.error('Erreur lors du changement d\'état d\'authentification:', error);
+          console.error('AuthContext: Erreur lors du changement d\'état d\'authentification:', error);
           setError(error.message);
           setLoading(false);
           setConnectionStatus('error');
