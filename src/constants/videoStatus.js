@@ -5,30 +5,33 @@
 export const VIDEO_STATUS = {
   // Statuts utilisés dans l'application
   UPLOADING: 'draft',       // Pendant l'upload, considéré comme brouillon
-  READY: 'draft',           // Prêt pour traitement
-  PROCESSING: 'processing', // En cours de traitement
-  PUBLISHED: 'published',   // Traitement terminé avec succès
+  UPLOADED: 'uploaded',     // Nouveau statut: Fichier uploadé, prêt pour traitement
+  PROCESSING: 'processing', // En cours de traitement (général)
+  TRANSCRIBING: 'transcribing', // Nouveau statut: Transcription en cours
+  TRANSCRIBED: 'transcribed', // Nouveau statut: Transcription terminée
+  ANALYZING: 'analyzing',   // Nouveau statut: Analyse en cours
+  ANALYZED: 'published',    // Analyse terminée (correspond à 'published' en DB)
   FAILED: 'failed',         // Échec du traitement
   ERROR: 'failed',          // Alias pour FAILED
-  TRANSCRIBED: 'published', // Alias pour PUBLISHED
   
   // Statuts correspondant aux valeurs de la base de données
   PENDING: 'draft',
-  UPLOADED: 'draft',
   COMPLETED: 'published'
 };
 
 // Constantes pour les statuts de transcription
 export const TRANSCRIPTION_STATUS = {
-  PENDING: 'draft',
+  PENDING: 'pending',
   PROCESSING: 'processing',
-  COMPLETED: 'published',
-  ERROR: 'failed'
+  COMPLETED: 'completed',
+  FAILED: 'failed'
 };
 
 // Fonctions utilitaires pour vérifier les statuts
 export const isProcessingStatus = (status) => {
   return status === VIDEO_STATUS.PROCESSING || 
+         status === VIDEO_STATUS.TRANSCRIBING ||
+         status === VIDEO_STATUS.ANALYZING ||
          status === 'processing';
 };
 
@@ -36,6 +39,7 @@ export const isCompletedStatus = (status) => {
   return status === VIDEO_STATUS.PUBLISHED || 
          status === VIDEO_STATUS.COMPLETED ||
          status === VIDEO_STATUS.TRANSCRIBED ||
+         status === VIDEO_STATUS.ANALYZED ||
          status === 'published';
 };
 
@@ -47,9 +51,7 @@ export const isErrorStatus = (status) => {
 
 export const isDraftStatus = (status) => {
   return status === VIDEO_STATUS.PENDING ||
-         status === VIDEO_STATUS.READY ||
          status === VIDEO_STATUS.UPLOADING ||
-         status === VIDEO_STATUS.UPLOADED ||
          status === 'draft';
 };
 
@@ -65,10 +67,12 @@ export const getStatusLabel = (status) => {
     'processing': 'En traitement',
     'published': 'Analyse terminée',
     'completed': 'Analyse terminée',
+    'transcribing': 'Transcription en cours',
     'transcribed': 'Transcrite',
+    'analyzing': 'Analyse en cours',
+    'analyzed': 'Analyse terminée',
     'failed': 'Échec',
     'error': 'Erreur',
-    'ready': 'Prête'
   };
   
   return labels[normalizedStatus] || status || 'Inconnu';
@@ -82,14 +86,16 @@ export const getStatusClass = (status) => {
   const classes = {
     'draft': 'bg-gray-100 text-gray-800',
     'uploading': 'bg-blue-100 text-blue-800',
-    'uploaded': 'bg-blue-100 text-blue-800',
+    'uploaded': 'bg-purple-100 text-purple-800',
     'processing': 'bg-yellow-100 text-yellow-800',
     'published': 'bg-green-100 text-green-800',
     'completed': 'bg-green-100 text-green-800',
-    'transcribed': 'bg-green-100 text-green-800',
+    'transcribing': 'bg-indigo-100 text-indigo-800',
+    'transcribed': 'bg-teal-100 text-teal-800',
+    'analyzing': 'bg-orange-100 text-orange-800',
+    'analyzed': 'bg-green-100 text-green-800',
     'failed': 'bg-red-100 text-red-800',
     'error': 'bg-red-100 text-red-800',
-    'ready': 'bg-blue-100 text-blue-800'
   };
   
   return classes[normalizedStatus] || 'bg-gray-100 text-gray-800';
@@ -104,20 +110,19 @@ export const toDatabaseStatus = (appStatus) => {
   const statusMapping = {
     // Statuts d'application -> statuts DB
     'uploading': 'draft',
-    'ready': 'draft',
+    'uploaded': 'draft', // Le fichier est uploadé, mais le traitement n'a pas commencé
     'processing': 'processing',
-    'published': 'published',
+    'transcribing': 'processing',
+    'transcribed': 'published',
+    'analyzing': 'processing',
+    'analyzed': 'published',
     'failed': 'failed',
     'error': 'failed',
-    'transcribed': 'published',
+    'published': 'published',
     'completed': 'published',
-    'uploaded': 'draft',
     'pending': 'draft',
     // Déjà des statuts DB valides
     'draft': 'draft',
-    'processing': 'processing',
-    'published': 'published',
-    'failed': 'failed'
   };
   
   return statusMapping[normalizedStatus] || 'draft'; // Par défaut 'draft' si statut inconnu
@@ -130,11 +135,11 @@ export const fromDatabaseStatus = (dbStatus) => {
   
   // Mapping des statuts de base de données vers les statuts d'application
   const statusMapping = {
-    'draft': 'READY',
+    'draft': 'UPLOADED',
     'processing': 'PROCESSING',
-    'published': 'PUBLISHED',
+    'published': 'ANALYZED',
     'failed': 'FAILED'
   };
   
-  return statusMapping[normalizedStatus] || 'READY'; // Par défaut 'READY' si statut inconnu
+  return statusMapping[normalizedStatus] || 'UPLOADED'; // Par défaut 'UPLOADED' si statut inconnu
 };
