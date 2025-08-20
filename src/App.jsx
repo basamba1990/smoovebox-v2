@@ -31,7 +31,7 @@ function AppContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const { user, loading, signOut, profile, error: authError, connectionStatus: authConnectionStatus } = useAuth();
 
-  // CORRECTION 1: Gestion améliorée de l'état d'authentification
+  // CORRECTION: Gestion améliorée de l'état d'authentification
   useEffect(() => {
     if (!loading) {
       if (user && profile) {
@@ -95,7 +95,7 @@ function AppContent() {
     }
   }, [loading]);
 
-  // Récupérer les données du dashboard avec gestion d'erreur robuste
+  // CORRECTION: Récupérer les données du dashboard avec gestion d'erreur robuste
   const loadDashboardData = async () => {
     if (!user || !isAuthenticated) {
       console.log('Aucun utilisateur connecté ou non authentifié, aucune donnée à charger');
@@ -122,31 +122,39 @@ function AppContent() {
       
       // Récupération des statistiques globales (si la fonction RPC est toujours nécessaire)
       // Assurez-vous que 'get_user_video_stats' est à jour avec la structure de 'video_details'
-      const { data: stats, error: statsError } = await supabase
-        .rpc('get_user_video_stats', { user_id_param: user.id });
-        
-      if (statsError) {
-        console.warn('Erreur lors de la récupération des statistiques:', statsError);
-        // Continue even with stats error
+      let stats = null;
+      try {
+        const { data: statsData, error: statsError } = await supabase
+          .rpc('get_user_video_stats', { user_id_param: user.id });
+          
+        if (statsError) {
+          console.warn('Erreur lors de la récupération des statistiques:', statsError);
+          // Continue even with stats error
+        } else {
+          stats = statsData;
+        }
+      } catch (statsError) {
+        console.warn('Exception lors de la récupération des statistiques:', statsError);
+        // Continue without stats
       }
       
-      // Construction des données pour le dashboard
+      // CORRECTION: Construction des données pour le dashboard avec les champs de la vue video_details
       const dashboardData = {
         totalVideos: videos.length,
         recentVideos: videos.slice(0, 5),
         videosByStatus: {
-          uploaded: videos.filter(v => v.status === 'uploaded' || v.status === 'pending').length,
-          processing: videos.filter(v => v.status === 'processing' || v.status === 'analyzing').length,
+          uploaded: videos.filter(v => v.status === 'uploaded' || v.status === 'pending' || v.status === 'draft').length,
+          processing: videos.filter(v => v.status === 'processing' || v.status === 'analyzing' || v.status === 'transcribing').length,
           // CORRECTION: Utiliser transcription_text de la vue pour le statut transcrit
           transcribed: videos.filter(v => v.transcription_text && v.transcription_text.length > 0).length,
           // CORRECTION: Utiliser analysis_summary de la vue pour le statut analysé
-          analyzed: videos.filter(v => v.analysis_summary).length,
+          analyzed: videos.filter(v => v.analysis_summary && Object.keys(v.analysis_summary).length > 0).length,
           failed: videos.filter(v => v.status === 'failed').length
         },
         totalDuration: videos.reduce((sum, video) => sum + (video.duration || 0), 0),
         // CORRECTION: Compter les transcriptions et analyses basées sur la vue
         transcriptionsCount: videos.filter(v => v.transcription_text && v.transcription_text.length > 0).length,
-        analysisCount: videos.filter(v => v.analysis_summary).length,
+        analysisCount: videos.filter(v => v.analysis_summary && Object.keys(v.analysis_summary).length > 0).length,
         videoPerformance: stats?.performance_data || [],
         progressStats: stats?.progress_stats || {
           completed: 0,
@@ -226,7 +234,7 @@ function AppContent() {
     }
   }, [user, activeTab, connectionStatus, isAuthenticated]);
 
-  // CORRECTION 2: Gestion améliorée du succès d'authentification
+  // CORRECTION: Gestion améliorée du succès d'authentification
   const handleAuthSuccess = (userData) => {
     console.log('Utilisateur authentifié avec succès:', userData.id);
     setIsAuthModalOpen(false);
@@ -408,14 +416,12 @@ function AppContent() {
                       <p className="text-xs text-gray-600 mt-1">Transcription automatique de vos vidéos</p>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-3 justify-center">
-                    <Button 
-                      onClick={() => setIsAuthModalOpen(true)}
-                      className="w-full sm:w-auto px-6 py-3 text-base sm:text-lg"
-                    >
-                      Commencer l'aventure
-                    </Button>
-                  </div>
+                  <Button 
+                    onClick={() => setIsAuthModalOpen(true)}
+                    className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                  >
+                    Commencer maintenant
+                  </Button>
                 </div>
               </div>
             </div>
@@ -423,16 +429,17 @@ function AppContent() {
         </div>
       </main>
 
+      {/* Modal d'authentification */}
       <AuthModal 
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
-        onAuthSuccess={handleAuthSuccess}
+        onSuccess={handleAuthSuccess}
       />
     </div>
   );
 }
 
-export default function App() {
+function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
@@ -441,3 +448,5 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
+export default App;
