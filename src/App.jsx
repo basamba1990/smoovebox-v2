@@ -127,102 +127,45 @@ function AppContent() {
         
       if (statsError) {
         console.warn('Erreur lors de la récupération des statistiques:', statsError);
-        // Continue even with stats error
+        // Continuer même en cas d'erreur sur les stats, car les vidéos sont plus importantes
       }
-      
-      // Construction des données pour le dashboard
-      const dashboardData = {
-        totalVideos: videos.length,
-        recentVideos: videos.slice(0, 5),
-        videosByStatus: {
-          uploaded: videos.filter(v => v.status === 'uploaded' || v.status === 'pending').length,
-          processing: videos.filter(v => v.status === 'processing' || v.status === 'analyzing').length,
-          // CORRECTION: Utiliser transcription_text de la vue pour le statut transcrit
-          transcribed: videos.filter(v => v.transcription_text && v.transcription_text.length > 0).length,
-          // CORRECTION: Utiliser analysis_summary de la vue pour le statut analysé
-          analyzed: videos.filter(v => v.analysis_summary).length,
-          failed: videos.filter(v => v.status === 'failed').length
-        },
-        totalDuration: videos.reduce((sum, video) => sum + (video.duration || 0), 0),
-        // CORRECTION: Compter les transcriptions et analyses basées sur la vue
-        transcriptionsCount: videos.filter(v => v.transcription_text && v.transcription_text.length > 0).length,
-        analysisCount: videos.filter(v => v.analysis_summary).length,
-        videoPerformance: stats?.performance_data || [],
-        progressStats: stats?.progress_stats || {
-          completed: 0,
-          inProgress: 0,
-          totalTime: 0
+
+      // CORRECTION: Calcul des statistiques à partir des vidéos récupérées
+      const totalVideos = videos.length;
+      const videosByStatus = videos.reduce((acc, video) => {
+        const status = video.status.toLowerCase();
+        acc[status] = (acc[status] || 0) + 1;
+        
+        // Vérifier si la vidéo a une transcription
+        if (video.transcription_text && video.transcription_text.length > 0) {
+          acc.transcribed = (acc.transcribed || 0) + 1;
         }
-      };
+        // Vérifier si la vidéo a une analyse
+        if (video.analysis_summary && Object.keys(video.analysis_summary).length > 0) {
+          acc.analyzed = (acc.analyzed || 0) + 1;
+        }
+        return acc;
+      }, {});
+
+      setDashboardData({
+        totalVideos,
+        videosByStatus,
+        videoPerformance: stats?.video_performance || [], // Assurez-vous que le nom du champ correspond
+        videosList: videos // Ajouter la liste complète des vidéos pour le Dashboard component
+      });
       
-      setDashboardData(dashboardData);
-      console.log('Données dashboard chargées avec succès:', dashboardData);
-    } catch (err) {
-      console.error('Erreur lors du chargement des données dashboard:', err);
+    } catch (error) {
+      console.error('Erreur lors du chargement des données du dashboard:', error);
+      setDashboardError(`Erreur de chargement des données: ${error.message}`);
       setDashboardData(null);
-      setDashboardError(err.message || 'Erreur lors de la récupération des données');
     } finally {
       setDashboardLoading(false);
     }
   };
 
-  // Charger les données du dashboard avec gestion des erreurs
   useEffect(() => {
-    let mounted = true;
-    let dataTimeout = null;
-    
-    if (activeTab === 'dashboard' && isAuthenticated) {
-      dataTimeout = setTimeout(() => {
-        if (mounted) {
-          loadDashboardData().catch(err => {
-            console.error('Erreur non gérée lors du chargement des données:', err);
-            if (mounted) {
-              setDashboardError(err.message || 'Erreur inattendue');
-              setDashboardLoading(false);
-            }
-          });
-        }
-      }, 200);
-      
-      let videosChannel = null;
-      if (user && connectionStatus === 'connected') {
-        try {
-          videosChannel = supabase
-            .channel('videos_changes')
-            .on('postgres_changes', { 
-              event: '*', 
-              schema: 'public', 
-              table: 'videos', // Le canal écoute toujours la table 'videos' pour les changements
-              filter: `user_id=eq.${user.id}`
-            }, payload => {
-              console.log('Changement détecté dans la table videos:', payload);
-              if (mounted) {
-                loadDashboardData().catch(err => {
-                  console.error('Erreur lors du rechargement après changement:', err);
-                });
-              }
-            })
-            .subscribe((status) => {
-              console.log('Statut de souscription aux changements videos:', status);
-            });
-        } catch (err) {
-          console.error('Erreur lors de la configuration du canal realtime:', err);
-        }
-      }
-
-      return () => {
-        mounted = false;
-        if (dataTimeout) {
-          clearTimeout(dataTimeout);
-        }
-        if (videosChannel) {
-          try {
-            supabase.removeChannel(videosChannel);
-          } catch (err) {
-            console.error('Erreur lors de la suppression du canal:', err);
-          }
-        }
-      };
+    if (isAuthenticated && user && activeTab === 'dashboard') {
+      loadDashboardData();
     }
   }, [user, activeTab, connectionStatus, isAuthenticated]);
 
@@ -441,3 +384,5 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
+
