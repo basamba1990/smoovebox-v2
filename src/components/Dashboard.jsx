@@ -4,13 +4,13 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { Button } from './ui/button.jsx';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/card.jsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.jsx';
-import { Upload, FileText, Video, RefreshCw, Trash2, AlertCircle } from 'lucide-react';
+import { Upload, FileText, Video, RefreshCw, Trash2, AlertCircle, CheckCircle, Clock, Play, BarChart3 } from 'lucide-react';
 import { VIDEO_STATUS, TRANSCRIPTION_STATUS } from '../constants/videoStatus.js';
 import VideoUploader from './VideoUploader.jsx';
 import TranscriptionViewer from './TranscriptionViewer.jsx';
 import VideoPlayer from './VideoPlayer.jsx';
 
-const Dashboard = () => {
+const Dashboard = ({ data }) => {
   const { user } = useAuth();
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -215,44 +215,87 @@ const Dashboard = () => {
     });
   };
 
-  const getStatusBadge = (status) => {
+  // CORRECTION 3: Amélioration du mapping des statuts avec les étapes demandées
+  const getStatusBadge = (status, hasTranscription = false, hasAnalysis = false) => {
     if (!status) return 'bg-gray-100 text-gray-800';
     
     // Normaliser le statut en majuscules pour la comparaison
     const normalizedStatus = status.toUpperCase();
     
+    // Déterminer le statut réel basé sur les données disponibles
+    let realStatus = normalizedStatus;
+    if (hasAnalysis) {
+      realStatus = 'ANALYZED';
+    } else if (hasTranscription) {
+      realStatus = 'TRANSCRIBED';
+    } else if (normalizedStatus === 'PROCESSING' || normalizedStatus === 'ANALYZING') {
+      realStatus = 'PROCESSING';
+    } else if (normalizedStatus === 'UPLOADED' || normalizedStatus === 'PENDING' || normalizedStatus === 'COMPLETED') {
+      realStatus = 'UPLOADED';
+    }
+    
     const statusMap = {
-      [VIDEO_STATUS.PENDING]: 'bg-yellow-100 text-yellow-800',
-      [VIDEO_STATUS.PROCESSING]: 'bg-blue-100 text-blue-800',
-      [VIDEO_STATUS.COMPLETED]: 'bg-green-100 text-green-800',
-      [VIDEO_STATUS.FAILED]: 'bg-red-100 text-red-800',
-      [TRANSCRIPTION_STATUS.PENDING]: 'bg-yellow-100 text-yellow-800',
-      [TRANSCRIPTION_STATUS.PROCESSING]: 'bg-blue-100 text-blue-800',
-      [TRANSCRIPTION_STATUS.COMPLETED]: 'bg-green-100 text-green-800',
-      [TRANSCRIPTION_STATUS.FAILED]: 'bg-red-100 text-red-800',
+      'UPLOADED': 'bg-blue-100 text-blue-800',
+      'PROCESSING': 'bg-yellow-100 text-yellow-800',
+      'TRANSCRIBED': 'bg-green-100 text-green-800',
+      'ANALYZED': 'bg-purple-100 text-purple-800',
+      'FAILED': 'bg-red-100 text-red-800',
     };
     
-    return statusMap[normalizedStatus] || 'bg-gray-100 text-gray-800';
+    return statusMap[realStatus] || 'bg-gray-100 text-gray-800';
   };
 
-  const getStatusText = (status) => {
+  const getStatusText = (status, hasTranscription = false, hasAnalysis = false) => {
     if (!status) return 'Inconnu';
     
     // Normaliser le statut en majuscules pour la comparaison
     const normalizedStatus = status.toUpperCase();
     
+    // Déterminer le statut réel basé sur les données disponibles
+    let realStatus = normalizedStatus;
+    if (hasAnalysis) {
+      realStatus = 'ANALYZED';
+    } else if (hasTranscription) {
+      realStatus = 'TRANSCRIBED';
+    } else if (normalizedStatus === 'PROCESSING' || normalizedStatus === 'ANALYZING') {
+      realStatus = 'PROCESSING';
+    } else if (normalizedStatus === 'UPLOADED' || normalizedStatus === 'PENDING' || normalizedStatus === 'COMPLETED') {
+      realStatus = 'UPLOADED';
+    }
+    
     const statusTextMap = {
-      [VIDEO_STATUS.PENDING]: 'En attente',
-      [VIDEO_STATUS.PROCESSING]: 'En traitement',
-      [VIDEO_STATUS.COMPLETED]: 'Terminé',
-      [VIDEO_STATUS.FAILED]: 'Échec',
-      [TRANSCRIPTION_STATUS.PENDING]: 'En attente',
-      [TRANSCRIPTION_STATUS.PROCESSING]: 'En traitement',
-      [TRANSCRIPTION_STATUS.COMPLETED]: 'Terminé',
-      [TRANSCRIPTION_STATUS.FAILED]: 'Échec',
+      'UPLOADED': 'Uploadé',
+      'PROCESSING': 'En cours',
+      'TRANSCRIBED': 'Transcrit',
+      'ANALYZED': 'Analysé',
+      'FAILED': 'Échec',
     };
     
-    return statusTextMap[normalizedStatus] || 'Inconnu';
+    return statusTextMap[realStatus] || 'Inconnu';
+  };
+
+  const getStatusIcon = (status, hasTranscription = false, hasAnalysis = false) => {
+    // Déterminer le statut réel basé sur les données disponibles
+    let realStatus = status?.toUpperCase();
+    if (hasAnalysis) {
+      realStatus = 'ANALYZED';
+    } else if (hasTranscription) {
+      realStatus = 'TRANSCRIBED';
+    } else if (realStatus === 'PROCESSING' || realStatus === 'ANALYZING') {
+      realStatus = 'PROCESSING';
+    } else if (realStatus === 'UPLOADED' || realStatus === 'PENDING' || realStatus === 'COMPLETED') {
+      realStatus = 'UPLOADED';
+    }
+    
+    const iconMap = {
+      'UPLOADED': Upload,
+      'PROCESSING': Clock,
+      'TRANSCRIBED': FileText,
+      'ANALYZED': BarChart3,
+      'FAILED': AlertCircle,
+    };
+    
+    return iconMap[realStatus] || Upload;
   };
 
   // Fonction pour obtenir l'URL publique d'une vidéo
@@ -279,6 +322,63 @@ const Dashboard = () => {
       console.error("Erreur de construction de l'URL:", e);
       return null;
     }
+  };
+
+  // CORRECTION 4: Affichage amélioré des statistiques du dashboard
+  const renderDashboardStats = () => {
+    if (!data) return null;
+
+    const stats = [
+      {
+        title: 'Total Vidéos',
+        value: data.totalVideos || 0,
+        icon: Video,
+        color: 'text-blue-600'
+      },
+      {
+        title: 'Uploadées',
+        value: data.videosByStatus?.uploaded || 0,
+        icon: Upload,
+        color: 'text-blue-600'
+      },
+      {
+        title: 'En cours',
+        value: data.videosByStatus?.processing || 0,
+        icon: Clock,
+        color: 'text-yellow-600'
+      },
+      {
+        title: 'Transcrites',
+        value: data.videosByStatus?.transcribed || 0,
+        icon: FileText,
+        color: 'text-green-600'
+      },
+      {
+        title: 'Analysées',
+        value: data.videosByStatus?.analyzed || 0,
+        icon: BarChart3,
+        color: 'text-purple-600'
+      }
+    ];
+
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+        {stats.map((stat, index) => {
+          const IconComponent = stat.icon;
+          return (
+            <Card key={index} className="p-4">
+              <div className="flex items-center space-x-2">
+                <IconComponent className={`h-5 w-5 ${stat.color}`} />
+                <div>
+                  <p className="text-sm font-medium text-gray-600">{stat.title}</p>
+                  <p className="text-2xl font-bold">{stat.value}</p>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+    );
   };
 
   const renderVideoList = () => {
@@ -326,92 +426,101 @@ const Dashboard = () => {
 
     return (
       <div className="space-y-4">
-        {videos.map((video) => (
-          <div 
-            key={video.id} 
-            className={`bg-white p-6 rounded-lg shadow-sm border cursor-pointer transition-all ${
-              selectedVideo?.id === video.id ? 'ring-2 ring-blue-500' : 'hover:bg-gray-50'
-            }`}
-            onClick={() => setSelectedVideo(video)}
-          >
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="font-semibold text-lg">{video.title || 'Vidéo sans nom'}</h3>
-                <p className="text-sm text-gray-500">{formatDate(video.created_at)}</p>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(video.status)}`}>
-                    {getStatusText(video.status)}
-                  </span>
-                  
-                  {video.transcriptions && video.transcriptions.length > 0 && (
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      getStatusBadge(video.transcriptions[0].status)
+        {videos.map((video) => {
+          const hasTranscription = video.transcription_text && video.transcription_text.length > 0;
+          const hasAnalysis = video.analysis && Object.keys(video.analysis).length > 0;
+          const StatusIcon = getStatusIcon(video.status, hasTranscription, hasAnalysis);
+          
+          return (
+            <div 
+              key={video.id} 
+              className={`bg-white p-6 rounded-lg shadow-sm border cursor-pointer transition-all ${
+                selectedVideo?.id === video.id ? 'ring-2 ring-blue-500' : 'hover:bg-gray-50'
+              }`}
+              onClick={() => setSelectedVideo(video)}
+            >
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <h3 className="font-semibold text-lg">{video.title || 'Vidéo sans nom'}</h3>
+                  <p className="text-sm text-gray-500">{formatDate(video.created_at)}</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
+                      getStatusBadge(video.status, hasTranscription, hasAnalysis)
                     }`}>
-                      Transcription: {getStatusText(video.transcriptions[0].status)}
+                      <StatusIcon className="h-3 w-3" />
+                      {getStatusText(video.status, hasTranscription, hasAnalysis)}
                     </span>
+                    
+                    {video.transcriptions && video.transcriptions.length > 0 && (
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        getStatusBadge(video.transcriptions[0].status)
+                      }`}>
+                        Transcription: {getStatusText(video.transcriptions[0].status)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  {deleteConfirm === video.id ? (
+                    <>
+                      <Button 
+                        variant="destructive" 
+                        size="sm" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteVideo(video.id);
+                        }}
+                      >
+                        Confirmer
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteConfirm(null);
+                        }}
+                      >
+                        Annuler
+                      </Button>
+                    </>
+                  ) : (
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteConfirm(video.id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
                   )}
                 </div>
               </div>
               
-              <div className="flex items-center gap-2">
-                {deleteConfirm === video.id ? (
-                  <>
-                    <Button 
-                      variant="destructive" 
-                      size="sm" 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteVideo(video.id);
-                      }}
-                    >
-                      Confirmer
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeleteConfirm(null);
-                      }}
-                    >
-                      Annuler
-                    </Button>
-                  </>
-                ) : (
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeleteConfirm(video.id);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4 text-red-500" />
-                  </Button>
-                )}
-              </div>
+              {video.status === VIDEO_STATUS.FAILED && (
+                <div className="mt-3 p-2 bg-red-50 rounded-md flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-red-700">
+                    {video.error_message || "Une erreur s'est produite lors du traitement de cette vidéo."}
+                  </p>
+                </div>
+              )}
+              
+              {video.transcriptions && video.transcriptions.length > 0 && 
+               video.transcriptions[0].status === TRANSCRIPTION_STATUS.FAILED && (
+                <div className="mt-3 p-2 bg-red-50 rounded-md flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-red-700">
+                    {video.transcriptions[0].error_message || "Une erreur s'est produite lors de la transcription."}
+                  </p>
+                </div>
+              )}
             </div>
-            
-            {video.status === VIDEO_STATUS.FAILED && (
-              <div className="mt-3 p-2 bg-red-50 rounded-md flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-red-700">
-                  {video.error_message || "Une erreur s'est produite lors du traitement de cette vidéo."}
-                </p>
-              </div>
-            )}
-            
-            {video.transcriptions && video.transcriptions.length > 0 && 
-             video.transcriptions[0].status === TRANSCRIPTION_STATUS.FAILED && (
-              <div className="mt-3 p-2 bg-red-50 rounded-md flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-red-700">
-                  {video.transcriptions[0].error_message || "Une erreur s'est produite lors de la transcription."}
-                </p>
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   };
@@ -430,6 +539,8 @@ const Dashboard = () => {
     }
 
     const videoUrl = getVideoUrl(selectedVideo);
+    const hasTranscription = selectedVideo.transcription_text && selectedVideo.transcription_text.length > 0;
+    const hasAnalysis = selectedVideo.analysis && Object.keys(selectedVideo.analysis).length > 0;
     const canTranscribe = selectedVideo.status === VIDEO_STATUS.COMPLETED && 
                          (!selectedVideo.transcriptions || 
                           selectedVideo.transcriptions.length === 0 || 
@@ -441,8 +552,10 @@ const Dashboard = () => {
           <h3 className="text-xl font-semibold">{selectedVideo.title || 'Vidéo sans nom'}</h3>
           <p className="text-sm text-gray-500">{formatDate(selectedVideo.created_at)}</p>
           <div className="flex items-center gap-2 mt-2">
-            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(selectedVideo.status)}`}>
-              {getStatusText(selectedVideo.status)}
+            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+              getStatusBadge(selectedVideo.status, hasTranscription, hasAnalysis)
+            }`}>
+              {getStatusText(selectedVideo.status, hasTranscription, hasAnalysis)}
             </span>
             
             {selectedVideo.transcriptions && selectedVideo.transcriptions.length > 0 && (
@@ -455,47 +568,53 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {selectedVideo.description && (
-          <div className="mb-4">
-            <h3 className="font-medium mb-2">Description</h3>
-            <p className="text-gray-700">{selectedVideo.description}</p>
-          </div>
-        )}
-
         {videoUrl && (
-          <div className="mb-6">
-            <h3 className="font-medium mb-2">Aperçu vidéo</h3>
+          <div className="mb-4">
             <VideoPlayer src={videoUrl} />
           </div>
         )}
 
-        <div className="flex gap-2 mb-6">
-          <Button 
-            onClick={() => fetchVideos()} 
-            variant="outline"
-            disabled={loading}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Actualiser
-          </Button>
-          
+        <div className="space-y-4">
+          {selectedVideo.description && (
+            <div>
+              <h4 className="font-medium mb-2">Description</h4>
+              <p className="text-gray-600 text-sm">{selectedVideo.description}</p>
+            </div>
+          )}
+
           {canTranscribe && (
-            <Button 
-              onClick={() => startTranscription(selectedVideo.id)}
-              disabled={transcribing}
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              {transcribing ? 'Transcription...' : 'Démarrer transcription'}
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                onClick={() => startTranscription(selectedVideo.id)}
+                disabled={transcribing}
+                size="sm"
+              >
+                {transcribing ? 'Transcription en cours...' : 'Démarrer la transcription'}
+              </Button>
+            </div>
+          )}
+
+          {hasTranscription && (
+            <div>
+              <h4 className="font-medium mb-2">Transcription</h4>
+              <TranscriptionViewer 
+                transcription={selectedVideo.transcription_text}
+                analysis={selectedVideo.analysis}
+              />
+            </div>
+          )}
+
+          {hasAnalysis && (
+            <div>
+              <h4 className="font-medium mb-2">Analyse IA</h4>
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <pre className="text-sm text-gray-700 whitespace-pre-wrap">
+                  {JSON.stringify(selectedVideo.analysis, null, 2)}
+                </pre>
+              </div>
+            </div>
           )}
         </div>
-
-        {selectedVideo.transcriptions && selectedVideo.transcriptions.length > 0 && (
-          <div>
-            <h3 className="font-medium mb-2">Transcription</h3>
-            <TranscriptionViewer transcription={selectedVideo.transcriptions[0]} />
-          </div>
-        )}
       </div>
     );
   };
@@ -517,6 +636,9 @@ const Dashboard = () => {
         <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
         <p className="text-gray-600">Gérez vos vidéos et analysez vos performances</p>
       </div>
+
+      {/* Affichage des statistiques si des données sont fournies */}
+      {data && renderDashboardStats()}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid w-full grid-cols-3">
@@ -561,9 +683,18 @@ const Dashboard = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-gray-600">
-                Les analyses détaillées seront disponibles prochainement.
-              </p>
+              {data && data.videoPerformance && data.videoPerformance.length > 0 ? (
+                <div className="space-y-4">
+                  <p className="text-gray-600">
+                    Analyses détaillées de vos {data.totalVideos} vidéos.
+                  </p>
+                  {/* Ici on pourrait ajouter des graphiques avec les données de performance */}
+                </div>
+              ) : (
+                <p className="text-gray-600">
+                  Les analyses détaillées seront disponibles une fois que vous aurez uploadé et analysé des vidéos.
+                </p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -573,3 +704,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+
