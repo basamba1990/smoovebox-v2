@@ -75,23 +75,19 @@ const VideoUploader = ({ onUploadComplete }) => {
       setUploading(true);
       setProgress(0);
       
-      // Simuler la progression pendant l'upload
-      const progressInterval = setInterval(() => {
-        setProgress((prev) => {
-          const newProgress = prev + 5;
-          return newProgress > 95 ? 95 : newProgress;
-        });
-      }, 300);
-      
-      // 1. Uploader d'abord le fichier au Storage
-      const filePath = `${user.id}/${Date.now()}_${file.name}`;
-      console.log('Uploading file to path:', filePath);
-      
+      // Supprimer la simulation de progression
+      // clearInterval(progressInterval);
+
       const { error: uploadError } = await supabase.storage
-        .from('videos')
+        .from("videos")
         .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false
+          cacheControl: "3600",
+          upsert: false,
+          // Ajouter le callback onProgress
+          onProgress: (event) => {
+            const percentage = (event.loaded / event.total) * 100;
+            setProgress(Math.round(percentage));
+          },
         });
       
       if (uploadError) {
