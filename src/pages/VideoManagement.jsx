@@ -1,4 +1,4 @@
-// src/components/VideoManagement.jsx
+// src/pages/VideoManagement.jsx
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -16,7 +16,7 @@ const VideoManagement = () => {
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [transcribingVideoId, setTranscribingVideoId] = useState(null);
   
-  // Charger les vidéos de l'utilisateur
+  // CORRECTION: Charger les vidéos depuis la vue video_details
   const fetchVideos = async () => {
     try {
       setLoading(true);
@@ -28,9 +28,10 @@ const VideoManagement = () => {
         return;
       }
       
+      // CORRECTION: Utiliser la vue video_details au lieu de la table videos
       const { data, error } = await supabase
-        .from('videos')
-        .select('*, transcription, transcription_data, analysis')
+        .from('video_details') // Changement ici: utilisation de la vue
+        .select('*') // Toutes les colonnes de la vue sont déjà jointes
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
       
@@ -38,10 +39,11 @@ const VideoManagement = () => {
         throw new Error(`Erreur lors du chargement des vidéos: ${error.message}`);
       }
 
-      // Normaliser les données pour chaque vidéo
+      // CORRECTION: Normaliser les données pour chaque vidéo avec les champs de la vue
       const normalizedData = data.map(video => ({
         ...video,
         status: normalizeStatus(video.status),
+        // CORRECTION: Utiliser les champs de la vue video_details
         hasTranscription: hasTranscription(video),
         hasAnalysis: hasAnalysis(video)
       }));
@@ -87,18 +89,14 @@ const VideoManagement = () => {
     return statusLower;
   };
   
-  // Vérifier si une vidéo a une transcription
+  // CORRECTION: Vérifier si une vidéo a une transcription en utilisant les champs de la vue
   const hasTranscription = (video) => {
-    return !!(video.transcription || 
-             (video.transcription_data && 
-              (typeof video.transcription_data === 'object' ? 
-               video.transcription_data.text : 
-               video.transcription_data)));
+    return !!(video.transcription_text && video.transcription_text.length > 0);
   };
   
-  // Vérifier si une vidéo a une analyse
+  // CORRECTION: Vérifier si une vidéo a une analyse en utilisant les champs de la vue
   const hasAnalysis = (video) => {
-    return !!video.analysis;
+    return !!(video.analysis_summary && Object.keys(video.analysis_summary).length > 0);
   };
   
   useEffect(() => {
@@ -106,17 +104,18 @@ const VideoManagement = () => {
 
     fetchVideos();
     
-    // Configurer l'abonnement aux changements en temps réel
+    // CORRECTION: Configurer l'abonnement aux changements en temps réel sur la table videos
+    // (la vue ne supporte pas les changements en temps réel, donc on écoute la table source)
     const channel = supabase
       .channel('videos_changes')
       .on('postgres_changes', 
         { 
           event: '*', 
           schema: 'public', 
-          table: 'videos',
+          table: 'videos', // Écouter les changements sur la table videos
           filter: `user_id=eq.${user.id}` 
         }, 
-        fetchVideos
+        fetchVideos // Recharger les données depuis la vue
       )
       .subscribe();
     
@@ -128,6 +127,9 @@ const VideoManagement = () => {
   // Obtenir l'URL publique d'une vidéo
   const getPublicUrl = (video) => {
     if (!video) return null;
+    
+    // CORRECTION: Utiliser public_url de la vue en priorité
+    if (video.public_url) return video.public_url;
     
     // Utiliser storage_path en priorité, puis file_path
     const path = video.storage_path || video.file_path;
@@ -205,6 +207,64 @@ const VideoManagement = () => {
       setTranscribingVideoId(null);
     }
   };
+
+  // CORRECTION: Fonction pour lancer l'analyse IA d'une vidéo
+  const analyzeVideo = async (video) => {
+    if (!video) return;
+    
+    try {
+      setTranscribingVideoId(video.id); // Réutiliser le même état pour l'analyse
+      toast.loading("Démarrage de l'analyse IA...", { id: 'analyze-toast' });
+      
+      const { data: authData } = await supabase.auth.getSession();
+      const token = authData?.session?.access_token;
+      
+      if (!token) {
+        throw new Error("Session expirée, veuillez vous reconnecter");
+      }
+      
+      // Appeler la fonction Edge pour l'analyse
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-transcription`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ 
+            videoId: video.id
+          })
+        }
+      );
+      
+      if (!response.ok) {
+        const errorResult = await response.json();
+        throw new Error(errorResult.error || "Erreur lors de l'analyse");
+      }
+      
+      toast.success("Analyse IA démarrée avec succès", { id: 'analyze-toast' });
+      
+      // Actualiser après un délai pour laisser le temps au traitement
+      setTimeout(fetchVideos, 3000);
+      
+    } catch (err) {
+      console.error("Erreur lors de l'analyse:", err);
+      toast.error(`Erreur: ${err.message}`, { id: 'analyze-toast' });
+      
+      // Mettre à jour localement le statut
+      const updatedVideos = videos.map(v => 
+        v.id === video.id ? { ...v, status: 'failed', error: err.message } : v
+      );
+      setVideos(updatedVideos);
+      
+      if (selectedVideo?.id === video.id) {
+        setSelectedVideo({ ...video, status: 'failed', error: err.message });
+      }
+    } finally {
+      setTranscribingVideoId(null);
+    }
+  };
   
   // Supprimer une vidéo (stockage + base de données)
   const deleteVideo = async (video) => {
@@ -221,9 +281,9 @@ const VideoManagement = () => {
         if (storageError) throw storageError;
       }
       
-      // Supprimer l'enregistrement en base
+      // CORRECTION: Supprimer l'enregistrement en base depuis la table videos (pas la vue)
       const { error: dbError } = await supabase
-        .from('videos')
+        .from('videos') // Utiliser la table videos pour la suppression
         .delete()
         .eq('id', video.id);
       
@@ -323,9 +383,9 @@ const VideoManagement = () => {
                       <VideoProcessingStatus videoId={video.id} initialStatus={video.status} />
                     </div>
                   </div>
-                  {video.status === 'failed' && video.error && (
+                  {video.status === 'failed' && video.error_message && (
                     <p className="text-xs text-red-500 mt-1 truncate">
-                      {video.error}
+                      {video.error_message}
                     </p>
                   )}
                 </div>
@@ -365,15 +425,30 @@ const VideoManagement = () => {
                 {/* Actions */}
                 <div className="flex flex-wrap gap-2 mb-4">
                   {selectedVideo.status !== 'processing' && (
-                    <button 
-                      onClick={() => transcribeVideo(selectedVideo)}
-                      className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-                      disabled={transcribingVideoId === selectedVideo.id}
-                    >
-                      {transcribingVideoId === selectedVideo.id 
-                        ? 'Transcription en cours...' 
-                        : (selectedVideo.hasTranscription ? 'Retranscrire' : 'Transcrire')}
-                    </button>
+                    <>
+                      <button 
+                        onClick={() => transcribeVideo(selectedVideo)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                        disabled={transcribingVideoId === selectedVideo.id}
+                      >
+                        {transcribingVideoId === selectedVideo.id 
+                          ? 'Transcription en cours...' 
+                          : (selectedVideo.hasTranscription ? 'Retranscrire' : 'Transcrire')}
+                      </button>
+                      
+                      {/* CORRECTION: Bouton pour l'analyse IA */}
+                      {selectedVideo.hasTranscription && (
+                        <button 
+                          onClick={() => analyzeVideo(selectedVideo)}
+                          className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+                          disabled={transcribingVideoId === selectedVideo.id}
+                        >
+                          {transcribingVideoId === selectedVideo.id 
+                            ? 'Analyse en cours...' 
+                            : (selectedVideo.hasAnalysis ? 'Reanalyser' : 'Analyser avec IA')}
+                        </button>
+                      )}
+                    </>
                   )}
                   <button 
                     onClick={() => deleteVideo(selectedVideo)}
@@ -384,10 +459,10 @@ const VideoManagement = () => {
                 </div>
                 
                 {/* Messages d'état */}
-                {selectedVideo.status === 'failed' && selectedVideo.error && (
+                {selectedVideo.status === 'failed' && selectedVideo.error_message && (
                   <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
                     <p className="text-red-700">
-                      <strong>Erreur de traitement :</strong> {selectedVideo.error}
+                      <strong>Erreur de traitement :</strong> {selectedVideo.error_message}
                     </p>
                   </div>
                 )}
@@ -395,7 +470,7 @@ const VideoManagement = () => {
                 {selectedVideo.status === 'processing' && (
                   <div className="mt-4 bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
                     <p className="text-yellow-700">
-                      La vidéo est en cours de transcription. Les résultats seront disponibles sous peu.
+                      La vidéo est en cours de traitement. Les résultats seront disponibles sous peu.
                     </p>
                   </div>
                 )}
@@ -408,13 +483,20 @@ const VideoManagement = () => {
                   </div>
                 )}
                 
-                {/* Résultats - Afficher indépendamment du statut si les données existent */}
+                {/* CORRECTION: Résultats - Afficher indépendamment du statut si les données existent */}
                 {selectedVideo.hasTranscription && (
-                  <TranscriptionViewer video={selectedVideo} />
+                  <TranscriptionViewer 
+                    transcription={selectedVideo.transcription_text}
+                    analysis={selectedVideo.analysis_summary}
+                  />
                 )}
                 
                 {selectedVideo.hasAnalysis && (
-                  <VideoAnalysisResults video={selectedVideo} />
+                  <VideoAnalysisResults 
+                    analysis={selectedVideo.analysis_summary}
+                    keywords={selectedVideo.analysis_keywords}
+                    sentiment={selectedVideo.analysis_sentiment}
+                  />
                 )}
               </div>
             ) : (
