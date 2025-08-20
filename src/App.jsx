@@ -28,7 +28,33 @@ function AppContent() {
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('connected');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const { user, loading, signOut, profile, error: authError, connectionStatus: authConnectionStatus } = useAuth();
+
+  // CORRECTION 1: Gestion améliorée de l'état d'authentification
+  useEffect(() => {
+    if (!loading) {
+      if (user && profile) {
+        setIsAuthenticated(true);
+        console.log('Utilisateur authentifié avec profil:', user.id, profile);
+        // Fermer automatiquement le modal d'auth si ouvert
+        if (isAuthModalOpen) {
+          setIsAuthModalOpen(false);
+        }
+        // Charger les données du dashboard si on est sur l'onglet dashboard
+        if (activeTab === 'dashboard') {
+          setTimeout(() => {
+            loadDashboardData().catch(err => {
+              console.error('Erreur lors du chargement initial des données:', err);
+            });
+          }, 500);
+        }
+      } else {
+        setIsAuthenticated(false);
+        setDashboardData(null);
+      }
+    }
+  }, [user, profile, loading, activeTab, isAuthModalOpen]);
 
   // Vérifier la connexion à Supabase avec gestion d'erreur robuste
   useEffect(() => {
@@ -71,8 +97,8 @@ function AppContent() {
 
   // Récupérer les données du dashboard avec gestion d'erreur robuste
   const loadDashboardData = async () => {
-    if (!user) {
-      console.log('Aucun utilisateur connecté, aucune donnée à charger');
+    if (!user || !isAuthenticated) {
+      console.log('Aucun utilisateur connecté ou non authentifié, aucune donnée à charger');
       setDashboardData(null);
       return;
     }
@@ -117,9 +143,10 @@ function AppContent() {
         totalVideos: videos.length,
         recentVideos: videos.slice(0, 5),
         videosByStatus: {
-          draft: videos.filter(v => v.status === 'draft').length,
+          uploaded: videos.filter(v => v.status === 'uploaded' || v.status === 'pending').length,
           processing: videos.filter(v => v.status === 'processing' || v.status === 'analyzing').length,
-          published: videos.filter(v => v.status === 'published').length,
+          transcribed: videos.filter(v => v.status === 'transcribed' || (v.transcription_text && v.transcription_text.length > 0)).length,
+          analyzed: videos.filter(v => v.status === 'analyzed' || v.analysis).length,
           failed: videos.filter(v => v.status === 'failed').length
         },
         totalDuration: videos.reduce((sum, video) => sum + (video.duration || 0), 0),
@@ -149,7 +176,7 @@ function AppContent() {
     let mounted = true;
     let dataTimeout = null;
     
-    if (activeTab === 'dashboard') {
+    if (activeTab === 'dashboard' && isAuthenticated) {
       dataTimeout = setTimeout(() => {
         if (mounted) {
           loadDashboardData().catch(err => {
@@ -202,18 +229,19 @@ function AppContent() {
         }
       };
     }
-  }, [user, activeTab, connectionStatus]);
+  }, [user, activeTab, connectionStatus, isAuthenticated]);
 
-  const handleAuthSuccess = (user) => {
-    console.log('Utilisateur authentifié avec succès:', user.id);
+  // CORRECTION 2: Gestion améliorée du succès d'authentification
+  const handleAuthSuccess = (userData) => {
+    console.log('Utilisateur authentifié avec succès:', userData.id);
     setIsAuthModalOpen(false);
-    if (activeTab === 'dashboard') {
-      setTimeout(() => {
-        loadDashboardData().catch(err => {
-          console.error('Erreur après authentification:', err);
-        });
-      }, 1000);
-    }
+    // Attendre que le contexte d'auth soit mis à jour
+    setTimeout(() => {
+      setActiveTab('dashboard');
+      loadDashboardData().catch(err => {
+        console.error('Erreur après authentification:', err);
+      });
+    }, 1000);
   };
 
   const handleSignOut = async () => {
@@ -221,10 +249,12 @@ function AppContent() {
       console.log('Déconnexion demandée');
       await signOut();
       setDashboardData(null);
+      setIsAuthenticated(false);
       setActiveTab('dashboard');
     } catch (error) {
       console.error('Erreur de déconnexion:', error);
       setDashboardData(null);
+      setIsAuthenticated(false);
       setActiveTab('dashboard');
     }
   };
@@ -311,7 +341,7 @@ function AppContent() {
             user={user}
           />
 
-          {user ? (
+          {isAuthenticated ? (
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsContent value="dashboard" className="space-y-6">
                 {dashboardLoading ? (
@@ -428,3 +458,4 @@ function App() {
 }
 
 export default App;
+
