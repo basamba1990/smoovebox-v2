@@ -35,12 +35,20 @@ const Dashboard = ({ data }) => {
     try {
       console.log('Récupération des vidéos pour user_id:', user.id);
       
-      // CORRECTION: Utilisation de la vue 'video_details' pour récupérer toutes les informations consolidées
-      const { data, error } = await supabase
-        .from('video_details') // Utilisation de la vue video_details
-        .select(`*`)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('videos')
+      .select(`
+        *,
+        transcriptions (
+          id,
+          status,
+          confidence_score,
+          processed_at,
+          error_message
+        )
+      `)
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
       
       if (error) {
         console.error('Erreur lors du chargement des vidéos:', error);
