@@ -51,25 +51,38 @@ const AnalysisViewer = ({ video }) => {
         // Configurer un polling pour vérifier l'état de l'analyse
         const interval = setInterval(async () => {
           const { data: updatedData, error: pollError } = await supabase
-            .from('videos')
-            .select('analysis, status')
-            .eq('id', video.id)
+            .from(\'videos\')
+            .select(\'analysis, status\')
+            .eq(\'id\', video.id)
             .single();
             
-          if (!pollError && updatedData) {
-            if (updatedData.status !== 'analyzing') {
-              clearInterval(interval);
-              setAnalyzing(false);
-              
-              if (updatedData.analysis) {
-                setAnalysis(updatedData.analysis);
-              }
+          if (pollError) {
+            clearInterval(interval);
+            setError(`Erreur lors du suivi de l\'analyse: ${pollError.message}`);
+            setAnalyzing(false);
+            return;
+          }
+
+          if (updatedData && updatedData.status !== \'analyzing\') {
+            clearInterval(interval);
+            setAnalyzing(false);
+            
+            if (updatedData.analysis) {
+              setAnalysis(updatedData.analysis);
             }
           }
         }, 5000); // Vérifier toutes les 5 secondes
+
+        const timeout = setTimeout(() => {
+          clearInterval(interval);
+          if (analyzing) {
+            setError("L\'analyse prend plus de temps que prévu. Veuillez actualiser la page plus tard.");
+            setAnalyzing(false);
+          }
+        }, 120000); // 2 minutes
         
-        // Nettoyer l'intervalle lors du démontage
-        return () => clearInterval(interval);
+        // Nettoyer l\'intervalle et le timeout lors du démontage
+        return () => { clearInterval(interval); clearTimeout(timeout); };
       } else {
         setAnalyzing(false);
       }
@@ -88,12 +101,16 @@ const AnalysisViewer = ({ video }) => {
       setAnalyzing(true);
       setError(null);
       
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Vous devez être connecté pour analyser une vidéo");
+      }
       // Appeler la fonction Edge pour générer l'analyse
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-transcription`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabase.auth.session()?.access_token}`
+          'Authorization': `Bearer ${session.access_token}`
         },
         body: JSON.stringify({ videoId: video.id })
       });
