@@ -168,7 +168,7 @@ Deno.serve(async (req) => {
     await supabaseClient
       .from('videos')
       .update({
-        status: VIDEO_STATUS.ANALYZING,
+        status: 'analyzing',  // Utiliser la chaîne directement
         updated_at: new Date().toISOString()
       })
       .eq('id', videoId);
@@ -286,7 +286,7 @@ Deno.serve(async (req) => {
             .from("videos")
             .update({
               analysis: completeAnalysis,
-              status: VIDEO_STATUS.PUBLISHED,
+              status: 'published',  // Utiliser la chaîne directement
               updated_at: new Date().toISOString(),
             })
             .eq("id", videoId);
