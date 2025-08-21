@@ -670,7 +670,7 @@ Deno.serve(async (req) => {
             const { error: publishUpdateError } = await serviceClient
               .from('videos')
               .update({
-                status: VIDEO_STATUS.PUBLISHED,
+    status: VIDEO_STATUS.TRANSCRIBED, // Utiliser TRANSCRIBED au lieu de PUBLISHED
                 updated_at: new Date().toISOString()
               })
               .eq('id', videoId);
@@ -754,7 +754,7 @@ const { error: analysisUpdateError } = await serviceClient
 await serviceClient
   .from('videos')
   .update({
-    status: VIDEO_STATUS.PUBLISHED,
+                status: VIDEO_STATUS.TRANSCRIBED, // Utiliser TRANSCRIBED au lieu de PUBLISHED
     updated_at: new Date().toISOString()
   })
   .eq('id', videoId);
