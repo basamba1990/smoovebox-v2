@@ -178,8 +178,7 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         message: 'Analyse démarrée avec succès',
-        videoId,
-        status: VIDEO_STATUS.ANALYZING
+        videoId,        status: 'analyzing',  // Utiliser la chaîne directement
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
