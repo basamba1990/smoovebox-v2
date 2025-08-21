@@ -3,10 +3,13 @@ import OpenAI from 'npm:openai@4.28.0'
 
 // Valeurs exactes autorisées pour le statut dans la base de données
 const VIDEO_STATUS = {
-  DRAFT: 'draft',           // En attente ou prêt pour traitement
-  PROCESSING: 'processing', // En cours de traitement
-  PUBLISHED: 'published',   // Traitement terminé avec succès
-  FAILED: 'failed'          // Échec du traitement
+  UPLOADED: 'uploaded',
+  PROCESSING: 'processing',
+  TRANSCRIBED: 'transcribed', // Ajouter ce statut intermédiaire
+  ANALYZING: 'analyzing',
+  ANALYZED: 'analyzed',     // Ajouter ce statut intermédiaire 
+  PUBLISHED: 'published',
+  FAILED: 'failed'
 };
 
 // En-têtes CORS pour permettre les requêtes cross-origin
@@ -276,7 +279,7 @@ Deno.serve(async (req) => {
     const { error: updateError } = await serviceClient
       .from('videos')
       .update({
-        status: VIDEO_STATUS.PROCESSING,
+        status: 'processing',  // Utiliser la chaîne directement
         updated_at: new Date().toISOString(),
         transcription_attempts: (video.transcription_attempts || 0) + 1
       })
@@ -557,7 +560,7 @@ Deno.serve(async (req) => {
             .update({
               transcription: transcriptionData.text,
               transcription_data: transcriptionData,
-              status: VIDEO_STATUS.PUBLISHED,
+              status: VIDEO_STATUS.TRANSCRIBED, // Utiliser TRANSCRIBED au lieu de PUBLISHED
               processed_at: new Date().toISOString(),
               updated_at: new Date().toISOString()
             })
@@ -569,6 +572,9 @@ Deno.serve(async (req) => {
           }
           
           console.log(`Vidéo mise à jour avec les données de transcription`);
+          
+          // Vérifier que la mise à jour a bien été effectuée
+          await confirmDatabaseUpdate(videoId);
           
           // Essayer d'appeler la fonction de synchronisation si elle existe
           try {
@@ -645,6 +651,36 @@ Deno.serve(async (req) => {
               console.log(`Vidéo mise à jour avec l'analyse IA`);
             }
             
+            // Puis lorsque l'analyse est terminée:
+            const { error: finalAnalysisUpdateError } = await serviceClient
+              .from('videos')
+              .update({
+                status: VIDEO_STATUS.ANALYZED, // Utiliser ANALYZED
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', videoId);
+
+            if (finalAnalysisUpdateError) {
+              console.error(`Erreur lors de la mise à jour finale du statut après analyse:`, finalAnalysisUpdateError);
+            } else {
+              console.log(`Statut de la vidéo mis à jour à '${VIDEO_STATUS.ANALYZED}' après analyse.`);
+            }
+
+            // Finalement, mettre à jour avec le statut final:
+            const { error: publishUpdateError } = await serviceClient
+              .from('videos')
+              .update({
+                status: VIDEO_STATUS.PUBLISHED,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', videoId);
+
+            if (publishUpdateError) {
+              console.error(`Erreur lors de la publication finale de la vidéo:`, publishUpdateError);
+            } else {
+              console.log(`Vidéo ${videoId} publiée avec succès.`);
+            }
+            
             // Créer ou mettre à jour l'entrée dans la table analyses si elle existe
             try {
               await serviceClient
@@ -701,3 +737,64 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+
+
+// Puis lorsque l'analyse est terminée:
+const { error: analysisUpdateError } = await serviceClient
+  .from('videos')
+  .update({
+    analysis: analysis,
+    status: VIDEO_STATUS.ANALYZED, // Utiliser ANALYZED
+    updated_at: new Date().toISOString()
+  })
+  .eq('id', videoId);
+
+// Finalement, mettre à jour avec le statut final:
+await serviceClient
+  .from('videos')
+  .update({
+    status: VIDEO_STATUS.PUBLISHED,
+    updated_at: new Date().toISOString()
+  })
+  .eq('id', videoId);
+
+
+
+
+// Ajouter cette fonction qui vérifie si la mise à jour est réussie
+const confirmDatabaseUpdate = async (videoId, attempts = 0, maxAttempts = 3) => {
+  if (attempts >= maxAttempts) {
+    console.error(`Échec de confirmation de la mise à jour après ${maxAttempts} tentatives`);
+    return false;
+  }
+  
+  try {
+    // Attendre 2 secondes avant de vérifier
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    const { data: updatedVideo, error } = await serviceClient
+      .from("videos")
+      .select("status, transcription")
+      .eq("id", videoId)
+      .single();
+      
+    if (error) {
+      throw error;
+    }
+    
+    if (updatedVideo && 
+        (updatedVideo.status === VIDEO_STATUS.PUBLISHED || updatedVideo.status === VIDEO_STATUS.TRANSCRIBED) &&
+        updatedVideo.transcription) {
+      console.log(`Mise à jour confirmée pour la vidéo ${videoId}`);
+      return true;
+    }
+    
+    console.log(`Mise à jour non encore terminée, nouvelle tentative (${attempts + 1}/${maxAttempts})`);
+    return await confirmDatabaseUpdate(videoId, attempts + 1, maxAttempts);
+    
+  } catch (err) {
+    console.error(`Erreur lors de la confirmation de mise à jour:`, err);
+    return await confirmDatabaseUpdate(videoId, attempts + 1, maxAttempts);
+  }
+};
