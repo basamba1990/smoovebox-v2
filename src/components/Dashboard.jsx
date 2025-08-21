@@ -36,7 +36,7 @@ const Dashboard = ({ data }) => {
       console.log('Récupération des vidéos pour user_id:', user.id);
       
     const { data, error } = await supabase
-      .from('videos')
+      .from("videos")
       .select(`
         *,
         transcriptions (
@@ -47,24 +47,50 @@ const Dashboard = ({ data }) => {
           error_message
         )
       `)
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+    
+    if (error) {
+      throw error;
+    }
+    
+    // Normalisation des statuts pour un affichage cohérent
+    const normalizedVideos = (data || []).map(video => {
+      // Déterminer le statut réel basé sur les données disponibles
+      let normalizedStatus = video.status || 'pending';
+      let statusLabel = getStatusLabel(normalizedStatus);
       
-      if (error) {
-        console.error('Erreur lors du chargement des vidéos:', error);
-        throw error;
+      // Si la vidéo a une transcription complétée mais pas d'analyse
+      if ((video.transcription || (video.transcriptions && video.transcriptions.length > 0)) && 
+          !video.analysis && 
+          (normalizedStatus === 'completed' || normalizedStatus === 'published')) {
+        normalizedStatus = 'transcribed';
+        statusLabel = 'Transcrite';
       }
       
-      setVideos(data || []);
-      console.log('Vidéos récupérées:', data?.length || 0);
-      
-      // Mise à jour de la vidéo sélectionnée si nécessaire
-      if (selectedVideo) {
-        const updatedSelectedVideo = data?.find(v => v.id === selectedVideo.id);
-        if (updatedSelectedVideo) {
-          setSelectedVideo(updatedSelectedVideo);
-        }
+      // Si la vidéo a une analyse
+      if (video.analysis && (normalizedStatus === 'completed' || normalizedStatus === 'published')) {
+        normalizedStatus = 'analyzed';
+        statusLabel = 'Analysée';
       }
+      
+      return {
+        ...video,
+        normalizedStatus,
+        statusLabel
+      };
+    });
+    
+    setVideos(normalizedVideos);
+    console.log('Vidéos récupérées:', normalizedVideos.length || 0);
+    
+    // Mise à jour de la vidéo sélectionnée si nécessaire
+    if (selectedVideo) {
+      const updatedSelectedVideo = normalizedVideos.find(v => v.id === selectedVideo.id);
+      if (updatedSelectedVideo) {
+        setSelectedVideo(updatedSelectedVideo);
+      }
+    }
       
     } catch (error) {
       console.error('Erreur lors du chargement des vidéos:', error);
@@ -710,3 +736,23 @@ const Dashboard = ({ data }) => {
 };
 
 export default Dashboard;
+
+
+const getStatusLabel = (status) => {
+  // Normaliser le statut pour la comparaison
+  const normalizedStatus = status?.toLowerCase();
+  
+  const statusMap = {
+    'pending': 'En attente',
+    'uploaded': 'Uploadée',
+    'processing': 'En traitement',
+    'completed': 'Terminé',
+    'transcribed': 'Transcrite',
+    'analyzed': 'Analysée',
+    'published': 'Publiée',
+    'analyzing': 'Analyse en cours',
+    'failed': 'Échec'
+  };
+  
+  return statusMap[normalizedStatus] || status || 'Inconnu';
+};
