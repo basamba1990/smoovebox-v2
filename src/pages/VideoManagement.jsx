@@ -16,54 +16,76 @@ const VideoManagement = () => {
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [transcribingVideoId, setTranscribingVideoId] = useState(null);
   
-  // CORRECTION: Charger les vidéos depuis la vue video_details
   const fetchVideos = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    setError(null);
+    
     try {
-      setLoading(true);
-      setError(null);
+      console.log("Récupération des vidéos pour user_id:", user.id);
       
-      if (!user) {
-        setError("Vous devez être connecté pour voir vos vidéos");
-        setLoading(false);
-        return;
-      }
-      
-      // CORRECTION: Utiliser la vue video_details au lieu de la table videos
+      // Requête améliorée avec plus d'informations
       const { data, error } = await supabase
-        .from('video_details') // Changement ici: utilisation de la vue
-        .select('*') // Toutes les colonnes de la vue sont déjà jointes
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .from("videos")
+        .select(`
+          *,
+          transcriptions (
+            id,
+            status,
+            confidence_score,
+            processed_at,
+            error_message
+          )
+        `)
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
       
       if (error) {
-        throw new Error(`Erreur lors du chargement des vidéos: ${error.message}`);
+        throw error;
       }
-
-      // CORRECTION: Normaliser les données pour chaque vidéo avec les champs de la vue
-      const normalizedData = data.map(video => ({
-        ...video,
-        status: normalizeStatus(video.status),
-        // CORRECTION: Utiliser les champs de la vue video_details
-        hasTranscription: hasTranscription(video),
-        hasAnalysis: hasAnalysis(video)
-      }));
-
-      setVideos(normalizedData || []);
       
-      // Mettre à jour la vidéo sélectionnée
-      if (normalizedData && normalizedData.length > 0) {
-        if (!selectedVideo || !normalizedData.some(v => v.id === selectedVideo.id)) {
-          setSelectedVideo(normalizedData[0]);
-        } else {
-          const updatedVideo = normalizedData.find(v => v.id === selectedVideo.id);
-          if (updatedVideo) setSelectedVideo(updatedVideo);
+      // Normalisation des statuts pour un affichage cohérent
+      const normalizedVideos = (data || []).map(video => {
+        // Déterminer le statut réel basé sur les données disponibles
+        let normalizedStatus = video.status || "pending";
+        let statusLabel = getStatusLabel(normalizedStatus);
+        
+        // Si la vidéo a une transcription complétée mais pas d'analyse
+        if ((video.transcription || (video.transcriptions && video.transcriptions.length > 0)) && 
+            !video.analysis && 
+            (normalizedStatus === "completed" || normalizedStatus === "published")) {
+          normalizedStatus = "transcribed";
+          statusLabel = "Transcrite";
         }
-      } else {
-        setSelectedVideo(null);
+        
+        // Si la vidéo a une analyse
+        if (video.analysis && (normalizedStatus === "completed" || normalizedStatus === "published")) {
+          normalizedStatus = "analyzed";
+          statusLabel = "Analysée";
+        }
+        
+        return {
+          ...video,
+          normalizedStatus,
+          statusLabel
+        };
+      });
+      
+      setVideos(normalizedVideos);
+      console.log("Vidéos récupérées:", normalizedVideos.length || 0);
+      
+      // Mise à jour de la vidéo sélectionnée si nécessaire
+      if (selectedVideo) {
+        const updatedSelectedVideo = normalizedVideos.find(v => v.id === selectedVideo.id);
+        if (updatedSelectedVideo) {
+          setSelectedVideo(updatedSelectedVideo);
+        }
       }
-    } catch (err) {
-      console.error("Erreur lors du chargement des vidéos:", err);
-      setError(err.message);
+      
+    } catch (error) {
+      console.error("Erreur lors du chargement des vidéos:", error);
+      setError(`Erreur de chargement: ${error.message}`);
       setVideos([]);
     } finally {
       setLoading(false);
@@ -512,3 +534,24 @@ const VideoManagement = () => {
 };
 
 export default VideoManagement;
+
+
+// Fonction helper pour transformer le statut en libellé lisible
+const getStatusLabel = (status) => {
+  // Normaliser le statut pour la comparaison
+  const normalizedStatus = status?.toLowerCase();
+  
+  const statusMap = {
+    'pending': 'En attente',
+    'uploaded': 'Uploadée',
+    'processing': 'En traitement',
+    'completed': 'Terminé',
+    'transcribed': 'Transcrite',
+    'analyzed': 'Analysée',
+    'published': 'Publiée',
+    'analyzing': 'Analyse en cours',
+    'failed': 'Échec'
+  };
+  
+  return statusMap[normalizedStatus] || status || 'Inconnu';
+};
