@@ -166,7 +166,7 @@ const VideoUploader = ({ onUploadComplete }) => {
             description: description.trim() || null,
             storage_path: filePath,
             file_path: filePath, // Compatibilité avec l'ancien champ
-            status: 'draft', // CHANGEMENT: Utiliser 'draft' ou 'uploaded' si c'est une valeur valide pour la contrainte
+            status: 'processing', // Utiliser 'processing' comme statut initial
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           }
