@@ -3,14 +3,14 @@ import { Button } from './ui/button.jsx';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card.jsx';
 import { Badge } from './ui/badge.jsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.jsx';
-import { 
-  Video, 
-  Upload, 
-  Users, 
-  Sparkles, 
-  MessageCircle, 
-  Play, 
-  Square, 
+import {
+  Video,
+  Upload,
+  Users,
+  Sparkles,
+  MessageCircle,
+  Play,
+  Square,
   RotateCcw,
   CheckCircle,
   Camera,
@@ -23,6 +23,7 @@ import PitchAssistant from './PitchAssistant.jsx';
 import CreativeWorkshops from './CreativeWorkshops.jsx';
 import CollectiveMode from './CollectiveMode.jsx';
 import AIFeedbackAnalysis from './AIFeedbackAnalysis.jsx';
+import { videoService } from '../services/videoService'; // Import du service vidéo
 
 const EnhancedVideoUploader = () => {
   const [currentStep, setCurrentStep] = useState('mode_selection');
@@ -36,7 +37,11 @@ const EnhancedVideoUploader = () => {
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [recordingTime, setRecordingTime] = useState(0);
   const [recordingTimer, setRecordingTimer] = useState(null);
-  
+  const [uploading, setUploading] = useState(false); // Nouveau state pour l'upload
+  const [uploadProgress, setUploadProgress] = useState(0); // Nouveau state pour la progression de l'upload
+  const [uploadError, setUploadError] = useState(null); // Nouveau state pour les erreurs d'upload
+  const [uploadSuccess, setUploadSuccess] = useState(null); // Nouveau state pour le succès de l'upload
+
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
 
@@ -83,6 +88,7 @@ const EnhancedVideoUploader = () => {
       }
     } catch (error) {
       console.error('Erreur d\'accès à la caméra:', error);
+      setUploadError('Impossible d\'accéder à la caméra. Veuillez vérifier les permissions.');
     }
   };
 
@@ -112,7 +118,8 @@ const EnhancedVideoUploader = () => {
       setRecordedVideo({
         blob,
         url: videoUrl,
-        duration: recordingTime
+        duration: recordingTime,
+        name: `recorded_video_${Date.now()}.webm` // Ajouter un nom de fichier
       });
       setCurrentStep('analysis');
     };
@@ -198,11 +205,40 @@ const EnhancedVideoUploader = () => {
     startCamera();
   };
 
-  const handleAcceptVideo = () => {
-    // Ici, on pourrait uploader la vidéo vers Supabase
-    console.log('Vidéo acceptée:', recordedVideo);
-    // Reset pour un nouveau pitch
-    resetUploader();
+  const handleAcceptVideo = async () => {
+    if (!recordedVideo) return;
+
+    setUploading(true);
+    setUploadError(null);
+    setUploadSuccess(null);
+    setUploadProgress(0);
+
+    try {
+      const metadata = {
+        title: recordedVideo.name.replace('.webm', ''),
+        description: 'Vidéo enregistrée depuis la caméra',
+        duration: recordedVideo.duration,
+        isPublic: false,
+      };
+
+      const uploadedVideo = await videoService.uploadVideo(recordedVideo.blob, metadata, (progressEvent) => {
+        const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+        setUploadProgress(percent);
+      });
+
+      console.log('Vidéo uploadée avec succès:', uploadedVideo);
+      setUploadSuccess('Vidéo uploadée avec succès !');
+      // Déclencher la transcription après l'upload réussi
+      await videoService.transcribeVideo(uploadedVideo.id);
+      setUploadSuccess('Vidéo uploadée et transcription initiée avec succès !');
+
+    } catch (error) {
+      console.error('Erreur lors de l\'upload de la vidéo:', error);
+      setUploadError(`Erreur lors de l\'upload: ${error.message}`);
+    } finally {
+      setUploading(false);
+      resetUploader(); // Réinitialiser l'uploader après l'upload
+    }
   };
 
   const resetUploader = () => {
@@ -214,6 +250,10 @@ const EnhancedVideoUploader = () => {
     setCollectiveConfig(null);
     setRecordingTime(0);
     stopCamera();
+    setUploading(false);
+    setUploadProgress(0);
+    setUploadError(null);
+    setUploadSuccess(null);
   };
 
   const formatTime = (seconds) => {
@@ -240,6 +280,20 @@ const EnhancedVideoUploader = () => {
           </div>
         </CardHeader>
       </Card>
+
+      {/* Messages d'état globaux */}
+      {uploadError && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+          <strong className="font-bold">Erreur:</strong>
+          <span className="block sm:inline"> {uploadError}</span>
+        </div>
+      )}
+      {uploadSuccess && (
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+          <strong className="font-bold">Succès:</strong>
+          <span className="block sm:inline"> {uploadSuccess}</span>
+        </div>
+      )}
 
       {/* Étapes du processus */}
       {currentStep === 'mode_selection' && (
@@ -456,7 +510,10 @@ const EnhancedVideoUploader = () => {
           transcription="Simulation de transcription automatique du pitch vidéo..."
           onRetakeVideo={handleRetakeVideo}
           onAcceptVideo={handleAcceptVideo}
-          isVisible={true}
+          uploading={uploading} // Passer l'état d'upload
+          uploadProgress={uploadProgress} // Passer la progression
+          uploadError={uploadError} // Passer l'erreur
+          uploadSuccess={uploadSuccess} // Passer le succès
         />
       )}
     </div>
@@ -464,4 +521,5 @@ const EnhancedVideoUploader = () => {
 };
 
 export default EnhancedVideoUploader;
+
 
