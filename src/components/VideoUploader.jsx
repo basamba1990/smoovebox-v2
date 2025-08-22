@@ -15,7 +15,6 @@ const VideoUploader = ({ onUploadComplete }) => {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  const [transcribing, setTranscribing] = useState(false);
   const [uploadPhase, setUploadPhase] = useState('idle'); // idle, uploading, processing, success, error
   const fileInputRef = useRef(null);
   
@@ -56,6 +55,66 @@ const VideoUploader = ({ onUploadComplete }) => {
       setTitle(fileName);
     }
   };
+
+  // Fonction d'upload avec progression réelle utilisant XMLHttpRequest
+  const uploadWithProgress = (file, filePath, onProgress) => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        // Obtenir le token d'authentification actuel
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError || !session) {
+          reject(new Error('Session d\'authentification non trouvée'));
+          return;
+        }
+
+        const xhr = new XMLHttpRequest();
+        
+        // Configuration de l'URL pour l'API Supabase Storage
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const url = `${supabaseUrl}/storage/v1/object/videos/${filePath}`;
+        
+        // Gestionnaire de progression réelle
+        xhr.upload.addEventListener('progress', (event) => {
+          if (event.lengthComputable) {
+            const percent = Math.round((event.loaded / event.total) * 100);
+            onProgress(percent);
+          }
+        });
+        
+        // Gestionnaire de fin de requête
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const response = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+              resolve(response);
+            } catch (parseError) {
+              resolve({ success: true });
+            }
+          } else {
+            reject(new Error(`Upload failed with status: ${xhr.status} - ${xhr.responseText}`));
+          }
+        });
+        
+        // Gestionnaire d'erreur
+        xhr.addEventListener('error', () => {
+          reject(new Error('Upload failed due to network error'));
+        });
+        
+        // Configuration de la requête
+        xhr.open('POST', url);
+        xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
+        xhr.setRequestHeader('Content-Type', file.type);
+        xhr.setRequestHeader('Cache-Control', '3600');
+        
+        // Envoyer le fichier
+        xhr.send(file);
+        
+      } catch (error) {
+        reject(error);
+      }
+    });
+  };
   
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -82,57 +141,20 @@ const VideoUploader = ({ onUploadComplete }) => {
       setUploadPhase('uploading');
       setProgress(0);
       
-      // CORRECTION 5: Barre de progression fiable avec événements réels
+      // Créer un chemin unique pour la vidéo
       const filePath = `${user.id}/${Date.now()}_${file.name}`;
       console.log('Uploading file to path:', filePath);
       
-      // Utiliser XMLHttpRequest pour avoir un contrôle précis sur la progression
-      const uploadPromise = new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        
-        // Gestionnaire de progression
-        xhr.upload.addEventListener('progress', (event) => {
-          if (event.lengthComputable) {
-            const percentComplete = Math.round((event.loaded / event.total) * 100);
-            setProgress(percentComplete);
-            console.log(`Upload progress: ${percentComplete}%`);
-          }
-        });
-        
-        // Gestionnaire de succès
-        xhr.addEventListener('load', () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve(xhr.response);
-          } else {
-            reject(new Error(`Upload failed with status: ${xhr.status}`));
-          }
-        });
-        
-        // Gestionnaire d'erreur
-        xhr.addEventListener('error', () => {
-          reject(new Error('Upload failed due to network error'));
-        });
-        
-        // Configuration de la requête
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        
-        xhr.open('POST', `${supabaseUrl}/storage/v1/object/videos/${filePath}`);
-        xhr.setRequestHeader('Authorization', `Bearer ${supabaseKey}`);
-        xhr.setRequestHeader('Content-Type', file.type);
-        xhr.setRequestHeader('Cache-Control', '3600');
-        
-        // Envoyer le fichier
-        xhr.send(file);
+      // Upload avec progression réelle
+      await uploadWithProgress(file, filePath, (percent) => {
+        setProgress(percent);
+        console.log(`Upload progress: ${percent}%`);
       });
       
-      // Attendre la fin de l'upload
-      await uploadPromise;
-      
-      setProgress(100);
+      console.log('Upload completed successfully');
       setUploadPhase('processing');
       
-      // 2. Créer l'entrée dans la base de données
+      // Créer l'entrée dans la base de données avec la structure video_details
       console.log('Creating database entry...');
       
       const { data: videoData, error: dbError } = await supabase
@@ -142,9 +164,9 @@ const VideoUploader = ({ onUploadComplete }) => {
             user_id: user.id,
             title: title.trim(),
             description: description.trim() || null,
-            file_path: filePath,
             storage_path: filePath,
-            status: 'uploaded', // CORRECTION: Utiliser le statut 'uploaded' au lieu de 'pending'
+            file_path: filePath, // Compatibilité avec l'ancien champ
+            status: 'uploaded', // Statut initial selon video_details
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           }
@@ -153,10 +175,29 @@ const VideoUploader = ({ onUploadComplete }) => {
         .single();
       
       if (dbError) {
+        console.error('Erreur de base de données:', dbError);
         throw new Error(`Erreur lors de la création de l'entrée: ${dbError.message}`);
       }
       
       console.log('Video entry created successfully:', videoData);
+      
+      // Optionnel: Lancer la transcription automatiquement
+      try {
+        const { data: transcribeResponse, error: transcribeError } = await supabase.functions.invoke(
+          'transcribe-video', 
+          {
+            body: { videoId: videoData.id }
+          }
+        );
+        
+        if (transcribeError) {
+          console.warn('La transcription automatique n\'a pas pu démarrer:', transcribeError);
+        } else {
+          console.log('Transcription démarrée automatiquement:', transcribeResponse);
+        }
+      } catch (transcribeErr) {
+        console.warn('Erreur lors du démarrage de la transcription:', transcribeErr);
+      }
       
       setUploadPhase('success');
       setSuccess({
@@ -169,7 +210,6 @@ const VideoUploader = ({ onUploadComplete }) => {
       setFile(null);
       setTitle('');
       setDescription('');
-      setProgress(0);
       if (fileInputRef.current) {
         fileInputRef.current.value = null;
       }
@@ -255,7 +295,7 @@ const VideoUploader = ({ onUploadComplete }) => {
           <p className="font-medium">{getPhaseMessage()}</p>
         </div>
 
-        {/* Barre de progression */}
+        {/* Barre de progression réelle */}
         {(uploading || uploadPhase === 'processing') && (
           <div className="space-y-2">
             <Progress value={progress} className="w-full" />
@@ -411,4 +451,3 @@ const VideoUploader = ({ onUploadComplete }) => {
 };
 
 export default VideoUploader;
-
