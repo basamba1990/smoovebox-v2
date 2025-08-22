@@ -16,6 +16,7 @@ const VideoUploader = ({ onUploadComplete }) => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [uploadPhase, setUploadPhase] = useState('idle'); // idle, uploading, processing, success, error
+  const [transcribing, setTranscribing] = useState(false);
   const fileInputRef = useRef(null);
   
   const handleFileChange = (e) => {
@@ -154,7 +155,16 @@ const VideoUploader = ({ onUploadComplete }) => {
       console.log('Upload completed successfully');
       setUploadPhase('processing');
       
-      // Créer l'entrée dans la base de données avec la structure video_details
+      // CORRECTION: Générer l'URL signée après l'upload réussi
+      const { data: publicUrl, error: urlError } = await supabase.storage
+        .from('videos')
+        .createSignedUrl(filePath, 365 * 24 * 60 * 60); // URL valide pendant 1 an
+      
+      if (urlError) {
+        console.warn('Impossible de générer l\'URL signée:', urlError);
+      }
+      
+      // Créer l'entrée dans la base de données avec l'URL signée
       console.log('Creating database entry...');
       
       const { data: videoData, error: dbError } = await supabase
@@ -166,7 +176,10 @@ const VideoUploader = ({ onUploadComplete }) => {
             description: description.trim() || null,
             storage_path: filePath,
             file_path: filePath, // Compatibilité avec l'ancien champ
-            status: 'processing', // Utiliser 'processing' comme statut initial
+            url: publicUrl?.signedUrl || null, // CORRECTION: Ajouter l'URL signée
+            status: 'ready', // CORRECTION: Utiliser 'ready' au lieu de 'processing'
+            original_file_name: file.name,
+            file_size: file.size,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           }
@@ -181,30 +194,55 @@ const VideoUploader = ({ onUploadComplete }) => {
       
       console.log('Video entry created successfully:', videoData);
       
-      // Optionnel: Lancer la transcription automatiquement
+      // CORRECTION: Appeler la transcription avec la méthode de l'ancien fichier
       try {
-        const { data: transcribeResponse, error: transcribeError } = await supabase.functions.invoke(
-          'transcribe-video', 
-          {
-            body: { videoId: videoData.id }
-          }
-        );
+        setTranscribing(true);
+        console.log('Démarrage de la transcription pour la vidéo:', videoData.id);
         
-        if (transcribeError) {
-          console.warn('La transcription automatique n\'a pas pu démarrer:', transcribeError);
-        } else {
-          console.log('Transcription démarrée automatiquement:', transcribeResponse);
+        // Récupérer le token d'authentification
+        const { data: { session } } = await supabase.auth.getSession();
+        const accessToken = session?.access_token;
+        
+        if (!accessToken) {
+          console.error("Impossible de récupérer le token d'authentification");
+          setSuccess("Vidéo uploadée avec succès! La transcription n'a pas pu être démarrée automatiquement.");
+          return;
         }
-      } catch (transcribeErr) {
-        console.warn('Erreur lors du démarrage de la transcription:', transcribeErr);
+        
+        // CORRECTION: Utiliser fetch au lieu de supabase.functions.invoke
+        const transcribeResponse = await fetch('/functions/v1/transcribe-video', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            videoId: videoData.id
+          })
+        });
+        
+        if (!transcribeResponse.ok) {
+          const errorData = await transcribeResponse.json();
+          console.error('Erreur lors de la demande de transcription:', errorData);
+          setSuccess("Vidéo uploadée avec succès! La transcription n'a pas pu être démarrée automatiquement.");
+        } else {
+          const responseData = await transcribeResponse.json();
+          console.log('Transcription initiée avec succès:', responseData);
+          setSuccess("Vidéo uploadée avec succès! La transcription est en cours...");
+          
+          // Mettre à jour la liste des vidéos pour refléter le statut de transcription
+          if (onUploadComplete) {
+            onUploadComplete();
+          }
+        }
+      } catch (transcribeError) {
+        console.error('Erreur lors de l\'appel à la fonction de transcription:', transcribeError);
+        setSuccess("Vidéo uploadée avec succès! La transcription n'a pas pu être démarrée automatiquement.");
+      } finally {
+        setTranscribing(false);
       }
       
       setUploadPhase('success');
-      setSuccess({
-        message: 'Vidéo uploadée avec succès !',
-        details: `La vidéo "${title}" a été uploadée et est prête pour la transcription.`,
-        videoId: videoData.id
-      });
       
       // Réinitialiser le formulaire
       setFile(null);
@@ -215,7 +253,7 @@ const VideoUploader = ({ onUploadComplete }) => {
       }
       
       // Notifier le parent du succès
-      if (onUploadComplete) {
+      if (onUploadComplete && videoData) {
         onUploadComplete(videoData);
       }
       
@@ -236,6 +274,7 @@ const VideoUploader = ({ onUploadComplete }) => {
     setError(null);
     setSuccess(null);
     setUploadPhase('idle');
+    setTranscribing(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = null;
     }
@@ -296,12 +335,21 @@ const VideoUploader = ({ onUploadComplete }) => {
         </div>
 
         {/* Barre de progression réelle */}
-        {(uploading || uploadPhase === 'processing') && (
+        {(uploading || uploadPhase === 'processing' || transcribing) && (
           <div className="space-y-2">
             <Progress value={progress} className="w-full" />
             <p className="text-sm text-gray-600 text-center">
-              {uploadPhase === 'uploading' ? `${progress}% uploadé` : 'Traitement en cours...'}
+              {uploadPhase === 'uploading' ? `${progress}% uploadé` : 
+               transcribing ? 'Démarrage de la transcription...' : 'Traitement en cours...'}
             </p>
+            {transcribing && (
+              <div className="mt-2">
+                <div className="w-full bg-gray-200 rounded-full h-1.5">
+                  <div className="bg-green-500 h-1.5 rounded-full animate-pulse"></div>
+                </div>
+                <p className="text-xs mt-1">Démarrage de la transcription...</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -311,11 +359,8 @@ const VideoUploader = ({ onUploadComplete }) => {
             <div className="flex items-start gap-3">
               <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
-                <h4 className="font-medium text-green-800">{success.message}</h4>
-                <p className="text-sm text-green-700 mt-1">{success.details}</p>
-                {success.videoId && (
-                  <p className="text-xs text-green-600 mt-2">ID: {success.videoId}</p>
-                )}
+                <h4 className="font-medium text-green-800">Succès !</h4>
+                <p className="text-sm text-green-700 mt-1">{success}</p>
               </div>
               <Button
                 variant="ghost"
@@ -362,7 +407,7 @@ const VideoUploader = ({ onUploadComplete }) => {
               type="file"
               accept="video/mp4,video/quicktime,video/x-msvideo,video/webm"
               onChange={handleFileChange}
-              disabled={uploading}
+              disabled={uploading || transcribing}
               className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
             />
             <p className="text-xs text-gray-500 mt-1">
@@ -379,7 +424,7 @@ const VideoUploader = ({ onUploadComplete }) => {
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              disabled={uploading}
+              disabled={uploading || transcribing}
               placeholder="Entrez le titre de votre vidéo"
               className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
               maxLength={100}
@@ -394,7 +439,7 @@ const VideoUploader = ({ onUploadComplete }) => {
               id="video-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              disabled={uploading}
+              disabled={uploading || transcribing}
               placeholder="Décrivez votre vidéo (optionnel)"
               rows={3}
               className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
@@ -405,7 +450,7 @@ const VideoUploader = ({ onUploadComplete }) => {
           <div className="flex gap-3 pt-4">
             <Button
               type="submit"
-              disabled={!file || !title.trim() || uploading}
+              disabled={!file || !title.trim() || uploading || transcribing}
               className="flex-1"
             >
               {uploading ? (
@@ -413,6 +458,8 @@ const VideoUploader = ({ onUploadComplete }) => {
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                   {uploadPhase === 'uploading' ? 'Upload...' : 'Traitement...'}
                 </>
+              ) : transcribing ? (
+                'Démarrage de la transcription...'
               ) : (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
@@ -426,7 +473,7 @@ const VideoUploader = ({ onUploadComplete }) => {
                 type="button"
                 variant="outline"
                 onClick={resetForm}
-                disabled={uploading}
+                disabled={uploading || transcribing}
               >
                 Réinitialiser
               </Button>
