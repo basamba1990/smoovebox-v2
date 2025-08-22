@@ -653,33 +653,33 @@ Deno.serve(async (req) => {
             
             // Puis lorsque l'analyse est terminée:
             const { error: finalAnalysisUpdateError } = await serviceClient
-              .from('videos')
+              .from(\'videos\')
               .update({
                 status: VIDEO_STATUS.ANALYZED, // Utiliser ANALYZED
                 updated_at: new Date().toISOString()
               })
-              .eq('id', videoId);
+              .eq(\'id\', videoId);
 
             if (finalAnalysisUpdateError) {
               console.error(`Erreur lors de la mise à jour finale du statut après analyse:`, finalAnalysisUpdateError);
             } else {
-              console.log(`Statut de la vidéo mis à jour à '${VIDEO_STATUS.ANALYZED}' après analyse.`);
+              console.log(`Statut de la vidéo mis à jour à \'${VIDEO_STATUS.ANALYZED}\' après analyse.`);
             }
 
-            // Finalement, mettre à jour avec le statut final:
-            const { error: publishUpdateError } = await serviceClient
-              .from('videos')
-              .update({
-    status: VIDEO_STATUS.TRANSCRIBED, // Utiliser TRANSCRIBED au lieu de PUBLISHED
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', videoId);
+            // Supprimer la mise à jour redondante du statut TRANSCRIBED
+            // const { error: publishUpdateError } = await serviceClient
+            //   .from(\'videos\')
+            //   .update({
+            //     status: VIDEO_STATUS.TRANSCRIBED, // Utiliser TRANSCRIBED au lieu de PUBLISHED
+            //     updated_at: new Date().toISOString()
+            //   })
+            //   .eq(\'id\', videoId);
 
-            if (publishUpdateError) {
-              console.error(`Erreur lors de la publication finale de la vidéo:`, publishUpdateError);
-            } else {
-              console.log(`Vidéo ${videoId} publiée avec succès.`);
-            }
+            // if (publishUpdateError) {
+            //   console.error(`Erreur lors de la publication finale de la vidéo:`, publishUpdateError);
+            // } else {
+            //   console.log(`Vidéo ${videoId} publiée avec succès.`);
+            // }
             
             // Créer ou mettre à jour l'entrée dans la table analyses si elle existe
             try {
@@ -784,7 +784,7 @@ const confirmDatabaseUpdate = async (videoId, attempts = 0, maxAttempts = 3) => 
     }
     
     if (updatedVideo && 
-        (updatedVideo.status === VIDEO_STATUS.PUBLISHED || updatedVideo.status === VIDEO_STATUS.TRANSCRIBED) &&
+        (updatedVideo.status === VIDEO_STATUS.ANALYZED || updatedVideo.status === VIDEO_STATUS.TRANSCRIBED) &&
         updatedVideo.transcription) {
       console.log(`Mise à jour confirmée pour la vidéo ${videoId}`);
       return true;
