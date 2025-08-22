@@ -436,266 +436,154 @@ Deno.serve(async (req) => {
     )
 
     // 7. DÉMARRER LE TRAITEMENT EN ARRIÈRE-PLAN
-    // Supabase Edge Functions exposent EdgeRuntime.waitUntil; sinon, ce bloc sera simplement exécuté sans bloquer la réponse
-    const runBackground = async () => {
+    EdgeRuntime.waitUntil((async () => {
+      let transcriptionResult: any = null;
+      let transcriptionError: any = null;
+
       try {
-        // Télécharger la vidéo
-        console.log('Téléchargement de la vidéo...')
-        const videoResponse = await fetch(videoUrl!)
-        if (!videoResponse.ok) {
-          throw new Error(
-            `Erreur lors du téléchargement de la vidéo: ${videoResponse.status} ${videoResponse.statusText}`
-          )
+        // Télécharger le fichier audio/vidéo dans la mémoire temporaire
+        const audioResponse = await fetch(videoUrl);
+        if (!audioResponse.ok) {
+          throw new Error(`Échec du téléchargement du fichier audio: ${audioResponse.statusText}`);
         }
+        const audioBlob = await audioResponse.blob();
+        const audioFile = new File([audioBlob], `video_${videoId}.webm`, { type: audioBlob.type });
 
-        const contentLength = videoResponse.headers.get('content-length')
-        console.log(`Vidéo téléchargée avec succès, taille: ${contentLength || 'inconnue'} octets`)
+        // Transcrire l'audio avec OpenAI Whisper
+        const transcription = await openai.audio.transcriptions.create({
+          file: audioFile,
+          model: "whisper-1",
+          language: "fr", // Spécifier la langue française
+          response_format: "verbose_json", // Pour obtenir les segments et les timestamps
+        });
 
-        if (contentLength && parseInt(contentLength) > 25 * 1024 * 1024) {
-          throw new Error(
-            `La vidéo est trop volumineuse (${Math.round(parseInt(contentLength) / (1024 * 1024))} Mo). La limite est de 25 Mo pour OpenAI Whisper.`
-          )
-        }
+        transcriptionResult = transcription;
+        console.log("Transcription OpenAI réussie.");
 
-        const videoBlob = await videoResponse.blob()
-        const videoFile = new File([videoBlob], 'video.mp4', { type: 'video/mp4' })
-
-        // Initialiser le client OpenAI
-        const openai = new OpenAI({ apiKey: openaiApiKey! })
-
-        // Sélection du modèle
-        const shouldUseWhisper = contentLength && parseInt(contentLength) > 10 * 1024 * 1024
-        const transcriptionModel = shouldUseWhisper ? 'whisper-1' : 'gpt-4o-transcribe'
-
-        console.log(`Début de la transcription avec OpenAI ${transcriptionModel}`)
-
-        const transcriptionOptions: any = { file: videoFile, language: 'fr' }
-
-        let transcriptionData: { text: string; segments?: any[]; words?: any[]; language: string; duration?: number }
-
-        if (transcriptionModel === 'whisper-1') {
-          const transcription = await openai.audio.transcriptions.create({
-            ...transcriptionOptions,
-            model: 'whisper-1',
-            response_format: 'verbose_json',
-            timestamp_granularities: ['word', 'segment']
-          })
-
-          transcriptionData = {
-            text: transcription.text,
-            segments: transcription.segments || [],
-            words: transcription.words || [],
-            language: transcription.language || 'fr',
-            duration: (transcription as any).duration || 0
-          }
-        } else {
-          const transcription = await openai.audio.transcriptions.create({
-            ...transcriptionOptions,
-            model: 'gpt-4o-transcribe',
-            response_format: 'json',
-            prompt:
-              'Cette transcription concerne une vidéo en français. Veuillez transcrire avec précision, en incluant la ponctuation et les paragraphes appropriés.'
-          })
-
-          transcriptionData = { text: transcription.text, segments: [], language: 'fr' }
-        }
-
-        console.log(
-          `Transcription terminée avec succès, longueur: ${transcriptionData.text.length} caractères`
-        )
-
-        // Créer un enregistrement dans la table transcriptions (si disponible)
-        try {
-          const { data: newTranscription, error: transcriptionInsertError } = await serviceClient
-            .from('transcriptions')
-            .insert({
-              video_id: videoId,
-              user_id: userId,
-              language: transcriptionData.language,
-              full_text: transcriptionData.text,
-              segments: transcriptionData.segments,
-              words: transcriptionData.words || [],
-              transcription_text: transcriptionData.text,
-              confidence_score: transcriptionData.segments?.length
-                ? transcriptionData.segments.reduce(
-                    (acc: number, segment: any) => acc + (segment.confidence || 0),
-                    0
-                  ) / transcriptionData.segments.length
-                : 0.95,
-              status: 'COMPLETED',
-              processed_at: new Date().toISOString(),
-              created_at: new Date().toISOString()
-            })
-            .select()
-            .single()
-
-          if (transcriptionInsertError) {
-            console.error('Erreur lors de l\'insertion de la transcription:', transcriptionInsertError)
-          } else {
-            console.log(`Transcription insérée avec succès, id: ${newTranscription?.id}`)
-          }
-        } catch (transcriptionTableError) {
-          console.log(
-            "La table transcriptions n'existe pas ou a une structure incompatible",
-            transcriptionTableError
-          )
-          // Continuer sans échec
-        }
-
-        // Mettre à jour la vidéo avec les données de transcription
-        const { error: transcriptionUpdateError } = await serviceClient
+        // Mettre à jour la base de données avec la transcription
+        const { error: dbUpdateError } = await serviceClient
           .from('videos')
           .update({
-            transcription: transcriptionData.text,
-            transcription_data: transcriptionData as any,
+            transcription_text: transcription.text,
+            transcription_data: transcription, // Stocker l'objet complet pour les segments
             status: VIDEO_STATUS.TRANSCRIBED,
-            processed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
           })
-          .eq('id', videoId as string)
+          .eq('id', videoId as string);
 
-        if (transcriptionUpdateError) {
-          console.error('Erreur lors de la mise à jour de la transcription:', transcriptionUpdateError)
-          throw transcriptionUpdateError
+        if (dbUpdateError) {
+          console.error('Erreur lors de la mise à jour de la vidéo avec la transcription:', dbUpdateError);
+          throw dbUpdateError;
         }
 
-        console.log('Vidéo mise à jour avec les données de transcription')
+        // Insérer ou mettre à jour dans la table 'transcriptions'
+        const { error: transcriptionTableError } = await serviceClient
+          .from('transcriptions')
+          .upsert({
+            video_id: videoId as string,
+            full_text: transcription.text,
+            segments: transcription.segments, // Stocker les segments séparément si la table le supporte
+            transcription_data: transcription, // Stocker l'objet complet
+            status: 'completed', // Ou un statut spécifique à la table transcriptions
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'video_id' });
 
-        // Vérifier la propagation
-        await confirmDatabaseUpdate(serviceClient, videoId as string)
-
-        // Essayer d'appeler la fonction de synchronisation si elle existe
-        try {
-          const { error: syncError } = await serviceClient.rpc('sync_video_transcription', {
-            video_id: videoId
-          })
-
-          if (syncError) {
-            console.error("Erreur lors de l'appel à sync_video_transcription:", syncError)
-          } else {
-            console.log('Fonction sync_video_transcription appelée avec succès')
-          }
-        } catch (syncError) {
-          console.error("Exception lors de l'appel à sync_video_transcription:", syncError)
+        if (transcriptionTableError) {
+          console.error('Erreur lors de l\'upsert dans la table transcriptions:', transcriptionTableError);
+          // Ne pas bloquer le processus si l'upsert échoue, car la transcription est déjà dans 'videos'
         }
 
-        // Générer l'analyse IA de la transcription
-        try {
-          console.log("Début de l'analyse IA du texte transcrit")
+        console.log(`Transcription terminée et enregistrée pour la vidéo ${videoId}`);
 
-          const analysisModel = 'gpt-3.5-turbo'
+      } catch (err: any) {
+        transcriptionError = err;
+        console.error('Erreur lors de la transcription en arrière-plan:', err);
 
-          const analysisResponse = await openai.chat.completions.create({
-            model: analysisModel,
-            messages: [
-              {
-                role: 'system',
-                content:
-                  `Tu es un expert en analyse de discours. Analyse la transcription suivante et fournis:\n` +
-                  `1. Un résumé concis (5-7 phrases)\n` +
-                  `2. 5-7 points clés\n` +
-                  `3. Une évaluation de la clarté et de la structure (note de 1 à 10)\n` +
-                  `4. 3-5 suggestions d'amélioration\n` +
-                  `5. 3-5 points forts\n\n` +
-                  `Réponds au format JSON avec les clés suivantes:\n` +
-                  `{"resume":"string","points_cles":["string"],"evaluation":{"clarte":number,"structure":number},"suggestions":["string"],"strengths":["string"]}`
-              },
-              { role: 'user', content: transcriptionData.text }
-            ],
-            response_format: { type: 'json_object' }
-          })
-
-          const analysis = JSON.parse(analysisResponse.choices[0].message.content as string)
-          console.log(`Analyse IA générée avec succès avec ${analysisModel}`)
-
-          // Mettre à jour la vidéo avec l'analyse
-          const { error: analysisUpdateError } = await serviceClient
-            .from('videos')
-            .update({ analysis, updated_at: new Date().toISOString() })
-            .eq('id', videoId as string)
-
-          if (analysisUpdateError) {
-            console.error("Erreur lors de la mise à jour de l'analyse:", analysisUpdateError)
-          } else {
-            console.log("Vidéo mise à jour avec l'analyse IA")
-          }
-
-          // Puis lorsque l'analyse est terminée => ANALYZED
-          const { error: finalAnalysisUpdateError } = await serviceClient
-            .from('videos')
-            .update({ status: VIDEO_STATUS.ANALYZED, updated_at: new Date().toISOString() })
-            .eq('id', videoId as string)
-
-          if (finalAnalysisUpdateError) {
-            console.error(
-              'Erreur lors de la mise à jour finale du statut après analyse:',
-              finalAnalysisUpdateError
-            )
-          } else {
-            console.log(`Statut de la vidéo mis à jour à '${VIDEO_STATUS.ANALYZED}' après analyse.`)
-          }
-
-          // Créer/mettre à jour table analyses si elle existe
-          try {
-            await serviceClient
-              .from('analyses')
-              .upsert(
-                {
-                  video_id: videoId,
-                  content: analysis,
-                  created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString()
-                },
-                { onConflict: 'video_id' }
-              )
-          } catch (analysesTableError) {
-            console.log(
-              "La table analyses n'existe pas ou a une structure incompatible",
-              analysesTableError
-            )
-          }
-        } catch (analysisError) {
-          console.error("Erreur lors de l'analyse IA", analysisError)
-          // L'analyse a échoué mais la transcription a réussi -> on ne marque pas l'ensemble en échec
-        }
-      } catch (error: any) {
-        console.error('Erreur lors de la transcription', error)
-
-        // Mettre à jour le statut de la vidéo pour indiquer l'échec
+        // Mettre à jour le statut de la vidéo en cas d'échec
         await serviceClient
           .from('videos')
           .update({
             status: VIDEO_STATUS.FAILED,
-            error_message: `Erreur de transcription: ${error.message}`,
-            updated_at: new Date().toISOString()
+            error_message: `Erreur de transcription: ${err.message || 'Erreur inconnue'}`,
+            updated_at: new Date().toISOString(),
           })
-          .eq('id', videoId as string)
+          .eq('id', videoId as string);
       }
-    }
 
-    try {
-      // Si l'environnement supporte EdgeRuntime.waitUntil (Supabase), utilise-le
-      // @ts-ignore
-      if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime?.waitUntil) {
-        // @ts-ignore
-        EdgeRuntime.waitUntil(runBackground())
-      } else {
-        // Fallback: déclencher sans bloquer
-        runBackground()
+      // Si la transcription a réussi, déclencher l'analyse IA
+      if (transcriptionResult) {
+        try {
+          const analyzeResponse = await fetch(
+            `${supabaseUrl}/functions/v1/analyze-transcription`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token || ''}` // Utiliser le token d'origine si disponible
+              },
+              body: JSON.stringify({ videoId: videoId })
+            }
+          );
+
+          if (!analyzeResponse.ok) {
+            const errorText = await analyzeResponse.text();
+            console.error(`Échec du déclenchement de l'analyse IA: ${analyzeResponse.status} - ${errorText}`);
+            throw new Error(`Échec du déclenchement de l'analyse IA: ${errorText}`);
+          }
+          console.log(`Analyse IA déclenchée pour la vidéo ${videoId}`);
+        } catch (analyzeTriggerError: any) {
+          console.error('Erreur lors du déclenchement de l\'analyse IA:', analyzeTriggerError);
+          // Mettre à jour le statut de la vidéo en cas d'échec du déclenchement de l'analyse
+          await serviceClient
+            .from('videos')
+            .update({
+              status: VIDEO_STATUS.FAILED,
+              error_message: `Erreur de déclenchement d'analyse IA: ${analyzeTriggerError.message || 'Erreur inconnue'}`,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', videoId as string);
+        }
       }
-    } catch (_) {
-      // Fallback silencieux
-      runBackground()
-    }
+    })());
 
-    // Retourner immédiatement la réponse pour ne pas bloquer le client
-    return responsePromise
+    return responsePromise;
+
   } catch (error: any) {
-    console.error('Erreur générale non gérée', error)
+    console.error('Erreur générale non gérée dans transcribe-video:', error);
+
+    // Tenter de mettre à jour le statut de la vidéo en cas d'erreur générale
+    const videoIdFromReq = req.method === 'GET' || isWhatsApp 
+      ? new URL(req.url).searchParams.get('videoId') 
+      : (await req.clone().json().catch(() => ({}))).videoId;
+
+    if (videoIdFromReq) {
+      try {
+        const serviceClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
+        await serviceClient
+          .from('videos')
+          .update({
+            status: VIDEO_STATUS.FAILED,
+            error_message: `Erreur interne du serveur: ${error.message || 'Erreur inconnue'}`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', videoIdFromReq);
+      } catch (updateErr) {
+        console.error('Erreur lors de la mise à jour du statut après une erreur générale:', updateErr);
+      }
+    }
 
     return new Response(
-      JSON.stringify({ error: 'Erreur interne du serveur', details: error.message }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-    )
+      JSON.stringify({
+        error: 'Erreur interne du serveur',
+        details: error.message,
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500,
+      }
+    );
   }
-})
+});
+
+
