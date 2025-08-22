@@ -168,7 +168,7 @@ Deno.serve(async (req) => {
     await supabaseClient
       .from('videos')
       .update({
-        status: 'analyzing',  // Utiliser la chaîne directement
+        status: VIDEO_STATUS.ANALYZING,  // Utiliser la chaîne directement
         updated_at: new Date().toISOString()
       })
       .eq('id', videoId);
@@ -178,7 +178,8 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         message: 'Analyse démarrée avec succès',
-        videoId,        status: 'analyzing',  // Utiliser la chaîne directement
+        videoId,
+        status: VIDEO_STATUS.ANALYZING,  // Utiliser la chaîne directement
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -285,7 +286,7 @@ Deno.serve(async (req) => {
             .from("videos")
             .update({
               analysis: completeAnalysis,
-              status: 'published',  // Utiliser la chaîne directement
+              status: VIDEO_STATUS.ANALYZED,  // Utiliser la chaîne directement
               updated_at: new Date().toISOString(),
             })
             .eq("id", videoId);
@@ -339,9 +340,28 @@ Deno.serve(async (req) => {
     // Retourner la réponse immédiate
     return immediateResponse;
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Erreur générale non gérée", error);
     
+    // Tenter de mettre à jour le statut de la vidéo en cas d'erreur générale
+    const videoIdFromReq = new URL(req.url).searchParams.get('videoId') || (await req.clone().json().catch(() => ({}))).videoId;
+
+    if (videoIdFromReq) {
+      try {
+        const serviceClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
+        await serviceClient
+          .from('videos')
+          .update({
+            status: VIDEO_STATUS.FAILED,
+            error_message: `Erreur interne du serveur: ${error.message || 'Erreur inconnue'}`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', videoIdFromReq);
+      } catch (updateErr) {
+        console.error('Erreur lors de la mise à jour du statut après une erreur générale:', updateErr);
+      }
+    }
+
     return new Response(
       JSON.stringify({ 
         error: 'Erreur interne du serveur',
@@ -354,3 +374,5 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+
