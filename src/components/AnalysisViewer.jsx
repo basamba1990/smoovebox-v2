@@ -1,4 +1,3 @@
-// src/components/AnalysisViewer.jsx
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -51,19 +50,19 @@ const AnalysisViewer = ({ video }) => {
         // Configurer un polling pour vérifier l'état de l'analyse
         const interval = setInterval(async () => {
           const { data: updatedData, error: pollError } = await supabase
-            .from(\'videos\')
-            .select(\'analysis, status\')
-            .eq(\'id\', video.id)
+            .from('videos')
+            .select('analysis, status')
+            .eq('id', video.id)
             .single();
             
           if (pollError) {
             clearInterval(interval);
-            setError(`Erreur lors du suivi de l\'analyse: ${pollError.message}`);
+            setError(`Erreur lors du suivi de l'analyse: ${pollError.message}`);
             setAnalyzing(false);
             return;
           }
 
-          if (updatedData && updatedData.status !== \'analyzing\') {
+          if (updatedData && updatedData.status !== 'analyzing') {
             clearInterval(interval);
             setAnalyzing(false);
             
@@ -76,18 +75,18 @@ const AnalysisViewer = ({ video }) => {
         const timeout = setTimeout(() => {
           clearInterval(interval);
           if (analyzing) {
-            setError("L\'analyse prend plus de temps que prévu. Veuillez actualiser la page plus tard.");
+            setError("L'analyse prend plus de temps que prévu. Veuillez actualiser la page plus tard.");
             setAnalyzing(false);
           }
         }, 120000); // 2 minutes
         
-        // Nettoyer l\'intervalle et le timeout lors du démontage
+        // Nettoyer l'intervalle et le timeout lors du démontage
         return () => { clearInterval(interval); clearTimeout(timeout); };
       } else {
         setAnalyzing(false);
       }
     } catch (err) {
-      console.error('Erreur lors de la récupération de l\'analyse:', err);
+      console.error('Erreur lors de la récupération de l'analyse:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -101,11 +100,13 @@ const AnalysisViewer = ({ video }) => {
       setAnalyzing(true);
       setError(null);
       
+      // Obtenir le token d'authentification
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         throw new Error("Vous devez être connecté pour analyser une vidéo");
       }
-      // Appeler la fonction Edge pour générer l'analyse
+      
+      // Appeler directement la fonction Edge
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-transcription`, {
         method: 'POST',
         headers: {
@@ -121,35 +122,41 @@ const AnalysisViewer = ({ video }) => {
       }
       
       const result = await response.json();
+      console.log("Réponse de l'analyse:", result);
       
-      if (result.analysis) {
-        setAnalysis(result.analysis);
-        setAnalyzing(false);
-      } else {
-        // Configurer un polling pour vérifier l'état de l'analyse
-        const interval = setInterval(async () => {
-          await fetchAnalysis();
+      // Configurer un polling pour suivre l'avancement
+      const checkInterval = setInterval(async () => {
+        const { data: videoCheck, error: checkError } = await supabase
+          .from('videos')
+          .select('analysis, status')
+          .eq('id', video.id)
+          .single();
           
-          const { data: updatedData } = await supabase
-            .from('videos')
-            .select('status')
-            .eq('id', video.id)
-            .single();
-            
-          if (updatedData && updatedData.status !== 'analyzing') {
-            clearInterval(interval);
-            setAnalyzing(false);
-          }
-        }, 5000); // Vérifier toutes les 5 secondes
-        
-        // Nettoyer l'intervalle après 2 minutes maximum
-        setTimeout(() => {
-          clearInterval(interval);
+        if (checkError) {
+          clearInterval(checkInterval);
+          setError(`Erreur lors du suivi de l'analyse: ${checkError.message}`);
           setAnalyzing(false);
-        }, 120000);
-      }
+          return;
+        }
+        
+        if (videoCheck.analysis && videoCheck.status === 'published') {
+          clearInterval(checkInterval);
+          setAnalysis(videoCheck.analysis);
+          setAnalyzing(false);
+        }
+      }, 5000); // Vérifier toutes les 5 secondes
+      
+      // Arrêter le polling après 2 minutes maximum
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        if (analyzing) {
+          setError("L'analyse prend plus de temps que prévu. Veuillez actualiser la page plus tard.");
+          setAnalyzing(false);
+        }
+      }, 120000); // 2 minutes
+      
     } catch (err) {
-      console.error('Erreur lors de la génération de l\'analyse:', err);
+      console.error('Erreur lors de la génération de l'analyse:', err);
       setError(err.message);
       setAnalyzing(false);
     }
