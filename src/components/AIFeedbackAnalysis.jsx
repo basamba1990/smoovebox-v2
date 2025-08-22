@@ -16,7 +16,9 @@ import {
   Lightbulb,
   RotateCcw,
   Play,
-  Star
+  Star,
+  Upload,
+  FileText
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 
@@ -25,31 +27,38 @@ const AIFeedbackAnalysis = ({
   transcription, 
   onRetakeVideo, 
   onAcceptVideo, 
+  uploading = false,
+  uploadProgress = 0,
+  uploadError = null,
+  uploadSuccess = null,
   isVisible = true 
 }) => {
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [currentAnalysis, setCurrentAnalysis] = useState('');
   const [feedback, setFeedback] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(true);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState(null);
+  const [videoTranscription, setVideoTranscription] = useState(transcription);
+  const [uploadedVideoId, setUploadedVideoId] = useState(null);
 
   const analysisSteps = [
-    { id: 'transcription', label: 'Transcription automatique', progress: 20 },
-    { id: 'linguistic', label: 'Analyse linguistique', progress: 40 },
-    { id: 'emotional', label: 'Analyse émotionnelle', progress: 60 },
-    { id: 'structure', label: 'Évaluation de la structure', progress: 80 },
+    { id: 'upload', label: 'Upload de la vidéo', progress: 10 },
+    { id: 'transcription', label: 'Transcription automatique', progress: 30 },
+    { id: 'linguistic', label: 'Analyse linguistique', progress: 50 },
+    { id: 'emotional', label: 'Analyse émotionnelle', progress: 70 },
+    { id: 'structure', label: 'Évaluation de la structure', progress: 85 },
     { id: 'recommendations', label: 'Génération des conseils', progress: 100 }
   ];
 
   // Polling function to check video analysis status
   const checkAnalysisStatus = useCallback(async () => {
-    if (!videoData?.id) return;
+    if (!uploadedVideoId) return;
     
     try {
       const { data, error } = await supabase
         .from('videos')
-        .select('status, analysis, error_message')
-        .eq('id', videoData.id)
+        .select('status, analysis, transcription_text, transcription_data, error_message')
+        .eq('id', uploadedVideoId)
         .single();
       
       if (error) throw error;
@@ -60,10 +69,30 @@ const AIFeedbackAnalysis = ({
         return false;
       }
       
-      if (data.status === 'published' && data.analysis) {
+      // Update transcription if available
+      if (data.transcription_text && !videoTranscription) {
+        setVideoTranscription(data.transcription_text);
+      }
+      
+      if (data.status === 'analyzed' && data.analysis) {
         setFeedback(processFeedback(data.analysis));
         setIsAnalyzing(false);
         return false;
+      }
+      
+      // Update progress based on status
+      if (data.status === 'uploaded') {
+        setAnalysisProgress(10);
+        setCurrentAnalysis('Upload terminé');
+      } else if (data.status === 'processing') {
+        setAnalysisProgress(30);
+        setCurrentAnalysis('Transcription en cours...');
+      } else if (data.status === 'transcribed') {
+        setAnalysisProgress(50);
+        setCurrentAnalysis('Analyse linguistique...');
+      } else if (data.status === 'analyzing') {
+        setAnalysisProgress(70);
+        setCurrentAnalysis('Analyse IA en cours...');
       }
       
       // Continue polling
@@ -74,68 +103,34 @@ const AIFeedbackAnalysis = ({
       setIsAnalyzing(false);
       return false;
     }
-  }, [videoData?.id]);
+  }, [uploadedVideoId, videoTranscription]);
 
-  // Start analysis when component becomes visible
+  // Handle upload completion
   useEffect(() => {
-    if (!isVisible || !isAnalyzing || !videoData?.id) return;
+    if (uploadSuccess && !uploadedVideoId && videoData?.id) {
+      setUploadedVideoId(videoData.id);
+      setIsAnalyzing(true);
+      setAnalysisProgress(10);
+      setCurrentAnalysis('Upload terminé, démarrage de l\'analyse...');
+    }
+  }, [uploadSuccess, uploadedVideoId, videoData?.id]);
+
+  // Start polling when analysis begins
+  useEffect(() => {
+    if (!isAnalyzing || !uploadedVideoId) return;
     
-    // Initialize analysis progress display
-    let currentStep = 0;
-    const progressInterval = setInterval(() => {
-      if (currentStep < analysisSteps.length) {
-        setCurrentAnalysis(analysisSteps[currentStep].label);
-        setAnalysisProgress(analysisSteps[currentStep].progress);
-        currentStep++;
-      } else {
-        // Loop through steps until analysis is complete
-        currentStep = 0;
+    // Set up polling to check status
+    const pollingInterval = setInterval(async () => {
+      const shouldContinue = await checkAnalysisStatus();
+      if (!shouldContinue) {
+        clearInterval(pollingInterval);
       }
-    }, 2000);
-    
-    // Start the actual analysis
-    const startAnalysis = async () => {
-      try {
-        // Call the Edge Function to analyze the video
-        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-transcription`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabase.auth.session()?.access_token}`
-          },
-          body: JSON.stringify({ videoId: videoData.id })
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Erreur lors du démarrage de l\'analyse');
-        }
-        
-        // Set up polling to check status
-        const pollingInterval = setInterval(async () => {
-          const shouldContinue = await checkAnalysisStatus();
-          if (!shouldContinue) {
-            clearInterval(pollingInterval);
-          }
-        }, 5000);
-        
-        return () => {
-          clearInterval(pollingInterval);
-        };
-        
-      } catch (err) {
-        console.error('Erreur lors du démarrage de l\'analyse:', err);
-        setError(err.message || 'Erreur lors du démarrage de l\'analyse');
-        setIsAnalyzing(false);
-      }
-    };
-    
-    startAnalysis();
+    }, 3000);
     
     return () => {
-      clearInterval(progressInterval);
+      clearInterval(pollingInterval);
     };
-  }, [isVisible, isAnalyzing, videoData?.id, checkAnalysisStatus]);
+  }, [isAnalyzing, uploadedVideoId, checkAnalysisStatus]);
 
   // Process the feedback data from Supabase
   const processFeedback = (analysisData) => {
@@ -146,7 +141,7 @@ const AIFeedbackAnalysis = ({
     return {
       overallScore: calculateOverallScore(analysisData),
       duration: videoData?.duration || 0,
-      wordCount: transcription?.split(' ').length || 0,
+      wordCount: videoTranscription?.split(' ').length || 0,
       categories: {
         clarity: {
           score: analysisData.evaluation?.clarte || 0,
@@ -268,6 +263,30 @@ const AIFeedbackAnalysis = ({
 
   if (!isVisible) return null;
 
+  if (uploadError) {
+    return (
+      <Card className="w-full max-w-2xl mx-auto bg-red-50 border-red-200">
+        <CardContent className="p-8 text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="h-8 w-8 text-red-600" />
+          </div>
+          <h3 className="text-xl font-bold text-red-800 mb-2">
+            Erreur lors de l'upload
+          </h3>
+          <p className="text-red-600 mb-4">
+            {uploadError}
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Button variant="outline" onClick={onRetakeVideo}>
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Réessayer
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (error) {
     return (
       <Card className="w-full max-w-2xl mx-auto bg-red-50 border-red-200">
@@ -298,19 +317,28 @@ const AIFeedbackAnalysis = ({
     );
   }
 
-  if (isAnalyzing) {
+  if (uploading || isAnalyzing) {
     return (
-      <div className="w-full max-w-2xl mx-auto">
+      <div className="w-full max-w-2xl mx-auto space-y-6">
         <Card className="bg-gradient-to-br from-blue-50 to-purple-50 border-blue-200">
           <CardHeader>
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center">
-                <Brain className="h-6 w-6 text-blue-600 animate-pulse" />
+                {uploading ? (
+                  <Upload className="h-6 w-6 text-blue-600 animate-pulse" />
+                ) : (
+                  <Brain className="h-6 w-6 text-blue-600 animate-pulse" />
+                )}
               </div>
               <div>
-                <CardTitle className="text-xl text-blue-800">Analyse IA en cours</CardTitle>
+                <CardTitle className="text-xl text-blue-800">
+                  {uploading ? 'Upload en cours' : 'Analyse IA en cours'}
+                </CardTitle>
                 <p className="text-blue-600 mt-1">
-                  Notre IA analyse ton pitch pour te donner des conseils personnalisés
+                  {uploading 
+                    ? 'Upload de ta vidéo vers le serveur...'
+                    : 'Notre IA analyse ton pitch pour te donner des conseils personnalisés'
+                  }
                 </p>
               </div>
             </div>
@@ -318,35 +346,63 @@ const AIFeedbackAnalysis = ({
           <CardContent className="space-y-6">
             <div>
               <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-medium text-gray-700">{currentAnalysis}</span>
-                <span className="text-sm text-gray-500">{analysisProgress}%</span>
+                <span className="text-sm font-medium text-gray-700">
+                  {uploading ? 'Upload en cours...' : currentAnalysis}
+                </span>
+                <span className="text-sm text-gray-500">
+                  {uploading ? `${uploadProgress}%` : `${analysisProgress}%`}
+                </span>
               </div>
-              <Progress value={analysisProgress} className="h-3" />
+              <Progress 
+                value={uploading ? uploadProgress : analysisProgress} 
+                className="h-3" 
+              />
             </div>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {analysisSteps.map((step, index) => (
-                <div
-                  key={step.id}
-                  className={`flex items-center gap-2 p-2 rounded-lg ${
-                    analysisProgress >= step.progress
-                      ? 'bg-green-50 text-green-700'
-                      : analysisProgress >= step.progress - 20
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'bg-gray-50 text-gray-500'
-                  }`}
-                >
-                  {analysisProgress >= step.progress ? (
-                    <CheckCircle className="h-4 w-4" />
-                  ) : (
-                    <div className="h-4 w-4 border-2 border-current rounded-full animate-spin" />
-                  )}
-                  <span className="text-sm">{step.label}</span>
-                </div>
-              ))}
-            </div>
+            {!uploading && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {analysisSteps.map((step, index) => (
+                  <div
+                    key={step.id}
+                    className={`flex items-center gap-2 p-2 rounded-lg ${
+                      analysisProgress >= step.progress
+                        ? 'bg-green-50 text-green-700'
+                        : analysisProgress >= step.progress - 20
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'bg-gray-50 text-gray-500'
+                    }`}
+                  >
+                    {analysisProgress >= step.progress ? (
+                      <CheckCircle className="h-4 w-4" />
+                    ) : (
+                      <div className="h-4 w-4 border-2 border-current rounded-full animate-spin" />
+                    )}
+                    <span className="text-sm">{step.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
+
+        {/* Affichage de la transcription si disponible */}
+        {videoTranscription && (
+          <Card className="bg-white border-gray-200">
+            <CardHeader>
+              <CardTitle className="text-lg text-gray-800 flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Transcription automatique
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <p className="text-sm text-gray-700 leading-relaxed">
+                  {videoTranscription}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     );
   }
@@ -379,6 +435,25 @@ const AIFeedbackAnalysis = ({
           </div>
         </CardHeader>
       </Card>
+
+      {/* Transcription */}
+      {videoTranscription && (
+        <Card className="bg-white border-gray-200">
+          <CardHeader>
+            <CardTitle className="text-lg text-gray-800 flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Transcription de ton pitch
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <p className="text-sm text-gray-700 leading-relaxed">
+                {videoTranscription}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Analyse par catégorie */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -445,15 +520,15 @@ const AIFeedbackAnalysis = ({
         <Card className="bg-orange-50 border-orange-200">
           <CardHeader>
             <CardTitle className="text-lg text-orange-800 flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" />
-              Axes d'amélioration
+              <Lightbulb className="h-5 w-5" />
+              Points d'amélioration
             </CardTitle>
           </CardHeader>
           <CardContent>
             <ul className="space-y-2">
               {feedback.improvements.map((improvement, index) => (
                 <li key={index} className="text-sm text-orange-700 flex items-start gap-2">
-                  <AlertTriangle className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" />
+                  <Target className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" />
                   <span>{improvement}</span>
                 </li>
               ))}
@@ -466,43 +541,33 @@ const AIFeedbackAnalysis = ({
       <Card className="bg-blue-50 border-blue-200">
         <CardHeader>
           <CardTitle className="text-lg text-blue-800 flex items-center gap-2">
-            <Lightbulb className="h-5 w-5" />
+            <TrendingUp className="h-5 w-5" />
             Tes prochaines étapes
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {feedback.nextSteps.map((step, index) => (
-              <div key={index} className="bg-white rounded-lg p-3 border border-blue-200">
-                <div className="flex items-start gap-2">
-                  <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <span className="text-xs font-bold text-blue-600">{index + 1}</span>
-                  </div>
-                  <p className="text-sm text-gray-700">{step}</p>
+              <div key={index} className="flex items-start gap-2 p-3 bg-white rounded-lg border border-blue-200">
+                <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-xs font-bold text-blue-600">{index + 1}</span>
                 </div>
+                <span className="text-sm text-blue-700">{step}</span>
               </div>
             ))}
           </div>
         </CardContent>
       </Card>
 
-      {/* Boutons d'action */}
-      <div className="flex justify-between">
-        <Button
-          variant="outline"
-          onClick={onRetakeVideo}
-          className="flex items-center gap-2"
-        >
-          <RotateCcw className="h-4 w-4" />
-          Refaire le pitch
+      {/* Actions */}
+      <div className="flex gap-4 justify-center">
+        <Button variant="outline" onClick={onRetakeVideo}>
+          <RotateCcw className="h-4 w-4 mr-2" />
+          Refaire un pitch
         </Button>
-        
-        <Button
-          onClick={onAcceptVideo}
-          className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-        >
+        <Button onClick={onAcceptVideo} className="bg-green-600 hover:bg-green-700">
           <CheckCircle className="h-4 w-4 mr-2" />
-          Valider le pitch
+          Valider ce pitch
         </Button>
       </div>
     </div>
@@ -510,3 +575,4 @@ const AIFeedbackAnalysis = ({
 };
 
 export default AIFeedbackAnalysis;
+
