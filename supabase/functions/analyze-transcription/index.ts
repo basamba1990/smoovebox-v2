@@ -1,19 +1,23 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import OpenAI from 'npm:openai@4.28.0'
 
-// Alignement avec les statuts définis dans constants/videoStatus.js
+// Alignement avec les statuts définis dans la base de données
 const VIDEO_STATUS = {
-  DRAFT: 'draft',           // En attente ou prêt pour traitement
-  PROCESSING: 'processing', // En cours de traitement
-  PUBLISHED: 'published',   // Traitement terminé avec succès
-  FAILED: 'failed',         // Échec du traitement
-  ANALYZING: 'analyzing'   // Statut spécial pour l'analyse en cours
-};
+  UPLOADED: 'uploaded',
+  PROCESSING: 'processing',
+  TRANSCRIBED: 'transcribed',
+  ANALYZING: 'analyzing',
+  ANALYZED: 'analyzed',
+  PUBLISHED: 'published',
+  FAILED: 'failed',
+  DRAFT: 'draft',
+  READY: 'ready'
+} as const
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+}
 
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
@@ -22,15 +26,15 @@ Deno.serve(async (req) => {
   }
 
   try {
-    console.log("Fonction analyze-transcription appelée");
+    console.log("Fonction analyze-transcription appelée")
     
     // Initialiser les clients
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
     
     if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
-      console.error("Variables d'environnement manquantes");
+      console.error("Variables d'environnement manquantes")
       return new Response(
         JSON.stringify({ 
           error: "Configuration incomplète", 
@@ -40,38 +44,38 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 500 
         }
-      );
+      )
     }
     
-    const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+    const supabaseClient = createClient(supabaseUrl, supabaseServiceKey)
     const openai = new OpenAI({
       apiKey: openaiApiKey
-    });
+    })
 
     // Récupérer les données de la requête
-    let requestData;
+    let requestData
     try {
-      requestData = await req.json();
-      console.log("Données de requête reçues:", { videoId: requestData.videoId });
+      requestData = await req.json()
+      console.log("Données de requête reçues:", { videoId: requestData.videoId })
     } catch (parseError) {
       // Si JSON parsing échoue, essayer les paramètres d'URL
-      const url = new URL(req.url);
-      const videoId = url.searchParams.get('videoId');
+      const url = new URL(req.url)
+      const videoId = url.searchParams.get('videoId')
       if (videoId) {
-        requestData = { videoId };
+        requestData = { videoId }
       } else {
-        console.error("Erreur lors de l'analyse du JSON de la requête", parseError);
+        console.error("Erreur lors de l'analyse du JSON de la requête", parseError)
         return new Response(
           JSON.stringify({ error: "Format de requête invalide", details: parseError.message }),
           { 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             status: 400 
           }
-        );
+        )
       }
     }
     
-    const { videoId } = requestData;
+    const { videoId } = requestData
     
     if (!videoId) {
       return new Response(
@@ -80,7 +84,7 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 400 
         }
-      );
+      )
     }
 
     // Récupérer la vidéo
@@ -88,10 +92,10 @@ Deno.serve(async (req) => {
       .from('videos')
       .select('*')
       .eq('id', videoId)
-      .single();
+      .single()
 
     if (videoError) {
-      console.error(`Erreur lors de la récupération de la vidéo ${videoId}`, videoError);
+      console.error(`Erreur lors de la récupération de la vidéo ${videoId}`, videoError)
       return new Response(
         JSON.stringify({ 
           error: 'Erreur lors de la récupération de la vidéo', 
@@ -101,7 +105,7 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: videoError.code === 'PGRST116' ? 404 : 500
         }
-      );
+      )
     }
 
     if (!videoData) {
@@ -111,32 +115,28 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 404 
         }
-      );
+      )
     }
     
     // Vérifier que la vidéo a une transcription
-    // Stratégie adaptative pour récupérer le texte de la transcription selon la structure de données
-    let transcriptionText = null;
+    let transcriptionText = null
     
     if (videoData.transcription_text) {
-      transcriptionText = videoData.transcription_text;
+      transcriptionText = videoData.transcription_text
     } else if (videoData.transcription) {
-      // Peut être du texte direct ou un objet JSON
       if (typeof videoData.transcription === 'string') {
-        transcriptionText = videoData.transcription;
+        transcriptionText = videoData.transcription
       } else if (typeof videoData.transcription === 'object') {
-        transcriptionText = videoData.transcription.text || JSON.stringify(videoData.transcription);
+        transcriptionText = videoData.transcription.text || JSON.stringify(videoData.transcription)
       }
     } else if (videoData.transcription_data) {
-      // Peut contenir un champ 'text' ou être un tableau de segments
       if (typeof videoData.transcription_data === 'object') {
         if (videoData.transcription_data.text) {
-          transcriptionText = videoData.transcription_data.text;
+          transcriptionText = videoData.transcription_data.text
         } else if (Array.isArray(videoData.transcription_data.segments)) {
-          // Concaténer les segments
           transcriptionText = videoData.transcription_data.segments
             .map(segment => segment.text)
-            .join(' ');
+            .join(' ')
         }
       }
     }
@@ -147,10 +147,10 @@ Deno.serve(async (req) => {
         .from('transcriptions')
         .select('full_text, transcription_text')
         .eq('video_id', videoId)
-        .single();
+        .single()
         
       if (!transcriptionError && transcriptionData) {
-        transcriptionText = transcriptionData.full_text || transcriptionData.transcription_text;
+        transcriptionText = transcriptionData.full_text || transcriptionData.transcription_text
       }
     }
     
@@ -161,17 +161,17 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 400 
         }
-      );
+      )
     }
     
     // Mettre à jour le statut de la vidéo pour indiquer que l'analyse est en cours
     await supabaseClient
       .from('videos')
       .update({
-        status: VIDEO_STATUS.ANALYZING,  // Utiliser la chaîne directement
+        status: VIDEO_STATUS.ANALYZING,
         updated_at: new Date().toISOString()
       })
-      .eq('id', videoId);
+      .eq('id', videoId)
     
     // Générer immédiatement une réponse pour ne pas faire attendre l'utilisateur
     const immediateResponse = new Response(
@@ -179,19 +179,18 @@ Deno.serve(async (req) => {
         success: true, 
         message: 'Analyse démarrée avec succès',
         videoId,
-        status: VIDEO_STATUS.ANALYZING,  // Utiliser la chaîne directement
+        status: VIDEO_STATUS.ANALYZING
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 202  // 202 Accepted indique que le traitement a été accepté mais pas encore terminé
+        status: 202
       }
-    );
+    )
 
     // Exécuter l'analyse en arrière-plan
     EdgeRuntime.waitUntil((async () => {
       try {
         // Génération de l'analyse IA de la transcription
-        // Utiliser un modèle plus léger pour une réponse rapide
         const analysisResponse = await openai.chat.completions.create({
           model: "gpt-3.5-turbo",
           messages: [
@@ -223,17 +222,17 @@ Deno.serve(async (req) => {
             },
             {
               role: "user",
-              content: transcriptionText.substring(0, 15000) // Limiter pour les modèles avec contexte réduit
+              content: transcriptionText.substring(0, 15000)
             }
           ],
           response_format: { type: "json_object" }
-        });
+        })
         
-        const analysis = JSON.parse(analysisResponse.choices[0].message.content);
-        console.log("Analyse IA générée avec succès");
+        const analysis = JSON.parse(analysisResponse.choices[0].message.content)
+        console.log("Analyse IA générée avec succès")
         
-        // Enrichir l'analyse avec des insights supplémentaires en utilisant un modèle avancé si disponible
-        let enhancedInsights = {};
+        // Enrichir l'analyse avec des insights supplémentaires
+        let enhancedInsights = {}
         try {
           const insightsResponse = await openai.chat.completions.create({
             model: "gpt-3.5-turbo",
@@ -263,13 +262,12 @@ Deno.serve(async (req) => {
               }
             ],
             response_format: { type: "json_object" }
-          });
+          })
           
-          enhancedInsights = JSON.parse(insightsResponse.choices[0].message.content);
-          console.log("Insights supplémentaires générés");
+          enhancedInsights = JSON.parse(insightsResponse.choices[0].message.content)
+          console.log("Insights supplémentaires générés")
         } catch (insightsError) {
-          console.error("Erreur lors de la génération des insights supplémentaires", insightsError);
-          // Continuer sans les insights supplémentaires
+          console.error("Erreur lors de la génération des insights supplémentaires", insightsError)
         }
         
         // Fusion des analyses
@@ -278,7 +276,7 @@ Deno.serve(async (req) => {
           insights: enhancedInsights,
           analyzed_at: new Date().toISOString(),
           video_id: videoId
-        };
+        }
         
         // Mettre à jour la vidéo avec l'analyse
         try {
@@ -286,12 +284,12 @@ Deno.serve(async (req) => {
             .from("videos")
             .update({
               analysis: completeAnalysis,
-              status: VIDEO_STATUS.ANALYZED,  // Utiliser la chaîne directement
+              status: VIDEO_STATUS.ANALYZED,
               updated_at: new Date().toISOString(),
             })
-            .eq("id", videoId);
+            .eq("id", videoId)
         } catch (updateError) {
-          console.error("Erreur lors de la mise à jour de la vidéo avec l'analyse", updateError);
+          console.error("Erreur lors de la mise à jour de la vidéo avec l'analyse", updateError)
           await supabaseClient
             .from("videos")
             .update({
@@ -299,8 +297,8 @@ Deno.serve(async (req) => {
               error_message: `Erreur de mise à jour: ${updateError.message}`,
               updated_at: new Date().toISOString(),
             })
-            .eq("id", videoId);
-          throw updateError; // Re-throw the error to be caught by the outer catch block
+            .eq("id", videoId)
+          throw updateError
         }
         
         // Vérifier si la table analyses existe et y ajouter l'analyse
@@ -314,16 +312,15 @@ Deno.serve(async (req) => {
               updated_at: new Date().toISOString()
             }, {
               onConflict: 'video_id'
-            });
+            })
         } catch (analysesError) {
-          console.log("La table analyses n'existe pas ou a une structure incompatible", analysesError);
-          // Continuer sans erreur car l'analyse est déjà stockée dans la table videos
+          console.log("La table analyses n'existe pas ou a une structure incompatible", analysesError)
         }
         
-        console.log(`Analyse terminée avec succès pour la vidéo ${videoId}`);
+        console.log(`Analyse terminée avec succès pour la vidéo ${videoId}`)
         
       } catch (error) {
-        console.error("Erreur lors de l'analyse", error);
+        console.error("Erreur lors de l'analyse", error)
         
         // Mettre à jour le statut de la vidéo pour indiquer l'échec
         await supabaseClient
@@ -333,32 +330,49 @@ Deno.serve(async (req) => {
             error_message: `Erreur d'analyse: ${error.message}`,
             updated_at: new Date().toISOString()
           })
-          .eq('id', videoId);
+          .eq('id', videoId)
       }
-    })());
+    })())
     
     // Retourner la réponse immédiate
-    return immediateResponse;
+    return immediateResponse
 
   } catch (error: any) {
-    console.error("Erreur générale non gérée", error);
+    console.error("Erreur générale non gérée", error)
     
     // Tenter de mettre à jour le statut de la vidéo en cas d'erreur générale
-    const videoIdFromReq = new URL(req.url).searchParams.get('videoId') || (await req.clone().json().catch(() => ({}))).videoId;
+    let videoIdFromReq
+    try {
+      const url = new URL(req.url)
+      videoIdFromReq = url.searchParams.get('videoId')
+      if (!videoIdFromReq) {
+        const clonedReq = req.clone()
+        const body = await clonedReq.json()
+        videoIdFromReq = body.videoId
+      }
+    } catch {
+      videoIdFromReq = null
+    }
 
     if (videoIdFromReq) {
       try {
-        const serviceClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
-        await serviceClient
-          .from('videos')
-          .update({
-            status: VIDEO_STATUS.FAILED,
-            error_message: `Erreur interne du serveur: ${error.message || 'Erreur inconnue'}`,
-            updated_at: new Date().toISOString(),
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+        if (supabaseUrl && supabaseServiceKey) {
+          const serviceClient = createClient(supabaseUrl, supabaseServiceKey, { 
+            auth: { persistSession: false } 
           })
-          .eq('id', videoIdFromReq);
+          await serviceClient
+            .from('videos')
+            .update({
+              status: VIDEO_STATUS.FAILED,
+              error_message: `Erreur interne du serveur: ${error.message || 'Erreur inconnue'}`,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', videoIdFromReq)
+        }
       } catch (updateErr) {
-        console.error('Erreur lors de la mise à jour du statut après une erreur générale:', updateErr);
+        console.error('Erreur lors de la mise à jour du statut après une erreur générale:', updateErr)
       }
     }
 
@@ -371,8 +385,6 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500 
       }
-    );
+    )
   }
-});
-
-
+})
