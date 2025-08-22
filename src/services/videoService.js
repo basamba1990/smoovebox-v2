@@ -65,12 +65,13 @@ export const videoService = {
   },
 
   /**
-   * Télécharge une vidéo
-   * @param {File} file - Fichier vidéo
-   * @param {Object} metadata - Métadonnées de la vidéo (titre, description)
-   * @returns {Promise<Object>} - Données de la vidéo créée
+   * Télécharge une vidéo avec suivi de progression.
+   * @param {File | Blob} file - Fichier vidéo ou Blob.
+   * @param {Object} metadata - Métadonnées de la vidéo (titre, description).
+   * @param {Function} onProgress - Callback pour la progression (event).
+   * @returns {Promise<Object>} - Données de la vidéo créée.
    */
-  async uploadVideo(file, metadata) {
+  async uploadVideo(file, metadata, onProgress) {
     if (!file) throw new Error('Fichier vidéo requis');
     if (!metadata || !metadata.title) throw new Error('Titre de la vidéo requis');
     
@@ -100,7 +101,7 @@ export const videoService = {
           status: toDatabaseStatus(VIDEO_STATUS.UPLOADING),
           user_id: user.id,
           profile_id: profileId,
-          original_file_name: file.name,
+          original_file_name: file.name || `recorded_video_${Date.now()}.webm`,
           file_size: file.size,
           format: file.type.split('/')[1] || 'mp4',
           duration: metadata.duration || null,
@@ -112,30 +113,40 @@ export const videoService = {
       if (videoError) throw new Error(`Erreur lors de la création de l'entrée vidéo: ${videoError.message}`);
 
       // 3. Générer un nom de fichier unique pour le stockage
-      const fileExt = file.name.split('.').pop();
+      const fileExt = file.name ? file.name.split('.').pop() : 'webm';
       const fileName = `${videoData.id}_${Date.now()}.${fileExt}`;
-      const filePath = `${videoData.id}/${fileName}`;
+      const filePath = `${user.id}/${fileName}`;
 
-      // 4. Télécharger le fichier
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('videos')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false
+      // 4. Télécharger le fichier avec progression (en utilisant XMLHttpRequest pour le suivi)
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const url = `${supabaseUrl}/storage/v1/object/videos/${filePath}`;
+
+        xhr.upload.addEventListener('progress', (event) => {
+          if (event.lengthComputable && onProgress) {
+            onProgress(event);
+          }
         });
 
-      if (uploadError) {
-        // En cas d'erreur d'upload, mettre à jour le statut de la vidéo
-        await supabase
-          .from('videos')
-          .update({ 
-            status: toDatabaseStatus(VIDEO_STATUS.ERROR),
-            error_message: `Erreur d'upload: ${uploadError.message}` // CORRECTION: Utiliser error_message
-          })
-          .eq('id', videoData.id);
-          
-        throw new Error(`Erreur lors du téléchargement: ${uploadError.message}`);
-      }
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            reject(new Error(`Upload failed with status: ${xhr.status} - ${xhr.responseText}`));
+          }
+        });
+
+        xhr.addEventListener('error', () => {
+          reject(new Error('Upload failed due to network error'));
+        });
+
+        xhr.open('POST', url);
+        xhr.setRequestHeader('Authorization', `Bearer ${user.access_token}`);
+        xhr.setRequestHeader('Content-Type', file.type);
+        xhr.setRequestHeader('Cache-Control', '3600');
+        xhr.send(file);
+      });
 
       // 5. Générer l'URL publique
       const { data: publicUrlData } = supabase.storage
@@ -472,35 +483,14 @@ export const videoService = {
         }
       }
       
-      // 3. Supprimer les transcriptions associées
-      try {
-        await supabase
-          .from('transcriptions')
-          .delete()
-          .eq('video_id', videoId);
-      } catch (transcriptionError) {
-        console.error('Erreur lors de la suppression des transcriptions:', transcriptionError);
-        // Continuer même si la suppression des transcriptions échoue
-      }
-      
-      // 4. Supprimer les analyses associées
-      try {
-        await supabase
-          .from('video_analyses')
-          .delete()
-          .eq('video_id', videoId);
-      } catch (analysisError) {
-        console.error('Erreur lors de la suppression des analyses:', analysisError);
-        // Continuer même si la suppression des analyses échoue
-      }
-      
-      // 5. Supprimer l'entrée de la base de données (table videos)
-      const { error: deleteError } = await supabase
-        .from('videos') // Utiliser la table videos pour la suppression
+      // 3. Supprimer l'entrée de la base de données
+      const { error: dbDeleteError } = await supabase
+        .from('videos')
         .delete()
         .eq('id', videoId);
       
-      if (deleteError) throw deleteError;
+      if (dbDeleteError) throw dbDeleteError;
+      
     } catch (error) {
       console.error('Erreur lors de la suppression de la vidéo:', error);
       throw error;
@@ -508,29 +498,221 @@ export const videoService = {
   },
 
   /**
-   * CORRECTION: Vérifie le statut d'une vidéo depuis la vue video_details
-   * @param {string} videoId - ID de la vidéo
-   * @returns {Promise<Object>} - Statut actuel de la vidéo avec informations détaillées
+   * Récupère l'URL publique d'une vidéo.
+   * @param {string} storagePath - Chemin de stockage de la vidéo.
+   * @returns {string | null} - URL publique de la vidéo.
    */
-  async checkVideoStatus(videoId) {
-    if (!videoId) throw new Error('ID de vidéo requis');
-    
-    // CORRECTION: Utiliser la vue video_details pour récupérer toutes les informations de statut
+  getPublicVideoUrl(storagePath) {
+    if (!storagePath) return null;
+    const { data } = supabase.storage.from('videos').getPublicUrl(storagePath);
+    return data?.publicUrl || null;
+  },
+
+  /**
+   * Récupère le statut de traitement d'une vidéo.
+   * @param {string} videoId - ID de la vidéo.
+   * @returns {Promise<string>} - Statut de la vidéo.
+   */
+  async getVideoProcessingStatus(videoId) {
     const { data, error } = await supabase
-      .from('video_details')
-      .select('status, error_message, transcription_status, transcription_error, analysis_id')
+      .from('videos')
+      .select('status')
       .eq('id', videoId)
       .single();
-    
-    if (error) throw error;
-    return {
-      status: data.status,
-      errorMessage: data.error_message,
-      transcriptionStatus: data.transcription_status,
-      transcriptionError: data.transcription_error,
-      hasAnalysis: !!data.analysis_id
-    };
-  }
+
+    if (error) {
+      console.error('Erreur lors de la récupération du statut de la vidéo:', error);
+      return VIDEO_STATUS.ERROR;
+    }
+    return data.status;
+  },
+
+  /**
+   * Met à jour le score de performance d'une vidéo.
+   * @param {string} videoId - ID de la vidéo.
+   * @param {number} score - Score de performance.
+   * @returns {Promise<Object>} - Données de la vidéo mise à jour.
+   */
+  async updateVideoPerformanceScore(videoId, score) {
+    const { data, error } = await supabase
+      .from('videos')
+      .update({ performance_score: score })
+      .eq('id', videoId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Erreur lors de la mise à jour du score de performance:', error);
+      throw error;
+    }
+    return data;
+  },
+
+  /**
+   * Récupère les statistiques de progression de l'utilisateur.
+   * @param {string} userId - ID de l'utilisateur.
+   * @returns {Promise<Object>} - Statistiques de progression.
+   */
+  async getUserProgressStats(userId) {
+    const { data, error } = await supabase
+      .from('user_progress_stats')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Erreur lors de la récupération des statistiques de progression:', error);
+      throw error;
+    }
+    return data || {};
+  },
+
+  /**
+   * Récupère les défis créatifs.
+   * @returns {Promise<Array>} - Liste des défis créatifs.
+   */
+  async getCreativeChallenges() {
+    const { data, error } = await supabase
+      .from('creative_challenges')
+      .select('*');
+
+    if (error) {
+      console.error('Erreur lors de la récupération des défis créatifs:', error);
+      throw error;
+    }
+    return data || [];
+  },
+
+  /**
+   * Récupère les recommandations personnalisées pour l'utilisateur.
+   * @param {string} userId - ID de l'utilisateur.
+   * @returns {Promise<Array>} - Liste des recommandations.
+   */
+  async getPersonalizedRecommendations(userId) {
+    const { data, error } = await supabase
+      .from('personalized_recommendations')
+      .select('*')
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Erreur lors de la récupération des recommandations personnalisées:', error);
+      throw error;
+    }
+    return data || [];
+  },
+
+  /**
+   * Récupère les données d'analyse d'engagement pour une vidéo.
+   * @param {string} videoId - ID de la vidéo.
+   * @returns {Promise<Object>} - Données d'engagement.
+   */
+  async getEngagementAnalysis(videoId) {
+    const { data, error } = await supabase
+      .from('engagement_analysis')
+      .select('*')
+      .eq('video_id', videoId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Erreur lors de la récupération de l\'analyse d\'engagement:', error);
+      throw error;
+    }
+    return data || {};
+  },
+
+  /**
+   * Récupère les données de pitch guidance pour une vidéo.
+   * @param {string} videoId - ID de la vidéo.
+   * @returns {Promise<Object>} - Données de pitch guidance.
+   */
+  async getPitchGuidance(videoId) {
+    const { data, error } = await supabase
+      .from('pitch_guidance')
+      .select('*')
+      .eq('video_id', videoId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Erreur lors de la récupération du pitch guidance:', error);
+      throw error;
+    }
+    return data || {};
+  },
+
+  /**
+   * Récupère les données de performance vidéo.
+   * @param {string} videoId - ID de la vidéo.
+   * @returns {Promise<Object>} - Données de performance vidéo.
+   */
+  async getVideoPerformanceData(videoId) {
+    const { data, error } = await supabase
+      .from('video_performance_data')
+      .select('*')
+      .eq('video_id', videoId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Erreur lors de la récupération des données de performance vidéo:', error);
+      throw error;
+    }
+    return data || {};
+  },
+
+  /**
+   * Récupère les données de statut de vidéo.
+   * @param {string} videoId - ID de la vidéo.
+   * @returns {Promise<Object>} - Données de statut de vidéo.
+   */
+  async getVideoStatusData(videoId) {
+    const { data, error } = await supabase
+      .from('video_status_data')
+      .select('*')
+      .eq('video_id', videoId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Erreur lors de la récupération des données de statut vidéo:', error);
+      throw error;
+    }
+    return data || {};
+  },
+
+  /**
+   * Récupère les données de transcription.
+   * @param {string} transcriptionId - ID de la transcription.
+   * @returns {Promise<Object>} - Données de transcription.
+   */
+  async getTranscriptionData(transcriptionId) {
+    const { data, error } = await supabase
+      .from('transcriptions')
+      .select('*')
+      .eq('id', transcriptionId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Erreur lors de la récupération des données de transcription:', error);
+      throw error;
+    }
+    return data || {};
+  },
+
+  /**
+   * Récupère les données d'analyse de transcription.
+   * @param {string} analysisId - ID de l'analyse.
+   * @returns {Promise<Object>} - Données d'analyse de transcription.
+   */
+  async getTranscriptionAnalysisData(analysisId) {
+    const { data, error } = await supabase
+      .from('transcription_analysis')
+      .select('*')
+      .eq('id', analysisId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Erreur lors de la récupération des données d\'analyse de transcription:', error);
+      throw error;
+    }
+    return data || {};
+  },
 };
 
-export default videoService;
