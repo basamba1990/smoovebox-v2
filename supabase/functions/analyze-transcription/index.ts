@@ -1,7 +1,8 @@
+
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import OpenAI from 'npm:openai@4.28.0'
 
-// Alignement avec les statuts définis dans la base de données
+// Alignement avec les statuts définis dans constants/videoStatus.js
 const VIDEO_STATUS = {
   UPLOADED: 'uploaded',
   PROCESSING: 'processing',
@@ -12,379 +13,209 @@ const VIDEO_STATUS = {
   FAILED: 'failed',
   DRAFT: 'draft',
   READY: 'ready'
-} as const
+} as const;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+};
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight requests
+  // Gérer les requêtes OPTIONS (CORS preflight)
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    console.log("Fonction analyze-transcription appelée")
-    
-    // Initialiser les clients
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
-    
-    if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
-      console.error("Variables d'environnement manquantes")
-      return new Response(
-        JSON.stringify({ 
-          error: "Configuration incomplète", 
-          details: "Variables d'environnement manquantes" 
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500 
-        }
-      )
-    }
-    
-    const supabaseClient = createClient(supabaseUrl, supabaseServiceKey)
-    const openai = new OpenAI({
-      apiKey: openaiApiKey
-    })
+    console.log("Fonction analyze-transcription appelée");
 
-    // Récupérer les données de la requête
-    let requestData
-    try {
-      requestData = await req.json()
-      console.log("Données de requête reçues:", { videoId: requestData.videoId })
-    } catch (parseError) {
-      // Si JSON parsing échoue, essayer les paramètres d'URL
-      const url = new URL(req.url)
-      const videoId = url.searchParams.get('videoId')
-      if (videoId) {
-        requestData = { videoId }
-      } else {
-        console.error("Erreur lors de l'analyse du JSON de la requête", parseError)
-        return new Response(
-          JSON.stringify({ error: "Format de requête invalide", details: parseError.message }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400 
-          }
-        )
-      }
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+
+    if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
+      console.error('Variables d\'environnement manquantes', {
+        supabaseUrl: !!supabaseUrl,
+        supabaseServiceKey: !!supabaseServiceKey,
+        openaiApiKey: !!openaiApiKey
+      });
+      return new Response(
+        JSON.stringify({
+          error: 'Configuration incomplète',
+          details: "Variables d'environnement manquantes"
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500
+        }
+      );
     }
-    
-    const { videoId } = requestData
-    
+
+    const serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false }
+    });
+
+    let videoId: string | null = null;
+
+    // Tenter d'obtenir videoId du corps de la requête (pour les requêtes POST)
+    try {
+      const requestData = await req.json();
+      if (requestData.videoId) {
+        videoId = requestData.videoId;
+        console.log(`videoId du corps de la requête: ${videoId}`);
+      }
+    } catch (e) {
+      console.log('Pas de videoId dans le corps de la requête ou le corps n\'est pas JSON. Essai des paramètres d\'URL.');
+    }
+
+    // Si non trouvé dans le corps, essayer les paramètres d'URL (pour les requêtes GET ou en dernier recours)
+    if (!videoId) {
+      const url = new URL(req.url);
+      videoId = url.searchParams.get('videoId');
+      console.log(`videoId des paramètres d\'URL: ${videoId}`);
+    }
+
     if (!videoId) {
       return new Response(
         JSON.stringify({ error: 'videoId est requis' }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400 
-        }
-      )
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
     }
 
-    // Récupérer la vidéo
-    const { data: videoData, error: videoError } = await supabaseClient
+    // Mettre à jour le statut de la vidéo à ANALYZING
+    const { error: updateError } = await serviceClient
       .from('videos')
-      .select('*')
-      .eq('id', videoId)
-      .single()
+      .update({ status: VIDEO_STATUS.ANALYZING, updated_at: new Date().toISOString() })
+      .eq('id', videoId);
 
-    if (videoError) {
-      console.error(`Erreur lors de la récupération de la vidéo ${videoId}`, videoError)
+    if (updateError) {
+      console.error(`Erreur lors de la mise à jour du statut de la vidéo ${videoId} à ANALYZING:`, updateError);
       return new Response(
-        JSON.stringify({ 
-          error: 'Erreur lors de la récupération de la vidéo', 
-          details: videoError.message
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: videoError.code === 'PGRST116' ? 404 : 500
-        }
-      )
+        JSON.stringify({ error: 'Erreur lors de la mise à jour du statut de la vidéo', details: updateError.message }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
+    }
+    console.log(`Statut de la vidéo ${videoId} mis à jour à '${VIDEO_STATUS.ANALYZING}'.`);
+
+    // Récupérer la transcription de la vidéo
+    const { data: transcriptionData, error: transcriptionError } = await serviceClient
+      .from('transcriptions')
+      .select('full_text')
+      .eq('video_id', videoId)
+      .single();
+
+    if (transcriptionError || !transcriptionData) {
+      console.error(`Erreur lors de la récupération de la transcription pour la vidéo ${videoId}:`, transcriptionError);
+      await serviceClient
+        .from('videos')
+        .update({ status: VIDEO_STATUS.FAILED, error_message: `Transcription non trouvée: ${transcriptionError?.message}`, updated_at: new Date().toISOString() })
+        .eq('id', videoId);
+      return new Response(
+        JSON.stringify({ error: 'Transcription non trouvée', details: transcriptionError?.message }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+      );
     }
 
-    if (!videoData) {
-      return new Response(
-        JSON.stringify({ error: 'Vidéo non trouvée' }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 404 
-        }
-      )
+    const fullText = transcriptionData.full_text;
+    console.log(`Transcription récupérée pour la vidéo ${videoId}. Début de l'analyse...`);
+
+    const openai = new OpenAI({ apiKey: openaiApiKey });
+
+    // Logique d'analyse avancée - Combiner les deux appels en un seul
+    const analysisPrompt = `Analysez la transcription vidéo suivante et fournissez une analyse complète et structurée au format JSON. L'analyse doit inclure :
+- Un 'summary' concis (max 3-4 phrases).
+- Une liste de 'key_topics' (3-5 thèmes/mots-clés principaux).
+- Une liste de 'important_entities' (personnes, organisations, lieux mentionnés).
+- Un 'sentiment' général (positif, neutre, négatif).
+- Une liste de 'action_items' ou prochaines étapes suggérées par le contenu (le cas échéant, max 3).
+- Des 'insights_supplementaires' incluant:
+  - 'public_cible': [string, string, ...]
+  - 'niveau_expertise': 'débutant'|'intermédiaire'|'avancé'
+  - 'engagement_emotionnel': { 'type': string, 'niveau': number }
+  - 'formats_visuels_suggeres': [string, string, ...]
+
+Transcription: ${fullText}
+
+Assurez-vous que la sortie est un objet JSON valide.`;
+
+    const chatCompletion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: "Vous êtes un assistant IA expert spécialisé dans l'analyse des transcriptions vidéo et l'extraction d'informations structurées. Votre sortie doit toujours être un objet JSON valide." },
+        { role: "user", content: analysisPrompt }
+      ],
+      response_format: { type: "json_object" }, // Spécifie le format de réponse JSON
+    });
+
+    let analysisResult;
+    try {
+      analysisResult = JSON.parse(chatCompletion.choices[0].message.content || '{}');
+    } catch (parseError) {
+      console.error('Erreur lors de l\'analyse du JSON de la réponse OpenAI:', parseError);
+      analysisResult = { error: 'Échec de l\'analyse de la réponse OpenAI', raw_content: chatCompletion.choices[0].message.content };
     }
-    
-    // Vérifier que la vidéo a une transcription
-    let transcriptionText = null
-    
-    if (videoData.transcription_text) {
-      transcriptionText = videoData.transcription_text
-    } else if (videoData.transcription) {
-      if (typeof videoData.transcription === 'string') {
-        transcriptionText = videoData.transcription
-      } else if (typeof videoData.transcription === 'object') {
-        transcriptionText = videoData.transcription.text || JSON.stringify(videoData.transcription)
-      }
-    } else if (videoData.transcription_data) {
-      if (typeof videoData.transcription_data === 'object') {
-        if (videoData.transcription_data.text) {
-          transcriptionText = videoData.transcription_data.text
-        } else if (Array.isArray(videoData.transcription_data.segments)) {
-          transcriptionText = videoData.transcription_data.segments
-            .map(segment => segment.text)
-            .join(' ')
-        }
-      }
-    }
-    
-    // Vérifier aussi dans la table transcriptions
-    if (!transcriptionText) {
-      const { data: transcriptionData, error: transcriptionError } = await supabaseClient
-        .from('transcriptions')
-        .select('full_text, transcription_text')
-        .eq('video_id', videoId)
-        .single()
-        
-      if (!transcriptionError && transcriptionData) {
-        transcriptionText = transcriptionData.full_text || transcriptionData.transcription_text
-      }
-    }
-    
-    if (!transcriptionText) {
-      return new Response(
-        JSON.stringify({ error: 'Aucune transcription disponible pour cette vidéo' }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400 
-        }
-      )
-    }
-    
-    // Mettre à jour le statut de la vidéo pour indiquer que l'analyse est en cours
-    await supabaseClient
+
+    console.log(`Analyse terminée pour la vidéo ${videoId}.`);
+
+    // Enregistrer les résultats de l'analyse dans la table 'videos'
+    const { error: analysisSaveError } = await serviceClient
       .from('videos')
       .update({
-        status: VIDEO_STATUS.ANALYZING,
+        analysis_result: analysisResult, // Assurez-vous que votre table 'videos' a une colonne 'analysis_result' de type JSONB
+        status: VIDEO_STATUS.ANALYZED,
         updated_at: new Date().toISOString()
       })
-      .eq('id', videoId)
-    
-    // Générer immédiatement une réponse pour ne pas faire attendre l'utilisateur
-    const immediateResponse = new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: 'Analyse démarrée avec succès',
-        videoId,
-        status: VIDEO_STATUS.ANALYZING
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 202
-      }
-    )
+      .eq('id', videoId);
 
-    // Exécuter l'analyse en arrière-plan
-    EdgeRuntime.waitUntil((async () => {
-      try {
-        // Génération de l'analyse IA de la transcription
-        const analysisResponse = await openai.chat.completions.create({
-          model: "gpt-3.5-turbo",
-          messages: [
-            {
-              role: "system",
-              content: `Tu es un expert en analyse de discours. Analyse la transcription suivante et fournis:
-              1. Un résumé concis (5-7 phrases)
-              2. 5-7 points clés numérotés
-              3. Une évaluation de la performance orale sur 10 pour: clarté, structure, rythme, expressivité
-              4. 3-5 suggestions d'amélioration concrètes et applicables
-              5. 3-5 points forts identifiés dans la présentation
-              6. Une liste de 3-5 mots-clés/sujets principaux abordés
-              
-              Réponds au format JSON avec les clés suivantes:
-              {
-                "resume": "string",
-                "points_cles": ["string", "string", ...],
-                "evaluation": {
-                  "clarte": number,
-                  "structure": number,
-                  "rythme": number,
-                  "expressivite": number,
-                  "score_global": number
-                },
-                "suggestions": ["string", "string", ...],
-                "points_forts": ["string", "string", ...],
-                "sujets": ["string", "string", ...]
-              }`
-            },
-            {
-              role: "user",
-              content: transcriptionText.substring(0, 15000)
-            }
-          ],
-          response_format: { type: "json_object" }
-        })
-        
-        const analysis = JSON.parse(analysisResponse.choices[0].message.content)
-        console.log("Analyse IA générée avec succès")
-        
-        // Enrichir l'analyse avec des insights supplémentaires
-        let enhancedInsights = {}
-        try {
-          const insightsResponse = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
-            messages: [
-              {
-                role: "system",
-                content: `Analyse cette transcription et fournis des insights supplémentaires sur:
-                1. Le public cible probable
-                2. Le niveau d'expertise requis pour comprendre
-                3. L'engagement émotionnel généré
-                4. Des suggestions de formats visuels qui compléteraient bien ce contenu
-                
-                Réponds au format JSON strict:
-                {
-                  "public_cible": ["string", "string", ...],
-                  "niveau_expertise": "débutant|intermédiaire|avancé",
-                  "engagement_emotionnel": {
-                    "type": "string",
-                    "niveau": number
-                  },
-                  "formats_visuels_suggeres": ["string", "string", ...]
-                }`
-              },
-              {
-                role: "user",
-                content: transcriptionText.substring(0, 8000)
-              }
-            ],
-            response_format: { type: "json_object" }
-          })
-          
-          enhancedInsights = JSON.parse(insightsResponse.choices[0].message.content)
-          console.log("Insights supplémentaires générés")
-        } catch (insightsError) {
-          console.error("Erreur lors de la génération des insights supplémentaires", insightsError)
-        }
-        
-        // Fusion des analyses
-        const completeAnalysis = {
-          ...analysis,
-          insights: enhancedInsights,
-          analyzed_at: new Date().toISOString(),
-          video_id: videoId
-        }
-        
-        // Mettre à jour la vidéo avec l'analyse
-        try {
-          await supabaseClient
-            .from("videos")
-            .update({
-              analysis: completeAnalysis,
-              status: VIDEO_STATUS.ANALYZED,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", videoId)
-        } catch (updateError) {
-          console.error("Erreur lors de la mise à jour de la vidéo avec l'analyse", updateError)
-          await supabaseClient
-            .from("videos")
-            .update({
-              status: VIDEO_STATUS.FAILED,
-              error_message: `Erreur de mise à jour: ${updateError.message}`,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", videoId)
-          throw updateError
-        }
-        
-        // Vérifier si la table analyses existe et y ajouter l'analyse
-        try {
-          await supabaseClient
-            .from('analyses')
-            .upsert({
-              video_id: videoId,
-              content: completeAnalysis,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            }, {
-              onConflict: 'video_id'
-            })
-        } catch (analysesError) {
-          console.log("La table analyses n'existe pas ou a une structure incompatible", analysesError)
-        }
-        
-        console.log(`Analyse terminée avec succès pour la vidéo ${videoId}`)
-        
-      } catch (error) {
-        console.error("Erreur lors de l'analyse", error)
-        
-        // Mettre à jour le statut de la vidéo pour indiquer l'échec
-        await supabaseClient
-          .from('videos')
-          .update({
-            status: VIDEO_STATUS.FAILED,
-            error_message: `Erreur d'analyse: ${error.message}`,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId)
-      }
-    })())
-    
-    // Retourner la réponse immédiate
-    return immediateResponse
-
-  } catch (error: any) {
-    console.error("Erreur générale non gérée", error)
-    
-    // Tenter de mettre à jour le statut de la vidéo en cas d'erreur générale
-    let videoIdFromReq
-    try {
-      const url = new URL(req.url)
-      videoIdFromReq = url.searchParams.get('videoId')
-      if (!videoIdFromReq) {
-        const clonedReq = req.clone()
-        const body = await clonedReq.json()
-        videoIdFromReq = body.videoId
-      }
-    } catch {
-      videoIdFromReq = null
+    if (analysisSaveError) {
+      console.error(`Erreur lors de l'enregistrement des résultats d'analyse pour la vidéo ${videoId}:`, analysisSaveError);
+      await serviceClient
+        .from('videos')
+        .update({ status: VIDEO_STATUS.FAILED, error_message: `Échec de l'enregistrement de l'analyse: ${analysisSaveError.message}`, updated_at: new Date().toISOString() })
+        .eq('id', videoId);
+      return new Response(
+        JSON.stringify({ error: 'Erreur lors de l\'enregistrement des résultats d\'analyse', details: analysisSaveError.message }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
     }
 
-    if (videoIdFromReq) {
-      try {
-        const supabaseUrl = Deno.env.get('SUPABASE_URL')
-        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-        if (supabaseUrl && supabaseServiceKey) {
-          const serviceClient = createClient(supabaseUrl, supabaseServiceKey, { 
-            auth: { persistSession: false } 
-          })
-          await serviceClient
-            .from('videos')
-            .update({
-              status: VIDEO_STATUS.FAILED,
-              error_message: `Erreur interne du serveur: ${error.message || 'Erreur inconnue'}`,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', videoIdFromReq)
-        }
-      } catch (updateErr) {
-        console.error('Erreur lors de la mise à jour du statut après une erreur générale:', updateErr)
+    console.log(`Vidéo ${videoId} analysée et statut mis à jour à '${VIDEO_STATUS.ANALYZED}'.`);
+
+    return new Response(JSON.stringify({ message: 'Analyse terminée avec succès', videoId, analysisResult }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200
+    });
+
+  } catch (error: any) {
+    console.error("Erreur générale non gérée dans analyze-transcription:", error);
+    // En cas d'erreur non gérée, mettre à jour le statut de la vidéo à FAILED
+    let videoIdFromError: string | undefined;
+    try {
+      const requestData = await req.json();
+      videoIdFromError = requestData.videoId;
+    } catch (e) {
+      const url = new URL(req.url);
+      videoIdFromError = url.searchParams.get('videoId') || undefined;
+    }
+
+    if (videoIdFromError) {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL');
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      if (supabaseUrl && supabaseServiceKey) {
+        const serviceClient = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
+        await serviceClient
+          .from('videos')
+          .update({ status: VIDEO_STATUS.FAILED, error_message: `Erreur interne lors de l'analyse: ${error.message}`, updated_at: new Date().toISOString() })
+          .eq('id', videoIdFromError);
       }
     }
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: 'Erreur interne du serveur',
-        details: error.message
+        details: error.message || 'Une erreur inattendue est survenue.'
       }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500 
-      }
-    )
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
   }
-})
+});
