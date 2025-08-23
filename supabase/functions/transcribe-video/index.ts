@@ -1,4 +1,3 @@
-
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import OpenAI from 'npm:openai@4.28.0'
 
@@ -419,10 +418,16 @@ Deno.serve(async (req) => {
     const transcription = await openai.audio.transcriptions.create({
       file: new File([audioBlob], 'audio.mp3', { type: 'audio/mp3' }),
       model: 'whisper-1',
-      language: 'fr'
-    })
+      language: 'fr',
+      response_format: 'verbose_json' // Important pour avoir les segments et les scores de confiance
+    });
 
     console.log('Transcription terminée.')
+
+    // Calculer un score de confiance moyen basé sur les segments
+    const confidenceScore = transcription.segments && transcription.segments.length > 0 
+      ? transcription.segments.reduce((sum: number, segment: any) => sum + (segment.confidence || 0), 0) / transcription.segments.length
+      : null;
 
     // 8. ENREGISTRER LA TRANSCRIPTION DANS SUPABASE
     console.log('Enregistrement de la transcription dans Supabase...')
@@ -433,25 +438,22 @@ Deno.serve(async (req) => {
         full_text: transcription.text,
         segments: transcription.segments,
         transcription_data: transcription,
-        status: VIDEO_STATUS.TRANSCRIBED, // CORRECTION APPLIQUÉE ICI
+        confidence_score: confidenceScore, // ← Ajout du score de confiance
+        status: VIDEO_STATUS.TRANSCRIBED,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
-      },
-      { onConflict: 'video_id' }
-      )
+      }, { onConflict: 'video_id' });
 
     if (transcriptionTableError) {
-      console.error('Erreur lors de l\'upsert de la transcription:', transcriptionTableError)
-      // Mettre à jour le statut de la vidéo à FAILED en cas d'erreur de transcription
+      console.error('Erreur lors de l\'enregistrement de la transcription:', transcriptionTableError)
+      // Mettre à jour le statut de la vidéo à FAILED en cas d'échec
       await serviceClient
         .from('videos')
-        .update({ status: VIDEO_STATUS.FAILED, updated_at: new Date().toISOString() })
+        .update({ status: VIDEO_STATUS.FAILED, error_message: `Échec de l'enregistrement de la transcription: ${transcriptionTableError.message}`, updated_at: new Date().toISOString() })
         .eq('id', videoId as string)
+
       return new Response(
-        JSON.stringify({
-          error: 'Erreur lors de l\'enregistrement de la transcription',
-          details: transcriptionTableError.message
-        }),
+        JSON.stringify({ error: 'Erreur de base de données', details: transcriptionTableError.message }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       )
     }
@@ -465,36 +467,27 @@ Deno.serve(async (req) => {
       .eq('id', videoId as string)
 
     if (finalUpdateError) {
-      console.error('Erreur lors de la mise à jour finale du statut de la vidéo:', finalUpdateError)
-      return new Response(
-        JSON.stringify({
-          error: 'Erreur lors de la mise à jour finale du statut de la vidéo',
-          details: finalUpdateError.message
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      )
+      console.error(`Erreur lors de la mise à jour finale du statut de la vidéo ${videoId}:`, finalUpdateError)
     }
 
-    console.log(`Statut de la vidéo ${videoId} mis à jour à '${VIDEO_STATUS.TRANSCRIBED}'`)
-
-    // 10. DÉCLENCHEMENT DE L'ANALYSE
-    console.log(`Déclenchement de la fonction analyze-transcription pour la vidéo ${videoId}`)
+    // 10. DÉCLENCHER LA FONCTION D'ANALYSE
     try {
-      await fetch(`${supabaseUrl}/functions/v1/analyze-transcription`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseServiceKey}`
-        },
-        body: JSON.stringify({ videoId })
-      })
-      console.log(`Fonction analyze-transcription déclenchée avec succès pour la vidéo ${videoId}`)
-    } catch (analyzeError: any) {
-      console.error(`Erreur lors du déclenchement de analyze-transcription pour la vidéo ${videoId}:`, analyzeError)
-      // Optionnel: Mettre à jour le statut de la vidéo à FAILED si l'appel à analyze-transcription échoue
+      const { data: functionData, error: functionError } = await serviceClient.functions.invoke(
+        'analyze-transcription',
+        { body: { videoId } }
+      )
+
+      if (functionError) {
+        throw functionError
+      }
+
+      console.log('Fonction analyze-transcription invoquée avec succès:', functionData)
+    } catch (invokeError) {
+      console.error("Erreur lors de l'invocation de la fonction d'analyse:", invokeError)
+      // Mettre à jour le statut de la vidéo à FAILED si l'invocation échoue
       await serviceClient
         .from('videos')
-        .update({ status: VIDEO_STATUS.FAILED, error_message: `Échec du déclenchement de l'analyse: ${analyzeError.message}`, updated_at: new Date().toISOString() })
+        .update({ status: VIDEO_STATUS.FAILED, error_message: `Échec de l'invocation de l'analyse: ${invokeError.message}`, updated_at: new Date().toISOString() })
         .eq('id', videoId as string)
     }
 
