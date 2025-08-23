@@ -1,4 +1,3 @@
-
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import OpenAI from 'npm:openai@4.28.0'
 
@@ -177,6 +176,20 @@ Assurez-vous que la sortie est un objet JSON valide.`;
         JSON.stringify({ error: 'Erreur lors de l\'enregistrement des résultats d\'analyse', details: analysisSaveError.message }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
+    }
+
+    // Après l'analyse, mettre à jour aussi la table transcriptions
+    const { error: transcriptionUpdateError } = await serviceClient
+      .from('transcriptions')
+      .update({
+        analysis_result: analysisResult, // ← Stocker le résultat dans transcriptions
+        keywords: analysisResult.keywords || [], // ← Extraire les keywords de l'analyse
+        updated_at: new Date().toISOString()
+      })
+      .eq('video_id', videoId);
+
+    if (transcriptionUpdateError) {
+      console.error('Erreur lors de la mise à jour de la transcription avec les résultats d\'analyse:', transcriptionUpdateError);
     }
 
     console.log(`Vidéo ${videoId} analysée et statut mis à jour à '${VIDEO_STATUS.ANALYZED}'.`);
