@@ -472,16 +472,30 @@ Deno.serve(async (req) => {
 
     // 10. DÉCLENCHER LA FONCTION D'ANALYSE
     try {
-      const { data: functionData, error: functionError } = await serviceClient.functions.invoke(
-        'analyze-transcription',
-        { body: { videoId } }
-      )
-
-      if (functionError) {
-        throw functionError
+      // CORRECTION: Utiliser directement serviceClient au lieu d'invoquer via functions
+      // Créer l'URL de la fonction Edge avec le videoId
+      const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}` // Utiliser la clé de service pour l'autorisation
+      };
+      
+      console.log(`Appel direct de la fonction analyze-transcription via fetch à ${analyzeEndpoint}`);
+      
+      const response = await fetch(analyzeEndpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ videoId })
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Erreur de la fonction d'analyse (${response.status}): ${errorText}`);
+        throw new Error(`Erreur HTTP ${response.status}: ${errorText}`);
       }
-
-      console.log('Fonction analyze-transcription invoquée avec succès:', functionData)
+      
+      const responseData = await response.json();
+      console.log('Analyse démarrée avec succès:', responseData);
     } catch (invokeError) {
       console.error("Erreur lors de l'invocation de la fonction d'analyse:", invokeError)
       // Mettre à jour le statut de la vidéo à FAILED si l'invocation échoue
