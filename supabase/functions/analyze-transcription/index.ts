@@ -50,11 +50,37 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Créer un client Supabase avec la clé de service pour les opérations privilégiées
     const serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { persistSession: false }
     });
 
     let videoId: string | null = null;
+    let isServiceRequest = false;
+
+    // Vérifier l'en-tête d'autorisation
+    const authHeader = req.headers.get('Authorization');
+    if (authHeader) {
+      // Si le jeton correspond à la clé de service, autoriser en tant que demande de service
+      if (authHeader === `Bearer ${supabaseServiceKey}`) {
+        isServiceRequest = true;
+        console.log("Requête authentifiée avec la clé de service");
+      } else {
+        // Sinon, vérifier si c'est un token utilisateur valide
+        try {
+          const { data, error } = await serviceClient.auth.getUser(
+            authHeader.replace('Bearer ', '')
+          );
+          if (!error && data.user) {
+            console.log(`Requête authentifiée pour l'utilisateur: ${data.user.id}`);
+          } else {
+            console.warn("Token d'authentification invalide:", error?.message);
+          }
+        } catch (e) {
+          console.warn("Erreur lors de la vérification du token:", e);
+        }
+      }
+    }
 
     // Tenter d'obtenir videoId du corps de la requête (pour les requêtes POST)
     try {
@@ -183,7 +209,7 @@ Assurez-vous que la sortie est un objet JSON valide.`;
       .from('transcriptions')
       .update({
         analysis_result: analysisResult, // ← Stocker le résultat dans transcriptions
-        keywords: analysisResult.keywords || [], // ← Extraire les keywords de l'analyse
+        keywords: analysisResult.key_topics || [], // ← Extraire les keywords de l'analyse
         updated_at: new Date().toISOString()
       })
       .eq('video_id', videoId);
