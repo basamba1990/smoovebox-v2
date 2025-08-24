@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
       auth: { persistSession: false }
     })
 
-    // Helper hoisté dans ce scope
+    // Helper pour confirmer la mise à jour de la base de données
     async function confirmDatabaseUpdate(
       client: ReturnType<typeof createClient>,
       videoId: string,
@@ -71,28 +71,20 @@ Deno.serve(async (req) => {
         // Attendre 2 secondes avant de vérifier
         await new Promise((resolve) => setTimeout(resolve, 2000))
 
-        const { data: updatedVideo, error } = await client
-          .from('videos')
-          .select('status, transcription')
-          .eq('id', videoId)
+        // Vérifier simplement si la transcription existe
+        const { data: transcription, error: transcriptionError } = await client
+          .from('transcriptions')
+          .select('id')
+          .eq('video_id', videoId)
           .single()
 
-        if (error) throw error
-
-        if (
-          updatedVideo &&
-          (updatedVideo.status === VIDEO_STATUS.ANALYZED ||
-            updatedVideo.status === VIDEO_STATUS.TRANSCRIBED) &&
-          updatedVideo.transcription
-        ) {
-          console.log(`Mise à jour confirmée pour la vidéo ${videoId}`)
-          return true
+        if (transcriptionError) {
+          console.log('Transcription pas encore disponible, nouvelle tentative...')
+          return await confirmDatabaseUpdate(client, videoId, attempts + 1, maxAttempts)
         }
 
-        console.log(
-          `Mise à jour non encore terminée, nouvelle tentative (${attempts + 1}/${maxAttempts})`
-        )
-        return await confirmDatabaseUpdate(client, videoId, attempts + 1, maxAttempts)
+        console.log(`Transcription confirmée pour la vidéo ${videoId}`)
+        return true
       } catch (err) {
         console.error('Erreur lors de la confirmation de mise à jour:', err)
         return await confirmDatabaseUpdate(client, videoId, attempts + 1, maxAttempts)
@@ -401,7 +393,7 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           error: 'URL vidéo manquante',
-          details: 'Impossible de récupérer ou de générer l\'URL de la vidéo.'
+          details: 'Impossible de récupérer ou de générer l\'URL de la vidéo.' // CORRECTION APPLIQUÉE ICI
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       )
