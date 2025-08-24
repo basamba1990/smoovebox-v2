@@ -15,6 +15,24 @@ const VideoManagement = () => {
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [processingVideoId, setProcessingVideoId] = useState(null);
   
+  // Correction: Déplacer getStatusLabel avant son utilisation
+  const getStatusLabel = (status) => {
+    const statusMap = {
+      'uploaded': 'Uploadée',
+      'processing': 'En traitement',
+      'transcribed': 'Transcrite',
+      'analyzing': 'En analyse',
+      'analyzed': 'Analysée',
+      'published': 'Publiée',
+      'failed': 'Échec',
+      'draft': 'Brouillon',
+      'ready': 'Prête',
+      'pending': 'En attente'
+    };
+    
+    return statusMap[status] || 'Inconnu';
+  };
+  
   const fetchVideos = useCallback(async () => {
     if (!user) return;
     
@@ -30,7 +48,7 @@ const VideoManagement = () => {
       }
       
       const { data, error: supabaseError } = await supabase
-        .from("video_details")
+        .from("videos")
         .select(`
           id,
           title,
@@ -50,7 +68,13 @@ const VideoManagement = () => {
           duration,
           performance_score,
           ai_score,
-          ai_result
+          ai_result,
+          transcriptions (
+            id,
+            video_id,
+            text,
+            status
+          )
         `)
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
@@ -63,7 +87,10 @@ const VideoManagement = () => {
       console.log("Videos data received:", data);
       
       const normalizedVideos = (data || []).map(video => {
-        const hasTranscription = !!(video.transcription_text);
+        // Vérifier si une transcription existe
+        const hasTranscription = !!(video.transcription_text || 
+          (video.transcriptions && video.transcriptions.length > 0 && video.transcriptions[0].text));
+        
         // Utiliser analysis_result s'il est disponible, sinon analysis
         const analysisData = video.analysis_result || video.analysis || {};
         const hasAnalysis = !!(analysisData && Object.keys(analysisData).length > 0);
@@ -87,7 +114,7 @@ const VideoManagement = () => {
           statusLabel,
           hasTranscription,
           hasAnalysis,
-          analysis_result: analysisData, // Standardiser sur analysis_result
+          analysis_result: analysisData,
           error_message: video.video_error || video.transcription_error || null
         };
       });
@@ -109,23 +136,6 @@ const VideoManagement = () => {
       setLoading(false);
     }
   }, [user, selectedVideo]);
-  
-  const getStatusLabel = (status) => {
-    const statusMap = {
-      'uploaded': 'Uploadée',
-      'processing': 'En traitement',
-      'transcribed': 'Transcrite',
-      'analyzing': 'En analyse',
-      'analyzed': 'Analysée',
-      'published': 'Publiée',
-      'failed': 'Échec',
-      'draft': 'Brouillon',
-      'ready': 'Prête',
-      'pending': 'En attente'
-    };
-    
-    return statusMap[status] || 'Inconnu';
-  };
 
   const getPublicUrl = (video) => {
     if (!video) return null;
