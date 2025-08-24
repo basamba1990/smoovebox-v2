@@ -1,5 +1,5 @@
 // src/pages/VideoManagement.jsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
@@ -14,9 +14,9 @@ const VideoManagement = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedVideo, setSelectedVideo] = useState(null);
-  const [transcribingVideoId, setTranscribingVideoId] = useState(null);
+  const [processingVideoId, setProcessingVideoId] = useState(null); // Renommé pour être plus générique
   
-  const fetchVideos = async () => {
+  const fetchVideos = useCallback(async () => {
     if (!user) return;
     
     setLoading(true);
@@ -26,19 +26,58 @@ const VideoManagement = () => {
       console.log("Récupération des vidéos pour user_id:", user.id);
       
       // Requête améliorée avec plus d'informations
+      // On sélectionne directement les champs nécessaires de la vue video_details
       const { data, error } = await supabase
-        .from("videos")
+        .from("video_details") // Utiliser la vue video_details
         .select(`
-          *,
-          transcriptions (
-            id,
-            status,
-            confidence_score,
-            processed_at,
-            error_message
-          )
+          video_id:id,
+          title,
+          description,
+          url,
+          public_url,
+          storage_path,
+          file_path,
+          thumbnail_url,
+          original_file_name,
+          format,
+          category,
+          tags,
+          status,
+          views_count,
+          likes_count,
+          comments_count,
+          transcription_attempts,
+          transcription_data,
+          transcript:transcription_full_text, // Renommé pour correspondre à l'ancien champ
+          transcription_error,
+          analysis:analysis_result, // Renommé pour correspondre à l'ancien champ
+          ai_score,
+          ai_result,
+          processed_at,
+          performance_score,
+          error_message:video_error, // Renommé pour correspondre à l'ancien champ
+          is_public,
+          user_id:owner_id, // Renommé pour correspondre à l'ancien champ
+          created_at,
+          updated_at,
+          transcription_text,
+          segments,
+          keywords,
+          confidence_score,
+          transcription_language,
+          transcription_status,
+          transcription_error:transcription_error, // Assurer la clarté
+          transcription_processed_at,
+          latest_reaction_type,
+          engagement_predictions,
+          gamification_level,
+          gamification_achievements,
+          improvement_suggestion,
+          performance_analysis,
+          content_insights,
+          audience_analysis
         `)
-        .eq("user_id", user.id)
+        .eq("owner_id", user.id) // Utiliser owner_id pour filtrer par utilisateur
         .order("created_at", { ascending: false });
       
       if (error) {
@@ -52,23 +91,25 @@ const VideoManagement = () => {
         let statusLabel = getStatusLabel(normalizedStatus);
         
         // Si la vidéo a une transcription complétée mais pas d'analyse
-        if ((video.transcription || (video.transcriptions && video.transcriptions.length > 0)) && 
-            !video.analysis && 
-            (normalizedStatus === "completed" || normalizedStatus === "published")) {
+        if (video.transcript && !video.analysis && (normalizedStatus === "completed" || normalizedStatus === "published" || normalizedStatus === "transcribed")) {
           normalizedStatus = "transcribed";
           statusLabel = "Transcrite";
         }
         
         // Si la vidéo a une analyse
-        if (video.analysis && (normalizedStatus === "completed" || normalizedStatus === "published")) {
+        if (video.analysis && (normalizedStatus === "completed" || normalizedStatus === "published" || normalizedStatus === "analyzed")) {
           normalizedStatus = "analyzed";
           statusLabel = "Analysée";
         }
         
         return {
           ...video,
+          id: video.video_id, // Assurer que l'ID est correctement mappé
           normalizedStatus,
-          statusLabel
+          statusLabel,
+          // Ajouter des drapeaux pour l'affichage dans la liste
+          hasTranscription: !!video.transcript,
+          hasAnalysis: !!video.analysis
         };
       });
       
@@ -90,10 +131,26 @@ const VideoManagement = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, selectedVideo]); // Ajouter selectedVideo aux dépendances
   
-  // Normaliser les statuts pour l'affichage
-  const normalizeStatus = (status) => {
+  // Fonction utilitaire pour obtenir le label du statut
+  const getStatusLabel = (status) => {
+    switch (status) {
+      case 'uploaded': return 'Uploadée';
+      case 'processing': return 'En traitement';
+      case 'transcribed': return 'Transcrite';
+      case 'analyzing': return 'En analyse';
+      case 'analyzed': return 'Analysée';
+      case 'published': return 'Publiée';
+      case 'failed': return 'Échec';
+      case 'draft': return 'Brouillon';
+      case 'ready': return 'Prête';
+      default: return 'Inconnu';
+    }
+  };
+
+  // Normaliser les statuts pour l'affichage (utilisé par VideoProcessingStatus)
+  const normalizeStatusForDisplay = (status) => {
     if (!status) return 'draft';
     
     const statusLower = status.toLowerCase();
@@ -104,7 +161,7 @@ const VideoManagement = () => {
       return 'processing';
     } else if (['failed', 'error'].includes(statusLower)) {
       return 'failed';
-    } else if (['pending', 'draft', 'ready'].includes(statusLower)) {
+    } else if (['pending', 'draft', 'ready', 'uploaded'].includes(statusLower)) { // Ajout de 'uploaded'
       return 'draft';
     }
     
@@ -113,12 +170,12 @@ const VideoManagement = () => {
   
   // CORRECTION: Vérifier si une vidéo a une transcription en utilisant les champs de la vue
   const hasTranscription = (video) => {
-    return !!(video.transcription_text && video.transcription_text.length > 0);
+    return !!(video.transcript && video.transcript.length > 0); // Utiliser 'transcript'
   };
   
   // CORRECTION: Vérifier si une vidéo a une analyse en utilisant les champs de la vue
   const hasAnalysis = (video) => {
-    return !!(video.analysis_summary && Object.keys(video.analysis_summary).length > 0);
+    return !!(video.analysis && Object.keys(video.analysis).length > 0); // Utiliser 'analysis'
   };
   
   useEffect(() => {
@@ -144,7 +201,7 @@ const VideoManagement = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, fetchVideos]); // Ajouter fetchVideos aux dépendances
 
   // Obtenir l'URL publique d'une vidéo
   const getPublicUrl = (video) => {
@@ -176,7 +233,7 @@ const VideoManagement = () => {
     if (!video) return;
     
     try {
-      setTranscribingVideoId(video.id);
+      setProcessingVideoId(video.id); // Utiliser le nouvel état
       toast.loading("Démarrage de la transcription...", { id: 'transcribe-toast' });
       
       const { data: authData } = await supabase.auth.getSession();
@@ -218,15 +275,15 @@ const VideoManagement = () => {
       
       // Mettre à jour localement le statut
       const updatedVideos = videos.map(v => 
-        v.id === video.id ? { ...v, status: 'failed', error: err.message } : v
-      );
+        v.id === video.id ? { ...v, status: 'failed', error_message: err.message } : v
+      ); // Utiliser error_message
       setVideos(updatedVideos);
       
       if (selectedVideo?.id === video.id) {
-        setSelectedVideo({ ...video, status: 'failed', error: err.message });
+        setSelectedVideo({ ...video, status: 'failed', error_message: err.message });
       }
     } finally {
-      setTranscribingVideoId(null);
+      setProcessingVideoId(null);
     }
   };
 
@@ -235,7 +292,7 @@ const VideoManagement = () => {
     if (!video) return;
     
     try {
-      setTranscribingVideoId(video.id); // Réutiliser le même état pour l'analyse
+      setProcessingVideoId(video.id); // Réutiliser le même état pour l'analyse
       toast.loading("Démarrage de l'analyse IA...", { id: 'analyze-toast' });
       
       const { data: authData } = await supabase.auth.getSession();
@@ -276,15 +333,15 @@ const VideoManagement = () => {
       
       // Mettre à jour localement le statut
       const updatedVideos = videos.map(v => 
-        v.id === video.id ? { ...v, status: 'failed', error: err.message } : v
+        v.id === video.id ? { ...v, status: 'failed', error_message: err.message } : v
       );
       setVideos(updatedVideos);
       
       if (selectedVideo?.id === video.id) {
-        setSelectedVideo({ ...video, status: 'failed', error: err.message });
+        setSelectedVideo({ ...video, status: 'failed', error_message: err.message });
       }
     } finally {
-      setTranscribingVideoId(null);
+      setProcessingVideoId(null);
     }
   };
   
@@ -389,12 +446,12 @@ const VideoManagement = () => {
                         {new Date(video.created_at).toLocaleDateString()}
                       </p>
                       <div className="flex gap-1 mt-1">
-                        {video.hasTranscription && (
+                        {hasTranscription(video) && (
                           <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">
                             Transcrit
                           </span>
                         )}
-                        {video.hasAnalysis && (
+                        {hasAnalysis(video) && (
                           <span className="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded">
                             Analysé
                           </span>
@@ -451,23 +508,17 @@ const VideoManagement = () => {
                       <button 
                         onClick={() => transcribeVideo(selectedVideo)}
                         className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-                        disabled={transcribingVideoId === selectedVideo.id}
+                        disabled={processingVideoId === selectedVideo.id || hasTranscription(selectedVideo)}
                       >
-                        {transcribingVideoId === selectedVideo.id 
-                          ? 'Transcription en cours...' 
-                          : (selectedVideo.hasTranscription ? 'Retranscrire' : 'Transcrire')}
+                        {processingVideoId === selectedVideo.id ? 'Transcription en cours...' : 'Transcrire la vidéo'}
                       </button>
-                      
-                      {/* CORRECTION: Bouton pour l'analyse IA */}
-                      {selectedVideo.hasTranscription && (
+                      {hasTranscription(selectedVideo) && !hasAnalysis(selectedVideo) && (
                         <button 
                           onClick={() => analyzeVideo(selectedVideo)}
                           className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
-                          disabled={transcribingVideoId === selectedVideo.id}
+                          disabled={processingVideoId === selectedVideo.id}
                         >
-                          {transcribingVideoId === selectedVideo.id 
-                            ? 'Analyse en cours...' 
-                            : (selectedVideo.hasAnalysis ? 'Reanalyser' : 'Analyser avec IA')}
+                          {processingVideoId === selectedVideo.id ? 'Analyse en cours...' : 'Analyser la vidéo'}
                         </button>
                       )}
                     </>
@@ -480,50 +531,37 @@ const VideoManagement = () => {
                   </button>
                 </div>
                 
-                {/* Messages d'état */}
+                {/* Affichage des résultats */}
+                {hasTranscription(selectedVideo) && (
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold mb-2">Transcription</h3>
+                    <TranscriptionViewer transcription={selectedVideo.transcript} />
+                  </div>
+                )}
+
+                {hasAnalysis(selectedVideo) && (
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold mb-2">Analyse IA</h3>
+                    <VideoAnalysisResults analysis={selectedVideo.analysis} />
+                  </div>
+                )}
+
+                {!hasTranscription(selectedVideo) && !hasAnalysis(selectedVideo) && selectedVideo.status !== 'failed' && (
+                  <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded">
+                    <p>Aucune transcription ou analyse disponible pour cette vidéo. Lancez la transcription ou l'analyse ci-dessus.</p>
+                  </div>
+                )}
+
                 {selectedVideo.status === 'failed' && selectedVideo.error_message && (
-                  <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
-                    <p className="text-red-700">
-                      <strong>Erreur de traitement :</strong> {selectedVideo.error_message}
-                    </p>
+                  <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                    <p>Erreur de traitement: {selectedVideo.error_message}</p>
                   </div>
                 )}
-                
-                {selectedVideo.status === 'processing' && (
-                  <div className="mt-4 bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
-                    <p className="text-yellow-700">
-                      La vidéo est en cours de traitement. Les résultats seront disponibles sous peu.
-                    </p>
-                  </div>
-                )}
-                
-                {selectedVideo.status === 'draft' && !selectedVideo.hasTranscription && (
-                  <div className="mt-4 bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-                    <p className="text-blue-700">
-                      La vidéo est prête pour la transcription. Cliquez sur "Transcrire" pour commencer.
-                    </p>
-                  </div>
-                )}
-                
-                {/* CORRECTION: Résultats - Afficher indépendamment du statut si les données existent */}
-                {selectedVideo.hasTranscription && (
-                  <TranscriptionViewer 
-                    transcription={selectedVideo.transcription_text}
-                    analysis={selectedVideo.analysis_summary}
-                  />
-                )}
-                
-                {selectedVideo.hasAnalysis && (
-                  <VideoAnalysisResults 
-                    analysis={selectedVideo.analysis_summary}
-                    keywords={selectedVideo.analysis_keywords}
-                    sentiment={selectedVideo.analysis_sentiment}
-                  />
-                )}
+
               </div>
             ) : (
               <div className="p-4 text-center text-gray-500">
-                Sélectionnez une vidéo dans la liste pour voir ses détails
+                Sélectionnez une vidéo pour voir les détails.
               </div>
             )}
           </div>
@@ -534,24 +572,3 @@ const VideoManagement = () => {
 };
 
 export default VideoManagement;
-
-
-// Fonction helper pour transformer le statut en libellé lisible
-const getStatusLabel = (status) => {
-  // Normaliser le statut pour la comparaison
-  const normalizedStatus = status?.toLowerCase();
-  
-  const statusMap = {
-    'pending': 'En attente',
-    'uploaded': 'Uploadée',
-    'processing': 'En traitement',
-    'completed': 'Terminé',
-    'transcribed': 'Transcrite',
-    'analyzed': 'Analysée',
-    'published': 'Publiée',
-    'analyzing': 'Analyse en cours',
-    'failed': 'Échec'
-  };
-  
-  return statusMap[normalizedStatus] || status || 'Inconnu';
-};
