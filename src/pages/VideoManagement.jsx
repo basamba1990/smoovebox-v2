@@ -24,7 +24,12 @@ const VideoManagement = () => {
     try {
       console.log("Récupération des vidéos pour user_id:", user.id);
       
-      const { data, error } = await supabase
+      // Vérifier que supabase est correctement initialisé
+      if (!supabase) {
+        throw new Error("Supabase client non initialisé");
+      }
+      
+      const { data, error: supabaseError } = await supabase
         .from("video_details")
         .select(`
           id,
@@ -50,9 +55,9 @@ const VideoManagement = () => {
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
       
-      if (error) {
-        console.error("Erreur Supabase:", error);
-        throw error;
+      if (supabaseError) {
+        console.error("Erreur Supabase:", supabaseError);
+        throw new Error(`Erreur Supabase: ${supabaseError.message}`);
       }
       
       console.log("Videos data received:", data);
@@ -60,7 +65,7 @@ const VideoManagement = () => {
       const normalizedVideos = (data || []).map(video => {
         const hasTranscription = !!(video.transcription_text);
         // Utiliser analysis_result s'il est disponible, sinon analysis
-        const analysisData = video.analysis_result || video.analysis;
+        const analysisData = video.analysis_result || video.analysis || {};
         const hasAnalysis = !!(analysisData && Object.keys(analysisData).length > 0);
         
         let normalizedStatus = video.status || "pending";
@@ -131,7 +136,14 @@ const VideoManagement = () => {
     if (!path) return null;
     
     try {
-      const url = new URL(import.meta.env.VITE_SUPABASE_URL);
+      // Utiliser l'URL de Supabase depuis les variables d'environnement
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!supabaseUrl) {
+        console.error("URL Supabase non configurée");
+        return null;
+      }
+      
+      const url = new URL(supabaseUrl);
       const projectRef = url.hostname.split('.')[0];
       
       const cleanPath = path.replace(/^videos\//, '');
@@ -150,7 +162,11 @@ const VideoManagement = () => {
       setProcessingVideoId(video.id);
       toast.loading("Démarrage de la transcription...", { id: 'transcribe-toast' });
       
-      const { data: authData } = await supabase.auth.getSession();
+      const { data: authData, error: authError } = await supabase.auth.getSession();
+      if (authError) {
+        throw new Error("Erreur d'authentification: " + authError.message);
+      }
+      
       const token = authData?.session?.access_token;
       
       if (!token) {
@@ -162,8 +178,13 @@ const VideoManagement = () => {
         throw new Error("URL de la vidéo non disponible");
       }
       
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!supabaseUrl) {
+        throw new Error("URL Supabase non configurée");
+      }
+      
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-video`,
+        `${supabaseUrl}/functions/v1/transcribe-video`,
         {
           method: 'POST',
           headers: {
@@ -249,15 +270,24 @@ const VideoManagement = () => {
       setProcessingVideoId(video.id);
       toast.loading("Démarrage de l'analyse IA...", { id: 'analyze-toast' });
       
-      const { data: authData } = await supabase.auth.getSession();
+      const { data: authData, error: authError } = await supabase.auth.getSession();
+      if (authError) {
+        throw new Error("Erreur d'authentification: " + authError.message);
+      }
+      
       const token = authData?.session?.access_token;
       
       if (!token) {
         throw new Error("Session expirée, veuillez vous reconnecter");
       }
       
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!supabaseUrl) {
+        throw new Error("URL Supabase non configurée");
+      }
+      
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-transcription`,
+        `${supabaseUrl}/functions/v1/analyze-transcription`,
         {
           method: 'POST',
           headers: {
@@ -393,26 +423,53 @@ const VideoManagement = () => {
 
     fetchVideos();
     
-    const channel = supabase
-      .channel('videos_changes')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'videos',
-          filter: `user_id=eq.${user.id}` 
-        }, 
-        (payload) => {
-          console.log('Change received!', payload);
-          fetchVideos();
-        }
-      )
-      .subscribe();
+    // Configurer l'abonnement aux changements en temps réel
+    const setupRealtime = async () => {
+      try {
+        const channel = supabase
+          .channel('videos_changes')
+          .on('postgres_changes', 
+            { 
+              event: '*', 
+              schema: 'public', 
+              table: 'videos',
+              filter: `user_id=eq.${user.id}` 
+            }, 
+            (payload) => {
+              console.log('Change received!', payload);
+              fetchVideos();
+            }
+          )
+          .subscribe((status) => {
+            console.log('Subscription status:', status);
+          });
+        
+        return () => {
+          supabase.removeChannel(channel);
+        };
+      } catch (error) {
+        console.error("Erreur lors de la configuration du temps réel:", error);
+      }
+    };
+    
+    const cleanup = setupRealtime();
     
     return () => {
-      supabase.removeChannel(channel);
+      if (cleanup && typeof cleanup.then === 'function') {
+        cleanup.then(fn => fn && fn());
+      }
     };
   }, [user, fetchVideos]);
+
+  if (!user) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded">
+          <p>Veuillez vous connecter pour accéder à vos vidéos.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -443,6 +500,7 @@ const VideoManagement = () => {
       {loading ? (
         <div className="flex justify-center items-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          <p className="ml-4">Chargement des vidéos...</p>
         </div>
       ) : error ? (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
