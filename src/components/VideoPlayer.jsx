@@ -1,5 +1,4 @@
-// src/components/VideoPlayer.jsx - Version adaptée
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Play, Pause, Volume2, VolumeX, Maximize, SkipBack, SkipForward } from 'lucide-react';
 import { Slider } from './ui/slider';
 import { Button } from './ui/button';
@@ -20,55 +19,47 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
   const [videoUrl, setVideoUrl] = useState(null);
   
   // Fonction pour générer l'URL publique de la vidéo
-  const getPublicUrl = (storagePath) => {
+  const getPublicUrl = useCallback((storagePath) => {
     if (!storagePath) return null;
     
     try {
       // Extraire le projectRef de l'URL Supabase
-      const url = new URL(import.meta.env.VITE_SUPABASE_URL);
-      const projectRef = url.hostname.split('.')[0];
-      
-      // Gérer les chemins avec ou sans préfixe de bucket
-      let bucket = 'videos';
-      let path = storagePath;
-      
-      // Si storagePath contient un format bucket/path
-      if (storagePath.includes('/')) {
-        const parts = storagePath.split('/', 1);
-        if (parts.length > 0) {
-          bucket = parts[0];
-          path = storagePath.substring(bucket.length + 1);
-        }
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!supabaseUrl) {
+        console.error("URL Supabase non configurée");
+        return null;
       }
       
-      return `https://${projectRef}.supabase.co/storage/v1/object/public/${bucket}/${path}`;
+      const url = new URL(supabaseUrl);
+      const projectRef = url.hostname.split('.')[0];
+      
+      // Nettoyer le chemin de stockage
+      let cleanPath = storagePath;
+      if (cleanPath.startsWith('videos/')) {
+        cleanPath = cleanPath.substring(7); // Enlever le préfixe 'videos/'
+      }
+      
+      return `https://${projectRef}.supabase.co/storage/v1/object/public/videos/${cleanPath}`;
     } catch (e) {
       console.error("Erreur de construction de l'URL:", e);
       return null;
     }
-  };
+  }, []);
   
   // Fonction pour créer une URL signée
-  const createSignedUrl = async (storagePath) => {
+  const createSignedUrl = useCallback(async (storagePath) => {
     if (!storagePath) return null;
     
     try {
-      // Extraire le bucket et le chemin
-      let bucket = 'videos';
-      let path = storagePath;
-      
-      // Si storagePath contient un format bucket/path
-      if (storagePath.includes('/')) {
-        const parts = storagePath.split('/', 1);
-        if (parts.length > 0) {
-          bucket = parts[0];
-          path = storagePath.substring(bucket.length + 1);
-        }
+      // Nettoyer le chemin de stockage
+      let cleanPath = storagePath;
+      if (cleanPath.startsWith('videos/')) {
+        cleanPath = cleanPath.substring(7); // Enlever le préfixe 'videos/'
       }
       
       const { data, error } = await supabase.storage
-        .from(bucket)
-        .createSignedUrl(path, 3600); // 1 heure de validité
+        .from('videos')
+        .createSignedUrl(cleanPath, 3600); // 1 heure de validité
         
       if (error) throw error;
       
@@ -77,7 +68,7 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
       console.error('Erreur lors de la création de l\'URL signée:', err);
       return null;
     }
-  };
+  }, []);
   
   // Charger l'URL de la vidéo
   useEffect(() => {
@@ -90,33 +81,19 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
         let finalVideoUrl = null;
         
         // 1. Utiliser l'URL directe si fournie en prop
-        if (propVideoUrl) {
-          if (propVideoUrl.startsWith('http://') || propVideoUrl.startsWith('https://')) {
-            finalVideoUrl = propVideoUrl;
-          }
+        if (propVideoUrl && (propVideoUrl.startsWith('http://') || propVideoUrl.startsWith('https://'))) {
+          finalVideoUrl = propVideoUrl;
         }
-        
         // 2. Utiliser l'URL de la vidéo si fournie dans l'objet video
-        if (!finalVideoUrl && video?.url) {
-          if (video.url.startsWith('http://') || video.url.startsWith('https://')) {
-            finalVideoUrl = video.url;
-          }
+        else if (video?.public_url && (video.public_url.startsWith('http://') || video.public_url.startsWith('https://'))) {
+          finalVideoUrl = video.public_url;
         }
-        
         // 3. Utiliser le chemin de stockage fourni en prop
-        if (!finalVideoUrl && propStoragePath) {
-          // Essayer d'abord l'URL publique
+        else if (propStoragePath) {
           finalVideoUrl = getPublicUrl(propStoragePath);
-          
-          // Si pas d'URL publique, essayer l'URL signée
-          if (!finalVideoUrl) {
-            finalVideoUrl = await createSignedUrl(propStoragePath);
-          }
         }
-        
         // 4. Utiliser le chemin de stockage de l'objet video
-        if (!finalVideoUrl && video?.storage_path) {
-          // Essayer d'abord l'URL publique
+        else if (video?.storage_path) {
           finalVideoUrl = getPublicUrl(video.storage_path);
           
           // Si pas d'URL publique, essayer l'URL signée
@@ -134,16 +111,15 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
       } catch (err) {
         console.error('Erreur de chargement vidéo:', err);
         setError(err.message);
-      } finally {
         setIsLoading(false);
       }
     };
     
     loadVideoUrl();
-  }, [video, propVideoUrl, propStoragePath]);
+  }, [video, propVideoUrl, propStoragePath, getPublicUrl, createSignedUrl]);
   
   // Contrôle de la lecture
-  const togglePlay = () => {
+  const togglePlay = useCallback(() => {
     if (videoRef.current) {
       if (isPlaying) {
         videoRef.current.pause();
@@ -154,54 +130,54 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
         });
       }
     }
-  };
+  }, [isPlaying]);
   
   // Gestion du volume
-  const toggleMute = () => {
+  const toggleMute = useCallback(() => {
     if (videoRef.current) {
       videoRef.current.muted = !isMuted;
       setIsMuted(!isMuted);
     }
-  };
+  }, [isMuted]);
   
-  const handleVolumeChange = (value) => {
+  const handleVolumeChange = useCallback((value) => {
     const newVolume = value[0];
     if (videoRef.current) {
       videoRef.current.volume = newVolume;
       setVolume(newVolume);
       setIsMuted(newVolume === 0);
     }
-  };
+  }, []);
   
   // Gestion de la timeline
-  const handleTimeUpdate = () => {
+  const handleTimeUpdate = useCallback(() => {
     if (videoRef.current) {
       setCurrentTime(videoRef.current.currentTime);
     }
-  };
+  }, []);
   
-  const handleSeek = (value) => {
+  const handleSeek = useCallback((value) => {
     if (videoRef.current) {
       videoRef.current.currentTime = value[0];
       setCurrentTime(value[0]);
     }
-  };
+  }, []);
   
   // Avancer/reculer de 10 secondes
-  const skipForward = () => {
+  const skipForward = useCallback(() => {
     if (videoRef.current) {
       videoRef.current.currentTime = Math.min(videoRef.current.currentTime + 10, duration);
     }
-  };
+  }, [duration]);
   
-  const skipBackward = () => {
+  const skipBackward = useCallback(() => {
     if (videoRef.current) {
       videoRef.current.currentTime = Math.max(videoRef.current.currentTime - 10, 0);
     }
-  };
+  }, []);
   
   // Plein écran
-  const toggleFullscreen = () => {
+  const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
       if (containerRef.current.requestFullscreen) {
         containerRef.current.requestFullscreen();
@@ -221,60 +197,62 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
       }
       setIsFullscreen(false);
     }
-  };
+  }, []);
   
   // Formatage du temps
-  const formatTime = (timeInSeconds) => {
+  const formatTime = useCallback((timeInSeconds) => {
     const minutes = Math.floor(timeInSeconds / 60);
     const seconds = Math.floor(timeInSeconds % 60);
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-  };
+  }, []);
   
   // Gestion des événements vidéo
   useEffect(() => {
-    const video = videoRef.current;
+    const videoElement = videoRef.current;
+    if (!videoElement || !videoUrl) return;
     
-    if (video) {
-      const handlePlay = () => setIsPlaying(true);
-      const handlePause = () => setIsPlaying(false);
-      const handleLoadedMetadata = () => {
-        setDuration(video.duration);
-        setIsLoading(false);
-      };
-      const handleLoadedData = () => setIsLoading(false);
-      const handleError = (e) => {
-        setError("Erreur lors du chargement de la vidéo");
-        setIsLoading(false);
-        console.error("Erreur vidéo:", e);
-      };
-      const handleWaiting = () => setIsLoading(true);
-      const handlePlaying = () => setIsLoading(false);
-      const handleEnded = () => setIsPlaying(false);
-      
-      // Ajouter les écouteurs d'événements
-      video.addEventListener('play', handlePlay);
-      video.addEventListener('pause', handlePause);
-      video.addEventListener('loadedmetadata', handleLoadedMetadata);
-      video.addEventListener('loadeddata', handleLoadedData);
-      video.addEventListener('error', handleError);
-      video.addEventListener('waiting', handleWaiting);
-      video.addEventListener('playing', handlePlaying);
-      video.addEventListener('timeupdate', handleTimeUpdate);
-      video.addEventListener('ended', handleEnded);
-      
-      // Nettoyer les écouteurs d'événements
-      return () => {
-        video.removeEventListener('play', handlePlay);
-        video.removeEventListener('pause', handlePause);
-        video.removeEventListener('loadedmetadata', handleLoadedMetadata);
-        video.removeEventListener('loadeddata', handleLoadedData);
-        video.removeEventListener('error', handleError);
-        video.removeEventListener('waiting', handleWaiting);
-        video.removeEventListener('playing', handlePlaying);
-        video.removeEventListener('timeupdate', handleTimeUpdate);
-        video.removeEventListener('ended', handleEnded);
-      };
-    }
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+    const handleLoadedMetadata = () => {
+      setDuration(videoElement.duration);
+      setIsLoading(false);
+    };
+    const handleLoadedData = () => setIsLoading(false);
+    const handleError = (e) => {
+      setError("Erreur lors du chargement de la vidéo");
+      setIsLoading(false);
+      console.error("Erreur vidéo:", e);
+    };
+    const handleWaiting = () => setIsLoading(true);
+    const handlePlaying = () => setIsLoading(false);
+    const handleEnded = () => setIsPlaying(false);
+    const handleTimeUpdateEvent = () => {
+      setCurrentTime(videoElement.currentTime);
+    };
+    
+    // Ajouter les écouteurs d'événements
+    videoElement.addEventListener('play', handlePlay);
+    videoElement.addEventListener('pause', handlePause);
+    videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
+    videoElement.addEventListener('loadeddata', handleLoadedData);
+    videoElement.addEventListener('error', handleError);
+    videoElement.addEventListener('waiting', handleWaiting);
+    videoElement.addEventListener('playing', handlePlaying);
+    videoElement.addEventListener('timeupdate', handleTimeUpdateEvent);
+    videoElement.addEventListener('ended', handleEnded);
+    
+    // Nettoyer les écouteurs d'événements
+    return () => {
+      videoElement.removeEventListener('play', handlePlay);
+      videoElement.removeEventListener('pause', handlePause);
+      videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      videoElement.removeEventListener('loadeddata', handleLoadedData);
+      videoElement.removeEventListener('error', handleError);
+      videoElement.removeEventListener('waiting', handleWaiting);
+      videoElement.removeEventListener('playing', handlePlaying);
+      videoElement.removeEventListener('timeupdate', handleTimeUpdateEvent);
+      videoElement.removeEventListener('ended', handleEnded);
+    };
   }, [videoUrl]);
   
   // Gestion de l'affichage des contrôles
@@ -354,7 +332,7 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isPlaying, isMuted, duration]);
+  }, [togglePlay, toggleFullscreen, toggleMute, skipForward, skipBackward]);
   
   // Gestion de l'événement fullscreenchange
   useEffect(() => {
@@ -401,6 +379,8 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
           onClick={togglePlay}
           playsInline
           poster={poster}
+          onLoadStart={() => setIsLoading(true)}
+          onCanPlay={() => setIsLoading(false)}
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center">
