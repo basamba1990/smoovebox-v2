@@ -35,6 +35,7 @@ const VideoManagement = () => {
           updated_at,
           transcription_text,
           analysis,
+          analysis_result,
           video_error,
           transcription_error,
           user_id,
@@ -58,7 +59,9 @@ const VideoManagement = () => {
       
       const normalizedVideos = (data || []).map(video => {
         const hasTranscription = !!(video.transcription_text);
-        const hasAnalysis = !!(video.analysis && Object.keys(video.analysis).length > 0);
+        // Utiliser analysis_result s'il est disponible, sinon analysis
+        const analysisData = video.analysis_result || video.analysis;
+        const hasAnalysis = !!(analysisData && Object.keys(analysisData).length > 0);
         
         let normalizedStatus = video.status || "pending";
         let statusLabel = getStatusLabel(normalizedStatus);
@@ -79,6 +82,7 @@ const VideoManagement = () => {
           statusLabel,
           hasTranscription,
           hasAnalysis,
+          analysis_result: analysisData, // Standardiser sur analysis_result
           error_message: video.video_error || video.transcription_error || null
         };
       });
@@ -588,7 +592,7 @@ const VideoManagement = () => {
                 {selectedVideo.hasAnalysis && (
                   <div className="mb-4">
                     <h3 className="text-lg font-semibold mb-2">Analyse IA</h3>
-                    <VideoAnalysisResults analysis={selectedVideo.analysis} />
+                    <VideoAnalysisResults analysis={selectedVideo.analysis_result} />
                   </div>
                 )}
 
