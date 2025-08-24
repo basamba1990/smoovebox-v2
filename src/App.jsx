@@ -62,16 +62,16 @@ function AppContent() {
       const checkConnection = async () => {
         try {
           console.log('Vérification de la connexion Supabase...');
-          
-          const timeoutPromise = new Promise((_, reject) => 
+
+          const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Timeout de connexion')), 5000)
           );
-          
+
           const connectionResult = await Promise.race([
             checkSupabaseConnection(),
             timeoutPromise
           ]);
-          
+
           if (connectionResult.connected) {
             setConnectionStatus('connected');
             setSupabaseError(null);
@@ -86,9 +86,9 @@ function AppContent() {
           setSupabaseError(`Erreur de vérification: ${error.message}`);
         }
       };
-      
+
       const connectionTimer = setTimeout(checkConnection, 100);
-      
+
       return () => {
         clearTimeout(connectionTimer);
       };
@@ -102,59 +102,55 @@ function AppContent() {
       setDashboardData(null);
       return;
     }
-    
+
     try {
       setDashboardLoading(true);
       setDashboardError(null);
-      
+
       console.log('Chargement des données dashboard pour:', user.id);
-      
+
       // CORRECTION: Utilisation de la vue 'video_details' pour récupérer toutes les informations consolidées
       const { data: videos, error: videosError } = await supabase
-        .from('video_details') // Changement ici: de 'videos' à 'video_details'
-        .select('*') // Sélectionner toutes les colonnes de la vue
+        .from('video_details')
+        .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
-        
+
       if (videosError) throw videosError;
-      
-      // Les transcriptions et analyses sont déjà jointes dans la vue, donc pas besoin de requêtes séparées
-      
-      // Récupération des statistiques globales (si la fonction RPC est toujours nécessaire)
-      // Assurez-vous que 'get_user_video_stats' est à jour avec la structure de 'video_details'
+
+      // Récupération des statistiques globales
       let stats = null;
       try {
         const { data: statsData, error: statsError } = await supabase
           .rpc('get_user_video_stats', { user_id_param: user.id });
-          
+
         if (statsError) {
           console.warn('Erreur lors de la récupération des statistiques:', statsError);
-          // Continue even with stats error
         } else {
           stats = statsData;
         }
       } catch (statsError) {
         console.warn('Exception lors de la récupération des statistiques:', statsError);
-        // Continue without stats
       }
-      
+
       // CORRECTION: Construction des données pour le dashboard avec les champs de la vue video_details
       const dashboardData = {
         totalVideos: videos.length,
         recentVideos: videos.slice(0, 5),
         videosByStatus: {
-          uploaded: videos.filter(v => v.status === 'uploaded' || v.status === 'pending' || v.status === 'draft').length,
+          ready: videos.filter(v => v.status === 'ready' || v.status === 'uploaded' || v.status === 'published').length,
           processing: videos.filter(v => v.status === 'processing' || v.status === 'analyzing' || v.status === 'transcribing').length,
           // CORRECTION: Utiliser transcription_text de la vue pour le statut transcrit
           transcribed: videos.filter(v => v.transcription_text && v.transcription_text.length > 0).length,
-          // CORRECTION: Utiliser analysis_summary de la vue pour le statut analysé
-          analyzed: videos.filter(v => v.analysis_summary && Object.keys(v.analysis_summary).length > 0).length,
+          // CORRECTION: Utiliser analysis_result (et non analysis_summary) de la vue pour le statut analysé
+          analyzed: videos.filter(v => v.analysis_result && Object.keys(v.analysis_result).length > 0).length,
           failed: videos.filter(v => v.status === 'failed').length
         },
         totalDuration: videos.reduce((sum, video) => sum + (video.duration || 0), 0),
         // CORRECTION: Compter les transcriptions et analyses basées sur la vue
         transcriptionsCount: videos.filter(v => v.transcription_text && v.transcription_text.length > 0).length,
-        analysisCount: videos.filter(v => v.analysis_summary && Object.keys(v.analysis_summary).length > 0).length,
+        // CORRECTION: Utiliser analysis_result (et non analysis_summary)
+        analysisCount: videos.filter(v => v.analysis_result && Object.keys(v.analysis_result).length > 0).length,
         videoPerformance: stats?.performance_data || [],
         progressStats: stats?.progress_stats || {
           completed: 0,
@@ -162,7 +158,7 @@ function AppContent() {
           totalTime: 0
         }
       };
-      
+
       setDashboardData(dashboardData);
       console.log('Données dashboard chargées avec succès:', dashboardData);
     } catch (err) {
@@ -178,7 +174,7 @@ function AppContent() {
   useEffect(() => {
     let mounted = true;
     let dataTimeout = null;
-    
+
     if (activeTab === 'dashboard' && isAuthenticated) {
       dataTimeout = setTimeout(() => {
         if (mounted) {
@@ -191,16 +187,16 @@ function AppContent() {
           });
         }
       }, 200);
-      
+
       let videosChannel = null;
       if (user && connectionStatus === 'connected') {
         try {
           videosChannel = supabase
             .channel('videos_changes')
-            .on('postgres_changes', { 
-              event: '*', 
-              schema: 'public', 
-              table: 'videos', // Le canal écoute toujours la table 'videos' pour les changements
+            .on('postgres_changes', {
+              event: '*',
+              schema: 'public',
+              table: 'videos',
               filter: `user_id=eq.${user.id}`
             }, payload => {
               console.log('Changement détecté dans la table videos:', payload);
@@ -265,17 +261,17 @@ function AppContent() {
   const handleRetryConnection = async () => {
     setConnectionStatus('checking');
     setSupabaseError(null);
-    
+
     try {
-      const timeoutPromise = new Promise((_, reject) => 
+      const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Timeout de reconnexion')), 5000)
       );
-      
+
       const connectionResult = await Promise.race([
         checkSupabaseConnection(),
         timeoutPromise
       ]);
-      
+
       if (connectionResult.connected) {
         setConnectionStatus('connected');
         setSupabaseError(null);
@@ -292,7 +288,7 @@ function AppContent() {
   // Écran de chargement avec timeout de sécurité
   useEffect(() => {
     let safetyTimeout = null;
-    
+
     if (loading) {
       safetyTimeout = setTimeout(() => {
         console.warn('Timeout de chargement déclenché après 15 secondes');
@@ -301,7 +297,7 @@ function AppContent() {
         }
       }, 15000);
     }
-    
+
     return () => {
       if (safetyTimeout) {
         clearTimeout(safetyTimeout);
@@ -310,12 +306,12 @@ function AppContent() {
   }, [loading]);
 
   if (loading) {
-    return <LoadingScreen message="Initialisation de l'application" showReloadButton={true} />;
+    return <LoadingScreen />;
   }
 
   if (supabaseError) {
     return (
-      <SupabaseDiagnostic 
+      <SupabaseDiagnostic
         error={supabaseError}
         onRetry={handleRetryConnection}
         onContinue={() => setSupabaseError(null)}
@@ -324,7 +320,7 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
       {/* Header professionnel */}
       <ProfessionalHeader
         user={user}
@@ -338,7 +334,7 @@ function AppContent() {
       <main className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
         <div className="space-y-6 sm:space-y-8">
           {/* Tabs modernes */}
-          <ModernTabs 
+          <ModernTabs
             activeTab={activeTab}
             onTabChange={setActiveTab}
             user={user}
@@ -348,8 +344,8 @@ function AppContent() {
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsContent value="dashboard" className="space-y-6">
                 {dashboardLoading ? (
-                  <LoadingScreen 
-                    message="Chargement des données du dashboard..." 
+                  <LoadingScreen
+                    message="Chargement des données du dashboard..."
                     showReloadButton={false}
                     onCancel={() => {
                       setDashboardLoading(false);
@@ -357,13 +353,13 @@ function AppContent() {
                     }}
                   />
                 ) : dashboardError ? (
-                  <EmptyState 
+                  <EmptyState
                     type="error"
                     onAction={() => loadDashboardData()}
                     loading={dashboardLoading}
                   />
                 ) : !dashboardData || (dashboardData.totalVideos === 0) ? (
-                  <EmptyState 
+                  <EmptyState
                     type="dashboard"
                     onAction={() => setActiveTab('upload')}
                   />
@@ -416,7 +412,7 @@ function AppContent() {
                       <p className="text-xs text-gray-600 mt-1">Transcription automatique de vos vidéos</p>
                     </div>
                   </div>
-                  <Button 
+                  <Button
                     onClick={() => setIsAuthModalOpen(true)}
                     className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
                   >
@@ -430,7 +426,7 @@ function AppContent() {
       </main>
 
       {/* Modal d'authentification */}
-      <AuthModal 
+      <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         onSuccess={handleAuthSuccess}
@@ -441,11 +437,11 @@ function AppContent() {
 
 function App() {
   return (
-    <ErrorBoundary>
-      <AuthProvider>
+    <AuthProvider>
+      <ErrorBoundary>
         <AppContent />
-      </AuthProvider>
-    </ErrorBoundary>
+      </ErrorBoundary>
+    </AuthProvider>
   );
 }
 
