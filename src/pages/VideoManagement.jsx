@@ -58,7 +58,7 @@ const VideoManagement = () => {
           transcription_text,
           analysis,
           ai_result,
-          video_error,
+          error_message,  // CORRECTION: Utiliser error_message au lieu de video_error
           transcription_error,
           user_id,
           storage_path,
@@ -82,7 +82,7 @@ const VideoManagement = () => {
         // Utiliser transcription_text pour détecter les transcriptions
         const hasTranscription = !!(video.transcription_text);
         
-        // CORRECTION: Utiliser analysis s'il est disponible, sinon ai_result
+        // Utiliser analysis s'il est disponible, sinon ai_result
         let analysisData = video.analysis || {};
         
         // Si analysis est vide mais ai_result existe, essayer de le parser comme JSON
@@ -118,7 +118,7 @@ const VideoManagement = () => {
           hasTranscription,
           hasAnalysis,
           analysis_result: analysisData, // Standardiser sur analysis_result pour le frontend
-          error_message: video.video_error || video.transcription_error || null
+          error_message: video.error_message || video.transcription_error || null  // CORRECTION: Utiliser error_message
         };
       });
       
@@ -256,8 +256,7 @@ const VideoManagement = () => {
         v.id === video.id ? { 
           ...v, 
           status: 'failed', 
-          video_error: errorMessage,
-          error_message: errorMessage
+          error_message: errorMessage  // CORRECTION: Utiliser error_message au lieu de video_error
         } : v
       );
       setVideos(updatedVideos);
@@ -266,8 +265,7 @@ const VideoManagement = () => {
         setSelectedVideo({ 
           ...video, 
           status: 'failed', 
-          video_error: errorMessage,
-          error_message: errorMessage
+          error_message: errorMessage  // CORRECTION: Utiliser error_message au lieu de video_error
         });
       }
     } finally {
@@ -358,8 +356,7 @@ const VideoManagement = () => {
         v.id === video.id ? { 
           ...v, 
           status: 'failed', 
-          video_error: errorMessage,
-          error_message: errorMessage
+          error_message: errorMessage  // CORRECTION: Utiliser error_message au lieu de video_error
         } : v
       );
       setVideos(updatedVideos);
@@ -368,8 +365,7 @@ const VideoManagement = () => {
         setSelectedVideo({ 
           ...video, 
           status: 'failed', 
-          video_error: errorMessage,
-          error_message: errorMessage
+          error_message: errorMessage  // CORRECTION: Utiliser error_message au lieu de video_error
         });
       }
     } finally {
@@ -575,9 +571,9 @@ const VideoManagement = () => {
                       <VideoProcessingStatus videoId={video.id} initialStatus={video.status} />
                     </div>
                   </div>
-                  {video.status === 'failed' && video.video_error && (
+                  {video.status === 'failed' && video.error_message && (  // CORRECTION: Utiliser error_message
                     <p className="text-xs text-red-500 mt-1 truncate">
-                      {video.video_error}
+                      {video.error_message}  // CORRECTION: Utiliser error_message
                     </p>
                   )}
                 </div>
@@ -672,9 +668,9 @@ const VideoManagement = () => {
                   </div>
                 )}
 
-                {selectedVideo.status === 'failed' && selectedVideo.video_error && (
+                {selectedVideo.status === 'failed' && selectedVideo.error_message && (  // CORRECTION: Utiliser error_message
                   <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-                    <p>Erreur de traitement: {selectedVideo.video_error}</p>
+                    <p>Erreur de traitement: {selectedVideo.error_message}</p>  {/* CORRECTION: Utiliser error_message */}
                     <button 
                       onClick={() => {
                         if (selectedVideo.hasTranscription) {
