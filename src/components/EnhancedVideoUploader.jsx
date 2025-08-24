@@ -24,6 +24,8 @@ import CreativeWorkshops from './CreativeWorkshops.jsx';
 import CollectiveMode from './CollectiveMode.jsx';
 import AIFeedbackAnalysis from './AIFeedbackAnalysis.jsx';
 import { videoService } from '../services/videoService'; // Import du service vidéo
+import VideoAnalysisResults from './VideoAnalysisResults'; // Assurez-vous d'importer ce composant
+import TranscriptionViewer from './TranscriptionViewer'; // Si vous avez un composant séparé pour la transcription
 
 const EnhancedVideoUploader = () => {
   const [currentStep, setCurrentStep] = useState('mode_selection');
@@ -41,6 +43,8 @@ const EnhancedVideoUploader = () => {
   const [uploadProgress, setUploadProgress] = useState(0); // Nouveau state pour la progression de l'upload
   const [uploadError, setUploadError] = useState(null); // Nouveau state pour les erreurs d'upload
   const [uploadSuccess, setUploadSuccess] = useState(null); // Nouveau state pour le succès de l'upload
+  const [uploadedVideoData, setUploadedVideoData] = useState(null); // Nouveau: pour stocker les données de la vidéo uploadée
+  const [showResults, setShowResults] = useState(false); // Nouveau: pour contrôler l'affichage des résultats
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -212,6 +216,8 @@ const EnhancedVideoUploader = () => {
     setUploadError(null);
     setUploadSuccess(null);
     setUploadProgress(0);
+    setUploadedVideoData(null); // Réinitialiser avant un nouvel upload
+    setShowResults(false); // Cacher les anciens résultats
 
     try {
       const metadata = {
@@ -228,16 +234,20 @@ const EnhancedVideoUploader = () => {
 
       console.log('Vidéo uploadée avec succès:', uploadedVideo);
       setUploadSuccess('Vidéo uploadée avec succès !');
+      setUploadedVideoData(uploadedVideo); // Stocker les données de la vidéo uploadée
+
       // Déclencher la transcription après l'upload réussi
       await videoService.transcribeVideo(uploadedVideo.id);
       setUploadSuccess('Vidéo uploadée et transcription initiée avec succès !');
+      setShowResults(true); // Afficher les résultats après l'initiation de la transcription
 
     } catch (error) {
       console.error('Erreur lors de l\'upload de la vidéo:', error);
       setUploadError(`Erreur lors de l\'upload: ${error.message}`);
     } finally {
       setUploading(false);
-      resetUploader(); // Réinitialiser l'uploader après l'upload
+      // Ne pas réinitialiser l'uploader immédiatement ici si on veut afficher les résultats
+      // resetUploader(); // Commenter ou déplacer cette ligne si nécessaire
     }
   };
 
@@ -254,6 +264,8 @@ const EnhancedVideoUploader = () => {
     setUploadProgress(0);
     setUploadError(null);
     setUploadSuccess(null);
+    setUploadedVideoData(null); // Réinitialiser les données de la vidéo
+    setShowResults(false); // Cacher les résultats
   };
 
   const formatTime = (seconds) => {
@@ -464,62 +476,55 @@ const EnhancedVideoUploader = () => {
 
               {/* Contrôles d'enregistrement */}
               <div className="flex justify-center gap-4">
-                {!mediaStream ? (
-                  <Button
-                    onClick={startCamera}
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    <Camera className="h-4 w-4 mr-2" />
-                    Activer la caméra
-                  </Button>
-                ) : !isRecording ? (
-                  <Button
-                    onClick={startRecording}
-                    className="bg-red-600 hover:bg-red-700"
-                  >
-                    <Play className="h-4 w-4 mr-2" />
-                    Commencer l'enregistrement
+                {!isRecording ? (
+                  <Button onClick={startRecording} disabled={!mediaStream}>
+                    <Play className="h-5 w-5 mr-2" /> Démarrer l'enregistrement
                   </Button>
                 ) : (
-                  <Button
-                    onClick={stopRecording}
-                    className="bg-gray-600 hover:bg-gray-700"
-                  >
-                    <Square className="h-4 w-4 mr-2" />
-                    Arrêter l'enregistrement
+                  <Button onClick={stopRecording} variant="destructive">
+                    <Square className="h-5 w-5 mr-2" /> Arrêter l'enregistrement
                   </Button>
                 )}
-                
-                <Button
-                  variant="outline"
-                  onClick={resetUploader}
-                >
-                  <RotateCcw className="h-4 w-4 mr-2" />
-                  Recommencer
-                </Button>
               </div>
             </CardContent>
           </Card>
         </div>
       )}
 
-      {/* Analyse IA */}
-      {currentStep === 'analysis' && recordedVideo && (
-        <AIFeedbackAnalysis
-          videoData={recordedVideo}
-          transcription="Simulation de transcription automatique du pitch vidéo..."
-          onRetakeVideo={handleRetakeVideo}
-          onAcceptVideo={handleAcceptVideo}
-          uploading={uploading} // Passer l'état d'upload
-          uploadProgress={uploadProgress} // Passer la progression
-          uploadError={uploadError} // Passer l'erreur
-          uploadSuccess={uploadSuccess} // Passer le succès
-        />
+      {/* Affichage des résultats après l'upload/traitement */}
+      {showResults && uploadedVideoData && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Résultats de la Vidéo</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {/* Optionnel: Afficher un lecteur vidéo si l'URL est disponible */}
+            {uploadedVideoData.url && (
+              <div className="mb-4">
+                <video controls src={uploadedVideoData.url} className="w-full rounded-lg"></video>
+              </div>
+            )}
+            
+            {/* Afficher la transcription si disponible */}
+            {/* Si vous avez un composant TranscriptionViewer, utilisez-le ici */}
+            {/* <TranscriptionViewer videoId={uploadedVideoData.id} /> */}
+
+            {/* Afficher l'analyse IA */}
+            <VideoAnalysisResults video={uploadedVideoData} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Bouton de réinitialisation pour revenir au début */}
+      {showResults && (
+        <div className="text-center mt-6">
+          <Button onClick={resetUploader} variant="outline">
+            <RotateCcw className="h-4 w-4 mr-2" /> Nouveau Pitch
+          </Button>
+        </div>
       )}
     </div>
   );
 };
 
-export default EnhancedVideoUploader;
-
-
+export default EnhancedVideoUploader
