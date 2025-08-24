@@ -15,7 +15,6 @@ const VideoManagement = () => {
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [processingVideoId, setProcessingVideoId] = useState(null);
   
-  // Correction: Déplacer getStatusLabel avant son utilisation
   const getStatusLabel = (status) => {
     const statusMap = {
       'uploaded': 'Uploadée',
@@ -42,12 +41,11 @@ const VideoManagement = () => {
     try {
       console.log("Récupération des vidéos pour user_id:", user.id);
       
-      // Vérifier que supabase est correctement initialisé
       if (!supabase) {
         throw new Error("Supabase client non initialisé");
       }
       
-      // CORRECTION: Requête simplifiée sans jointure problématique
+      // CORRECTION: Utiliser les colonnes existantes dans la table videos
       const { data, error: supabaseError } = await supabase
         .from("videos")
         .select(`
@@ -59,7 +57,7 @@ const VideoManagement = () => {
           updated_at,
           transcription_text,
           analysis,
-          analysis_result,
+          ai_result,
           video_error,
           transcription_error,
           user_id,
@@ -68,8 +66,7 @@ const VideoManagement = () => {
           public_url,
           duration,
           performance_score,
-          ai_score,
-          ai_result
+          ai_score
         `)
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
@@ -82,11 +79,23 @@ const VideoManagement = () => {
       console.log("Videos data received:", data);
       
       const normalizedVideos = (data || []).map(video => {
-        // CORRECTION: Utiliser seulement transcription_text pour détecter les transcriptions
+        // Utiliser transcription_text pour détecter les transcriptions
         const hasTranscription = !!(video.transcription_text);
         
-        // Utiliser analysis_result s'il est disponible, sinon analysis
-        const analysisData = video.analysis_result || video.analysis || {};
+        // CORRECTION: Utiliser analysis s'il est disponible, sinon ai_result
+        let analysisData = video.analysis || {};
+        
+        // Si analysis est vide mais ai_result existe, essayer de le parser comme JSON
+        if ((!analysisData || Object.keys(analysisData).length === 0) && video.ai_result) {
+          try {
+            analysisData = JSON.parse(video.ai_result);
+          } catch (e) {
+            console.error("Erreur lors du parsing de ai_result:", e);
+            // Si le parsing échoue, traiter ai_result comme du texte simple
+            analysisData = { summary: video.ai_result };
+          }
+        }
+        
         const hasAnalysis = !!(analysisData && Object.keys(analysisData).length > 0);
         
         let normalizedStatus = video.status || "pending";
@@ -108,7 +117,7 @@ const VideoManagement = () => {
           statusLabel,
           hasTranscription,
           hasAnalysis,
-          analysis_result: analysisData,
+          analysis_result: analysisData, // Standardiser sur analysis_result pour le frontend
           error_message: video.video_error || video.transcription_error || null
         };
       });
@@ -140,7 +149,6 @@ const VideoManagement = () => {
     if (!path) return null;
     
     try {
-      // Utiliser l'URL de Supabase depuis les variables d'environnement
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       if (!supabaseUrl) {
         console.error("URL Supabase non configurée");
