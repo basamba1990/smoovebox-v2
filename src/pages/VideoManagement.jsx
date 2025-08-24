@@ -47,6 +47,7 @@ const VideoManagement = () => {
         throw new Error("Supabase client non initialisé");
       }
       
+      // CORRECTION: Requête simplifiée sans jointure problématique
       const { data, error: supabaseError } = await supabase
         .from("videos")
         .select(`
@@ -68,13 +69,7 @@ const VideoManagement = () => {
           duration,
           performance_score,
           ai_score,
-          ai_result,
-          transcriptions (
-            id,
-            video_id,
-            text,
-            status
-          )
+          ai_result
         `)
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
@@ -87,9 +82,8 @@ const VideoManagement = () => {
       console.log("Videos data received:", data);
       
       const normalizedVideos = (data || []).map(video => {
-        // Vérifier si une transcription existe
-        const hasTranscription = !!(video.transcription_text || 
-          (video.transcriptions && video.transcriptions.length > 0 && video.transcriptions[0].text));
+        // CORRECTION: Utiliser seulement transcription_text pour détecter les transcriptions
+        const hasTranscription = !!(video.transcription_text);
         
         // Utiliser analysis_result s'il est disponible, sinon analysis
         const analysisData = video.analysis_result || video.analysis || {};
