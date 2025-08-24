@@ -24,7 +24,6 @@ const VideoManagement = () => {
     try {
       console.log("Récupération des vidéos pour user_id:", user.id);
       
-      // Requête simplifiée avec seulement les colonnes nécessaires
       const { data, error } = await supabase
         .from("video_details")
         .select(`
@@ -36,7 +35,8 @@ const VideoManagement = () => {
           updated_at,
           transcription_text,
           analysis_result,
-          error_message,
+          video_error,
+          transcription_error,
           user_id,
           storage_path,
           file_path,
@@ -49,7 +49,6 @@ const VideoManagement = () => {
         throw error;
       }
       
-      // Normalisation simple des vidéos
       const normalizedVideos = (data || []).map(video => {
         const hasTranscription = !!(video.transcription_text);
         const hasAnalysis = !!(video.analysis_result && Object.keys(video.analysis_result).length > 0);
@@ -72,13 +71,13 @@ const VideoManagement = () => {
           normalizedStatus,
           statusLabel,
           hasTranscription,
-          hasAnalysis
+          hasAnalysis,
+          error_message: video.video_error || video.transcription_error
         };
       });
       
       setVideos(normalizedVideos);
       
-      // Mise à jour de la vidéo sélectionnée si nécessaire
       if (selectedVideo) {
         const updatedSelectedVideo = normalizedVideos.find(v => v.id === selectedVideo.id);
         if (updatedSelectedVideo) {
@@ -176,12 +175,22 @@ const VideoManagement = () => {
       toast.error(`Erreur: ${err.message}`, { id: 'transcribe-toast' });
       
       const updatedVideos = videos.map(v => 
-        v.id === video.id ? { ...v, status: 'failed', error_message: err.message } : v
+        v.id === video.id ? { 
+          ...v, 
+          status: 'failed', 
+          video_error: err.message,
+          error_message: err.message
+        } : v
       );
       setVideos(updatedVideos);
       
       if (selectedVideo?.id === video.id) {
-        setSelectedVideo({ ...video, status: 'failed', error_message: err.message });
+        setSelectedVideo({ 
+          ...video, 
+          status: 'failed', 
+          video_error: err.message,
+          error_message: err.message
+        });
       }
     } finally {
       setProcessingVideoId(null);
@@ -230,12 +239,22 @@ const VideoManagement = () => {
       toast.error(`Erreur: ${err.message}`, { id: 'analyze-toast' });
       
       const updatedVideos = videos.map(v => 
-        v.id === video.id ? { ...v, status: 'failed', error_message: err.message } : v
+        v.id === video.id ? { 
+          ...v, 
+          status: 'failed', 
+          video_error: err.message,
+          error_message: err.message
+        } : v
       );
       setVideos(updatedVideos);
       
       if (selectedVideo?.id === video.id) {
-        setSelectedVideo({ ...video, status: 'failed', error_message: err.message });
+        setSelectedVideo({ 
+          ...video, 
+          status: 'failed', 
+          video_error: err.message,
+          error_message: err.message
+        });
       }
     } finally {
       setProcessingVideoId(null);
@@ -340,7 +359,6 @@ const VideoManagement = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Colonne de gauche - Liste des vidéos */}
           <div className="md:col-span-1 bg-white rounded-lg shadow overflow-hidden">
             <div className="p-4 border-b">
               <h3 className="font-medium">Liste des vidéos</h3>
@@ -379,9 +397,9 @@ const VideoManagement = () => {
                       <VideoProcessingStatus videoId={video.id} initialStatus={video.status} />
                     </div>
                   </div>
-                  {video.status === 'failed' && video.error_message && (
+                  {video.status === 'failed' && video.video_error && (
                     <p className="text-xs text-red-500 mt-1 truncate">
-                      {video.error_message}
+                      {video.video_error}
                     </p>
                   )}
                 </div>
@@ -389,7 +407,6 @@ const VideoManagement = () => {
             </div>
           </div>
           
-          {/* Colonne de droite - Détails de la vidéo */}
           <div className="md:col-span-2 bg-white rounded-lg shadow">
             <div className="p-4 border-b">
               <h3 className="font-medium">Détails de la vidéo</h3>
@@ -401,10 +418,8 @@ const VideoManagement = () => {
                   {selectedVideo.title || 'Sans titre'}
                 </h2>
                 
-                {/* Lecteur vidéo */}
                 <VideoPlayer video={selectedVideo} />
                 
-                {/* Métadonnées */}
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
                     <p className="text-sm text-gray-500">Date d'upload</p>
@@ -418,7 +433,6 @@ const VideoManagement = () => {
                   </div>
                 </div>
                 
-                {/* Actions */}
                 <div className="flex flex-wrap gap-2 mb-4">
                   {selectedVideo.status !== 'processing' && (
                     <>
@@ -448,7 +462,6 @@ const VideoManagement = () => {
                   </button>
                 </div>
                 
-                {/* Affichage des résultats */}
                 {selectedVideo.hasTranscription && (
                   <div className="mb-4">
                     <h3 className="text-lg font-semibold mb-2">Transcription</h3>
@@ -469,9 +482,9 @@ const VideoManagement = () => {
                   </div>
                 )}
 
-                {selectedVideo.status === 'failed' && selectedVideo.error_message && (
+                {selectedVideo.status === 'failed' && selectedVideo.video_error && (
                   <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-                    <p>Erreur de traitement: {selectedVideo.error_message}</p>
+                    <p>Erreur de traitement: {selectedVideo.video_error}</p>
                   </div>
                 )}
 
