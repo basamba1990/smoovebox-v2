@@ -393,7 +393,7 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           error: 'URL vidéo manquante',
-          details: 'Impossible de récupérer ou de générer l\'URL de la vidéo.' // CORRECTION APPLIQUÉE ICI
+          details: 'Impossible de récupérer ou de générer l\'URL de la vidéo.'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       )
