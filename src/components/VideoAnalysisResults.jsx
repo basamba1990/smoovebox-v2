@@ -1,4 +1,3 @@
-// src/components/VideoAnalysisResults.jsx
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Loader2, RefreshCw } from 'lucide-react';
@@ -7,12 +6,14 @@ const VideoAnalysisResults = ({ video }) => {
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [transcriptionText, setTranscriptionText] = useState(""); // Nouveau: pour stocker la transcription
 
   useEffect(() => {
     if (video && video.id) {
       fetchAnalysis();
     } else {
       setAnalysis(null);
+      setTranscriptionText("");
     }
   }, [video]);
 
@@ -22,55 +23,55 @@ const VideoAnalysisResults = ({ video }) => {
       setError(null);
 
       const { data, error: fetchError } = await supabase
-        .from('videos')
-        .select('analysis, transcription')
-        .eq('id', video.id)
+        .from("videos")
+        .select("analysis, transcription")
+        .eq("id", video.id)
         .single();
 
       if (fetchError) {
         throw new Error(`Erreur lors de la récupération de l'analyse: ${fetchError.message}`);
       }
 
-      if (data && data.analysis) {
-        // Traiter les différents formats possibles de l'analyse
+      if (data) {
+        // Traiter l'analyse
         let analysisData;
-        
-        if (typeof data.analysis === 'string') {
+        if (typeof data.analysis === "string") {
           try {
             analysisData = JSON.parse(data.analysis);
           } catch (e) {
-            // Si le parsing échoue, utiliser le texte brut
             analysisData = { resume: data.analysis };
           }
         } else {
-          // Si c'est déjà un objet
           analysisData = data.analysis;
         }
-        
         setAnalysis(analysisData);
-      } else if (data && data.transcription) {
-        // Si la transcription existe mais pas l'analyse, montrer un message d'attente
-        setAnalysis({
-          resume: "Analyse en cours de génération...",
-          points_cles: ["L'analyse sera disponible prochainement"],
-          evaluation: {
-            clarte: "En attente",
-            structure: "En attente"
-          },
-          suggestions: ["Patientez pendant la génération de l'analyse"]
-        });
+
+        // Traiter la transcription
+        setTranscriptionText(data.transcription || "");
+
+        if (!data.analysis && data.transcription) {
+          setAnalysis({
+            resume: "Analyse en cours de génération...",
+            points_cles: ["L'analyse sera disponible prochainement"],
+            evaluation: {
+              clarte: "En attente",
+              structure: "En attente"
+            },
+            suggestions: ["Patientez pendant la génération de l'analyse"]
+          });
+        }
       } else {
         setAnalysis(null);
+        setTranscriptionText("");
       }
     } catch (err) {
-      console.error('Erreur lors de la récupération de l\'analyse:', err);
+      console.error("Erreur lors de la récupération de l'analyse:", err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Fonction pour demander une analyse
   const requestAnalysis = async () => {
     if (!video || !video.id) return;
     
@@ -78,7 +79,6 @@ const VideoAnalysisResults = ({ video }) => {
       setLoading(true);
       setError(null);
       
-      // Récupérer le token d'authentification
       const { data: authData } = await supabase.auth.getSession();
       const token = authData?.session?.access_token;
       
@@ -86,12 +86,11 @@ const VideoAnalysisResults = ({ video }) => {
         throw new Error("Session expirée, veuillez vous reconnecter");
       }
       
-      // Appeler la fonction Edge pour démarrer l'analyse
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-video`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({ videoId: video.id })
       });
@@ -101,7 +100,6 @@ const VideoAnalysisResults = ({ video }) => {
         throw new Error(errorData.error || `Erreur ${response.status}`);
       }
       
-      // Mettre à jour l'interface pour montrer que l'analyse est en cours
       setAnalysis({
         resume: "Analyse en cours...",
         points_cles: ["Veuillez patienter pendant que nous analysons votre vidéo"],
@@ -111,23 +109,20 @@ const VideoAnalysisResults = ({ video }) => {
         }
       });
       
-      // Attendre un peu puis rafraîchir
       setTimeout(fetchAnalysis, 5000);
       
     } catch (err) {
-      console.error('Erreur lors de la demande d\'analyse:', err);
+      console.error("Erreur lors de la demande d'analyse:", err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Si aucune vidéo n'est sélectionnée
   if (!video) {
     return null;
   }
 
-  // Si l'analyse est en cours de chargement
   if (loading && !analysis) {
     return (
       <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg mt-6">
@@ -140,7 +135,6 @@ const VideoAnalysisResults = ({ video }) => {
     );
   }
 
-  // Si une erreur s'est produite
   if (error) {
     return (
       <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg mt-6">
@@ -159,8 +153,7 @@ const VideoAnalysisResults = ({ video }) => {
     );
   }
 
-  // Si aucune analyse n'est disponible
-  if (!analysis) {
+  if (!analysis && !transcriptionText) {
     return (
       <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg mt-6">
         <h2 className="text-xl font-bold mb-6 text-gray-800">Analyse IA</h2>
@@ -183,12 +176,11 @@ const VideoAnalysisResults = ({ video }) => {
     );
   }
 
-  // Normaliser les clés d'analyse pour gérer différents formats
-  const resume = analysis.resume || analysis.summary || "";
-  const pointsCles = analysis.points_cles || analysis.keywords || analysis.key_points || [];
-  const suggestions = analysis.suggestions || analysis.areas_to_improve || [];
-  const strengths = analysis.strengths || analysis.points_forts || [];
-  const evaluation = analysis.evaluation || {};
+  const resume = analysis?.resume || analysis?.summary || "";
+  const pointsCles = analysis?.points_cles || analysis?.keywords || analysis?.key_points || [];
+  const suggestions = analysis?.suggestions || analysis?.areas_to_improve || [];
+  const strengths = analysis?.strengths || analysis?.points_forts || [];
+  const evaluation = analysis?.evaluation || {};
 
   return (
     <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg mt-6">
@@ -204,10 +196,21 @@ const VideoAnalysisResults = ({ video }) => {
       </div>
       
       <div className="space-y-6">
-        <div>
-          <h3 className="text-lg font-medium text-gray-700 mb-2">Résumé</h3>
-          <p className="text-gray-600">{resume}</p>
-        </div>
+        {transcriptionText && (
+          <div>
+            <h3 className="text-lg font-medium text-gray-700 mb-2">Transcription</h3>
+            <div className="bg-gray-50 p-4 rounded-lg text-gray-700 whitespace-pre-wrap">
+              {transcriptionText}
+            </div>
+          </div>
+        )}
+
+        {resume && (
+          <div>
+            <h3 className="text-lg font-medium text-gray-700 mb-2">Résumé</h3>
+            <p className="text-gray-600">{resume}</p>
+          </div>
+        )}
         
         {pointsCles.length > 0 && (
           <div>
@@ -220,7 +223,7 @@ const VideoAnalysisResults = ({ video }) => {
           </div>
         )}
         
-        {(evaluation.clarte !== undefined || evaluation.structure !== undefined || analysis.overall_score !== undefined) && (
+        {(evaluation.clarte !== undefined || evaluation.structure !== undefined || analysis?.overall_score !== undefined) && (
           <div>
             <h3 className="text-lg font-medium text-gray-700 mb-2">Évaluation</h3>
             <div className="grid grid-cols-2 gap-4">
@@ -231,11 +234,11 @@ const VideoAnalysisResults = ({ video }) => {
                     <div className="w-full bg-gray-200 rounded-full h-2.5">
                       <div 
                         className="bg-blue-600 h-2.5 rounded-full" 
-                        style={{ width: `${typeof evaluation.clarte === 'number' ? evaluation.clarte * 10 : 0}%` }}
+                        style={{ width: `${typeof evaluation.clarte === "number" ? evaluation.clarte * 10 : 0}%` }}
                       ></div>
                     </div>
                     <span className="ml-2 text-gray-700">
-                      {typeof evaluation.clarte === 'number' ? evaluation.clarte : evaluation.clarte}
+                      {typeof evaluation.clarte === "number" ? evaluation.clarte : evaluation.clarte}
                     </span>
                   </div>
                 </div>
@@ -247,16 +250,16 @@ const VideoAnalysisResults = ({ video }) => {
                     <div className="w-full bg-gray-200 rounded-full h-2.5">
                       <div 
                         className="bg-blue-600 h-2.5 rounded-full" 
-                        style={{ width: `${typeof evaluation.structure === 'number' ? evaluation.structure * 10 : 0}%` }}
+                        style={{ width: `${typeof evaluation.structure === "number" ? evaluation.structure * 10 : 0}%` }}
                       ></div>
                     </div>
                     <span className="ml-2 text-gray-700">
-                      {typeof evaluation.structure === 'number' ? evaluation.structure : evaluation.structure}
+                      {typeof evaluation.structure === "number" ? evaluation.structure : evaluation.structure}
                     </span>
                   </div>
                 </div>
               )}
-              {analysis.overall_score !== undefined && (
+              {analysis?.overall_score !== undefined && (
                 <div>
                   <h4 className="text-sm font-medium text-gray-500 mb-1">Score Global</h4>
                   <div className="flex items-center">
