@@ -156,11 +156,11 @@ Assurez-vous que la sortie est un objet JSON valide.`;
 
     console.log(`Analyse terminée pour la vidéo ${videoId}.`);
 
-    // Enregistrer les résultats de l'analyse dans la table 'videos'
+    // Enregistrer les résultats de l'analyse dans la table 'videos' (colonne analysis)
     const { error: analysisSaveError } = await serviceClient
       .from('videos')
       .update({
-        analysis: analysisResult,
+        analysis: analysisResult,  // Utiliser la colonne analysis au lieu de analysis_result
         status: VIDEO_STATUS.ANALYZED,
         updated_at: new Date().toISOString()
       })
