@@ -160,7 +160,7 @@ Assurez-vous que la sortie est un objet JSON valide.`;
     const { error: analysisSaveError } = await serviceClient
       .from('videos')
       .update({
-        analysis: analysisResult,  // Utiliser la colonne analysis au lieu de analysis_result
+        analysis: analysisResult,  // Utiliser la colonne analysis
         status: VIDEO_STATUS.ANALYZED,
         updated_at: new Date().toISOString()
       })
