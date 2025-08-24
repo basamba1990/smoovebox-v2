@@ -95,7 +95,7 @@ function AppContent() {
     }
   }, [loading]);
 
-  // CORRECTION: Récupérer les données du dashboard avec gestion d'erreur robuste
+  // CORRECTION: Récupérer les données du dashboard avec gestion d'erreur robuste et fallback
   const loadDashboardData = async () => {
     if (!user || !isAuthenticated) {
       console.log('Aucun utilisateur connecté ou non authentifié, aucune donnée à charger');
@@ -109,14 +109,45 @@ function AppContent() {
 
       console.log('Chargement des données dashboard pour:', user.id);
 
-      // CORRECTION: Utilisation de la vue 'video_details' pour récupérer toutes les informations consolidées
-      const { data: videos, error: videosError } = await supabase
-        .from('video_details')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      let videos = [];
+      let videosError = null;
 
-      if (videosError) throw videosError;
+      // CORRECTION: Tentative avec la vue 'video_details' d'abord
+      try {
+        const { data: videosData, error: vError } = await supabase
+          .from('video_details')
+          .select('*')
+          .eq('user_id', user.id)  // CORRECTION: Utiliser user_id au lieu de owner_id
+          .order('created_at', { ascending: false });
+
+        if (vError) {
+          console.warn('Erreur avec video_details, tentative avec la table videos:', vError);
+          throw vError;
+        }
+
+        videos = videosData;
+      } catch (viewError) {
+        // Fallback: utiliser la table videos directement si la vue échoue
+        console.warn('Utilisation du fallback vers la table videos');
+        const { data: videosData, error: vError } = await supabase
+          .from('videos')
+          .select(`
+            *,
+            transcriptions (
+              id,
+              status,
+              confidence_score,
+              processed_at,
+              error_message,
+              analysis_result
+            )
+          `)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (vError) throw vError;
+        videos = videosData;
+      }
 
       // Récupération des statistiques globales
       let stats = null;
@@ -133,24 +164,50 @@ function AppContent() {
         console.warn('Exception lors de la récupération des statistiques:', statsError);
       }
 
-      // CORRECTION: Construction des données pour le dashboard avec les champs de la vue video_details
+      // CORRECTION: Construction des données pour le dashboard
       const dashboardData = {
         totalVideos: videos.length,
         recentVideos: videos.slice(0, 5),
         videosByStatus: {
           ready: videos.filter(v => v.status === 'ready' || v.status === 'uploaded' || v.status === 'published').length,
           processing: videos.filter(v => v.status === 'processing' || v.status === 'analyzing' || v.status === 'transcribing').length,
-          // CORRECTION: Utiliser transcription_text de la vue pour le statut transcrit
-          transcribed: videos.filter(v => v.transcription_text && v.transcription_text.length > 0).length,
-          // CORRECTION: Utiliser analysis_result (et non analysis_summary) de la vue pour le statut analysé
-          analyzed: videos.filter(v => v.analysis_result && Object.keys(v.analysis_result).length > 0).length,
+          transcribed: videos.filter(v => {
+            // Vérifier selon la structure de données (vue ou table)
+            if (v.transcriptions) {
+              return Array.isArray(v.transcriptions) 
+                ? v.transcriptions.some(t => t.status === 'completed')
+                : v.transcriptions.status === 'completed';
+            }
+            return v.transcription_text && v.transcription_text.length > 0;
+          }).length,
+          analyzed: videos.filter(v => {
+            // Vérifier selon la structure de données (vue ou table)
+            if (v.transcriptions) {
+              return Array.isArray(v.transcriptions)
+                ? v.transcriptions.some(t => t.analysis_result)
+                : v.transcriptions.analysis_result;
+            }
+            return v.analysis_result && Object.keys(v.analysis_result).length > 0;
+          }).length,
           failed: videos.filter(v => v.status === 'failed').length
         },
         totalDuration: videos.reduce((sum, video) => sum + (video.duration || 0), 0),
-        // CORRECTION: Compter les transcriptions et analyses basées sur la vue
-        transcriptionsCount: videos.filter(v => v.transcription_text && v.transcription_text.length > 0).length,
-        // CORRECTION: Utiliser analysis_result (et non analysis_summary)
-        analysisCount: videos.filter(v => v.analysis_result && Object.keys(v.analysis_result).length > 0).length,
+        transcriptionsCount: videos.filter(v => {
+          if (v.transcriptions) {
+            return Array.isArray(v.transcriptions)
+              ? v.transcriptions.some(t => t.status === 'completed')
+              : v.transcriptions.status === 'completed';
+          }
+          return v.transcription_text && v.transcription_text.length > 0;
+        }).length,
+        analysisCount: videos.filter(v => {
+          if (v.transcriptions) {
+            return Array.isArray(v.transcriptions)
+              ? v.transcriptions.some(t => t.analysis_result)
+              : v.transcriptions.analysis_result;
+          }
+          return v.analysis_result && Object.keys(v.analysis_result).length > 0;
+        }).length,
         videoPerformance: stats?.performance_data || [],
         progressStats: stats?.progress_stats || {
           completed: 0,
