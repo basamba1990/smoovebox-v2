@@ -34,24 +34,31 @@ const VideoManagement = () => {
           created_at,
           updated_at,
           transcription_text,
-          analysis_result,
+          analysis,
           video_error,
           transcription_error,
           user_id,
           storage_path,
           file_path,
-          public_url
+          public_url,
+          duration,
+          performance_score,
+          ai_score,
+          ai_result
         `)
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
       
       if (error) {
+        console.error("Erreur Supabase:", error);
         throw error;
       }
       
+      console.log("Videos data received:", data);
+      
       const normalizedVideos = (data || []).map(video => {
         const hasTranscription = !!(video.transcription_text);
-        const hasAnalysis = !!(video.analysis_result && Object.keys(video.analysis_result).length > 0);
+        const hasAnalysis = !!(video.analysis && Object.keys(video.analysis).length > 0);
         
         let normalizedStatus = video.status || "pending";
         let statusLabel = getStatusLabel(normalizedStatus);
@@ -72,7 +79,7 @@ const VideoManagement = () => {
           statusLabel,
           hasTranscription,
           hasAnalysis,
-          error_message: video.video_error || video.transcription_error
+          error_message: video.video_error || video.transcription_error || null
         };
       });
       
@@ -146,6 +153,11 @@ const VideoManagement = () => {
         throw new Error("Session expirée, veuillez vous reconnecter");
       }
       
+      const videoUrl = video.public_url || getPublicUrl(video);
+      if (!videoUrl) {
+        throw new Error("URL de la vidéo non disponible");
+      }
+      
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-video`,
         {
@@ -156,30 +168,59 @@ const VideoManagement = () => {
           },
           body: JSON.stringify({ 
             videoId: video.id,
-            videoUrl: video.public_url || getPublicUrl(video)
+            videoUrl: videoUrl
           })
         }
       );
       
       if (!response.ok) {
-        const errorResult = await response.json();
-        throw new Error(errorResult.error || "Erreur lors de la transcription");
+        let errorMessage = "Erreur lors de la transcription";
+        try {
+          const errorResult = await response.json();
+          errorMessage = errorResult.error || errorMessage;
+        } catch (e) {
+          errorMessage = `${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+      
+      const result = await response.json();
+      
+      if (result.error) {
+        throw new Error(result.error);
       }
       
       toast.success("Transcription démarrée avec succès", { id: 'transcribe-toast' });
       
-      setTimeout(fetchVideos, 3000);
+      // Mise à jour optimiste de l'interface
+      const updatedVideos = videos.map(v => 
+        v.id === video.id ? { ...v, status: 'processing' } : v
+      );
+      setVideos(updatedVideos);
+      
+      if (selectedVideo?.id === video.id) {
+        setSelectedVideo({ ...video, status: 'processing' });
+      }
+      
+      // Rechargement après un délai
+      setTimeout(fetchVideos, 5000);
       
     } catch (err) {
       console.error("Erreur lors de la transcription:", err);
-      toast.error(`Erreur: ${err.message}`, { id: 'transcribe-toast' });
+      let errorMessage = err.message;
+      
+      if (errorMessage.includes('Échec de confirmation de la mise à jour')) {
+        errorMessage = "Problème de connexion à la base de données. Veuillez réessayer.";
+      }
+      
+      toast.error(`Erreur: ${errorMessage}`, { id: 'transcribe-toast' });
       
       const updatedVideos = videos.map(v => 
         v.id === video.id ? { 
           ...v, 
           status: 'failed', 
-          video_error: err.message,
-          error_message: err.message
+          video_error: errorMessage,
+          error_message: errorMessage
         } : v
       );
       setVideos(updatedVideos);
@@ -188,8 +229,8 @@ const VideoManagement = () => {
         setSelectedVideo({ 
           ...video, 
           status: 'failed', 
-          video_error: err.message,
-          error_message: err.message
+          video_error: errorMessage,
+          error_message: errorMessage
         });
       }
     } finally {
@@ -226,24 +267,53 @@ const VideoManagement = () => {
       );
       
       if (!response.ok) {
-        const errorResult = await response.json();
-        throw new Error(errorResult.error || "Erreur lors de l'analyse");
+        let errorMessage = "Erreur lors de l'analyse";
+        try {
+          const errorResult = await response.json();
+          errorMessage = errorResult.error || errorMessage;
+        } catch (e) {
+          errorMessage = `${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+      
+      const result = await response.json();
+      
+      if (result.error) {
+        throw new Error(result.error);
       }
       
       toast.success("Analyse IA démarrée avec succès", { id: 'analyze-toast' });
       
-      setTimeout(fetchVideos, 3000);
+      // Mise à jour optimiste de l'interface
+      const updatedVideos = videos.map(v => 
+        v.id === video.id ? { ...v, status: 'analyzing' } : v
+      );
+      setVideos(updatedVideos);
+      
+      if (selectedVideo?.id === video.id) {
+        setSelectedVideo({ ...video, status: 'analyzing' });
+      }
+      
+      // Rechargement après un délai
+      setTimeout(fetchVideos, 5000);
       
     } catch (err) {
       console.error("Erreur lors de l'analyse:", err);
-      toast.error(`Erreur: ${err.message}`, { id: 'analyze-toast' });
+      let errorMessage = err.message;
+      
+      if (errorMessage.includes('Échec de confirmation de la mise à jour')) {
+        errorMessage = "Problème de connexion à la base de données. Veuillez réessayer.";
+      }
+      
+      toast.error(`Erreur: ${errorMessage}`, { id: 'analyze-toast' });
       
       const updatedVideos = videos.map(v => 
         v.id === video.id ? { 
           ...v, 
           status: 'failed', 
-          video_error: err.message,
-          error_message: err.message
+          video_error: errorMessage,
+          error_message: errorMessage
         } : v
       );
       setVideos(updatedVideos);
@@ -252,8 +322,8 @@ const VideoManagement = () => {
         setSelectedVideo({ 
           ...video, 
           status: 'failed', 
-          video_error: err.message,
-          error_message: err.message
+          video_error: errorMessage,
+          error_message: errorMessage
         });
       }
     } finally {
@@ -265,15 +335,17 @@ const VideoManagement = () => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cette vidéo ?')) return;
     
     try {
-      const path = video.storage_path || video.file_path;
-      if (path) {
-        const { error: storageError } = await supabase.storage
-          .from('videos')
-          .remove([path.replace(/^videos\//, '')]);
-        
-        if (storageError) throw storageError;
+      // Supprimer d'abord les enregistrements liés
+      const { error: transcriptionError } = await supabase
+        .from('transcriptions')
+        .delete()
+        .eq('video_id', video.id);
+      
+      if (transcriptionError) {
+        console.warn("Erreur lors de la suppression de la transcription:", transcriptionError);
       }
       
+      // Supprimer la vidéo elle-même
       const { error: dbError } = await supabase
         .from('videos')
         .delete()
@@ -281,8 +353,30 @@ const VideoManagement = () => {
       
       if (dbError) throw dbError;
       
+      // Supprimer le fichier de stockage s'il existe
+      const path = video.storage_path || video.file_path;
+      if (path) {
+        try {
+          const cleanPath = path.replace(/^videos\//, '');
+          const { error: storageError } = await supabase.storage
+            .from('videos')
+            .remove([cleanPath]);
+          
+          if (storageError) {
+            console.warn("Erreur lors de la suppression du fichier:", storageError);
+          }
+        } catch (storageErr) {
+          console.warn("Erreur lors de la suppression du fichier:", storageErr);
+        }
+      }
+      
       toast.success('Vidéo supprimée avec succès');
-      fetchVideos();
+      
+      // Mettre à jour l'état local
+      setVideos(prev => prev.filter(v => v.id !== video.id));
+      if (selectedVideo?.id === video.id) {
+        setSelectedVideo(null);
+      }
       
     } catch (err) {
       console.error("Erreur lors de la suppression:", err);
@@ -304,7 +398,10 @@ const VideoManagement = () => {
           table: 'videos',
           filter: `user_id=eq.${user.id}` 
         }, 
-        fetchVideos
+        (payload) => {
+          console.log('Change received!', payload);
+          fetchVideos();
+        }
       )
       .subscribe();
     
@@ -321,8 +418,9 @@ const VideoManagement = () => {
           <button 
             onClick={fetchVideos}
             className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+            disabled={loading}
           >
-            Actualiser
+            {loading ? 'Chargement...' : 'Actualiser'}
           </button>
           <button 
             onClick={() => window.location.href = '/upload'}
@@ -345,6 +443,12 @@ const VideoManagement = () => {
       ) : error ? (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
           <p>{error}</p>
+          <button 
+            onClick={fetchVideos}
+            className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            Réessayer
+          </button>
         </div>
       ) : videos.length === 0 ? (
         <div className="bg-gray-100 rounded-lg p-8 text-center">
@@ -431,10 +535,22 @@ const VideoManagement = () => {
                       <VideoProcessingStatus videoId={selectedVideo.id} initialStatus={selectedVideo.status} />
                     </div>
                   </div>
+                  {selectedVideo.duration && (
+                    <div>
+                      <p className="text-sm text-gray-500">Durée</p>
+                      <p>{Math.round(selectedVideo.duration)} secondes</p>
+                    </div>
+                  )}
+                  {selectedVideo.performance_score && (
+                    <div>
+                      <p className="text-sm text-gray-500">Score de performance</p>
+                      <p>{selectedVideo.performance_score.toFixed(2)}</p>
+                    </div>
+                  )}
                 </div>
                 
                 <div className="flex flex-wrap gap-2 mb-4">
-                  {selectedVideo.status !== 'processing' && (
+                  {selectedVideo.status !== 'processing' && selectedVideo.status !== 'analyzing' && (
                     <>
                       <button 
                         onClick={() => transcribeVideo(selectedVideo)}
@@ -472,7 +588,7 @@ const VideoManagement = () => {
                 {selectedVideo.hasAnalysis && (
                   <div className="mb-4">
                     <h3 className="text-lg font-semibold mb-2">Analyse IA</h3>
-                    <VideoAnalysisResults analysis={selectedVideo.analysis_result} />
+                    <VideoAnalysisResults analysis={selectedVideo.analysis} />
                   </div>
                 )}
 
@@ -485,6 +601,18 @@ const VideoManagement = () => {
                 {selectedVideo.status === 'failed' && selectedVideo.video_error && (
                   <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
                     <p>Erreur de traitement: {selectedVideo.video_error}</p>
+                    <button 
+                      onClick={() => {
+                        if (selectedVideo.hasTranscription) {
+                          analyzeVideo(selectedVideo);
+                        } else {
+                          transcribeVideo(selectedVideo);
+                        }
+                      }}
+                      className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                    >
+                      Réessayer
+                    </button>
                   </div>
                 )}
 
