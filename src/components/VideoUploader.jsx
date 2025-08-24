@@ -155,7 +155,7 @@ const VideoUploader = ({ onUploadComplete }) => {
       console.log('Upload completed successfully');
       setUploadPhase('processing');
       
-      // CORRECTION: Générer l'URL signée après l'upload réussi
+      // Générer l'URL signée après l'upload réussi
       const { data: publicUrl, error: urlError } = await supabase.storage
         .from('videos')
         .createSignedUrl(filePath, 365 * 24 * 60 * 60); // URL valide pendant 1 an
@@ -176,8 +176,8 @@ const VideoUploader = ({ onUploadComplete }) => {
             description: description.trim() || null,
             storage_path: filePath,
             file_path: filePath, // Compatibilité avec l'ancien champ
-            url: publicUrl?.signedUrl || null, // CORRECTION: Ajouter l'URL signée
-            status: 'ready', // CORRECTION: Utiliser 'ready' au lieu de 'processing'
+            url: publicUrl?.signedUrl || null, // Ajouter l'URL signée
+            status: 'ready', // Utiliser 'ready' au lieu de 'processing'
             original_file_name: file.name,
             file_size: file.size,
             created_at: new Date().toISOString(),
@@ -194,7 +194,7 @@ const VideoUploader = ({ onUploadComplete }) => {
       
       console.log('Video entry created successfully:', videoData);
       
-      // CORRECTION: Appeler la transcription avec la méthode de l'ancien fichier
+      // Appeler la transcription avec la fonction Edge
       try {
         setTranscribing(true);
         console.log('Démarrage de la transcription pour la vidéo:', videoData.id);
@@ -209,17 +209,21 @@ const VideoUploader = ({ onUploadComplete }) => {
           return;
         }
         
-        // CORRECTION: Utiliser fetch au lieu de supabase.functions.invoke
-        const transcribeResponse = await fetch('/functions/v1/transcribe-video', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`
-          },
-          body: JSON.stringify({
-            videoId: videoData.id
-          })
-        });
+        // Utiliser fetch pour appeler la fonction Edge
+        const transcribeResponse = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-video`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`
+            },
+            body: JSON.stringify({
+              videoId: videoData.id,
+              videoUrl: publicUrl?.signedUrl || null // Passer l'URL signée à la fonction Edge
+            })
+          }
+        );
         
         if (!transcribeResponse.ok) {
           const errorData = await transcribeResponse.json();
@@ -456,42 +460,30 @@ const VideoUploader = ({ onUploadComplete }) => {
               {uploading ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  {uploadPhase === 'uploading' ? 'Upload...' : 'Traitement...'}
+                  {uploadPhase === 'uploading' ? 
+                    `Upload en cours... ${progress}%` : 
+                    'Traitement en cours...'}
                 </>
               ) : transcribing ? (
-                'Démarrage de la transcription...'
-              ) : (
                 <>
-                  <Upload className="h-4 w-4 mr-2" />
-                  Uploader la vidéo
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Démarrage transcription...
                 </>
+              ) : (
+                'Uploader la vidéo'
               )}
             </Button>
-
-            {(file || success || error) && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={resetForm}
-                disabled={uploading || transcribing}
-              >
-                Réinitialiser
-              </Button>
-            )}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={resetForm}
+              disabled={uploading || transcribing}
+              className="flex-1"
+            >
+              Réinitialiser
+            </Button>
           </div>
         </form>
-
-        {/* Informations sur le fichier sélectionné */}
-        {file && (
-          <div className="bg-gray-50 rounded-lg p-4">
-            <h4 className="font-medium text-gray-800 mb-2">Fichier sélectionné:</h4>
-            <div className="text-sm text-gray-600 space-y-1">
-              <p><span className="font-medium">Nom:</span> {file.name}</p>
-              <p><span className="font-medium">Taille:</span> {(file.size / (1024 * 1024)).toFixed(2)} MB</p>
-              <p><span className="font-medium">Type:</span> {file.type}</p>
-            </div>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
