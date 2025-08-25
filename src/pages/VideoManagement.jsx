@@ -15,6 +15,23 @@ const VideoManagement = () => {
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [processingVideoId, setProcessingVideoId] = useState(null);
   
+  const getStatusLabel = (status) => {
+    const statusMap = {
+      'uploaded': 'Uploadée',
+      'processing': 'En traitement',
+      'transcribed': 'Transcrite',
+      'analyzing': 'En analyse',
+      'analyzed': 'Analysée',
+      'published': 'Publiée',
+      'failed': 'Échec',
+      'draft': 'Brouillon',
+      'ready': 'Prête',
+      'pending': 'En attente'
+    };
+    
+    return statusMap[status] || 'Inconnu';
+  };
+  
   const fetchVideos = useCallback(async () => {
     if (!user) return;
     
@@ -24,13 +41,12 @@ const VideoManagement = () => {
     try {
       console.log("Récupération des vidéos pour user_id:", user.id);
       
-      // Vérifier que supabase est correctement initialisé
       if (!supabase) {
         throw new Error("Supabase client non initialisé");
       }
       
-      // CORRECTION: Utiliser la table videos avec jointure manuelle pour récupérer les données de transcription et d'analyse
-      const { data: videosData, error: videosError } = await supabase
+      // CORRECTION: Retrait du commentaire dans la chaîne de sélection
+      const { data, error: supabaseError } = await supabase
         .from("videos")
         .select(`
           id,
@@ -39,77 +55,72 @@ const VideoManagement = () => {
           status,
           created_at,
           updated_at,
+          transcription_text,
+          analysis,
+          ai_result,
+          error_message,
+          transcription_error,
           user_id,
           storage_path,
           file_path,
           public_url,
           duration,
           performance_score,
-          ai_score,
-          analysis,
-          error_message
+          ai_score
         `)
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
       
-      if (videosError) {
-        console.error("Erreur Supabase:", videosError);
-        throw new Error(`Erreur Supabase: ${videosError.message}`);
+      if (supabaseError) {
+        console.error("Erreur Supabase:", supabaseError);
+        throw new Error(`Erreur Supabase: ${supabaseError.message}`);
       }
       
-      console.log("Videos data received:", videosData);
+      console.log("Videos data received:", data);
       
-      // CORRECTION: Récupérer les transcriptions séparément
-      const videoIds = (videosData || []).map(v => v.id);
-      let transcriptionsData = [];
-      
-      if (videoIds.length > 0) {
-        const { data: transcriptions, error: transcriptionsError } = await supabase
-          .from("transcriptions")
-          .select("video_id, full_text, analysis_result")
-          .in("video_id", videoIds);
+      const normalizedVideos = (data || []).map(video => {
+        // Utiliser transcription_text pour détecter les transcriptions
+        const hasTranscription = !!(video.transcription_text);
         
-        if (transcriptionsError) {
-          console.error("Erreur lors de la récupération des transcriptions:", transcriptionsError);
-          toast.error(`Erreur lors de la récupération des transcriptions: ${transcriptionsError.message}`);
-          // Optionnel: Gérer l'état d'erreur pour l'affichage à l'utilisateur
-          // setError(`Erreur lors de la récupération des transcriptions: ${transcriptionsError.message}`);
-        } else {
-          transcriptionsData = transcriptions || [];
+        // Utiliser analysis s'il est disponible, sinon ai_result
+        let analysisData = video.analysis || {};
+        
+        // Si analysis est vide mais ai_result existe, essayer de le parser comme JSON
+        if ((!analysisData || Object.keys(analysisData).length === 0) && video.ai_result) {
+          try {
+            analysisData = JSON.parse(video.ai_result);
+          } catch (e) {
+            console.error("Erreur lors du parsing de ai_result:", e);
+            // Si le parsing échoue, traiter ai_result comme du texte simple
+            analysisData = { summary: video.ai_result };
+          }
         }
-      }
-      
-      // CORRECTION: Combiner les données manuellement
-        const normalizedVideos = (videosData || []).map(video => {
-          const transcription = transcriptionsData.find(t => t.video_id === video.id);
-          const hasTranscription = !!(transcription?.full_text);
-          const analysisData = transcription?.analysis_result || video.analysis || {};
-          const hasAnalysis = !!(analysisData && Object.keys(analysisData).length > 0);
-
-          let normalizedStatus = video.status || "pending";
-          let statusLabel = getStatusLabel(normalizedStatus);
-
-          if (hasTranscription && !hasAnalysis && normalizedStatus !== "failed") {
-            normalizedStatus = "transcribed";
-            statusLabel = "Transcrite";
-          }
-
-          if (hasAnalysis && normalizedStatus !== "failed") {
-            normalizedStatus = "analyzed";
-            statusLabel = "Analysée";
-          }
-
-          return {
-            ...video,
-            transcription_text: transcription?.full_text || null,
-            analysis_result: analysisData,
-            normalizedStatus,
-            statusLabel,
-            hasTranscription,
-            hasAnalysis,
-            error_message: video.error_message || null
-          };
-        });
+        
+        const hasAnalysis = !!(analysisData && Object.keys(analysisData).length > 0);
+        
+        let normalizedStatus = video.status || "pending";
+        let statusLabel = getStatusLabel(normalizedStatus);
+        
+        if (hasTranscription && !hasAnalysis) {
+          normalizedStatus = "transcribed";
+          statusLabel = "Transcrite";
+        }
+        
+        if (hasAnalysis) {
+          normalizedStatus = "analyzed";
+          statusLabel = "Analysée";
+        }
+        
+        return {
+          ...video,
+          normalizedStatus,
+          statusLabel,
+          hasTranscription,
+          hasAnalysis,
+          analysis_result: analysisData, // Standardiser sur analysis_result pour le frontend
+          error_message: video.error_message || video.transcription_error || null
+        };
+      });
       
       setVideos(normalizedVideos);
       
@@ -128,23 +139,6 @@ const VideoManagement = () => {
       setLoading(false);
     }
   }, [user, selectedVideo]);
-  
-  const getStatusLabel = (status) => {
-    const statusMap = {
-      'uploaded': 'Uploadée',
-      'processing': 'En traitement',
-      'transcribed': 'Transcrite',
-      'analyzing': 'En analyse',
-      'analyzed': 'Analysée',
-      'published': 'Publiée',
-      'failed': 'Échec',
-      'draft': 'Brouillon',
-      'ready': 'Prête',
-      'pending': 'En attente'
-    };
-    
-    return statusMap[status] || 'Inconnu';
-  };
 
   const getPublicUrl = (video) => {
     if (!video) return null;
@@ -155,7 +149,6 @@ const VideoManagement = () => {
     if (!path) return null;
     
     try {
-      // Utiliser l'URL de Supabase depuis les variables d'environnement
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       if (!supabaseUrl) {
         console.error("URL Supabase non configurée");
@@ -513,9 +506,9 @@ const VideoManagement = () => {
       </div>
       
       {loading ? (
-        <div className="flex justify-center items-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-2">Chargement des vidéos...</span>
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          <p className="ml-4">Chargement des vidéos...</p>
         </div>
       ) : error ? (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
@@ -528,120 +521,177 @@ const VideoManagement = () => {
           </button>
         </div>
       ) : videos.length === 0 ? (
-        <div className="text-center py-8">
-          <p className="text-gray-500 mb-4">Aucune vidéo trouvée.</p>
+        <div className="bg-gray-100 rounded-lg p-8 text-center">
+          <h3 className="text-lg font-medium mb-2">Aucune vidéo disponible</h3>
+          <p className="text-gray-600 mb-4">Commencez par uploader une vidéo pour l'analyser</p>
           <button 
             onClick={() => window.location.href = '/upload'}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
-            Uploader votre première vidéo
+            Uploader une vidéo
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {videos.map((video) => (
-            <div key={video.id} className="bg-white rounded-lg shadow-md p-4">
-              <div className="mb-4">
-                <h3 className="text-lg font-semibold mb-2">{video.title}</h3>
-                <p className="text-gray-600 text-sm mb-2">{video.description}</p>
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${
-                    video.normalizedStatus === 'analyzed' ? 'bg-green-100 text-green-800' :
-                    video.normalizedStatus === 'transcribed' ? 'bg-blue-100 text-blue-800' :
-                    video.normalizedStatus === 'processing' || video.normalizedStatus === 'analyzing' ? 'bg-yellow-100 text-yellow-800' :
-                    video.normalizedStatus === 'failed' ? 'bg-red-100 text-red-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {video.statusLabel}
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    {new Date(video.created_at).toLocaleDateString()}
-                  </span>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="md:col-span-1 bg-white rounded-lg shadow overflow-hidden">
+            <div className="p-4 border-b">
+              <h3 className="font-medium">Liste des vidéos</h3>
+            </div>
+            <div className="overflow-y-auto max-h-[500px]">
+              {videos.map((video) => (
+                <div 
+                  key={video.id}
+                  onClick={() => setSelectedVideo(video)}
+                  className={`p-4 border-b cursor-pointer hover:bg-gray-50 ${
+                    selectedVideo?.id === video.id ? 'bg-blue-50' : ''
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-medium truncate max-w-[200px]">
+                        {video.title || 'Sans titre'}
+                      </h4>
+                      <p className="text-sm text-gray-500">
+                        {new Date(video.created_at).toLocaleDateString()}
+                      </p>
+                      <div className="flex gap-1 mt-1">
+                        {video.hasTranscription && (
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">
+                            Transcrit
+                          </span>
+                        )}
+                        {video.hasAnalysis && (
+                          <span className="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded">
+                            Analysé
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-xs px-2 py-1 rounded">
+                      <VideoProcessingStatus videoId={video.id} initialStatus={video.status} />
+                    </div>
+                  </div>
+                  {video.status === 'failed' && video.error_message && (
+                    <p className="text-xs text-red-500 mt-1 truncate">
+                      {video.error_message}
+                    </p>
+                  )}
                 </div>
-                {video.error_message && (
-                  <div className="bg-red-50 border border-red-200 text-red-700 px-2 py-1 rounded text-xs mb-2">
-                    {video.error_message}
+              ))}
+            </div>
+          </div>
+          
+          <div className="md:col-span-2 bg-white rounded-lg shadow">
+            <div className="p-4 border-b">
+              <h3 className="font-medium">Détails de la vidéo</h3>
+            </div>
+            
+            {selectedVideo ? (
+              <div className="p-4">
+                <h2 className="text-xl font-bold mb-2">
+                  {selectedVideo.title || 'Sans titre'}
+                </h2>
+                
+                <VideoPlayer video={selectedVideo} />
+                
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <p className="text-sm text-gray-500">Date d'upload</p>
+                    <p>{new Date(selectedVideo.created_at).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Statut</p>
+                    <div className="font-medium">
+                      <VideoProcessingStatus videoId={selectedVideo.id} initialStatus={selectedVideo.status} />
+                    </div>
+                  </div>
+                  {selectedVideo.duration && (
+                    <div>
+                      <p className="text-sm text-gray-500">Durée</p>
+                      <p>{Math.round(selectedVideo.duration)} secondes</p>
+                    </div>
+                  )}
+                  {selectedVideo.performance_score && (
+                    <div>
+                      <p className="text-sm text-gray-500">Score de performance</p>
+                      <p>{selectedVideo.performance_score.toFixed(2)}</p>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {selectedVideo.status !== 'processing' && selectedVideo.status !== 'analyzing' && (
+                    <>
+                      <button 
+                        onClick={() => transcribeVideo(selectedVideo)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                        disabled={processingVideoId === selectedVideo.id || selectedVideo.hasTranscription}
+                      >
+                        {processingVideoId === selectedVideo.id ? 'Transcription en cours...' : 'Transcrire la vidéo'}
+                      </button>
+                      {selectedVideo.hasTranscription && !selectedVideo.hasAnalysis && (
+                        <button 
+                          onClick={() => analyzeVideo(selectedVideo)}
+                          className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+                          disabled={processingVideoId === selectedVideo.id}
+                        >
+                          {processingVideoId === selectedVideo.id ? 'Analyse en cours...' : 'Analyser la vidéo'}
+                        </button>
+                      )}
+                    </>
+                  )}
+                  <button 
+                    onClick={() => deleteVideo(selectedVideo)}
+                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                  >
+                    Supprimer
+                  </button>
+                </div>
+                
+                {selectedVideo.hasTranscription && (
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold mb-2">Transcription</h3>
+                    <TranscriptionViewer transcription={selectedVideo.transcription_text} />
                   </div>
                 )}
-              </div>
-              
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => setSelectedVideo(video)}
-                  className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
-                >
-                  Voir détails
-                </button>
-                
-                {!video.hasTranscription && video.normalizedStatus !== 'processing' && (
-                  <button
-                    onClick={() => transcribeVideo(video)}
-                    disabled={processingVideoId === video.id}
-                    className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 disabled:opacity-50"
-                  >
-                    {processingVideoId === video.id ? 'En cours...' : 'Transcrire'}
-                  </button>
+
+                {selectedVideo.hasAnalysis && (
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold mb-2">Analyse IA</h3>
+                    <VideoAnalysisResults analysis={selectedVideo.analysis_result} />
+                  </div>
                 )}
-                
-                {video.hasTranscription && !video.hasAnalysis && video.normalizedStatus !== 'analyzing' && (
-                  <button
-                    onClick={() => analyzeVideo(video)}
-                    disabled={processingVideoId === video.id}
-                    className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 disabled:opacity-50"
-                  >
-                    {processingVideoId === video.id ? 'En cours...' : 'Analyser'}
-                  </button>
+
+                {!selectedVideo.hasTranscription && !selectedVideo.hasAnalysis && selectedVideo.status !== 'failed' && (
+                  <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded">
+                    <p>Aucune transcription ou analyse disponible pour cette vidéo. Lancez la transcription ou l'analyse ci-dessus.</p>
+                  </div>
                 )}
-                
-                <button
-                  onClick={() => deleteVideo(video)}
-                  className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700"
-                >
-                  Supprimer
-                </button>
+
+                {selectedVideo.status === 'failed' && selectedVideo.error_message && (
+                  <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+                    <p>Erreur de traitement: {selectedVideo.error_message}</p>
+                    <button 
+                      onClick={() => {
+                        if (selectedVideo.hasTranscription) {
+                          analyzeVideo(selectedVideo);
+                        } else {
+                          transcribeVideo(selectedVideo);
+                        }
+                      }}
+                      className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                    >
+                      Réessayer
+                    </button>
+                  </div>
+                )}
+
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-      
-      {selectedVideo && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold">{selectedVideo.title}</h2>
-                <button
-                  onClick={() => setSelectedVideo(null)}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  ✕
-                </button>
+            ) : (
+              <div className="p-4 text-center text-gray-500">
+                Sélectionnez une vidéo pour voir les détails.
               </div>
-              
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div>
-                  {selectedVideo.hasTranscription && (
-                    <div className="mt-4">
-                      <TranscriptionViewer 
-                        transcription={selectedVideo.transcription_text}
-                      />
-                    </div>
-                  )}
-                </div>
-                
-                <div>
-                  <VideoProcessingStatus video={selectedVideo} />
-                  {selectedVideo.hasAnalysis && (
-                    <div className="mt-4">
-                      <VideoAnalysisResults 
-                        analysis={selectedVideo.analysis_result}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       )}
