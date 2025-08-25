@@ -84,7 +84,22 @@ const VideoManagement = () => {
       console.log("Videos data received:", data);
 
       const normalizedVideos = (data || []).map(video => {
-        const hasTranscription = !!(video.transcription_text || (video.transcription_data && (typeof video.transcription_data === 'string' ? JSON.parse(video.transcription_data).text : video.transcription_data.text)));
+        // Vérifier si transcription_data existe et contient du texte ou des segments
+        let hasTranscription = false;
+        if (video.transcription_data) {
+          try {
+            const parsedTranscriptionData = typeof video.transcription_data === 'string' 
+              ? JSON.parse(video.transcription_data) 
+              : video.transcription_data;
+            if (parsedTranscriptionData.text || (parsedTranscriptionData.segments && parsedTranscriptionData.segments.length > 0)) {
+              hasTranscription = true;
+            }
+          } catch (e) {
+            console.warn("Erreur lors du parsing de transcription_data:", e);
+          }
+        } else if (video.transcription_text) {
+          hasTranscription = true;
+        }
         
         let analysisData = video.analysis || {};
         if ((!analysisData || Object.keys(analysisData).length === 0) && video.ai_result) {
