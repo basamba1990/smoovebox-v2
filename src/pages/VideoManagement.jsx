@@ -58,7 +58,7 @@ const VideoManagement = () => {
           transcription_text,
           analysis,
           ai_result,
-          error_message,  // CORRECTION: Utiliser error_message au lieu de video_error
+          error_message, 
           transcription_error,
           user_id,
           storage_path,
