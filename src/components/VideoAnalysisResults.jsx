@@ -1,30 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { Loader2, RefreshCw } from 'lucide-react';
 
 const VideoAnalysisResults = ({ video }) => {
-  const [analysis, setAnalysis] = useState(null);
+  const [analysisData, setAnalysisData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [transcriptionText, setTranscriptionText] = useState(""); // Nouveau: pour stocker la transcription
 
-  useEffect(() => {
-    if (video && video.id) {
-      fetchAnalysis();
-    } else {
-      setAnalysis(null);
-      setTranscriptionText("");
-    }
-  }, [video]);
+  const fetchAnalysis = useCallback(async () => {
+    if (!video || !video.id) return;
 
-  const fetchAnalysis = async () => {
     try {
       setLoading(true);
       setError(null);
 
+      // Récupérer les données d'analyse directement depuis la table videos
       const { data, error: fetchError } = await supabase
         .from("videos")
-        .select("analysis, transcription")
+        .select("id, status, analysis, ai_result, error_message")
         .eq("id", video.id)
         .single();
 
@@ -33,36 +26,16 @@ const VideoAnalysisResults = ({ video }) => {
       }
 
       if (data) {
-        // Traiter l'analyse
-        let analysisData;
-        if (typeof data.analysis === "string") {
-          try {
-            analysisData = JSON.parse(data.analysis);
-          } catch (e) {
-            analysisData = { resume: data.analysis };
-          }
-        } else {
-          analysisData = data.analysis;
+        let parsedAnalysis = null;
+        // Prioriser 'analysis' puis 'ai_result'
+        if (data.analysis) {
+          parsedAnalysis = typeof data.analysis === 'string' ? JSON.parse(data.analysis) : data.analysis;
+        } else if (data.ai_result) {
+          parsedAnalysis = typeof data.ai_result === 'string' ? JSON.parse(data.ai_result) : data.ai_result;
         }
-        setAnalysis(analysisData);
-
-        // Traiter la transcription
-        setTranscriptionText(data.transcription || "");
-
-        if (!data.analysis && data.transcription) {
-          setAnalysis({
-            resume: "Analyse en cours de génération...",
-            points_cles: ["L'analyse sera disponible prochainement"],
-            evaluation: {
-              clarte: "En attente",
-              structure: "En attente"
-            },
-            suggestions: ["Patientez pendant la génération de l'analyse"]
-          });
-        }
+        setAnalysisData(parsedAnalysis);
       } else {
-        setAnalysis(null);
-        setTranscriptionText("");
+        setAnalysisData(null);
       }
     } catch (err) {
       console.error("Erreur lors de la récupération de l'analyse:", err);
@@ -70,7 +43,11 @@ const VideoAnalysisResults = ({ video }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [video]);
+
+  useEffect(() => {
+    fetchAnalysis();
+  }, [fetchAnalysis]);
 
   const requestAnalysis = async () => {
     if (!video || !video.id) return;
@@ -86,7 +63,7 @@ const VideoAnalysisResults = ({ video }) => {
         throw new Error("Session expirée, veuillez vous reconnecter");
       }
       
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-video`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-transcription`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -100,13 +77,10 @@ const VideoAnalysisResults = ({ video }) => {
         throw new Error(errorData.error || `Erreur ${response.status}`);
       }
       
-      setAnalysis({
-        resume: "Analyse en cours...",
-        points_cles: ["Veuillez patienter pendant que nous analysons votre vidéo"],
-        evaluation: {
-          clarte: "En cours",
-          structure: "En cours"
-        }
+      setAnalysisData({
+        summary: "Analyse en cours...",
+        key_topics: ["Veuillez patienter pendant que nous analysons votre vidéo"],
+        sentiment: "En cours"
       });
       
       setTimeout(fetchAnalysis, 5000);
@@ -123,7 +97,7 @@ const VideoAnalysisResults = ({ video }) => {
     return null;
   }
 
-  if (loading && !analysis) {
+  if (loading && !analysisData) {
     return (
       <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg mt-6">
         <h2 className="text-xl font-bold mb-6 text-gray-800">Analyse IA</h2>
@@ -153,13 +127,14 @@ const VideoAnalysisResults = ({ video }) => {
     );
   }
 
-  if (!analysis && !transcriptionText) {
+  // Si aucune analyse n'est disponible et que la vidéo n'est pas en cours de traitement
+  if (!analysisData && video.status !== 'processing' && video.status !== 'analyzing') {
     return (
       <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg mt-6">
         <h2 className="text-xl font-bold mb-6 text-gray-800">Analyse IA</h2>
         <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg">
           <p className="text-gray-500 mb-4">Aucune analyse disponible pour cette vidéo.</p>
-          {video.transcription || video.transcription_data ? (
+          {video.hasTranscription ? (
             <button 
               onClick={requestAnalysis}
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -176,11 +151,12 @@ const VideoAnalysisResults = ({ video }) => {
     );
   }
 
-  const resume = analysis?.resume || analysis?.summary || "";
-  const pointsCles = analysis?.points_cles || analysis?.keywords || analysis?.key_points || [];
-  const suggestions = analysis?.suggestions || analysis?.areas_to_improve || [];
-  const strengths = analysis?.strengths || analysis?.points_forts || [];
-  const evaluation = analysis?.evaluation || {};
+  const summary = analysisData?.summary || "";
+  const keyTopics = analysisData?.key_topics || [];
+  const sentiment = analysisData?.sentiment || "";
+  const actionItems = analysisData?.action_items || [];
+  const importantEntities = analysisData?.important_entities || [];
+  const insightsSupplementaires = analysisData?.insights_supplementaires || {};
 
   return (
     <div className="bg-white/60 backdrop-blur-sm rounded-xl p-6 border border-white/20 shadow-lg mt-6">
@@ -196,104 +172,61 @@ const VideoAnalysisResults = ({ video }) => {
       </div>
       
       <div className="space-y-6">
-        {transcriptionText && (
+        {summary && (
           <div>
-            <h3 className="text-lg font-medium text-gray-700 mb-2">Transcription</h3>
-            <div className="bg-gray-50 p-4 rounded-lg text-gray-700 whitespace-pre-wrap">
-              {transcriptionText}
-            </div>
+            <h3 className="text-lg font-medium text-gray-700 mb-2">Résumé</h3>
+            <p className="text-gray-600">{summary}</p>
+          </div>
+        )}
+        
+        {keyTopics.length > 0 && (
+          <div>
+            <h3 className="text-lg font-medium text-gray-700 mb-2">Sujets Clés</h3>
+            <ul className="list-disc pl-5 space-y-1">
+              {keyTopics.map((topic, index) => (
+                <li key={index} className="text-gray-600">{topic}</li>
+              ))}
+            </ul>
           </div>
         )}
 
-        {resume && (
+        {sentiment && (
           <div>
-            <h3 className="text-lg font-medium text-gray-700 mb-2">Résumé</h3>
-            <p className="text-gray-600">{resume}</p>
+            <h3 className="text-lg font-medium text-gray-700 mb-2">Sentiment</h3>
+            <p className="text-gray-600 capitalize">{sentiment}</p>
           </div>
         )}
-        
-        {pointsCles.length > 0 && (
+
+        {actionItems.length > 0 && (
           <div>
-            <h3 className="text-lg font-medium text-gray-700 mb-2">Points clés</h3>
+            <h3 className="text-lg font-medium text-gray-700 mb-2">Actions Suggérées</h3>
             <ul className="list-disc pl-5 space-y-1">
-              {pointsCles.map((point, index) => (
-                <li key={index} className="text-gray-600">{point}</li>
+              {actionItems.map((item, index) => (
+                <li key={index} className="text-gray-600">{item}</li>
               ))}
             </ul>
           </div>
         )}
-        
-        {(evaluation.clarte !== undefined || evaluation.structure !== undefined || analysis?.overall_score !== undefined) && (
+
+        {importantEntities.length > 0 && (
           <div>
-            <h3 className="text-lg font-medium text-gray-700 mb-2">Évaluation</h3>
-            <div className="grid grid-cols-2 gap-4">
-              {evaluation.clarte !== undefined && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-500 mb-1">Clarté</h4>
-                  <div className="flex items-center">
-                    <div className="w-full bg-gray-200 rounded-full h-2.5">
-                      <div 
-                        className="bg-blue-600 h-2.5 rounded-full" 
-                        style={{ width: `${typeof evaluation.clarte === "number" ? evaluation.clarte * 10 : 0}%` }}
-                      ></div>
-                    </div>
-                    <span className="ml-2 text-gray-700">
-                      {typeof evaluation.clarte === "number" ? evaluation.clarte : evaluation.clarte}
-                    </span>
-                  </div>
-                </div>
-              )}
-              {evaluation.structure !== undefined && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-500 mb-1">Structure</h4>
-                  <div className="flex items-center">
-                    <div className="w-full bg-gray-200 rounded-full h-2.5">
-                      <div 
-                        className="bg-blue-600 h-2.5 rounded-full" 
-                        style={{ width: `${typeof evaluation.structure === "number" ? evaluation.structure * 10 : 0}%` }}
-                      ></div>
-                    </div>
-                    <span className="ml-2 text-gray-700">
-                      {typeof evaluation.structure === "number" ? evaluation.structure : evaluation.structure}
-                    </span>
-                  </div>
-                </div>
-              )}
-              {analysis?.overall_score !== undefined && (
-                <div>
-                  <h4 className="text-sm font-medium text-gray-500 mb-1">Score Global</h4>
-                  <div className="flex items-center">
-                    <div className="w-full bg-gray-200 rounded-full h-2.5">
-                      <div 
-                        className="bg-blue-600 h-2.5 rounded-full" 
-                        style={{ width: `${analysis.overall_score}%` }}
-                      ></div>
-                    </div>
-                    <span className="ml-2 text-gray-700">{analysis.overall_score}/100</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-        
-        {suggestions.length > 0 && (
-          <div>
-            <h3 className="text-lg font-medium text-gray-700 mb-2">Suggestions d'amélioration</h3>
+            <h3 className="text-lg font-medium text-gray-700 mb-2">Entités Importantes</h3>
             <ul className="list-disc pl-5 space-y-1">
-              {suggestions.map((suggestion, index) => (
-                <li key={index} className="text-gray-600">{suggestion}</li>
+              {importantEntities.map((entity, index) => (
+                <li key={index} className="text-gray-600">{entity}</li>
               ))}
             </ul>
           </div>
         )}
-        
-        {strengths.length > 0 && (
+
+        {Object.keys(insightsSupplementaires).length > 0 && (
           <div>
-            <h3 className="text-lg font-medium text-gray-700 mb-2">Points forts</h3>
+            <h3 className="text-lg font-medium text-gray-700 mb-2">Insights Supplémentaires</h3>
             <ul className="list-disc pl-5 space-y-1">
-              {strengths.map((strength, index) => (
-                <li key={index} className="text-gray-600">{strength}</li>
+              {Object.entries(insightsSupplementaires).map(([key, value], index) => (
+                <li key={index} className="text-gray-600">
+                  <strong>{key.replace(/_/g, ' ')}:</strong> {typeof value === 'object' ? JSON.stringify(value) : value}
+                </li>
               ))}
             </ul>
           </div>
@@ -303,4 +236,4 @@ const VideoAnalysisResults = ({ video }) => {
   );
 };
 
-export default VideoAnalysisResults;
+export default VideoAnalysisResults
