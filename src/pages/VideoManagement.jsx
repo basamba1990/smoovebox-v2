@@ -70,46 +70,46 @@ const VideoManagement = () => {
           .in("video_id", videoIds);
         
         if (transcriptionsError) {
-          console.warn("Erreur lors de la récupération des transcriptions:", transcriptionsError);
+          console.error("Erreur lors de la récupération des transcriptions:", transcriptionsError);
+          toast.error(`Erreur lors de la récupération des transcriptions: ${transcriptionsError.message}`);
+          // Optionnel: Gérer l'état d'erreur pour l'affichage à l'utilisateur
+          // setError(`Erreur lors de la récupération des transcriptions: ${transcriptionsError.message}`);
         } else {
           transcriptionsData = transcriptions || [];
         }
       }
       
       // CORRECTION: Combiner les données manuellement
-      const normalizedVideos = (videosData || []).map(video => {
-        // Trouver la transcription correspondante
-        const transcription = transcriptionsData.find(t => t.video_id === video.id);
-        
-        const hasTranscription = !!(transcription?.full_text);
-        // Utiliser analysis de la table videos ou analysis_result de la transcription
-        const analysisData = video.analysis || transcription?.analysis_result || {};
-        const hasAnalysis = !!(analysisData && Object.keys(analysisData).length > 0);
-        
-        let normalizedStatus = video.status || "pending";
-        let statusLabel = getStatusLabel(normalizedStatus);
-        
-        if (hasTranscription && !hasAnalysis) {
-          normalizedStatus = "transcribed";
-          statusLabel = "Transcrite";
-        }
-        
-        if (hasAnalysis) {
-          normalizedStatus = "analyzed";
-          statusLabel = "Analysée";
-        }
-        
-        return {
-          ...video,
-          transcription_text: transcription?.full_text || null,
-          analysis_result: analysisData,
-          normalizedStatus,
-          statusLabel,
-          hasTranscription,
-          hasAnalysis,
-          error_message: video.error_message || null
-        };
-      });
+        const normalizedVideos = (videosData || []).map(video => {
+          const transcription = transcriptionsData.find(t => t.video_id === video.id);
+          const hasTranscription = !!(transcription?.full_text);
+          const analysisData = transcription?.analysis_result || video.analysis || {};
+          const hasAnalysis = !!(analysisData && Object.keys(analysisData).length > 0);
+
+          let normalizedStatus = video.status || "pending";
+          let statusLabel = getStatusLabel(normalizedStatus);
+
+          if (hasTranscription && !hasAnalysis && normalizedStatus !== "failed") {
+            normalizedStatus = "transcribed";
+            statusLabel = "Transcrite";
+          }
+
+          if (hasAnalysis && normalizedStatus !== "failed") {
+            normalizedStatus = "analyzed";
+            statusLabel = "Analysée";
+          }
+
+          return {
+            ...video,
+            transcription_text: transcription?.full_text || null,
+            analysis_result: analysisData,
+            normalizedStatus,
+            statusLabel,
+            hasTranscription,
+            hasAnalysis,
+            error_message: video.error_message || null
+          };
+        });
       
       setVideos(normalizedVideos);
       
@@ -621,7 +621,6 @@ const VideoManagement = () => {
               
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div>
-                  <VideoPlayer video={selectedVideo} />
                   {selectedVideo.hasTranscription && (
                     <div className="mt-4">
                       <TranscriptionViewer 
@@ -651,4 +650,3 @@ const VideoManagement = () => {
 };
 
 export default VideoManagement;
-
