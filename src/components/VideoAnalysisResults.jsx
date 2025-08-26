@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, AlertCircle, CheckCircle, BarChart, TrendingUp, Lightbulb, Target } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle, BarChart, TrendingUp, Lightbulb, Target, RefreshCw } from 'lucide-react';
 
 const VideoAnalysisResults = ({ video }) => {
   const [analysis, setAnalysis] = useState(null);
@@ -7,7 +7,7 @@ const VideoAnalysisResults = ({ video }) => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (video && video.analysis_result) {
+    if (video) {
       extractAnalysisData(video);
     } else {
       setAnalysis(null);
@@ -20,7 +20,31 @@ const VideoAnalysisResults = ({ video }) => {
       setError(null);
       
       // Utiliser analysis_result (qui contient maintenant les données de la colonne analysis)
-      let analysisData = video.analysis_result || {};
+      let analysisData = video.analysis_result || video.analysis || {};
+      
+      // Si analysis_result est vide mais ai_result existe, essayer de le parser
+      if ((!analysisData || Object.keys(analysisData).length === 0) && video.ai_result) {
+        try {
+          analysisData = JSON.parse(video.ai_result);
+        } catch (e) {
+          analysisData = { summary: video.ai_result };
+        }
+      }
+      
+      // Vérifier s'il y a des analyses liées
+      if ((!analysisData || Object.keys(analysisData).length === 0) && 
+          video.transcriptions && video.transcriptions.length > 0) {
+        const transcriptionRecord = video.transcriptions[0];
+        if (transcriptionRecord.analysis_result) {
+          try {
+            analysisData = typeof transcriptionRecord.analysis_result === 'string' 
+              ? JSON.parse(transcriptionRecord.analysis_result) 
+              : transcriptionRecord.analysis_result;
+          } catch (e) {
+            console.error("Erreur lors du parsing de analysis_result:", e);
+          }
+        }
+      }
       
       if (analysisData && Object.keys(analysisData).length > 0) {
         setAnalysis(analysisData);
@@ -118,10 +142,60 @@ const VideoAnalysisResults = ({ video }) => {
           </div>
         )}
         
+        {analysis.sentiment && (
+          <div>
+            <h4 className="font-medium text-gray-700 mb-2">Sentiment</h4>
+            <p className="text-gray-600 bg-gray-50 p-3 rounded-lg capitalize">{analysis.sentiment}</p>
+          </div>
+        )}
+        
+        {analysis.key_topics && analysis.key_topics.length > 0 && (
+          <div>
+            <h4 className="font-medium text-gray-700 mb-2 flex items-center">
+              <TrendingUp className="h-5 w-5 mr-2 text-blue-500" />
+              Sujets clés
+            </h4>
+            <div className="flex flex-wrap gap-2">
+              {analysis.key_topics.map((topic, index) => (
+                <span key={index} className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                  {topic}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {analysis.action_items && analysis.action_items.length > 0 && (
+          <div>
+            <h4 className="font-medium text-gray-700 mb-2 flex items-center">
+              <Target className="h-5 w-5 mr-2 text-green-500" />
+              Actions recommandées
+            </h4>
+            <ul className="list-disc pl-5 space-y-1">
+              {analysis.action_items.map((item, index) => (
+                <li key={index} className="text-gray-600">{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        
+        {analysis.important_entities && analysis.important_entities.length > 0 && (
+          <div>
+            <h4 className="font-medium text-gray-700 mb-2">Entités importantes</h4>
+            <div className="flex flex-wrap gap-2">
+              {analysis.important_entities.map((entity, index) => (
+                <span key={index} className="bg-purple-100 text-purple-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                  {entity}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        
         {analysis.evaluation && (
           <div>
             <h4 className="font-medium text-gray-700 mb-2 flex items-center">
-              <BarChart className="h-5 w-5 mr-2 text-blue-500" />
+              <BarChart className="h-5 w-5 mr-2 text-indigo-500" />
               Évaluation
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -158,15 +232,62 @@ const VideoAnalysisResults = ({ video }) => {
         
         {analysis.suggestions && analysis.suggestions.length > 0 && (
           <div>
-            <h4 className="font-medium text-gray-700 mb-2 flex items-center">
-              <Target className="h-5 w-5 mr-2 text-green-500" />
-              Suggestions d'amélioration
-            </h4>
+            <h4 className="font-medium text-gray-700 mb-2">Suggestions d'amélioration</h4>
             <ul className="list-disc pl-5 space-y-1">
               {analysis.suggestions.map((suggestion, index) => (
                 <li key={index} className="text-gray-600">{suggestion}</li>
               ))}
             </ul>
+          </div>
+        )}
+        
+        {analysis.insights_supplementaires && (
+          <div>
+            <h4 className="font-medium text-gray-700 mb-2">Insights supplémentaires</h4>
+            <div className="space-y-4">
+              {analysis.insights_supplementaires.public_cible && (
+                <div>
+                  <h5 className="text-sm font-medium text-gray-600">Public cible</h5>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {analysis.insights_supplementaires.public_cible.map((public, index) => (
+                      <span key={index} className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                        {public}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {analysis.insights_supplementaires.niveau_expertise && (
+                <div>
+                  <h5 className="text-sm font-medium text-gray-600">Niveau d'expertise</h5>
+                  <p className="text-gray-600">{analysis.insights_supplementaires.niveau_expertise}</p>
+                </div>
+              )}
+              
+              {analysis.insights_supplementaires.engagement_emotionnel && (
+                <div>
+                  <h5 className="text-sm font-medium text-gray-600">Engagement émotionnel</h5>
+                  <p className="text-gray-600">
+                    Type: {analysis.insights_supplementaires.engagement_emotionnel.type}, 
+                    Niveau: {analysis.insights_supplementaires.engagement_emotionnel.niveau}/10
+                  </p>
+                </div>
+              )}
+              
+              {analysis.insights_supplementaires.formats_visuels_suggeres && (
+                <div>
+                  <h5 className="text-sm font-medium text-gray-600">Formats visuels suggérés</h5>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {analysis.insights_supplementaires.formats_visuels_suggeres.map((format, index) => (
+                      <span key={index} className="bg-indigo-100 text-indigo-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                        {format}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
