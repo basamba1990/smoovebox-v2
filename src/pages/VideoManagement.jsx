@@ -17,7 +17,7 @@ const VideoManagement = () => {
   
   const getStatusLabel = (status) => {
     const statusMap = {
-      'uploaded': 'Uploadée',
+      'uploaded': 'Téléchargée',
       'processing': 'En traitement',
       'transcribed': 'Transcrite',
       'analyzing': 'En analyse',
@@ -26,9 +26,9 @@ const VideoManagement = () => {
       'failed': 'Échec',
       'draft': 'Brouillon',
       'ready': 'Prête',
-      'pending': 'En attente'
+      'pending': 'En attente',
+      'transcribing': 'Transcription en cours'
     };
-    
     return statusMap[status] || 'Inconnu';
   };
   
