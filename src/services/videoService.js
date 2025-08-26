@@ -87,10 +87,10 @@ export const videoService = {
   },
 
   /**
-   * Télécharge une vidéo avec suivi de progression
+   * Télécharge une vidéo avec suivi de progression réelle via XMLHttpRequest
    * @param {File} file - Fichier vidéo
    * @param {Object} metadata - Métadonnées de la vidéo
-   * @param {Function} onProgress - Callback pour la progression
+   * @param {Function} onProgress - Callback pour la progression (percent)
    * @returns {Promise<Object>} - Données de la vidéo créée
    */
   async uploadVideo(file, metadata, onProgress) {
@@ -125,24 +125,59 @@ export const videoService = {
       const fileName = `${videoData.id}_${Date.now()}.${fileExt}`;
       const filePath = `${user.id}/${fileName}`;
 
-      // Télécharger le fichier
-      const { error: uploadError } = await supabase.storage
-        .from('videos')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false,
-          onUploadProgress: (progress) => {
-            if (onProgress) {
-              onProgress({
-                loaded: progress.loaded,
-                total: progress.total,
-                percent: (progress.loaded / progress.total) * 100
-              });
-            }
+      // Upload du fichier via XMLHttpRequest pour le suivi de progression réel
+      await new Promise(async (resolve, reject) => {
+        try {
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+          if (sessionError || !session) {
+            reject(new Error('Session d\'authentification non trouvée'));
+            return;
           }
-        });
 
-      if (uploadError) throw uploadError;
+          const xhr = new XMLHttpRequest();
+          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+          const url = `${supabaseUrl}/storage/v1/object/videos/${filePath}`;
+
+          xhr.upload.addEventListener('progress', (event) => {
+            if (event.lengthComputable) {
+              const percent = Math.round((event.loaded / event.total) * 100);
+              if (onProgress) {
+                onProgress({
+                  loaded: event.loaded,
+                  total: event.total,
+                  percent: percent
+                });
+              }
+            }
+          });
+
+          xhr.addEventListener('load', () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const response = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+                resolve(response);
+              } catch (parseError) {
+                resolve({ success: true });
+              }
+            } else {
+              reject(new Error(`Upload failed with status: ${xhr.status} - ${xhr.responseText}`));
+            }
+          });
+
+          xhr.addEventListener('error', () => {
+            reject(new Error('Upload failed due to network error'));
+          });
+
+          xhr.open('POST', url);
+          xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
+          xhr.setRequestHeader('Content-Type', file.type);
+          xhr.setRequestHeader('Cache-Control', '3600');
+          xhr.send(file);
+
+        } catch (error) {
+          reject(error);
+        }
+      });
 
       // Générer l'URL publique
       const { data: urlData } = supabase.storage
@@ -163,6 +198,15 @@ export const videoService = {
         .single();
 
       if (updateError) throw updateError;
+
+      // Assurez-vous que la progression est à 100% à la fin
+      if (onProgress) {
+        onProgress({
+          loaded: file.size,
+          total: file.size,
+          percent: 100
+        });
+      }
 
       return updatedVideo;
     } catch (error) {
