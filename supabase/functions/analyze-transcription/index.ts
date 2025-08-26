@@ -19,6 +19,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Timeout pour l'analyse
+const ANALYSIS_TIMEOUT = 240000; // 4 minutes
+
 Deno.serve(async (req) => {
   // Gérer les requêtes OPTIONS (CORS preflight)
   if (req.method === 'OPTIONS') {
@@ -34,9 +37,9 @@ Deno.serve(async (req) => {
 
     if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
       console.error('Variables d\'environnement manquantes', {
-        supabaseUrl: !!supabaseUrl,
-        supabaseServiceKey: !!supabaseServiceKey,
-        openaiApiKey: !!openaiApiKey
+        hasSupabaseUrl: !!supabaseUrl,
+        hasServiceKey: !!supabaseServiceKey,
+        hasOpenAiKey: !!openaiApiKey
       });
       return new Response(
         JSON.stringify({
@@ -50,8 +53,20 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Client Supabase avec timeout configuré
     const serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { persistSession: false }
+      auth: { persistSession: false },
+      global: {
+        fetch: (input, init) => {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 30000);
+          
+          return fetch(input, {
+            ...init,
+            signal: controller.signal
+          }).finally(() => clearTimeout(timeoutId));
+        }
+      }
     });
 
     let videoId: string | null = null;
@@ -81,10 +96,36 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Vérifier que la vidéo existe et a le bon statut
+    const { data: video, error: videoError } = await serviceClient
+      .from('videos')
+      .select('id, status, transcription_text, transcription_data')
+      .eq('id', videoId)
+      .single();
+
+    if (videoError || !video) {
+      console.error(`Erreur lors de la récupération de la vidéo ${videoId}:`, videoError);
+      return new Response(
+        JSON.stringify({ error: 'Vidéo non trouvée', details: videoError?.message }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+      );
+    }
+
+    if (video.status !== VIDEO_STATUS.TRANSCRIBED) {
+      console.error(`Mauvais statut de vidéo: ${video.status}, attendu: ${VIDEO_STATUS.TRANSCRIBED}`);
+      return new Response(
+        JSON.stringify({ error: 'Vidéo non transcrite', details: `Le statut de la vidéo doit être 'transcribed' pour l'analyse` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+
     // Mettre à jour le statut de la vidéo à ANALYZING
     const { error: updateError } = await serviceClient
       .from('videos')
-      .update({ status: VIDEO_STATUS.ANALYZING, updated_at: new Date().toISOString() })
+      .update({ 
+        status: VIDEO_STATUS.ANALYZING, 
+        updated_at: new Date().toISOString() 
+      })
       .eq('id', videoId);
 
     if (updateError) {
@@ -97,30 +138,65 @@ Deno.serve(async (req) => {
     console.log(`Statut de la vidéo ${videoId} mis à jour à '${VIDEO_STATUS.ANALYZING}'.`);
 
     // Récupérer la transcription de la vidéo
-    const { data: transcriptionData, error: transcriptionError } = await serviceClient
-      .from('transcriptions')
-      .select('full_text')
-      .eq('video_id', videoId)
-      .single();
+    let fullText = '';
+    
+    // Essayer d'abord transcription_data, puis transcription_text
+    if (video.transcription_data && typeof video.transcription_data === 'object') {
+      fullText = video.transcription_data.text || '';
+    } else if (video.transcription_text) {
+      fullText = video.transcription_text;
+    } else {
+      // Fallback: récupérer depuis la table transcriptions
+      const { data: transcriptionData, error: transcriptionError } = await serviceClient
+        .from('transcriptions')
+        .select('full_text, transcription_data')
+        .eq('video_id', videoId)
+        .single();
 
-    if (transcriptionError || !transcriptionData) {
-      console.error(`Erreur lors de la récupération de la transcription pour la vidéo ${videoId}:`, transcriptionError);
+      if (transcriptionError || !transcriptionData) {
+        console.error(`Erreur lors de la récupération de la transcription pour la vidéo ${videoId}:`, transcriptionError);
+        await serviceClient
+          .from('videos')
+          .update({ 
+            status: VIDEO_STATUS.FAILED, 
+            error_message: `Transcription non trouvée: ${transcriptionError?.message}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId);
+        return new Response(
+          JSON.stringify({ error: 'Transcription non trouvée', details: transcriptionError?.message }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+        );
+      }
+
+      if (transcriptionData.transcription_data && typeof transcriptionData.transcription_data === 'object') {
+        fullText = transcriptionData.transcription_data.text || '';
+      } else {
+        fullText = transcriptionData.full_text || '';
+      }
+    }
+
+    if (!fullText || fullText.trim().length === 0) {
+      console.error(`Texte de transcription vide pour la vidéo ${videoId}`);
       await serviceClient
         .from('videos')
-        .update({ status: VIDEO_STATUS.FAILED, error_message: `Transcription non trouvée: ${transcriptionError?.message}`, updated_at: new Date().toISOString() })
+        .update({ 
+          status: VIDEO_STATUS.FAILED, 
+          error_message: 'Texte de transcription vide',
+          updated_at: new Date().toISOString()
+        })
         .eq('id', videoId);
       return new Response(
-        JSON.stringify({ error: 'Transcription non trouvée', details: transcriptionError?.message }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+        JSON.stringify({ error: 'Texte de transcription vide' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
 
-    const fullText = transcriptionData.full_text;
-    console.log(`Transcription récupérée pour la vidéo ${videoId}. Début de l'analyse...`);
+    console.log(`Transcription récupérée pour la vidéo ${videoId} (${fullText.length} caractères). Début de l'analyse...`);
 
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    // Logique d'analyse avancée - Combiner les deux appels en un seul
+    // Logique d'analyse avancée
     const analysisPrompt = `Analysez la transcription vidéo suivante et fournissez une analyse complète et structurée au format JSON. L'analyse doit inclure :
 - Un 'summary' concis (max 3-4 phrases).
 - Une liste de 'key_topics' (3-5 thèmes/mots-clés principaux).
@@ -133,25 +209,70 @@ Deno.serve(async (req) => {
   - 'engagement_emotionnel': { 'type': string, 'niveau': number }
   - 'formats_visuels_suggeres': [string, string, ...]
 
-Transcription: ${fullText}
+Transcription: ${fullText.substring(0, 12000)}  // Limiter la longueur pour éviter les dépassements de token
 
 Assurez-vous que la sortie est un objet JSON valide.`;
 
-    const chatCompletion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: "Vous êtes un assistant IA expert spécialisé dans l'analyse des transcriptions vidéo et l'extraction d'informations structurées. Votre sortie doit toujours être un objet JSON valide." },
-        { role: "user", content: analysisPrompt }
-      ],
-      response_format: { type: "json_object" }, // Spécifie le format de réponse JSON
-    });
+    let chatCompletion;
+    try {
+      chatCompletion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { 
+            role: "system", 
+            content: "Vous êtes un assistant IA expert spécialisé dans l'analyse des transcriptions vidéo et l'extraction d'informations structurées. Votre sortie doit toujours être un objet JSON valide." 
+          },
+          { role: "user", content: analysisPrompt }
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 2000
+      });
+    } catch (openaiError) {
+      console.error('Erreur OpenAI lors de l\'analyse:', openaiError);
+      await serviceClient
+        .from('videos')
+        .update({ 
+          status: VIDEO_STATUS.FAILED, 
+          error_message: `Erreur OpenAI: ${openaiError.message}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Erreur lors de l\'analyse OpenAI', 
+          details: openaiError.message 
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
+    }
 
     let analysisResult;
     try {
       analysisResult = JSON.parse(chatCompletion.choices[0].message.content || '{}');
+      
+      // Validation basique du résultat
+      if (!analysisResult.summary || !analysisResult.key_topics) {
+        throw new Error('Réponse OpenAI incomplète ou mal formatée');
+      }
     } catch (parseError) {
       console.error('Erreur lors de l\'analyse du JSON de la réponse OpenAI:', parseError);
-      analysisResult = { error: 'Échec de l\'analyse de la réponse OpenAI', raw_content: chatCompletion.choices[0].message.content };
+      
+      await serviceClient
+        .from('videos')
+        .update({ 
+          status: VIDEO_STATUS.FAILED, 
+          error_message: `Échec de l'analyse de la réponse OpenAI: ${parseError.message}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId);
+      
+      return new Response(
+        JSON.stringify({ 
+          error: 'Erreur de format de réponse', 
+          details: 'La réponse de l\'IA n\'est pas un JSON valide'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
     }
 
     console.log(`Analyse terminée pour la vidéo ${videoId}.`);
@@ -160,9 +281,10 @@ Assurez-vous que la sortie est un objet JSON valide.`;
     const { error: analysisSaveError } = await serviceClient
       .from('videos')
       .update({
-        analysis: analysisResult,  // Utiliser la colonne analysis
+        analysis: analysisResult,  // Utiliser la colonne analysis existante
         status: VIDEO_STATUS.ANALYZED,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        ai_score: calculateAIScore(analysisResult) // Calculer un score basé sur l'analyse
       })
       .eq('id', videoId);
 
@@ -170,10 +292,17 @@ Assurez-vous que la sortie est un objet JSON valide.`;
       console.error(`Erreur lors de l'enregistrement des résultats d'analyse pour la vidéo ${videoId}:`, analysisSaveError);
       await serviceClient
         .from('videos')
-        .update({ status: VIDEO_STATUS.FAILED, error_message: `Échec de l'enregistrement de l'analyse: ${analysisSaveError.message}`, updated_at: new Date().toISOString() })
+        .update({ 
+          status: VIDEO_STATUS.FAILED, 
+          error_message: `Échec de l'enregistrement de l'analyse: ${analysisSaveError.message}`,
+          updated_at: new Date().toISOString()
+        })
         .eq('id', videoId);
       return new Response(
-        JSON.stringify({ error: 'Erreur lors de l\'enregistrement des résultats d\'analyse', details: analysisSaveError.message }),
+        JSON.stringify({ 
+          error: 'Erreur lors de l\'enregistrement des résultats d\'analyse', 
+          details: analysisSaveError.message 
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
@@ -182,45 +311,47 @@ Assurez-vous que la sortie est un objet JSON valide.`;
     const { error: transcriptionUpdateError } = await serviceClient
       .from('transcriptions')
       .update({
-        analysis_result: analysisResult, // ← Stocker le résultat dans transcriptions
-        keywords: analysisResult.keywords || [], // ← Extraire les keywords de l'analyse
+        analysis_result: analysisResult,
         updated_at: new Date().toISOString()
       })
       .eq('video_id', videoId);
 
     if (transcriptionUpdateError) {
       console.error('Erreur lors de la mise à jour de la transcription avec les résultats d\'analyse:', transcriptionUpdateError);
+      // Ne pas échouer complètement, juste logger l'erreur
     }
 
     console.log(`Vidéo ${videoId} analysée et statut mis à jour à '${VIDEO_STATUS.ANALYZED}'.`);
 
-    return new Response(JSON.stringify({ message: 'Analyse terminée avec succès', videoId, analysisResult }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200
-    });
+    return new Response(
+      JSON.stringify({ 
+        message: 'Analyse terminée avec succès', 
+        videoId, 
+        analysisResult 
+      }), 
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
+      }
+    );
 
   } catch (error: any) {
     console.error("Erreur générale non gérée dans analyze-transcription:", error);
-    // En cas d'erreur non gérée, mettre à jour le statut de la vidéo à FAILED
-    let videoIdFromError: string | undefined;
+    
+    // Tentative de mise à jour du statut d'erreur si videoId est disponible
     try {
-      const requestData = await req.json();
-      videoIdFromError = requestData.videoId;
-    } catch (e) {
-      const url = new URL(req.url);
-      videoIdFromError = url.searchParams.get('videoId') || undefined;
-    }
-
-    if (videoIdFromError) {
-      const supabaseUrl = Deno.env.get('SUPABASE_URL');
-      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-      if (supabaseUrl && supabaseServiceKey) {
-        const serviceClient = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
+      if (videoId) {
         await serviceClient
           .from('videos')
-          .update({ status: VIDEO_STATUS.FAILED, error_message: `Erreur interne lors de l'analyse: ${error.message}`, updated_at: new Date().toISOString() })
-          .eq('id', videoIdFromError);
+          .update({ 
+            status: VIDEO_STATUS.FAILED, 
+            error_message: `Erreur interne lors de l'analyse: ${error.message}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId);
       }
+    } catch (updateError) {
+      console.error('Erreur lors de la mise à jour du statut d\'erreur:', updateError);
     }
 
     return new Response(
@@ -232,3 +363,18 @@ Assurez-vous que la sortie est un objet JSON valide.`;
     );
   }
 });
+
+// Fonction helper pour calculer un score IA basé sur l'analyse
+function calculateAIScore(analysisResult: any): number {
+  let score = 7.0; // Score de base
+  
+  // Augmenter le score en fonction de la qualité de l'analyse
+  if (analysisResult.summary && analysisResult.summary.length > 50) score += 0.5;
+  if (analysisResult.key_topics && analysisResult.key_topics.length >= 3) score += 0.5;
+  if (analysisResult.important_entities && analysisResult.important_entities.length > 0) score += 0.5;
+  if (analysisResult.action_items && analysisResult.action_items.length > 0) score += 0.5;
+  if (analysisResult.insights_supplementaires) score += 0.5;
+  
+  // Limiter à 10.0
+  return Math.min(score, 10.0);
+}
