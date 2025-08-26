@@ -19,17 +19,8 @@ const VideoAnalysisResults = ({ video }) => {
       setLoading(true);
       setError(null);
       
-      let analysisData = video.analysis_result || video.analysis || {};
-      
-      // Si analysisData est une chaîne, essayer de la parser
-      if (typeof analysisData === 'string') {
-        try {
-          analysisData = JSON.parse(analysisData);
-        } catch (e) {
-          console.error("Erreur lors du parsing de analysis_result:", e);
-          analysisData = { summary: analysisData };
-        }
-      }
+      // Utiliser analysis_result (qui contient maintenant les données de la colonne analysis)
+      let analysisData = video.analysis_result || {};
       
       if (analysisData && Object.keys(analysisData).length > 0) {
         setAnalysis(analysisData);
