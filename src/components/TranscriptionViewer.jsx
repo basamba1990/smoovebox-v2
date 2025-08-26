@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
+import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 
 const TranscriptionViewer = ({ video }) => {
   const [transcription, setTranscription] = useState(null);
@@ -45,7 +45,23 @@ const TranscriptionViewer = ({ video }) => {
         transcriptionText = video.transcription_text;
       }
       
-      if (transcriptionText) {
+      // Vérifier s'il y a des transcriptions liées
+      if (!transcriptionText && video.transcriptions && video.transcriptions.length > 0) {
+        const transcriptionRecord = video.transcriptions[0];
+        transcriptionText = transcriptionRecord.transcription_text || transcriptionRecord.full_text || "";
+        
+        if (transcriptionRecord.segments) {
+          try {
+            segments = typeof transcriptionRecord.segments === 'string' 
+              ? JSON.parse(transcriptionRecord.segments) 
+              : transcriptionRecord.segments;
+          } catch (e) {
+            console.error("Erreur lors du parsing des segments:", e);
+          }
+        }
+      }
+      
+      if (transcriptionText || segments.length > 0) {
         setTranscription({
           text: transcriptionText,
           segments: segments,
