@@ -249,9 +249,9 @@ const VideoAnalysisResults = ({ video }) => {
                 <div>
                   <h5 className="text-sm font-medium text-gray-600">Public cible</h5>
                   <div className="flex flex-wrap gap-2 mt-1">
-                    {analysis.insights_supplementaires.public_cible.map((public, index) => (
+                    {analysis.insights_supplementaires.public_cible.map((targetAudience, index) => (
                       <span key={index} className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded">
-                        {public}
+                        {targetAudience}
                       </span>
                     ))}
                   </div>
