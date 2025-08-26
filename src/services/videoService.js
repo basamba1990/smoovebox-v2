@@ -101,28 +101,9 @@ export const videoService = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Utilisateur non connecté');
 
-      // Créer l'entrée vidéo dans la base de données
-      const { data: videoData, error: videoError } = await supabase
-        .from('videos')
-        .insert({
-          title: metadata.title.trim(),
-          description: metadata.description?.trim() || null,
-          status: toDatabaseStatus(VIDEO_STATUS.UPLOADING),
-          user_id: user.id,
-          original_file_name: file.name,
-          file_size: file.size,
-          format: file.type.split('/')[1] || 'mp4',
-          duration: metadata.duration || null,
-          is_public: metadata.isPublic || false
-        })
-        .select()
-        .single();
-
-      if (videoError) throw videoError;
-
       // Générer un nom de fichier unique
       const fileExt = file.name.split('.').pop();
-      const fileName = `${videoData.id}_${Date.now()}.${fileExt}`;
+      const fileName = `${Date.now()}_${file.name}`;
       const filePath = `${user.id}/${fileName}`;
 
       // Upload du fichier via XMLHttpRequest pour le suivi de progression réel
@@ -179,25 +160,36 @@ export const videoService = {
         }
       });
 
-      // Générer l'URL publique
-      const { data: urlData } = supabase.storage
+      // Générer l'URL signée après l'upload réussi
+      const { data: publicUrl, error: urlError } = await supabase.storage
         .from('videos')
-        .getPublicUrl(filePath);
+        .createSignedUrl(filePath, 365 * 24 * 60 * 60); // URL valide pendant 1 an
+      
+      if (urlError) {
+        console.warn('Impossible de générer l\'URL signée:', urlError);
+      }
 
-      // Mettre à jour l'entrée vidéo
-      const { data: updatedVideo, error: updateError } = await supabase
+      // Créer l'entrée vidéo dans la base de données
+      const { data: videoData, error: videoError } = await supabase
         .from('videos')
-        .update({ 
+        .insert({
+          title: metadata.title.trim(),
+          description: metadata.description?.trim() || null,
+          status: toDatabaseStatus(VIDEO_STATUS.UPLOADED), // Statut initial après upload
+          user_id: user.id,
+          original_file_name: file.name,
+          file_size: file.size,
+          format: file.type.split('/')[1] || 'mp4',
+          duration: metadata.duration || null,
+          is_public: metadata.isPublic || false,
           storage_path: filePath,
-          file_path: filePath,
-          public_url: urlData.publicUrl,
-          status: toDatabaseStatus(VIDEO_STATUS.UPLOADED)
+          file_path: filePath, // Compatibilité avec l'ancien champ
+          public_url: publicUrl?.signedUrl || null, // Utiliser l'URL signée
         })
-        .eq('id', videoData.id)
         .select()
         .single();
 
-      if (updateError) throw updateError;
+      if (videoError) throw videoError;
 
       // Assurez-vous que la progression est à 100% à la fin
       if (onProgress) {
@@ -208,7 +200,7 @@ export const videoService = {
         });
       }
 
-      return updatedVideo;
+      return videoData; // Retourner les données de la vidéo créée
     } catch (error) {
       console.error('Erreur lors du téléchargement de la vidéo:', error);
       throw error;
