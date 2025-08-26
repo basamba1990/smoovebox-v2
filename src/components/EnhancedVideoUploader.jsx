@@ -15,7 +15,9 @@ import {
   CheckCircle,
   Camera,
   Mic,
-  Settings
+  Settings,
+  Download,
+  Eye
 } from 'lucide-react';
 
 // Import des nouveaux composants
@@ -39,15 +41,16 @@ const EnhancedVideoUploader = () => {
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [recordingTime, setRecordingTime] = useState(0);
   const [recordingTimer, setRecordingTimer] = useState(null);
-  const [uploading, setUploading] = useState(false); // Nouveau state pour l'upload
-  const [uploadProgress, setUploadProgress] = useState(0); // Nouveau state pour la progression de l'upload
-  const [uploadError, setUploadError] = useState(null); // Nouveau state pour les erreurs d'upload
-  const [uploadSuccess, setUploadSuccess] = useState(null); // Nouveau state pour le succès de l'upload
-  const [uploadedVideoData, setUploadedVideoData] = useState(null); // Nouveau: pour stocker les données de la vidéo uploadée
-  const [showResults, setShowResults] = useState(false); // Nouveau: pour contrôler l'affichage des résultats
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState(null);
+  const [uploadSuccess, setUploadSuccess] = useState(null);
+  const [uploadedVideoData, setUploadedVideoData] = useState(null);
+  const [showResults, setShowResults] = useState(false);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const previewVideoRef = useRef(null); // CORRECTION: Nouveau ref pour la prévisualisation
 
   const modes = [
     {
@@ -123,9 +126,12 @@ const EnhancedVideoUploader = () => {
         blob,
         url: videoUrl,
         duration: recordingTime,
-        name: `recorded_video_${Date.now()}.webm` // Ajouter un nom de fichier
+        name: `recorded_video_${Date.now()}.webm`
       });
-      setCurrentStep('analysis');
+      // CORRECTION: Changer vers 'preview' au lieu de 'analysis'
+      setCurrentStep('preview');
+      // CORRECTION: Arrêter la caméra après l'enregistrement
+      stopCamera();
     };
 
     recorder.start();
@@ -158,8 +164,21 @@ const EnhancedVideoUploader = () => {
       if (recordingTimer) {
         clearInterval(recordingTimer);
       }
+      // CORRECTION: Nettoyer les URLs d'objets pour éviter les fuites mémoire
+      if (recordedVideo?.url) {
+        URL.revokeObjectURL(recordedVideo.url);
+      }
     };
   }, []);
+
+  // CORRECTION: Nettoyer l'URL de l'objet quand recordedVideo change
+  useEffect(() => {
+    return () => {
+      if (recordedVideo?.url) {
+        URL.revokeObjectURL(recordedVideo.url);
+      }
+    };
+  }, [recordedVideo]);
 
   // Gestionnaires d'événements
   const handleModeSelect = (mode) => {
@@ -203,12 +222,18 @@ const EnhancedVideoUploader = () => {
     setCurrentStep('mode_selection');
   };
 
+  // CORRECTION: Nouvelle fonction pour refaire l'enregistrement
   const handleRetakeVideo = () => {
+    // Nettoyer l'ancienne vidéo
+    if (recordedVideo?.url) {
+      URL.revokeObjectURL(recordedVideo.url);
+    }
     setRecordedVideo(null);
     setCurrentStep('recording');
     startCamera();
   };
 
+  // CORRECTION: Fonction pour accepter la vidéo et passer à l'upload
   const handleAcceptVideo = async () => {
     if (!recordedVideo) return;
 
@@ -216,8 +241,8 @@ const EnhancedVideoUploader = () => {
     setUploadError(null);
     setUploadSuccess(null);
     setUploadProgress(0);
-    setUploadedVideoData(null); // Réinitialiser avant un nouvel upload
-    setShowResults(false); // Cacher les anciens résultats
+    setUploadedVideoData(null);
+    setShowResults(false);
 
     try {
       const metadata = {
@@ -234,24 +259,28 @@ const EnhancedVideoUploader = () => {
 
       console.log('Vidéo uploadée avec succès:', uploadedVideo);
       setUploadSuccess('Vidéo uploadée avec succès !');
-      setUploadedVideoData(uploadedVideo); // Stocker les données de la vidéo uploadée
+      setUploadedVideoData(uploadedVideo);
 
       // Déclencher la transcription après l'upload réussi
       await videoService.transcribeVideo(uploadedVideo.id);
       setUploadSuccess('Vidéo uploadée et transcription initiée avec succès !');
-      setShowResults(true); // Afficher les résultats après l'initiation de la transcription
+      setShowResults(true);
+      setCurrentStep('results'); // CORRECTION: Passer à l'étape des résultats
 
     } catch (error) {
       console.error('Erreur lors de l\'upload de la vidéo:', error);
       setUploadError(`Erreur lors de l\'upload: ${error.message}`);
     } finally {
       setUploading(false);
-      // Ne pas réinitialiser l'uploader immédiatement ici si on veut afficher les résultats
-      // resetUploader(); // Commenter ou déplacer cette ligne si nécessaire
     }
   };
 
   const resetUploader = () => {
+    // CORRECTION: Nettoyer l'URL de l'objet
+    if (recordedVideo?.url) {
+      URL.revokeObjectURL(recordedVideo.url);
+    }
+    
     setCurrentStep('mode_selection');
     setSelectedMode(null);
     setRecordedVideo(null);
@@ -264,8 +293,8 @@ const EnhancedVideoUploader = () => {
     setUploadProgress(0);
     setUploadError(null);
     setUploadSuccess(null);
-    setUploadedVideoData(null); // Réinitialiser les données de la vidéo
-    setShowResults(false); // Cacher les résultats
+    setUploadedVideoData(null);
+    setShowResults(false);
   };
 
   const formatTime = (seconds) => {
@@ -491,11 +520,99 @@ const EnhancedVideoUploader = () => {
         </div>
       )}
 
-      {/* Affichage des résultats après l'upload/traitement */}
-      {showResults && uploadedVideoData && (
+      {/* CORRECTION: Nouvelle étape de prévisualisation */}
+      {currentStep === 'preview' && recordedVideo && (
+        <div className="space-y-6">
+          <Card className="bg-white shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-lg text-gray-800 flex items-center gap-2">
+                <Eye className="h-5 w-5" />
+                Prévisualisation de votre enregistrement
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Aperçu de la vidéo enregistrée */}
+              <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
+                <video
+                  ref={previewVideoRef}
+                  src={recordedVideo.url}
+                  controls
+                  className="w-full h-full object-cover"
+                />
+              </div>
+
+              {/* Informations sur la vidéo */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="font-medium text-gray-700">Durée :</span>
+                    <span className="ml-2 text-gray-600">{formatTime(recordedVideo.duration)}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-700">Format :</span>
+                    <span className="ml-2 text-gray-600">WebM</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Informations contextuelles de l'enregistrement */}
+              {assistantData && (
+                <Card className="bg-blue-50 border-blue-200">
+                  <CardContent className="p-4">
+                    <h4 className="font-medium text-blue-800 mb-2">Contexte de votre pitch :</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                      {Object.entries(assistantData).map(([key, value]) => (
+                        <div key={key} className="text-blue-700">
+                          <span className="font-medium capitalize">{key}:</span> {value}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Boutons d'action */}
+              <div className="flex justify-center gap-4">
+                <Button onClick={handleRetakeVideo} variant="outline">
+                  <RotateCcw className="h-5 w-5 mr-2" /> Refaire l'enregistrement
+                </Button>
+                <Button onClick={handleAcceptVideo} disabled={uploading}>
+                  {uploading ? (
+                    <>
+                      <Upload className="h-5 w-5 mr-2 animate-spin" />
+                      Upload en cours... ({uploadProgress}%)
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="h-5 w-5 mr-2" />
+                      Accepter et uploader
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Barre de progression de l'upload */}
+              {uploading && (
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                    style={{ width: `${uploadProgress}%` }}
+                  ></div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* CORRECTION: Étape des résultats */}
+      {currentStep === 'results' && showResults && uploadedVideoData && (
         <Card className="mt-6">
           <CardHeader>
-            <CardTitle>Résultats de la Vidéo</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+              Résultats de la Vidéo
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {/* Optionnel: Afficher un lecteur vidéo si l'URL est disponible */}
@@ -516,7 +633,7 @@ const EnhancedVideoUploader = () => {
       )}
 
       {/* Bouton de réinitialisation pour revenir au début */}
-      {showResults && (
+      {(currentStep === 'results' || showResults) && (
         <div className="text-center mt-6">
           <Button onClick={resetUploader} variant="outline">
             <RotateCcw className="h-4 w-4 mr-2" /> Nouveau Pitch
@@ -527,4 +644,4 @@ const EnhancedVideoUploader = () => {
   );
 };
 
-export default EnhancedVideoUploader
+export default EnhancedVideoUploader;
