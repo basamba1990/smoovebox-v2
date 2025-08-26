@@ -13,17 +13,20 @@ import {
   RotateCcw,
   CheckCircle,
   Camera,
+  Mic,
+  Settings,
   Download,
-  Eye
+  Eye,
+  AlertCircle
 } from 'lucide-react';
 
 // Import des nouveaux composants
 import PitchAssistant from './PitchAssistant.jsx';
 import CreativeWorkshops from './CreativeWorkshops.jsx';
 import CollectiveMode from './CollectiveMode.jsx';
-import { videoService } from '../services/videoService'; // Import du service vidéo
-import VideoAnalysisResults from './VideoAnalysisResults'; // Assurez-vous d'importer ce composant
-import TranscriptionViewer from './TranscriptionViewer'; // Si vous avez un composant séparé pour la transcription
+import { videoService } from '../services/videoService';
+import VideoAnalysisResults from './VideoAnalysisResults';
+import TranscriptionViewer from './TranscriptionViewer';
 
 const EnhancedVideoUploader = () => {
   const [currentStep, setCurrentStep] = useState('mode_selection');
@@ -43,10 +46,12 @@ const EnhancedVideoUploader = () => {
   const [uploadSuccess, setUploadSuccess] = useState(null);
   const [uploadedVideoData, setUploadedVideoData] = useState(null);
   const [showResults, setShowResults] = useState(false);
+  const [cameraError, setCameraError] = useState(null);
+  const [isCameraLoading, setIsCameraLoading] = useState(false);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-  const previewVideoRef = useRef(null); // CORRECTION: Nouveau ref pour la prévisualisation
+  const previewVideoRef = useRef(null);
 
   const modes = [
     {
@@ -78,20 +83,59 @@ const EnhancedVideoUploader = () => {
     }
   ];
 
-  // Gestion de la caméra
+  // Vérifier si le navigateur supporte la caméra
+  const checkCameraSupport = () => {
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  };
+
+  // Gestion de la caméra avec meilleure gestion d'erreurs
   const startCamera = async () => {
+    if (!checkCameraSupport()) {
+      setCameraError('Votre navigateur ne supporte pas l\'accès à la caméra. Veuillez utiliser un navigateur moderne comme Chrome, Firefox ou Edge.');
+      return;
+    }
+
+    setIsCameraLoading(true);
+    setCameraError(null);
+
     try {
-      const stream = await navig.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720 },
-        audio: true
+      // Demander les permissions de caméra et microphone
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'user' // Utiliser la caméra frontale par défaut
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100
+        }
       });
+      
       setMediaStream(stream);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
+      setCameraError(null);
     } catch (error) {
       console.error('Erreur d\'accès à la caméra:', error);
-      setUploadError('Impossible d\'accéder à la caméra. Veuillez vérifier les permissions.');
+      
+      let errorMessage = 'Impossible d\'accéder à la caméra. ';
+      
+      if (error.name === 'NotAllowedError') {
+        errorMessage += 'Veuillez autoriser l\'accès à la caméra et au microphone dans les paramètres de votre navigateur.';
+      } else if (error.name === 'NotFoundError' || error.name === 'OverconstrainedError') {
+        errorMessage += 'Aucune caméra n\'a été détectée ou la caméra demandée n\'est pas disponible.';
+      } else if (error.name === 'NotReadableError') {
+        errorMessage += 'La caméra est déjà utilisée par une autre application. Veuillez fermer les autres applications utilisant la caméra.';
+      } else {
+        errorMessage += `Erreur technique: ${error.message}`;
+      }
+      
+      setCameraError(errorMessage);
+    } finally {
+      setIsCameraLoading(false);
     }
   };
 
@@ -124,9 +168,7 @@ const EnhancedVideoUploader = () => {
         duration: recordingTime,
         name: `recorded_video_${Date.now()}.webm`
       });
-      // CORRECTION: Changer vers 'preview' au lieu de 'analysis'
       setCurrentStep('preview');
-      // CORRECTION: Arrêter la caméra après l'enregistrement
       stopCamera();
     };
 
@@ -160,14 +202,12 @@ const EnhancedVideoUploader = () => {
       if (recordingTimer) {
         clearInterval(recordingTimer);
       }
-      // CORRECTION: Nettoyer les URLs d'objets pour éviter les fuites mémoire
       if (recordedVideo?.url) {
         URL.revokeObjectURL(recordedVideo.url);
       }
     };
   }, []);
 
-  // CORRECTION: Nettoyer l'URL de l'objet quand recordedVideo change
   useEffect(() => {
     return () => {
       if (recordedVideo?.url) {
@@ -218,9 +258,7 @@ const EnhancedVideoUploader = () => {
     setCurrentStep('mode_selection');
   };
 
-  // CORRECTION: Nouvelle fonction pour refaire l'enregistrement
   const handleRetakeVideo = () => {
-    // Nettoyer l'ancienne vidéo
     if (recordedVideo?.url) {
       URL.revokeObjectURL(recordedVideo.url);
     }
@@ -229,7 +267,6 @@ const EnhancedVideoUploader = () => {
     startCamera();
   };
 
-  // CORRECTION: Fonction pour accepter la vidéo et passer à l'upload
   const handleAcceptVideo = async () => {
     if (!recordedVideo) return;
 
@@ -248,58 +285,30 @@ const EnhancedVideoUploader = () => {
         isPublic: false,
       };
 
-      // VALIDATION: Vérifier que le blob existe et est valide
-      if (!recordedVideo.blob || recordedVideo.blob.size === 0) {
-        throw new Error('Le fichier vidéo est vide ou corrompu');
-      }
-
-      const uploadedVideo = await videoService.uploadVideo(
-        recordedVideo.blob, 
-        metadata, 
-        (progressEvent) => {
-          const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
-          setUploadProgress(percent);
-        }
-      );
+      const uploadedVideo = await videoService.uploadVideo(recordedVideo.blob, metadata, (progressEvent) => {
+        const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+        setUploadProgress(percent);
+      });
 
       console.log('Vidéo uploadée avec succès:', uploadedVideo);
       setUploadSuccess('Vidéo uploadée avec succès !');
       setUploadedVideoData(uploadedVideo);
 
       // Déclencher la transcription après l'upload réussi
-      try {
-        await videoService.transcribeVideo(uploadedVideo.id);
-        setUploadSuccess('Vidéo uploadée et transcription initiée avec succès !');
-      } catch (transcriptionError) {
-        console.warn('Erreur lors du démarrage de la transcription:', transcriptionError);
-        setUploadSuccess('Vidéo uploadée avec succès, mais erreur lors du démarrage de la transcription');
-      }
-      
+      await videoService.transcribeVideo(uploadedVideo.id);
+      setUploadSuccess('Vidéo uploadée et transcription initiée avec succès !');
       setShowResults(true);
       setCurrentStep('results');
 
     } catch (error) {
       console.error('Erreur lors de l\'upload de la vidéo:', error);
-      
-      // Message d'erreur plus précis
-      let errorMessage = `Erreur lors de l'upload: ${error.message}`;
-      
-      if (error.message.includes('Chemin de stockage invalide')) {
-        errorMessage = 'Erreur: Impossible de générer un chemin de stockage valide pour la vidéo';
-      } else if (error.message.includes('Le chemin de stockage est null')) {
-        errorMessage = 'Erreur: Le système de stockage n\'a pas pu identifier où sauvegarder la vidéo';
-      } else if (error.message.includes('Fichier vidéo est vide')) {
-        errorMessage = 'Erreur: La vidéo enregistrée est vide ou corrompue';
-      }
-      
-      setUploadError(errorMessage);
+      setUploadError(`Erreur lors de l\'upload: ${error.message}`);
     } finally {
       setUploading(false);
     }
   };
 
   const resetUploader = () => {
-    // CORRECTION: Nettoyer l'URL de l'objet
     if (recordedVideo?.url) {
       URL.revokeObjectURL(recordedVideo.url);
     }
@@ -318,6 +327,7 @@ const EnhancedVideoUploader = () => {
     setUploadSuccess(null);
     setUploadedVideoData(null);
     setShowResults(false);
+    setCameraError(null);
   };
 
   const formatTime = (seconds) => {
@@ -475,6 +485,29 @@ const EnhancedVideoUploader = () => {
                 )}
               </div>
 
+              {/* Messages d'erreur de caméra */}
+              {cameraError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h4 className="font-medium text-red-800">Erreur d'accès à la caméra</h4>
+                      <p className="text-red-700 text-sm mt-1">{cameraError}</p>
+                      <div className="mt-3">
+                        <Button 
+                          onClick={startCamera} 
+                          size="sm" 
+                          disabled={isCameraLoading}
+                          className="bg-red-600 hover:bg-red-700"
+                        >
+                          {isCameraLoading ? "Tentative d'accès..." : "Réessayer"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Informations contextuelles */}
               {assistantData && (
                 <Card className="bg-blue-50 border-blue-200">
@@ -529,8 +562,12 @@ const EnhancedVideoUploader = () => {
               {/* Contrôles d'enregistrement */}
               <div className="flex justify-center gap-4">
                 {!isRecording ? (
-                  <Button onClick={startRecording} disabled={!mediaStream}>
-                    <Play className="h-5 w-5 mr-2" /> Démarrer l'enregistrement
+                  <Button 
+                    onClick={startRecording} 
+                    disabled={!mediaStream || isCameraLoading}
+                  >
+                    <Play className="h-5 w-5 mr-2" /> 
+                    {isCameraLoading ? "Chargement..." : "Démarrer l'enregistrement"}
                   </Button>
                 ) : (
                   <Button onClick={stopRecording} variant="destructive">
@@ -543,7 +580,7 @@ const EnhancedVideoUploader = () => {
         </div>
       )}
 
-      {/* CORRECTION: Nouvelle étape de prévisualisation */}
+      {/* Étape de prévisualisation */}
       {currentStep === 'preview' && recordedVideo && (
         <div className="space-y-6">
           <Card className="bg-white shadow-lg">
@@ -628,7 +665,7 @@ const EnhancedVideoUploader = () => {
         </div>
       )}
 
-      {/* CORRECTION: Étape des résultats */}
+      {/* Étape des résultats */}
       {currentStep === 'results' && showResults && uploadedVideoData && (
         <Card className="mt-6">
           <CardHeader>
@@ -638,18 +675,12 @@ const EnhancedVideoUploader = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Optionnel: Afficher un lecteur vidéo si l'URL est disponible */}
             {uploadedVideoData.public_url && (
               <div className="mb-4">
                 <video controls src={uploadedVideoData.public_url} className="w-full rounded-lg"></video>
               </div>
             )}
             
-            {/* Afficher la transcription si disponible */}
-            {/* Si vous avez un composant TranscriptionViewer, utilisez-le ici */}
-            {/* <TranscriptionViewer videoId={uploadedVideoData.id} /> */}
-
-            {/* Afficher l'analyse IA */}
             <VideoAnalysisResults video={uploadedVideoData} />
           </CardContent>
         </Card>
