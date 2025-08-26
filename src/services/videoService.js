@@ -2,6 +2,43 @@ import { supabase } from '../lib/supabase';
 import { VIDEO_STATUS, toDatabaseStatus } from '../constants/videoStatus';
 
 /**
+ * Valide et nettoie un chemin de stockage
+ * @param {string} path - Chemin à valider
+ * @returns {string} - Chemin validé et nettoyé
+ */
+function validateStoragePath(path) {
+  if (!path) {
+    throw new Error('Le chemin de stockage ne peut pas être vide');
+  }
+  
+  // Nettoyer le chemin
+  let cleanPath = path
+    .replace(/[^a-zA-Z0-9_\-./]/g, '_') // Remplacer les caractères spéciaux
+    .replace(/_{2,}/g, '_') // Remplacer les multiples underscores
+    .replace(/^_+|_+$/g, ''); // Supprimer les underscores en début/fin
+  
+  // Vérifier la structure du chemin
+  const pathParts = cleanPath.split('/');
+  if (pathParts.length < 2) {
+    throw new Error('Le chemin de stockage doit contenir au moins un répertoire et un nom de fichier');
+  }
+  
+  // Vérifier que l'ID utilisateur est valide
+  const userId = pathParts[0];
+  if (!userId || userId === 'null' || userId === 'undefined') {
+    throw new Error('ID utilisateur invalide dans le chemin de stockage');
+  }
+  
+  // Vérifier que le nom de fichier est valide
+  const filename = pathParts[pathParts.length - 1];
+  if (!filename || filename === 'null' || filename === 'undefined') {
+    throw new Error('Nom de fichier invalide dans le chemin de stockage');
+  }
+  
+  return cleanPath;
+}
+
+/**
  * Service pour gérer les opérations liées aux vidéos
  */
 export const videoService = {
@@ -103,8 +140,11 @@ export const videoService = {
 
       // Générer un nom de fichier unique
       const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}_${file.name}`;
-      const filePath = `${user.id}/${fileName}`;
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+      let filePath = `${user.id}/${fileName}`;
+
+      // Valider le chemin de stockage
+      filePath = validateStoragePath(filePath);
 
       // Upload du fichier via XMLHttpRequest pour le suivi de progression réel
       await new Promise(async (resolve, reject) => {
@@ -189,7 +229,10 @@ export const videoService = {
         .select()
         .single();
 
-      if (videoError) throw videoError;
+      if (videoError) {
+        console.error('Erreur détaillée de Supabase:', videoError);
+        throw new Error(`Erreur base de données: ${videoError.message}`);
+      }
 
       // Assurez-vous que la progression est à 100% à la fin
       if (onProgress) {
@@ -203,7 +246,7 @@ export const videoService = {
       return videoData; // Retourner les données de la vidéo créée
     } catch (error) {
       console.error('Erreur lors du téléchargement de la vidéo:', error);
-      throw error;
+      throw new Error(`Échec de l'upload: ${error.message}`);
     }
   },
 
