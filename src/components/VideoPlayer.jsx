@@ -17,13 +17,12 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
-  
+
   // Fonction pour générer l'URL publique de la vidéo
   const getPublicUrl = useCallback((storagePath) => {
     if (!storagePath) return null;
     
     try {
-      // Extraire le projectRef de l'URL Supabase
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       if (!supabaseUrl) {
         console.error("URL Supabase non configurée");
@@ -33,11 +32,7 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
       const url = new URL(supabaseUrl);
       const projectRef = url.hostname.split('.')[0];
       
-      // Nettoyer le chemin de stockage
-      let cleanPath = storagePath;
-      if (cleanPath.startsWith('videos/')) {
-        cleanPath = cleanPath.substring(7); // Enlever le préfixe 'videos/'
-      }
+      const cleanPath = storagePath.replace(/^videos\//, '');
       
       return `https://${projectRef}.supabase.co/storage/v1/object/public/videos/${cleanPath}`;
     } catch (e) {
@@ -45,31 +40,29 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
       return null;
     }
   }, []);
-  
+
   // Fonction pour créer une URL signée
   const createSignedUrl = useCallback(async (storagePath) => {
     if (!storagePath) return null;
     
     try {
-      // Nettoyer le chemin de stockage
-      let cleanPath = storagePath;
-      if (cleanPath.startsWith('videos/')) {
-        cleanPath = cleanPath.substring(7); // Enlever le préfixe 'videos/'
-      }
-      
+      const cleanPath = storagePath.replace(/^videos\//, '');
       const { data, error } = await supabase.storage
         .from('videos')
-        .createSignedUrl(cleanPath, 3600); // 1 heure de validité
-        
-      if (error) throw error;
+        .createSignedUrl(cleanPath, 60 * 60); // 1 hour expiry
       
-      return data?.signedUrl || null;
-    } catch (err) {
-      console.error('Erreur lors de la création de l\'URL signée:', err);
+      if (error) {
+        console.error("Erreur lors de la création de l'URL signée:", error);
+        return null;
+      }
+      
+      return data.signedUrl;
+    } catch (e) {
+      console.error("Erreur lors de la création de l'URL signée:", e);
       return null;
     }
   }, []);
-  
+
   // Charger l'URL de la vidéo
   useEffect(() => {
     const loadVideoUrl = async () => {
@@ -77,47 +70,56 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
       setError(null);
       
       try {
-        // Déterminer la source de la vidéo
-        let finalVideoUrl = null;
+        // Priorité 1: URL fournie directement
+        if (propVideoUrl) {
+          setVideoUrl(propVideoUrl);
+          return;
+        }
         
-        // 1. Utiliser l'URL directe si fournie en prop
-        if (propVideoUrl && (propVideoUrl.startsWith('http://') || propVideoUrl.startsWith('https://'))) {
-          finalVideoUrl = propVideoUrl;
+        // Priorité 2: URL publique de la vidéo
+        if (video && video.public_url) {
+          setVideoUrl(video.public_url);
+          return;
         }
-        // 2. Utiliser l'URL de la vidéo si fournie dans l'objet video
-        else if (video?.public_url && (video.public_url.startsWith('http://') || video.public_url.startsWith('https://'))) {
-          finalVideoUrl = video.public_url;
-        }
-        // 3. Utiliser le chemin de stockage fourni en prop
-        else if (propStoragePath) {
-          finalVideoUrl = getPublicUrl(propStoragePath);
-        }
-        // 4. Utiliser le chemin de stockage de l'objet video
-        else if (video?.storage_path) {
-          finalVideoUrl = getPublicUrl(video.storage_path);
+        
+        // Priorité 3: Générer une URL à partir du storage path
+        const path = propStoragePath || (video && (video.storage_path || video.file_path));
+        if (path) {
+          // D'abord essayer l'URL publique
+          const publicUrl = getPublicUrl(path);
+          if (publicUrl) {
+            // Vérifier si l'URL est accessible
+            try {
+              const response = await fetch(publicUrl, { method: 'HEAD' });
+              if (response.ok) {
+                setVideoUrl(publicUrl);
+                return;
+              }
+            } catch (e) {
+              console.log("L'URL publique n'est pas accessible, tentative avec URL signée");
+            }
+          }
           
-          // Si pas d'URL publique, essayer l'URL signée
-          if (!finalVideoUrl) {
-            finalVideoUrl = await createSignedUrl(video.storage_path);
+          // Si l'URL publique n'est pas accessible, essayer une URL signée
+          const signedUrl = await createSignedUrl(path);
+          if (signedUrl) {
+            setVideoUrl(signedUrl);
+            return;
           }
         }
         
-        // Si aucune source valide n'est trouvée
-        if (!finalVideoUrl) {
-          throw new Error('Aucune source vidéo valide disponible');
-        }
-        
-        setVideoUrl(finalVideoUrl);
+        setError("Impossible de charger la vidéo: URL non disponible");
       } catch (err) {
-        console.error('Erreur de chargement vidéo:', err);
-        setError(err.message);
+        console.error("Erreur lors du chargement de la vidéo:", err);
+        setError("Erreur lors du chargement de la vidéo");
+      } finally {
         setIsLoading(false);
       }
     };
     
     loadVideoUrl();
   }, [video, propVideoUrl, propStoragePath, getPublicUrl, createSignedUrl]);
-  
+
   // Contrôle de la lecture
   const togglePlay = useCallback(() => {
     if (videoRef.current) {
@@ -131,7 +133,7 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
       }
     }
   }, [isPlaying]);
-  
+
   // Gestion du volume
   const toggleMute = useCallback(() => {
     if (videoRef.current) {
@@ -139,7 +141,7 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
       setIsMuted(!isMuted);
     }
   }, [isMuted]);
-  
+
   const handleVolumeChange = useCallback((value) => {
     const newVolume = value[0];
     if (videoRef.current) {
@@ -148,34 +150,34 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
       setIsMuted(newVolume === 0);
     }
   }, []);
-  
+
   // Gestion de la timeline
   const handleTimeUpdate = useCallback(() => {
     if (videoRef.current) {
       setCurrentTime(videoRef.current.currentTime);
     }
   }, []);
-  
+
   const handleSeek = useCallback((value) => {
     if (videoRef.current) {
       videoRef.current.currentTime = value[0];
       setCurrentTime(value[0]);
     }
   }, []);
-  
+
   // Avancer/reculer de 10 secondes
   const skipForward = useCallback(() => {
     if (videoRef.current) {
       videoRef.current.currentTime = Math.min(videoRef.current.currentTime + 10, duration);
     }
   }, [duration]);
-  
+
   const skipBackward = useCallback(() => {
     if (videoRef.current) {
       videoRef.current.currentTime = Math.max(videoRef.current.currentTime - 10, 0);
     }
   }, []);
-  
+
   // Plein écran
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -198,109 +200,73 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
       setIsFullscreen(false);
     }
   }, []);
-  
+
   // Formatage du temps
   const formatTime = useCallback((timeInSeconds) => {
     const minutes = Math.floor(timeInSeconds / 60);
     const seconds = Math.floor(timeInSeconds % 60);
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   }, []);
-  
+
   // Gestion des événements vidéo
   useEffect(() => {
     const videoElement = videoRef.current;
     if (!videoElement || !videoUrl) return;
-    
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
+
     const handleLoadedMetadata = () => {
       setDuration(videoElement.duration);
       setIsLoading(false);
     };
-    const handleLoadedData = () => setIsLoading(false);
-    const handleError = (e) => {
+
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+    const handleEnded = () => setIsPlaying(false);
+    const handleError = () => {
       setError("Erreur lors du chargement de la vidéo");
       setIsLoading(false);
-      console.error("Erreur vidéo:", e);
     };
-    const handleWaiting = () => setIsLoading(true);
-    const handlePlaying = () => setIsLoading(false);
-    const handleEnded = () => setIsPlaying(false);
-    const handleTimeUpdateEvent = () => {
-      setCurrentTime(videoElement.currentTime);
-    };
-    
-    // Ajouter les écouteurs d'événements
+
+    videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
     videoElement.addEventListener('play', handlePlay);
     videoElement.addEventListener('pause', handlePause);
-    videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
-    videoElement.addEventListener('loadeddata', handleLoadedData);
-    videoElement.addEventListener('error', handleError);
-    videoElement.addEventListener('waiting', handleWaiting);
-    videoElement.addEventListener('playing', handlePlaying);
-    videoElement.addEventListener('timeupdate', handleTimeUpdateEvent);
     videoElement.addEventListener('ended', handleEnded);
-    
-    // Nettoyer les écouteurs d'événements
+    videoElement.addEventListener('error', handleError);
+    videoElement.addEventListener('timeupdate', handleTimeUpdate);
+
     return () => {
+      videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
       videoElement.removeEventListener('play', handlePlay);
       videoElement.removeEventListener('pause', handlePause);
-      videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      videoElement.removeEventListener('loadeddata', handleLoadedData);
-      videoElement.removeEventListener('error', handleError);
-      videoElement.removeEventListener('waiting', handleWaiting);
-      videoElement.removeEventListener('playing', handlePlaying);
-      videoElement.removeEventListener('timeupdate', handleTimeUpdateEvent);
       videoElement.removeEventListener('ended', handleEnded);
+      videoElement.removeEventListener('error', handleError);
+      videoElement.removeEventListener('timeupdate', handleTimeUpdate);
     };
-  }, [videoUrl]);
-  
+  }, [videoUrl, handleTimeUpdate]);
+
   // Gestion de l'affichage des contrôles
   useEffect(() => {
     let timeout;
-    
-    const handleMouseMove = () => {
+
+    if (isPlaying) {
       setShowControls(true);
-      clearTimeout(timeout);
-      
       timeout = setTimeout(() => {
-        if (isPlaying) {
-          setShowControls(false);
-        }
-      }, 3000);
-    };
-    
-    const handleMouseLeave = () => {
-      if (isPlaying) {
         setShowControls(false);
-      }
-    };
-    
-    const container = containerRef.current;
-    if (container) {
-      container.addEventListener('mousemove', handleMouseMove);
-      container.addEventListener('mouseleave', handleMouseLeave);
-      container.addEventListener('mouseenter', () => setShowControls(true));
+      }, 3000);
     }
-    
+
     return () => {
-      if (container) {
-        container.removeEventListener('mousemove', handleMouseMove);
-        container.removeEventListener('mouseleave', handleMouseLeave);
-        container.removeEventListener('mouseenter', () => {});
-      }
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
     };
   }, [isPlaying]);
-  
+
   // Gestion des raccourcis clavier
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA', 'BUTTON'].includes(document.activeElement.tagName)) {
         return;
       }
-      
-      switch (e.key.toLowerCase()) {
+
+      switch (e.key) {
         case ' ':
         case 'k':
           e.preventDefault();
@@ -314,11 +280,11 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
           e.preventDefault();
           toggleMute();
           break;
-        case 'arrowright':
+        case 'ArrowRight':
           e.preventDefault();
           skipForward();
           break;
-        case 'arrowleft':
+        case 'ArrowLeft':
           e.preventDefault();
           skipBackward();
           break;
@@ -326,25 +292,24 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
           break;
       }
     };
-    
+
     document.addEventListener('keydown', handleKeyDown);
-    
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [togglePlay, toggleFullscreen, toggleMute, skipForward, skipBackward]);
-  
+
   // Gestion de l'événement fullscreenchange
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
     };
-    
+
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     document.addEventListener('mozfullscreenchange', handleFullscreenChange);
     document.addEventListener('MSFullscreenChange', handleFullscreenChange);
-    
+
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
@@ -363,11 +328,19 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
   }
 
   return (
-    <div 
+    <div
       ref={containerRef}
       className={`relative rounded-lg overflow-hidden bg-black mb-4 ${
         isFullscreen ? 'w-full h-full' : 'w-full aspect-video'
       }`}
+      onMouseMove={() => {
+        setShowControls(true);
+      }}
+      onMouseLeave={() => {
+        if (isPlaying) {
+          setTimeout(() => setShowControls(false), 2000);
+        }
+      }}
       onDoubleClick={toggleFullscreen}
     >
       {/* Vidéo */}
@@ -387,139 +360,84 @@ const VideoPlayer = ({ video, videoUrl: propVideoUrl, storagePath: propStoragePa
           <p className="text-white">Chargement de la vidéo...</p>
         </div>
       )}
-      
-      {/* Overlay pour les erreurs */}
-      {error && (
-        <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center">
-          <div className="text-white text-center p-4">
-            <p className="text-red-400 font-semibold mb-2">Erreur</p>
-            <p>{error}</p>
-            <button 
-              className="mt-2 px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
-              onClick={() => window.location.reload()}
-            >
-              Réessayer
-            </button>
-          </div>
-        </div>
-      )}
-      
-      {/* Indicateur de chargement */}
-      {isLoading && !error && (
-        <div className="absolute inset-0 flex items-center justify-center">
+
+      {/* Overlay de chargement */}
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
         </div>
       )}
-      
-      {/* Bouton de lecture central */}
-      {!isPlaying && showControls && !isLoading && !error && videoUrl && (
-        <div 
-          className="absolute inset-0 flex items-center justify-center cursor-pointer"
-          onClick={togglePlay}
-        >
-          <div className="bg-black bg-opacity-50 rounded-full p-4">
-            <Play className="h-12 w-12 text-white" />
+
+      {/* Overlay d'erreur */}
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-70">
+          <div className="text-center p-4">
+            <p className="text-white mb-2">{error}</p>
+            <Button onClick={() => window.location.reload()} variant="secondary">
+              Réessayer
+            </Button>
           </div>
         </div>
       )}
-      
+
       {/* Contrôles */}
-      {videoUrl && (
-        <div 
-          className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent px-4 py-2 transition-opacity duration-300 ${
-            showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
-        >
-          {/* Timeline */}
-          <div className="mb-2">
-            <Slider
-              value={[currentTime]}
-              min={0}
-              max={duration || 100}
-              step={0.1}
-              onValueChange={handleSeek}
-              className="cursor-pointer"
-            />
-          </div>
-          
-          {/* Contrôles principaux */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="text-white hover:bg-white hover:bg-opacity-20 p-1 h-auto"
-                onClick={togglePlay}
-              >
-                {isPlaying ? (
-                  <Pause className="h-5 w-5" />
-                ) : (
-                  <Play className="h-5 w-5" />
-                )}
-              </Button>
-              
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="text-white hover:bg-white hover:bg-opacity-20 p-1 h-auto"
-                onClick={skipBackward}
-              >
-                <SkipBack className="h-5 w-5" />
-              </Button>
-              
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="text-white hover:bg-white hover:bg-opacity-20 p-1 h-auto"
-                onClick={skipForward}
-              >
-                <SkipForward className="h-5 w-5" />
-              </Button>
-              
-              <div className="flex items-center space-x-2 group relative">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="text-white hover:bg-white hover:bg-opacity-20 p-1 h-auto"
-                  onClick={toggleMute}
-                >
-                  {isMuted ? (
-                    <VolumeX className="h-5 w-5" />
-                  ) : (
-                    <Volume2 className="h-5 w-5" />
-                  )}
-                </Button>
-                
-                <div className="hidden group-hover:block absolute bottom-full left-0 mb-2 bg-black bg-opacity-70 p-2 rounded-md w-24">
-                  <Slider
-                    value={[isMuted ? 0 : volume]}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    onValueChange={handleVolumeChange}
-                    className="cursor-pointer"
-                  />
-                </div>
-              </div>
-              
-              <span className="text-white text-xs">
-                {formatTime(currentTime)} / {formatTime(duration)}
-              </span>
-            </div>
-            
-            <div>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="text-white hover:bg-white hover:bg-opacity-20 p-1 h-auto"
-                onClick={toggleFullscreen}
-              >
-                <Maximize className="h-5 w-5" />
-              </Button>
-            </div>
-          </div>
+      <div
+        className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4 transition-opacity ${
+          showControls ? 'opacity-100' : 'opacity-0'
+        }`}
+      >
+        {/* Barre de progression */}
+        <div className="mb-2">
+          <Slider
+            value={[currentTime]}
+            min={0}
+            max={duration || 100}
+            step={0.1}
+            onValueChange={handleSeek}
+            className="w-full"
+          />
         </div>
-      )}
+
+        {/* Contrôles principaux */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <Button variant="ghost" size="icon" onClick={togglePlay} className="text-white">
+              {isPlaying ? <Pause size={20} /> : <Play size={20} />}
+            </Button>
+
+            <Button variant="ghost" size="icon" onClick={skipBackward} className="text-white">
+              <SkipBack size={20} />
+            </Button>
+
+            <Button variant="ghost" size="icon" onClick={skipForward} className="text-white">
+              <SkipForward size={20} />
+            </Button>
+
+            <div className="flex items-center space-x-2">
+              <Button variant="ghost" size="icon" onClick={toggleMute} className="text-white">
+                {isMuted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
+              </Button>
+
+              <Slider
+                value={[isMuted ? 0 : volume]}
+                min={0}
+                max={1}
+                step={0.01}
+                onValueChange={handleVolumeChange}
+                className="w-20"
+              />
+            </div>
+
+            <span className="text-white text-sm">
+              {formatTime(currentTime)} / {formatTime(duration)}
+            </span>
+          </div>
+
+          <Button variant="ghost" size="icon" onClick={toggleFullscreen} className="text-white">
+            <Maximize size={20} />
+          </Button>
+        </div>
+      </div>
     </div>
   );
 };
