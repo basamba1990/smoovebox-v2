@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button.jsx';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card.jsx';
 import { Badge } from './ui/badge.jsx';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.jsx';
 import {
   Video,
   Upload,
@@ -14,8 +13,6 @@ import {
   RotateCcw,
   CheckCircle,
   Camera,
-  Mic,
-  Settings,
   Download,
   Eye
 } from 'lucide-react';
@@ -24,7 +21,6 @@ import {
 import PitchAssistant from './PitchAssistant.jsx';
 import CreativeWorkshops from './CreativeWorkshops.jsx';
 import CollectiveMode from './CollectiveMode.jsx';
-import AIFeedbackAnalysis from './AIFeedbackAnalysis.jsx';
 import { videoService } from '../services/videoService'; // Import du service vidéo
 import VideoAnalysisResults from './VideoAnalysisResults'; // Assurez-vous d'importer ce composant
 import TranscriptionViewer from './TranscriptionViewer'; // Si vous avez un composant séparé pour la transcription
@@ -85,7 +81,7 @@ const EnhancedVideoUploader = () => {
   // Gestion de la caméra
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const stream = await navig.mediaDevices.getUserMedia({
         video: { width: 1280, height: 720 },
         audio: true
       });
@@ -252,24 +248,51 @@ const EnhancedVideoUploader = () => {
         isPublic: false,
       };
 
-      const uploadedVideo = await videoService.uploadVideo(recordedVideo.blob, metadata, (progressEvent) => {
-        const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
-        setUploadProgress(percent);
-      });
+      // VALIDATION: Vérifier que le blob existe et est valide
+      if (!recordedVideo.blob || recordedVideo.blob.size === 0) {
+        throw new Error('Le fichier vidéo est vide ou corrompu');
+      }
+
+      const uploadedVideo = await videoService.uploadVideo(
+        recordedVideo.blob, 
+        metadata, 
+        (progressEvent) => {
+          const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+          setUploadProgress(percent);
+        }
+      );
 
       console.log('Vidéo uploadée avec succès:', uploadedVideo);
       setUploadSuccess('Vidéo uploadée avec succès !');
       setUploadedVideoData(uploadedVideo);
 
       // Déclencher la transcription après l'upload réussi
-      await videoService.transcribeVideo(uploadedVideo.id);
-      setUploadSuccess('Vidéo uploadée et transcription initiée avec succès !');
+      try {
+        await videoService.transcribeVideo(uploadedVideo.id);
+        setUploadSuccess('Vidéo uploadée et transcription initiée avec succès !');
+      } catch (transcriptionError) {
+        console.warn('Erreur lors du démarrage de la transcription:', transcriptionError);
+        setUploadSuccess('Vidéo uploadée avec succès, mais erreur lors du démarrage de la transcription');
+      }
+      
       setShowResults(true);
-      setCurrentStep('results'); // CORRECTION: Passer à l'étape des résultats
+      setCurrentStep('results');
 
     } catch (error) {
       console.error('Erreur lors de l\'upload de la vidéo:', error);
-      setUploadError(`Erreur lors de l\'upload: ${error.message}`);
+      
+      // Message d'erreur plus précis
+      let errorMessage = `Erreur lors de l'upload: ${error.message}`;
+      
+      if (error.message.includes('Chemin de stockage invalide')) {
+        errorMessage = 'Erreur: Impossible de générer un chemin de stockage valide pour la vidéo';
+      } else if (error.message.includes('Le chemin de stockage est null')) {
+        errorMessage = 'Erreur: Le système de stockage n\'a pas pu identifier où sauvegarder la vidéo';
+      } else if (error.message.includes('Fichier vidéo est vide')) {
+        errorMessage = 'Erreur: La vidéo enregistrée est vide ou corrompue';
+      }
+      
+      setUploadError(errorMessage);
     } finally {
       setUploading(false);
     }
@@ -616,9 +639,9 @@ const EnhancedVideoUploader = () => {
           </CardHeader>
           <CardContent>
             {/* Optionnel: Afficher un lecteur vidéo si l'URL est disponible */}
-            {uploadedVideoData.url && (
+            {uploadedVideoData.public_url && (
               <div className="mb-4">
-                <video controls src={uploadedVideoData.url} className="w-full rounded-lg"></video>
+                <video controls src={uploadedVideoData.public_url} className="w-full rounded-lg"></video>
               </div>
             )}
             
