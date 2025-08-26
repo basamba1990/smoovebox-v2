@@ -66,8 +66,7 @@ const VideoManagement = () => {
           public_url,
           duration,
           performance_score,
-          ai_score,
-          analysis_result
+          ai_score
         `)
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
@@ -83,16 +82,17 @@ const VideoManagement = () => {
         // Utiliser transcription_data OU transcription_text pour détecter les transcriptions
         const hasTranscription = !!(video.transcription_text || video.transcription_data);
         
-        // Utiliser analysis_result s'il est disponible, sinon analysis, sinon ai_result
-        let analysisData = video.analysis_result || video.analysis || {};
+        // Utiliser analysis s'il est disponible, sinon ai_result
+        let analysisData = video.analysis || {};
         
-        // Si analysisData est une chaîne, essayer de la parser
-        if (typeof analysisData === 'string') {
+        // Si analysis est vide mais ai_result existe, essayer de le parser comme JSON
+        if ((!analysisData || Object.keys(analysisData).length === 0) && video.ai_result) {
           try {
-            analysisData = JSON.parse(analysisData);
+            analysisData = JSON.parse(video.ai_result);
           } catch (e) {
-            console.error("Erreur lors du parsing de analysis_result:", e);
-            analysisData = { summary: analysisData };
+            console.error("Erreur lors du parsing de ai_result:", e);
+            // Si le parsing échoue, traiter ai_result comme du texte simple
+            analysisData = { summary: video.ai_result };
           }
         }
         
@@ -133,7 +133,7 @@ const VideoManagement = () => {
           statusLabel,
           hasTranscription,
           hasAnalysis,
-          analysis_result: analysisData,
+          analysis_result: analysisData, // Garder analysis_result pour la compatibilité avec les composants enfants
           transcription_text: transcriptionText, // S'assurer que transcription_text est défini
           error_message: video.error_message || video.transcription_error || null
         };
