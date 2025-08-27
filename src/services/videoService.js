@@ -138,67 +138,35 @@ export const videoService = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Utilisateur non connecté');
 
-      // Générer un nom de fichier unique
-      const fileExt = file.name.split('.').pop();
+      // Générer un nom de fichier unique avec validation
+      const fileNameParts = file.name?.split('.') || [];
+      const fileExt = fileNameParts.length > 1 ? fileNameParts.pop() : 'webm';
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
-      let filePath = `${user.id}/${fileName}`;
+      
+      // Valider et générer le chemin de stockage
+      const filePath = validateStoragePath(`${user.id}/${fileName}`);
 
-      // Valider le chemin de stockage
-      filePath = validateStoragePath(filePath);
-
-      // Upload du fichier via XMLHttpRequest pour le suivi de progression réel
-      await new Promise(async (resolve, reject) => {
-        try {
-          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-          if (sessionError || !session) {
-            reject(new Error('Session d\'authentification non trouvée'));
-            return;
+      // Upload du fichier via l'API Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('videos')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+          onUploadProgress: (progress) => {
+            if (onProgress) {
+              const percent = Math.round((progress.loadedBytes / progress.totalBytes) * 100);
+              onProgress({
+                loaded: progress.loadedBytes,
+                total: progress.totalBytes,
+                percent: percent
+              });
+            }
           }
+        });
 
-          const xhr = new XMLHttpRequest();
-          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-          const url = `${supabaseUrl}/storage/v1/object/videos/${filePath}`;
-
-          xhr.upload.addEventListener('progress', (event) => {
-            if (event.lengthComputable) {
-              const percent = Math.round((event.loaded / event.total) * 100);
-              if (onProgress) {
-                onProgress({
-                  loaded: event.loaded,
-                  total: event.total,
-                  percent: percent
-                });
-              }
-            }
-          });
-
-          xhr.addEventListener('load', () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              try {
-                const response = xhr.responseText ? JSON.parse(xhr.responseText) : {};
-                resolve(response);
-              } catch (parseError) {
-                resolve({ success: true });
-              }
-            } else {
-              reject(new Error(`Upload failed with status: ${xhr.status} - ${xhr.responseText}`));
-            }
-          });
-
-          xhr.addEventListener('error', () => {
-            reject(new Error('Upload failed due to network error'));
-          });
-
-          xhr.open('POST', url);
-          xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
-          xhr.setRequestHeader('Content-Type', file.type);
-          xhr.setRequestHeader('Cache-Control', '3600');
-          xhr.send(file);
-
-        } catch (error) {
-          reject(error);
-        }
-      });
+      if (uploadError) {
+        throw new Error(`Échec de l'upload: ${uploadError.message}`);
+      }
 
       // Générer l'URL signée après l'upload réussi
       const { data: publicUrl, error: urlError } = await supabase.storage
@@ -245,7 +213,7 @@ export const videoService = {
 
       return videoData; // Retourner les données de la vidéo créée
     } catch (error) {
-      console.error('Erreur lors du téléchargement de la vidéo:', error);
+      console.error('Erreur détaillée lors du téléchargement:', error);
       throw new Error(`Échec de l'upload: ${error.message}`);
     }
   },
