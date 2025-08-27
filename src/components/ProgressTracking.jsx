@@ -79,28 +79,30 @@ const ProgressTracking = ({ userId, userProfile, isVisible = true }) => {
 
   // Formater les données pour l'affichage UI
   const formatProgressData = (videos, monthlyVideos, profile) => {
-    // Extraire uniquement les vidéos publiées
+    // Séparer les vidéos publiées et toutes les vidéos
     const publishedVideos = videos.filter(v => v.status === 'published');
+    const allVideos = videos || []; // Inclure toutes les vidéos pour l'affichage récent
 
     // Créer les compétences en analysant les vidéos publiées
     const skills = extractSkillsFromVideos(publishedVideos);
 
-    // Transformer les vidéos récentes pour l'affichage
-    const recentVideos = publishedVideos.slice(0, 5).map(video => ({
+    // Transformer TOUTES les vidéos récentes pour l'affichage (pas seulement les publiées)
+    const recentVideos = allVideos.slice(0, 5).map(video => ({
       id: video.id,
       title: video.title || 'Pitch sans titre',
       date: video.created_at,
       score: video.performance_score || 75,
+      status: video.status || 'processing', // Afficher le statut
       improvements: extractImprovementsFromAnalysis(video.analysis)
     }));
 
-    // Calculer la séquence d'activité
+    // Calculer la séquence d'activité sur les vidéos publiées
     const streak = calculateActivityStreak(publishedVideos);
 
-    // Générer les succès
+    // Générer les succès sur les vidéos publiées
     const achievements = generateAchievements(publishedVideos);
 
-    // Calculer les statistiques mensuelles
+    // Calculer les statistiques mensuelles (vidéos publiées uniquement)
     const monthlyStats = {
       pitchesCount: monthlyVideos.length,
       averageScore: calculateAverageScore(monthlyVideos),
@@ -113,6 +115,7 @@ const ProgressTracking = ({ userId, userProfile, isVisible = true }) => {
       profile: {
         level: calculateUserLevel(publishedVideos.length, calculateAverageScore(publishedVideos)),
         totalPitches: publishedVideos.length,
+        totalVideos: allVideos.length, // Ajouter le total de toutes les vidéos
         joinDate: profile?.created_at || new Date().toISOString(),
         currentStreak: streak.current,
         bestStreak: streak.best
@@ -464,6 +467,32 @@ const ProgressTracking = ({ userId, userProfile, isVisible = true }) => {
     <div className={`progress-tracking-dashboard ${isVisible ? '' : 'hidden'}`}>
       <Card className="mb-6">
         <CardHeader>
+          <CardTitle>Profil Utilisateur</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-4 rounded-lg border border-gray-200">
+              <h3 className="font-semibold text-md mb-1">Niveau</h3>
+              <p className="text-lg font-bold">{progressData.profile.level}</p>
+            </div>
+            <div className="p-4 rounded-lg border border-gray-200">
+              <h3 className="font-semibold text-md mb-1">Pitches publiés</h3>
+              <p className="text-lg font-bold">{progressData.profile.totalPitches}</p>
+            </div>
+            <div className="p-4 rounded-lg border border-gray-200">
+              <h3 className="font-semibold text-md mb-1">Total vidéos</h3>
+              <p className="text-lg font-bold">{progressData.profile.totalVideos}</p>
+            </div>
+            <div className="p-4 rounded-lg border border-gray-200">
+              <h3 className="font-semibold text-md mb-1">Séquence actuelle</h3>
+              <p className="text-lg font-bold">{progressData.profile.currentStreak} jours</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
           <CardTitle>Vue d'ensemble de la progression</CardTitle>
         </CardHeader>
         <CardContent>
@@ -566,7 +595,22 @@ const ProgressTracking = ({ userId, userProfile, isVisible = true }) => {
               {progressData.recentPitches.map(pitch => (
                 <li key={pitch.id} className="p-4 border rounded-lg flex justify-between items-center">
                   <div>
-                    <h4 className="font-semibold">{pitch.title}</h4>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="font-semibold">{pitch.title}</h4>
+                      <Badge 
+                        className={`text-xs ${
+                          pitch.status === 'published' ? 'bg-green-100 text-green-800' :
+                          pitch.status === 'processing' ? 'bg-yellow-100 text-yellow-800' :
+                          pitch.status === 'uploaded' ? 'bg-blue-100 text-blue-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}
+                      >
+                        {pitch.status === 'published' ? 'Publié' :
+                         pitch.status === 'processing' ? 'En traitement' :
+                         pitch.status === 'uploaded' ? 'Uploadé' :
+                         pitch.status || 'En cours'}
+                      </Badge>
+                    </div>
                     <p className="text-sm text-gray-600">{new Date(pitch.date).toLocaleDateString()}</p>
                     <p className="text-sm text-gray-600">Score: {pitch.score}</p>
                     <p className="text-sm text-gray-600">Améliorations: {pitch.improvements.join(', ')}</p>
@@ -587,4 +631,3 @@ const ProgressTracking = ({ userId, userProfile, isVisible = true }) => {
 };
 
 export default ProgressTracking;
-
