@@ -13,6 +13,7 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
   const [lastName, setLastName] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
   const { signIn, signUp, loading: authLoading } = useAuth();
 
   const resetForm = () => {
@@ -21,6 +22,7 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
     setFirstName('');
     setLastName('');
     setError(null);
+    setShowConfirmation(false);
   };
 
   const handleSubmit = async (e) => {
@@ -54,21 +56,24 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
         
         // Pour l'inscription, vérifier si l'email de confirmation est nécessaire
         if (result?.user?.identities?.length === 0) {
-          setError('✅ Inscription réussie ! Un email de confirmation a été envoyé à votre adresse. Veuillez vérifier votre boîte de réception et cliquer sur le lien de confirmation pour activer votre compte.');
+          setShowConfirmation(true);
+          setError(null);
           setLoading(false);
+          // Ne pas appeler onClose() ici pour laisser le message visible
           return;
         }
       }
       
-      // Vérifier si la connexion/inscription a réussi
+      // Si l'inscription a réussi et qu'aucun email de confirmation n'est nécessaire (par exemple, si l'utilisateur est déjà confirmé ou si la configuration Supabase ne l'exige pas)
+      // Ou si la connexion a réussi
       if (result && result.user) {
-        console.log('Authentification réussie, fermeture du modal');
+        console.log("Authentification réussie, fermeture du modal");
         
         // Attendre un peu pour que les triggers de base de données s'exécutent
         await new Promise(resolve => setTimeout(resolve, 1500));
         
         onAuthSuccess(result.user);
-        onClose();
+        onClose(); // Fermer le modal après un succès d'authentification direct
         resetForm();
       } else {
         setError('Erreur d\'authentification - Veuillez réessayer');
@@ -99,95 +104,145 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
       }
     }}>
       <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>{isLogin ? 'Connexion' : 'Inscription'}</DialogTitle>
-          <DialogDescription>
-            {isLogin ? 'Connectez-vous à votre compte.' : 'Créez un nouveau compte.'}
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="grid gap-4 py-4">
-          {!isLogin && (
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="firstName" className="text-right">
-                Prénom
-              </Label>
-              <Input
-                id="firstName"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                className="col-span-3"
-                required
-              />
+        {showConfirmation ? (
+          // Écran de confirmation après inscription
+          <>
+            <DialogHeader>
+              <DialogTitle className="text-center text-green-600">✅ Inscription réussie !</DialogTitle>
+              <DialogDescription className="text-center">
+                Votre compte a été créé avec succès.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-6 text-center space-y-4">
+              <div className="text-6xl">📧</div>
+              <div className="space-y-2">
+                <p className="text-lg font-semibold">Vérifiez votre email</p>
+                <p className="text-sm text-gray-600">
+                  Un email de confirmation a été envoyé à <strong>{email}</strong>
+                </p>
+                <p className="text-sm text-gray-600">
+                  Cliquez sur le lien dans l'email pour activer votre compte et vous connecter.
+                </p>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+                💡 <strong>Astuce :</strong> Vérifiez aussi votre dossier spam si vous ne voyez pas l'email.
+              </div>
             </div>
-          )}
-          {!isLogin && (
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="lastName" className="text-right">
-                Nom
-              </Label>
-              <Input
-                id="lastName"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                className="col-span-3"
-                required
-              />
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowConfirmation(false);
+                  setIsLogin(true);
+                }}
+                className="flex-1"
+              >
+                Se connecter
+              </Button>
+              <Button 
+                onClick={() => {
+                  onClose();
+                  resetForm();
+                }}
+                className="flex-1"
+              >
+                Fermer
+              </Button>
             </div>
-          )}
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="email" className="text-right">
-              Email
-            </Label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="col-span-3"
-              required
-            />
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="password" className="text-right">
-              Mot de passe
-            </Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="col-span-3"
-              required
-              minLength={6}
-            />
-          </div>
-          {error && (
-            <div className={`text-sm p-3 rounded-md ${
-              error.startsWith('✅') 
-                ? 'text-green-700 bg-green-50 border border-green-200' 
-                : 'text-red-500'
-            }`}>
-              {error}
-            </div>
-          )}
-          <Button type="submit" className="w-full" disabled={loading || authLoading}>
-            {loading ? 'Chargement...' : (isLogin ? 'Connexion' : 'Inscription')}
-          </Button>
-          <Button
-            variant="link"
-            onClick={() => {
-              setIsLogin(!isLogin);
-              setError(null);
-            }}
-            className="w-full"
-          >
-            {isLogin ? 'Pas de compte ? Inscrivez-vous' : 'Déjà un compte ? Connectez-vous'}
-          </Button>
-        </form>
+          </>
+        ) : (
+          // Formulaire de connexion/inscription normal
+          <>
+            <DialogHeader>
+              <DialogTitle>{isLogin ? 'Connexion' : 'Inscription'}</DialogTitle>
+              <DialogDescription>
+                {isLogin ? 'Connectez-vous à votre compte.' : 'Créez un nouveau compte.'}
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="grid gap-4 py-4">
+              {!isLogin && (
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="firstName" className="text-right">
+                    Prénom
+                  </Label>
+                  <Input
+                    id="firstName"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    className="col-span-3"
+                    required
+                  />
+                </div>
+              )}
+              {!isLogin && (
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="lastName" className="text-right">
+                    Nom
+                  </Label>
+                  <Input
+                    id="lastName"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className="col-span-3"
+                    required
+                  />
+                </div>
+              )}
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="email" className="text-right">
+                  Email
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="col-span-3"
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="password" className="text-right">
+                  Mot de passe
+                </Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="col-span-3"
+                  required
+                  minLength={6}
+                />
+              </div>
+              {error && (
+                <div className={`text-sm p-3 rounded-md ${
+                  error.startsWith('✅') 
+                    ? 'text-green-700 bg-green-50 border border-green-200' 
+                    : 'text-red-500'
+                }`}>
+                  {error}
+                </div>
+              )}
+              <Button type="submit" className="w-full" disabled={loading || authLoading}>
+                {loading ? 'Chargement...' : (isLogin ? 'Connexion' : 'Inscription')}
+              </Button>
+              <Button
+                variant="link"
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setError(null);
+                }}
+                className="w-full"
+              >
+                {isLogin ? 'Pas de compte ? Inscrivez-vous' : 'Déjà un compte ? Connectez-vous'}
+              </Button>
+            </form>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
 };
 
 export default AuthModal;
-
