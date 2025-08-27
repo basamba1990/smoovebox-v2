@@ -6,19 +6,21 @@ import VideoManagement from './pages/VideoManagement.jsx';
 import VideoUploader from './components/VideoUploader.jsx';
 import EnhancedVideoUploader from './components/EnhancedVideoUploader.jsx';
 import ProgressTracking from './components/ProgressTracking.jsx';
-import ErrorBoundary from './components/ErrorBoundary.jsx';
+import ErrorBoundaryEnhanced, { SupabaseErrorFallback } from './components/ErrorBoundaryEnhanced.jsx';
 import EmptyState from './components/EmptyState.jsx';
 import ProfessionalHeader from './components/ProfessionalHeader.jsx';
 import ModernTabs from './components/ModernTabs.jsx';
 import { useAuth } from './context/AuthContext.jsx';
-import { Button } from './components/ui/button.jsx';
+import { Button } from './components/ui/button-enhanced.jsx';
 import { Tabs, TabsContent } from './components/ui/tabs.jsx';
 import { supabase, fetchDashboardData, checkSupabaseConnection, retryOperation } from './lib/supabase.js';
 import { RefreshCw, AlertTriangle, Video, Upload, BarChart3, FileText } from 'lucide-react';
 import LoadingScreen from './components/LoadingScreen.jsx';
+import { SkeletonDashboard } from './components/ui/skeleton.jsx';
 import SupabaseDiagnostic from './components/SupabaseDiagnostic.jsx';
 import VideoProcessingStatus from './components/VideoProcessingStatus.jsx';
 import './App.css';
+import './styles/design-system.css';
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState('dashboard');
