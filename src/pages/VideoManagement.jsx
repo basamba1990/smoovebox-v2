@@ -223,33 +223,45 @@ const VideoManagement = () => {
         throw new Error("URL Supabase non configurée");
       }
       
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/transcribe-video`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ 
-            videoId: video.id,
-            videoUrl: videoUrl
-          })
-        }
-      );
+      // Préparer les données de la requête
+      const requestData = { 
+        videoId: video.id,
+        videoUrl: videoUrl
+      };
+      
+      console.log('Envoi de la requête de transcription avec:', requestData);
+      
+      // Construire l'URL avec les paramètres pour plus de fiabilité
+      const transcribeUrl = new URL(`${supabaseUrl}/functions/v1/transcribe-video`);
+      transcribeUrl.searchParams.set('videoId', video.id);
+      transcribeUrl.searchParams.set('videoUrl', videoUrl);
+      
+      const response = await fetch(transcribeUrl.toString(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(requestData)
+      });
+      
+      console.log('Réponse de la transcription:', response.status, response.statusText);
       
       if (!response.ok) {
         let errorMessage = "Erreur lors de la transcription";
         try {
           const errorResult = await response.json();
-          errorMessage = errorResult.error || errorMessage;
+          console.error('Détails de l\'erreur:', errorResult);
+          errorMessage = errorResult.error || errorResult.details || errorMessage;
         } catch (e) {
+          console.error('Erreur lors du parsing de la réponse d\'erreur:', e);
           errorMessage = `${response.status} ${response.statusText}`;
         }
         throw new Error(errorMessage);
       }
       
       const result = await response.json();
+      console.log('Résultat de la transcription:', result);
       
       if (result.error) {
         throw new Error(result.error);
