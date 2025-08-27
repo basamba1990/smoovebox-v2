@@ -220,55 +220,54 @@ Deno.serve(async (req) => {
 
     // 2. RÉCUPÉRER LES DONNÉES DE LA REQUÊTE
     let videoId: string | null = null
+    let videoUrl: string | null = null
 
-    // Pour GET ou WhatsApp, récupérer videoId des paramètres d'URL
-    if (req.method === 'GET' || isWhatsApp) {
-      const url = new URL(req.url)
-      videoId = url.searchParams.get('videoId')
-
-      if (!videoId) {
-        return new Response(
-          JSON.stringify({ error: 'videoId est requis en paramètre pour les requêtes GET' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-        )
-      }
+    // Essayer d'abord les paramètres d'URL (plus fiable)
+    const url = new URL(req.url)
+    videoId = url.searchParams.get('videoId')
+    
+    if (videoId) {
       console.log(`VideoId récupéré des paramètres d'URL: ${videoId}`)
-    } else {
+      // Récupérer aussi videoUrl si fourni en paramètre
+      videoUrl = url.searchParams.get('videoUrl')
+    }
+
+    // Si pas trouvé dans l'URL et que ce n'est pas une requête GET, essayer le corps de la requête
+    if (!videoId && req.method !== 'GET' && !isWhatsApp) {
       try {
-        const clonedRequest = req.clone()
-        const requestData = await clonedRequest.json()
-
-        if (requestData.videoId) {
-          videoId = requestData.videoId
-          console.log('Données de requête reçues:', { videoId })
-        } else {
-          const url = new URL(req.url)
-          videoId = url.searchParams.get('videoId')
-
-          if (!videoId) {
-            return new Response(
-              JSON.stringify({ error: 'videoId est requis dans le corps de la requête ou en paramètre' }),
-              { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-            )
+        const requestBody = await req.text()
+        console.log('Corps de la requête reçu:', requestBody)
+        
+        if (requestBody.trim()) {
+          const requestData = JSON.parse(requestBody)
+          console.log('Données de requête parsées:', requestData)
+          
+          if (requestData.videoId) {
+            videoId = requestData.videoId
+            console.log(`VideoId récupéré du corps de la requête: ${videoId}`)
+          }
+          
+          if (requestData.videoUrl) {
+            videoUrl = requestData.videoUrl
+            console.log(`VideoUrl récupéré du corps de la requête: ${videoUrl}`)
           }
         }
       } catch (parseError) {
-        console.error("Erreur lors de l'analyse du JSON de la requête", parseError)
-
-        const url = new URL(req.url)
-        videoId = url.searchParams.get('videoId')
-
-        if (!videoId) {
-          return new Response(
-            JSON.stringify({
-              error: 'Format de requête invalide',
-              details:
-                'Impossible de lire les données de la requête. Assurez-vous que le corps est un JSON valide ou que videoId est fourni en paramètre de requête.'
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-          )
-        }
+        console.error("Erreur lors de l'analyse du JSON de la requête:", parseError)
+        // Ne pas échouer ici, continuer avec les paramètres d'URL
       }
+    }
+
+    // Vérification finale
+    if (!videoId) {
+      console.error('VideoId non trouvé dans les paramètres d\'URL ni dans le corps de la requête')
+      return new Response(
+        JSON.stringify({ 
+          error: 'videoId est requis dans le corps de la requête ou en paramètre',
+          details: 'Veuillez fournir videoId soit dans le corps JSON de la requête, soit comme paramètre d\'URL (?videoId=...)'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
     }
 
     // 3. VÉRIFIER L'ACCÈS À LA VIDÉO
@@ -316,7 +315,10 @@ Deno.serve(async (req) => {
     }
 
     // 5. RÉCUPÉRER L'URL DE LA VIDÉO
-    let videoUrl: string | null = (video as any).url
+    // Utiliser d'abord videoUrl du corps de la requête si disponible
+    if (!videoUrl) {
+      videoUrl = (video as any).url
+    }
 
     if (!videoUrl && (video as any).storage_path) {
       console.log(`Génération d'une URL signée pour ${(video as any).storage_path}`)
