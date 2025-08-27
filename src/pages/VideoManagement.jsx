@@ -6,6 +6,7 @@ import VideoPlayer from '../components/VideoPlayer';
 import VideoAnalysisResults from '../components/VideoAnalysisResults';
 import TranscriptionViewer from '../components/TranscriptionViewer';
 import VideoProcessingStatus from '../components/VideoProcessingStatus';
+import { videoService } from '../services/videoService';
 
 const VideoManagement = () => {
   const { user } = useAuth();
@@ -14,10 +15,10 @@ const VideoManagement = () => {
   const [error, setError] = useState(null);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [processingVideoId, setProcessingVideoId] = useState(null);
-
+  
   const getStatusLabel = (status) => {
     const statusMap = {
-      'uploaded': 'Téléchargée',
+      'uploaded': 'Uploadée',
       'processing': 'En traitement',
       'transcribed': 'Transcrite',
       'analyzing': 'En analyse',
@@ -26,12 +27,12 @@ const VideoManagement = () => {
       'failed': 'Échec',
       'draft': 'Brouillon',
       'ready': 'Prête',
-      'pending': 'En attente',
-      'transcribing': 'Transcription en cours'
+      'pending': 'En attente'
     };
-    return statusMap[status] || 'Inconnu';
+    
+    return statusMap[status] || status || 'Inconnu';
   };
-
+  
   const fetchVideos = useCallback(async () => {
     if (!user) return;
     
@@ -41,75 +42,20 @@ const VideoManagement = () => {
     try {
       console.log("Récupération des vidéos pour user_id:", user.id);
       
-      if (!supabase) {
-        throw new Error("Supabase client non initialisé");
-      }
+      const videosData = await videoService.getUserVideos();
       
-      // REQUÊTE CORRIGÉE avec jointure des transcriptions
-      const { data, error: supabaseError } = await supabase
-        .from("videos")
-        .select(`
-          id,
-          title,
-          description,
-          status,
-          created_at,
-          updated_at,
-          transcription_text,
-          transcription_data,
-          analysis,
-          ai_result,
-          error_message,
-          transcription_error,
-          user_id,
-          storage_path,
-          file_path,
-          public_url,
-          duration,
-          performance_score,
-          ai_score,
-          transcriptions (*)
-        `)
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-
-      if (supabaseError) {
-        console.error("Erreur Supabase:", supabaseError);
-        throw new Error(`Erreur Supabase: ${supabaseError.message}`);
-      }
+      console.log("Videos data received:", videosData);
       
-      console.log("Videos data received:", data);
-      
-      const normalizedVideos = (data || []).map(video => {
-        // Utiliser transcription_data OU transcription_text pour détecter les transcriptions
-        const hasTranscription = !!(video.transcription_text || video.transcription_data);
+      const normalizedVideos = (videosData || []).map(video => {
+        const hasTranscription = !!(video.transcription_text || (video.transcriptions && video.transcriptions.length > 0));
         
-        // Utiliser analysis s'il est disponible, sinon ai_result
         let analysisData = video.analysis || {};
-        
-        // Si analysis est vide mais ai_result existe, essayer de le parser comme JSON
         if ((!analysisData || Object.keys(analysisData).length === 0) && video.ai_result) {
           try {
             analysisData = JSON.parse(video.ai_result);
           } catch (e) {
             console.error("Erreur lors du parsing de ai_result:", e);
-            // Si le parsing échoue, traiter ai_result comme du texte simple
             analysisData = { summary: video.ai_result };
-          }
-        }
-        
-        // Vérifier s'il y a des analyses dans les transcriptions liées
-        if ((!analysisData || Object.keys(analysisData).length === 0) && 
-            video.transcriptions && video.transcriptions.length > 0) {
-          const transcriptionRecord = video.transcriptions[0];
-          if (transcriptionRecord.analysis_result) {
-            try {
-              analysisData = typeof transcriptionRecord.analysis_result === 'string' 
-                ? JSON.parse(transcriptionRecord.analysis_result) 
-                : transcriptionRecord.analysis_result;
-            } catch (e) {
-              console.error("Erreur lors du parsing de analysis_result:", e);
-            }
           }
         }
         
@@ -118,30 +64,19 @@ const VideoManagement = () => {
         let normalizedStatus = video.status || "pending";
         let statusLabel = getStatusLabel(normalizedStatus);
         
-        if (hasTranscription && !hasAnalysis) {
+        if (hasTranscription && !hasAnalysis && normalizedStatus !== 'failed') {
           normalizedStatus = "transcribed";
           statusLabel = "Transcrite";
         }
         
-        if (hasAnalysis) {
+        if (hasAnalysis && normalizedStatus !== 'failed') {
           normalizedStatus = "analyzed";
           statusLabel = "Analysée";
         }
         
-        // Récupérer le texte de transcription depuis transcription_data si nécessaire
         let transcriptionText = video.transcription_text;
-        if (!transcriptionText && video.transcription_data) {
-          // Essayer d'extraire le texte de transcription_data
-          if (typeof video.transcription_data === 'object') {
-            transcriptionText = video.transcription_data.text || video.transcription_data.full_text || "";
-          } else if (typeof video.transcription_data === 'string') {
-            try {
-              const parsedData = JSON.parse(video.transcription_data);
-              transcriptionText = parsedData.text || parsedData.full_text || "";
-            } catch (e) {
-              transcriptionText = video.transcription_data;
-            }
-          }
+        if (!transcriptionText && video.transcriptions && video.transcriptions.length > 0) {
+          transcriptionText = video.transcriptions[0].text;
         }
         
         return {
@@ -172,7 +107,7 @@ const VideoManagement = () => {
     } finally {
       setLoading(false);
     }
-  }, [user]); // RETIRER selectedVideo DES DÉPENDANCES
+  }, [user, selectedVideo]);
 
   const getPublicUrl = (video) => {
     if (!video) return null;
@@ -208,54 +143,7 @@ const VideoManagement = () => {
       setProcessingVideoId(video.id);
       toast.loading("Démarrage de la transcription...", { id: 'transcribe-toast' });
       
-      const { data: authData, error: authError } = await supabase.auth.getSession();
-      if (authError) {
-        throw new Error("Erreur d'authentification: " + authError.message);
-      }
-      
-      const token = authData?.session?.access_token;
-      
-      if (!token) {
-        throw new Error("Session expirée, veuillez vous reconnecter");
-      }
-      
-      const videoUrl = video.public_url || getPublicUrl(video);
-      if (!videoUrl) {
-        throw new Error("URL de la vidéo non disponible");
-      }
-      
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (!supabaseUrl) {
-        throw new Error("URL Supabase non configurée");
-      }
-      
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/transcribe-video`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ 
-            videoId: video.id,
-            videoUrl: videoUrl
-          })
-        }
-      );
-      
-      if (!response.ok) {
-        let errorMessage = "Erreur lors de la transcription";
-        try {
-          const errorResult = await response.json();
-          errorMessage = errorResult.error || errorMessage;
-        } catch (e) {
-          errorMessage = `${response.status} ${response.statusText}`;
-        }
-        throw new Error(errorMessage);
-      }
-      
-      const result = await response.json();
+      const result = await videoService.transcribeVideo(video.id);
       
       if (result.error) {
         throw new Error(result.error);
