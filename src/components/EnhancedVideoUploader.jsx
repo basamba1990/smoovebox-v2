@@ -268,7 +268,10 @@ const EnhancedVideoUploader = () => {
   };
 
   const handleAcceptVideo = async () => {
-    if (!recordedVideo) return;
+    if (!recordedVideo?.blob) {
+      setUploadError('Aucune vidéo à uploader');
+      return;
+    }
 
     setUploading(true);
     setUploadError(null);
@@ -279,30 +282,57 @@ const EnhancedVideoUploader = () => {
 
     try {
       const metadata = {
-        title: recordedVideo.name.replace('.webm', ''),
+        title: recordedVideo.name?.replace('.webm', '') || `video_${Date.now()}`,
         description: 'Vidéo enregistrée depuis la caméra',
-        duration: recordedVideo.duration,
+        duration: recordedVideo.duration || 0,
         isPublic: false,
       };
 
-      const uploadedVideo = await videoService.uploadVideo(recordedVideo.blob, metadata, (progressEvent) => {
-        const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
-        setUploadProgress(percent);
-      });
+      // Validation supplémentaire
+      if (!metadata.title) {
+        throw new Error('Le titre de la vidéo est invalide');
+      }
+
+      const uploadedVideo = await videoService.uploadVideo(
+        recordedVideo.blob, 
+        metadata, 
+        (progressEvent) => {
+          const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+          setUploadProgress(percent);
+        }
+      );
 
       console.log('Vidéo uploadée avec succès:', uploadedVideo);
       setUploadSuccess('Vidéo uploadée avec succès !');
       setUploadedVideoData(uploadedVideo);
 
       // Déclencher la transcription après l'upload réussi
-      await videoService.transcribeVideo(uploadedVideo.id);
-      setUploadSuccess('Vidéo uploadée et transcription initiée avec succès !');
+      try {
+        await videoService.transcribeVideo(uploadedVideo.id);
+        setUploadSuccess('Vidéo uploadée et transcription initiée avec succès !');
+      } catch (transcriptionError) {
+        console.warn('Erreur lors du démarrage de la transcription:', transcriptionError);
+        setUploadSuccess('Vidéo uploadée avec succès, mais erreur lors du démarrage de la transcription');
+      }
+      
       setShowResults(true);
       setCurrentStep('results');
 
     } catch (error) {
       console.error('Erreur lors de l\'upload de la vidéo:', error);
-      setUploadError(`Erreur lors de l\'upload: ${error.message}`);
+      
+      // Message d'erreur plus précis
+      let errorMessage = `Erreur lors de l'upload: ${error.message}`;
+      
+      if (error.message.includes('Chemin de stockage invalide')) {
+        errorMessage = 'Erreur: Impossible de générer un chemin de stockage valide pour la vidéo';
+      } else if (error.message.includes('Le chemin de stockage est null')) {
+        errorMessage = 'Erreur: Le système de stockage n\'a pas pu identifier où sauvegarder la vidéo';
+      } else if (error.message.includes('Fichier vidéo est vide')) {
+        errorMessage = 'Erreur: La vidéo enregistrée est vide ou corrompue';
+      }
+      
+      setUploadError(errorMessage);
     } finally {
       setUploading(false);
     }
