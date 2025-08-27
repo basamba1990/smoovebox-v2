@@ -476,9 +476,9 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
-      <ErrorBoundary>
+      <ErrorBoundaryEnhanced FallbackComponent={SupabaseErrorFallback}>
         <AppContent />
-      </ErrorBoundary>
+      </ErrorBoundaryEnhanced>
     </AuthProvider>
   );
 }
