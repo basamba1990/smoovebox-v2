@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
@@ -15,30 +15,8 @@ const VideoManagement = () => {
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [processingVideoId, setProcessingVideoId] = useState(null);
   
-  // CORRECTION: Utiliser useRef pour éviter les re-créations inutiles
-  const channelRef = useRef(null);
-  const mountedRef = useRef(true);
-  
-  const getStatusLabel = (status) => {
-    const statusMap = {
-      'uploaded': 'Téléchargée',
-      'processing': 'En traitement',
-      'transcribed': 'Transcrite',
-      'analyzing': 'En analyse',
-      'analyzed': 'Analysée',
-      'published': 'Publiée',
-      'failed': 'Échec',
-      'draft': 'Brouillon',
-      'ready': 'Prête',
-      'pending': 'En attente',
-      'transcribing': 'Transcription en cours'
-    };
-    return statusMap[status] || 'Inconnu';
-  };
-  
-  // CORRECTION: Supprimer selectedVideo des dépendances pour éviter la boucle infinie
   const fetchVideos = useCallback(async () => {
-    if (!user || !mountedRef.current) return;
+    if (!user) return;
     
     setLoading(true);
     setError(null);
@@ -46,12 +24,13 @@ const VideoManagement = () => {
     try {
       console.log("Récupération des vidéos pour user_id:", user.id);
       
+      // Vérifier que supabase est correctement initialisé
       if (!supabase) {
         throw new Error("Supabase client non initialisé");
       }
       
       const { data, error: supabaseError } = await supabase
-        .from("videos")
+        .from("video_details")
         .select(`
           id,
           title,
@@ -60,10 +39,9 @@ const VideoManagement = () => {
           created_at,
           updated_at,
           transcription_text,
-          transcription_data,
           analysis,
-          ai_result,
-          error_message,
+          analysis_result,
+          video_error,
           transcription_error,
           user_id,
           storage_path,
@@ -71,7 +49,8 @@ const VideoManagement = () => {
           public_url,
           duration,
           performance_score,
-          ai_score
+          ai_score,
+          ai_result
         `)
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
@@ -84,23 +63,9 @@ const VideoManagement = () => {
       console.log("Videos data received:", data);
       
       const normalizedVideos = (data || []).map(video => {
-        // Utiliser transcription_data OU transcription_text pour détecter les transcriptions
-        const hasTranscription = !!(video.transcription_text || video.transcription_data);
-        
-        // Utiliser analysis s'il est disponible, sinon ai_result
-        let analysisData = video.analysis || {};
-        
-        // Si analysis est vide mais ai_result existe, essayer de le parser comme JSON
-        if ((!analysisData || Object.keys(analysisData).length === 0) && video.ai_result) {
-          try {
-            analysisData = JSON.parse(video.ai_result);
-          } catch (e) {
-            console.error("Erreur lors du parsing de ai_result:", e);
-            // Si le parsing échoue, traiter ai_result comme du texte simple
-            analysisData = { summary: video.ai_result };
-          }
-        }
-        
+        const hasTranscription = !!(video.transcription_text);
+        // Utiliser analysis_result s'il est disponible, sinon analysis
+        const analysisData = video.analysis_result || video.analysis || {};
         const hasAnalysis = !!(analysisData && Object.keys(analysisData).length > 0);
         
         let normalizedStatus = video.status || "pending";
@@ -116,57 +81,51 @@ const VideoManagement = () => {
           statusLabel = "Analysée";
         }
         
-        // Récupérer le texte de transcription depuis transcription_data si nécessaire
-        let transcriptionText = video.transcription_text;
-        if (!transcriptionText && video.transcription_data) {
-          // Essayer d'extraire le texte de transcription_data
-          if (typeof video.transcription_data === 'object') {
-            transcriptionText = video.transcription_data.text || video.transcription_data.full_text || "";
-          } else if (typeof video.transcription_data === 'string') {
-            try {
-              const parsedData = JSON.parse(video.transcription_data);
-              transcriptionText = parsedData.text || parsedData.full_text || "";
-            } catch (e) {
-              transcriptionText = video.transcription_data;
-            }
-          }
-        }
-        
         return {
           ...video,
           normalizedStatus,
           statusLabel,
           hasTranscription,
           hasAnalysis,
-          analysis_result: analysisData, // Garder analysis_result pour la compatibilité avec les composants enfants
-          transcription_text: transcriptionText, // S'assurer que transcription_text est défini
-          error_message: video.error_message || video.transcription_error || null
+          analysis_result: analysisData, // Standardiser sur analysis_result
+          error_message: video.video_error || video.transcription_error || null
         };
       });
       
-      if (!mountedRef.current) return;
-      
       setVideos(normalizedVideos);
       
-      // CORRECTION: Mettre à jour selectedVideo séparément pour éviter la boucle
-      setSelectedVideo(prevSelected => {
-        if (!prevSelected) return null;
-        const updatedSelected = normalizedVideos.find(v => v.id === prevSelected.id);
-        return updatedSelected || null;
-      });
+      if (selectedVideo) {
+        const updatedSelectedVideo = normalizedVideos.find(v => v.id === selectedVideo.id);
+        if (updatedSelectedVideo) {
+          setSelectedVideo(updatedSelectedVideo);
+        }
+      }
       
     } catch (error) {
       console.error("Erreur lors du chargement des vidéos:", error);
-      if (mountedRef.current) {
-        setError(`Erreur de chargement: ${error.message}`);
-        setVideos([]);
-      }
+      setError(`Erreur de chargement: ${error.message}`);
+      setVideos([]);
     } finally {
-      if (mountedRef.current) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
-  }, [user]); // CORRECTION: Supprimer selectedVideo des dépendances
+  }, [user, selectedVideo]);
+  
+  const getStatusLabel = (status) => {
+    const statusMap = {
+      'uploaded': 'Uploadée',
+      'processing': 'En traitement',
+      'transcribed': 'Transcrite',
+      'analyzing': 'En analyse',
+      'analyzed': 'Analysée',
+      'published': 'Publiée',
+      'failed': 'Échec',
+      'draft': 'Brouillon',
+      'ready': 'Prête',
+      'pending': 'En attente'
+    };
+    
+    return statusMap[status] || 'Inconnu';
+  };
 
   const getPublicUrl = (video) => {
     if (!video) return null;
@@ -177,6 +136,7 @@ const VideoManagement = () => {
     if (!path) return null;
     
     try {
+      // Utiliser l'URL de Supabase depuis les variables d'environnement
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       if (!supabaseUrl) {
         console.error("URL Supabase non configurée");
@@ -223,45 +183,33 @@ const VideoManagement = () => {
         throw new Error("URL Supabase non configurée");
       }
       
-      // Préparer les données de la requête
-      const requestData = { 
-        videoId: video.id,
-        videoUrl: videoUrl
-      };
-      
-      console.log('Envoi de la requête de transcription avec:', requestData);
-      
-      // Construire l'URL avec les paramètres pour plus de fiabilité
-      const transcribeUrl = new URL(`${supabaseUrl}/functions/v1/transcribe-video`);
-      transcribeUrl.searchParams.set('videoId', video.id);
-      transcribeUrl.searchParams.set('videoUrl', videoUrl);
-      
-      const response = await fetch(transcribeUrl.toString(), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(requestData)
-      });
-      
-      console.log('Réponse de la transcription:', response.status, response.statusText);
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/transcribe-video`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ 
+            videoId: video.id,
+            videoUrl: videoUrl
+          })
+        }
+      );
       
       if (!response.ok) {
         let errorMessage = "Erreur lors de la transcription";
         try {
           const errorResult = await response.json();
-          console.error('Détails de l\'erreur:', errorResult);
-          errorMessage = errorResult.error || errorResult.details || errorMessage;
+          errorMessage = errorResult.error || errorMessage;
         } catch (e) {
-          console.error('Erreur lors du parsing de la réponse d\'erreur:', e);
           errorMessage = `${response.status} ${response.statusText}`;
         }
         throw new Error(errorMessage);
       }
       
       const result = await response.json();
-      console.log('Résultat de la transcription:', result);
       
       if (result.error) {
         throw new Error(result.error);
@@ -270,20 +218,17 @@ const VideoManagement = () => {
       toast.success("Transcription démarrée avec succès", { id: 'transcribe-toast' });
       
       // Mise à jour optimiste de l'interface
-      setVideos(prev => prev.map(v => 
+      const updatedVideos = videos.map(v => 
         v.id === video.id ? { ...v, status: 'processing' } : v
-      ));
-      
-      setSelectedVideo(prev => 
-        prev?.id === video.id ? { ...prev, status: 'processing' } : prev
       );
+      setVideos(updatedVideos);
       
-      // CORRECTION: Rechargement avec délai plus court et vérification du montage
-      setTimeout(() => {
-        if (mountedRef.current) {
-          fetchVideos();
-        }
-      }, 3000);
+      if (selectedVideo?.id === video.id) {
+        setSelectedVideo({ ...video, status: 'processing' });
+      }
+      
+      // Rechargement après un délai
+      setTimeout(fetchVideos, 5000);
       
     } catch (err) {
       console.error("Erreur lors de la transcription:", err);
@@ -295,21 +240,24 @@ const VideoManagement = () => {
       
       toast.error(`Erreur: ${errorMessage}`, { id: 'transcribe-toast' });
       
-      setVideos(prev => prev.map(v => 
+      const updatedVideos = videos.map(v => 
         v.id === video.id ? { 
           ...v, 
           status: 'failed', 
+          video_error: errorMessage,
           error_message: errorMessage
         } : v
-      ));
-      
-      setSelectedVideo(prev => 
-        prev?.id === video.id ? { 
-          ...prev, 
-          status: 'failed', 
-          error_message: errorMessage
-        } : prev
       );
+      setVideos(updatedVideos);
+      
+      if (selectedVideo?.id === video.id) {
+        setSelectedVideo({ 
+          ...video, 
+          status: 'failed', 
+          video_error: errorMessage,
+          error_message: errorMessage
+        });
+      }
     } finally {
       setProcessingVideoId(null);
     }
@@ -372,20 +320,17 @@ const VideoManagement = () => {
       toast.success("Analyse IA démarrée avec succès", { id: 'analyze-toast' });
       
       // Mise à jour optimiste de l'interface
-      setVideos(prev => prev.map(v => 
+      const updatedVideos = videos.map(v => 
         v.id === video.id ? { ...v, status: 'analyzing' } : v
-      ));
-      
-      setSelectedVideo(prev => 
-        prev?.id === video.id ? { ...prev, status: 'analyzing' } : prev
       );
+      setVideos(updatedVideos);
       
-      // CORRECTION: Rechargement avec délai plus court et vérification du montage
-      setTimeout(() => {
-        if (mountedRef.current) {
-          fetchVideos();
-        }
-      }, 3000);
+      if (selectedVideo?.id === video.id) {
+        setSelectedVideo({ ...video, status: 'analyzing' });
+      }
+      
+      // Rechargement après un délai
+      setTimeout(fetchVideos, 5000);
       
     } catch (err) {
       console.error("Erreur lors de l'analyse:", err);
@@ -397,21 +342,24 @@ const VideoManagement = () => {
       
       toast.error(`Erreur: ${errorMessage}`, { id: 'analyze-toast' });
       
-      setVideos(prev => prev.map(v => 
+      const updatedVideos = videos.map(v => 
         v.id === video.id ? { 
           ...v, 
           status: 'failed', 
+          video_error: errorMessage,
           error_message: errorMessage
         } : v
-      ));
-      
-      setSelectedVideo(prev => 
-        prev?.id === video.id ? { 
-          ...prev, 
-          status: 'failed', 
-          error_message: errorMessage
-        } : prev
       );
+      setVideos(updatedVideos);
+      
+      if (selectedVideo?.id === video.id) {
+        setSelectedVideo({ 
+          ...video, 
+          status: 'failed', 
+          video_error: errorMessage,
+          error_message: errorMessage
+        });
+      }
     } finally {
       setProcessingVideoId(null);
     }
@@ -470,21 +418,15 @@ const VideoManagement = () => {
     }
   };
   
-  // CORRECTION: Simplifier le useEffect principal
   useEffect(() => {
     if (!user) return;
 
     fetchVideos();
     
-    // CORRECTION: Configurer l'abonnement aux changements en temps réel de manière plus robuste
-    const setupRealtime = () => {
+    // Configurer l'abonnement aux changements en temps réel
+    const setupRealtime = async () => {
       try {
-        // Nettoyer l'ancien canal s'il existe
-        if (channelRef.current) {
-          supabase.removeChannel(channelRef.current);
-        }
-        
-        channelRef.current = supabase
+        const channel = supabase
           .channel('videos_changes')
           .on('postgres_changes', 
             { 
@@ -495,44 +437,29 @@ const VideoManagement = () => {
             }, 
             (payload) => {
               console.log('Change received!', payload);
-              // CORRECTION: Ajouter un délai pour éviter les appels trop fréquents
-              setTimeout(() => {
-                if (mountedRef.current) {
-                  fetchVideos();
-                }
-              }, 1000);
+              fetchVideos();
             }
           )
           .subscribe((status) => {
             console.log('Subscription status:', status);
           });
+        
+        return () => {
+          supabase.removeChannel(channel);
+        };
       } catch (error) {
         console.error("Erreur lors de la configuration du temps réel:", error);
       }
     };
     
-    setupRealtime();
+    const cleanup = setupRealtime();
     
-    // CORRECTION: Nettoyage amélioré
     return () => {
-      mountedRef.current = false;
-      if (channelRef.current) {
-        try {
-          supabase.removeChannel(channelRef.current);
-          channelRef.current = null;
-        } catch (err) {
-          console.error('Erreur lors de la suppression du canal:', err);
-        }
+      if (cleanup && typeof cleanup.then === 'function') {
+        cleanup.then(fn => fn && fn());
       }
     };
-  }, [user, fetchVideos]); // CORRECTION: Garder fetchVideos mais sans selectedVideo dans ses dépendances
-
-  // CORRECTION: Effet de nettoyage au démontage
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
+  }, [user, fetchVideos]);
 
   if (!user) {
     return (
@@ -636,9 +563,9 @@ const VideoManagement = () => {
                       <VideoProcessingStatus videoId={video.id} initialStatus={video.status} />
                     </div>
                   </div>
-                  {video.status === 'failed' && video.error_message && (
+                  {video.status === 'failed' && video.video_error && (
                     <p className="text-xs text-red-500 mt-1 truncate">
-                      {video.error_message}
+                      {video.video_error}
                     </p>
                   )}
                 </div>
@@ -716,14 +643,14 @@ const VideoManagement = () => {
                 {selectedVideo.hasTranscription && (
                   <div className="mb-4">
                     <h3 className="text-lg font-semibold mb-2">Transcription</h3>
-                    <TranscriptionViewer video={selectedVideo} />
+                    <TranscriptionViewer transcription={selectedVideo.transcription_text} />
                   </div>
                 )}
 
                 {selectedVideo.hasAnalysis && (
                   <div className="mb-4">
                     <h3 className="text-lg font-semibold mb-2">Analyse IA</h3>
-                    <VideoAnalysisResults video={selectedVideo} />
+                    <VideoAnalysisResults analysis={selectedVideo.analysis_result} />
                   </div>
                 )}
 
@@ -733,9 +660,9 @@ const VideoManagement = () => {
                   </div>
                 )}
 
-                {selectedVideo.status === 'failed' && selectedVideo.error_message && (
+                {selectedVideo.status === 'failed' && selectedVideo.video_error && (
                   <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-                    <p>Erreur de traitement: {selectedVideo.error_message}</p>
+                    <p>Erreur de traitement: {selectedVideo.video_error}</p>
                     <button 
                       onClick={() => {
                         if (selectedVideo.hasTranscription) {
