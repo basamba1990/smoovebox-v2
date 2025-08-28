@@ -420,7 +420,7 @@ function AppContent() {
             <div className="text-center py-8 sm:py-12 lg:py-16">
               <div className="max-w-md mx-auto px-4">
                 <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
-                  <img src="/logo.png" alt="SpotBulle AI Logo" className="h-12 w-12 sm:h-16 sm:w-16" />
+                  <img src="/logo-spotbulle-final.png" alt="SpotBulle AI Logo" className="h-12 w-12 sm:h-16 sm:w-16" />
                 </div>
                 <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-3 sm:mb-4">
                   Bienvenue sur SpotBulle
@@ -476,9 +476,9 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
-      <ErrorBoundaryEnhanced FallbackComponent={SupabaseErrorFallback}>
+      <ErrorBoundary>
         <AppContent />
-      </ErrorBoundaryEnhanced>
+      </ErrorBoundary>
     </AuthProvider>
   );
 }
