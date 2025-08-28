@@ -242,7 +242,7 @@ export const videoService = {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session.access_token}`
           },
-          body: JSON.stringify({ video_id: videoId })
+          body: JSON.stringify({ videoId: videoId })
         }
       );
       
@@ -345,7 +345,7 @@ export const videoService = {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session.access_token}`
           },
-          body: JSON.stringify({ video_id: videoId })
+          body: JSON.stringify({ videoId: videoId })
         }
       );
       
