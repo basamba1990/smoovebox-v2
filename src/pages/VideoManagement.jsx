@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
@@ -14,6 +14,10 @@ const VideoManagement = () => {
   const [error, setError] = useState(null);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [processingVideoId, setProcessingVideoId] = useState(null);
+  
+  // CORRECTION: Utiliser useRef pour éviter les re-créations inutiles
+  const channelRef = useRef(null);
+  const mountedRef = useRef(true);
   
   const getStatusLabel = (status) => {
     const statusMap = {
@@ -32,8 +36,9 @@ const VideoManagement = () => {
     return statusMap[status] || 'Inconnu';
   };
   
+  // CORRECTION: Supprimer selectedVideo des dépendances pour éviter la boucle infinie
   const fetchVideos = useCallback(async () => {
-    if (!user) return;
+    if (!user || !mountedRef.current) return;
     
     setLoading(true);
     setError(null);
@@ -139,23 +144,29 @@ const VideoManagement = () => {
         };
       });
       
+      if (!mountedRef.current) return;
+      
       setVideos(normalizedVideos);
       
-      if (selectedVideo) {
-        const updatedSelectedVideo = normalizedVideos.find(v => v.id === selectedVideo.id);
-        if (updatedSelectedVideo) {
-          setSelectedVideo(updatedSelectedVideo);
-        }
-      }
+      // CORRECTION: Mettre à jour selectedVideo séparément pour éviter la boucle
+      setSelectedVideo(prevSelected => {
+        if (!prevSelected) return null;
+        const updatedSelected = normalizedVideos.find(v => v.id === prevSelected.id);
+        return updatedSelected || null;
+      });
       
     } catch (error) {
       console.error("Erreur lors du chargement des vidéos:", error);
-      setError(`Erreur de chargement: ${error.message}`);
-      setVideos([]);
+      if (mountedRef.current) {
+        setError(`Erreur de chargement: ${error.message}`);
+        setVideos([]);
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
-  }, [user, selectedVideo]);
+  }, [user]); // CORRECTION: Supprimer selectedVideo des dépendances
 
   const getPublicUrl = (video) => {
     if (!video) return null;
@@ -212,33 +223,45 @@ const VideoManagement = () => {
         throw new Error("URL Supabase non configurée");
       }
       
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/transcribe-video`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ 
-            videoId: video.id,
-            videoUrl: videoUrl
-          })
-        }
-      );
+      // Préparer les données de la requête
+      const requestData = { 
+        videoId: video.id,
+        videoUrl: videoUrl
+      };
+      
+      console.log('Envoi de la requête de transcription avec:', requestData);
+      
+      // Construire l'URL avec les paramètres pour plus de fiabilité
+      const transcribeUrl = new URL(`${supabaseUrl}/functions/v1/transcribe-video`);
+      transcribeUrl.searchParams.set('videoId', video.id);
+      transcribeUrl.searchParams.set('videoUrl', videoUrl);
+      
+      const response = await fetch(transcribeUrl.toString(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(requestData)
+      });
+      
+      console.log('Réponse de la transcription:', response.status, response.statusText);
       
       if (!response.ok) {
         let errorMessage = "Erreur lors de la transcription";
         try {
           const errorResult = await response.json();
-          errorMessage = errorResult.error || errorMessage;
+          console.error('Détails de l\'erreur:', errorResult);
+          errorMessage = errorResult.error || errorResult.details || errorMessage;
         } catch (e) {
+          console.error('Erreur lors du parsing de la réponse d\'erreur:', e);
           errorMessage = `${response.status} ${response.statusText}`;
         }
         throw new Error(errorMessage);
       }
       
       const result = await response.json();
+      console.log('Résultat de la transcription:', result);
       
       if (result.error) {
         throw new Error(result.error);
@@ -247,17 +270,20 @@ const VideoManagement = () => {
       toast.success("Transcription démarrée avec succès", { id: 'transcribe-toast' });
       
       // Mise à jour optimiste de l'interface
-      const updatedVideos = videos.map(v => 
+      setVideos(prev => prev.map(v => 
         v.id === video.id ? { ...v, status: 'processing' } : v
+      ));
+      
+      setSelectedVideo(prev => 
+        prev?.id === video.id ? { ...prev, status: 'processing' } : prev
       );
-      setVideos(updatedVideos);
       
-      if (selectedVideo?.id === video.id) {
-        setSelectedVideo({ ...video, status: 'processing' });
-      }
-      
-      // Rechargement après un délai
-      setTimeout(fetchVideos, 5000);
+      // CORRECTION: Rechargement avec délai plus court et vérification du montage
+      setTimeout(() => {
+        if (mountedRef.current) {
+          fetchVideos();
+        }
+      }, 3000);
       
     } catch (err) {
       console.error("Erreur lors de la transcription:", err);
@@ -269,22 +295,21 @@ const VideoManagement = () => {
       
       toast.error(`Erreur: ${errorMessage}`, { id: 'transcribe-toast' });
       
-      const updatedVideos = videos.map(v => 
+      setVideos(prev => prev.map(v => 
         v.id === video.id ? { 
           ...v, 
           status: 'failed', 
           error_message: errorMessage
         } : v
-      );
-      setVideos(updatedVideos);
+      ));
       
-      if (selectedVideo?.id === video.id) {
-        setSelectedVideo({ 
-          ...video, 
+      setSelectedVideo(prev => 
+        prev?.id === video.id ? { 
+          ...prev, 
           status: 'failed', 
           error_message: errorMessage
-        });
-      }
+        } : prev
+      );
     } finally {
       setProcessingVideoId(null);
     }
@@ -347,17 +372,20 @@ const VideoManagement = () => {
       toast.success("Analyse IA démarrée avec succès", { id: 'analyze-toast' });
       
       // Mise à jour optimiste de l'interface
-      const updatedVideos = videos.map(v => 
+      setVideos(prev => prev.map(v => 
         v.id === video.id ? { ...v, status: 'analyzing' } : v
+      ));
+      
+      setSelectedVideo(prev => 
+        prev?.id === video.id ? { ...prev, status: 'analyzing' } : prev
       );
-      setVideos(updatedVideos);
       
-      if (selectedVideo?.id === video.id) {
-        setSelectedVideo({ ...video, status: 'analyzing' });
-      }
-      
-      // Rechargement après un délai
-      setTimeout(fetchVideos, 5000);
+      // CORRECTION: Rechargement avec délai plus court et vérification du montage
+      setTimeout(() => {
+        if (mountedRef.current) {
+          fetchVideos();
+        }
+      }, 3000);
       
     } catch (err) {
       console.error("Erreur lors de l'analyse:", err);
@@ -369,22 +397,21 @@ const VideoManagement = () => {
       
       toast.error(`Erreur: ${errorMessage}`, { id: 'analyze-toast' });
       
-      const updatedVideos = videos.map(v => 
+      setVideos(prev => prev.map(v => 
         v.id === video.id ? { 
           ...v, 
           status: 'failed', 
           error_message: errorMessage
         } : v
-      );
-      setVideos(updatedVideos);
+      ));
       
-      if (selectedVideo?.id === video.id) {
-        setSelectedVideo({ 
-          ...video, 
+      setSelectedVideo(prev => 
+        prev?.id === video.id ? { 
+          ...prev, 
           status: 'failed', 
           error_message: errorMessage
-        });
-      }
+        } : prev
+      );
     } finally {
       setProcessingVideoId(null);
     }
@@ -443,15 +470,21 @@ const VideoManagement = () => {
     }
   };
   
+  // CORRECTION: Simplifier le useEffect principal
   useEffect(() => {
     if (!user) return;
 
     fetchVideos();
     
-    // Configurer l'abonnement aux changements en temps réel
-    const setupRealtime = async () => {
+    // CORRECTION: Configurer l'abonnement aux changements en temps réel de manière plus robuste
+    const setupRealtime = () => {
       try {
-        const channel = supabase
+        // Nettoyer l'ancien canal s'il existe
+        if (channelRef.current) {
+          supabase.removeChannel(channelRef.current);
+        }
+        
+        channelRef.current = supabase
           .channel('videos_changes')
           .on('postgres_changes', 
             { 
@@ -462,29 +495,44 @@ const VideoManagement = () => {
             }, 
             (payload) => {
               console.log('Change received!', payload);
-              fetchVideos();
+              // CORRECTION: Ajouter un délai pour éviter les appels trop fréquents
+              setTimeout(() => {
+                if (mountedRef.current) {
+                  fetchVideos();
+                }
+              }, 1000);
             }
           )
           .subscribe((status) => {
             console.log('Subscription status:', status);
           });
-        
-        return () => {
-          supabase.removeChannel(channel);
-        };
       } catch (error) {
         console.error("Erreur lors de la configuration du temps réel:", error);
       }
     };
     
-    const cleanup = setupRealtime();
+    setupRealtime();
     
+    // CORRECTION: Nettoyage amélioré
     return () => {
-      if (cleanup && typeof cleanup.then === 'function') {
-        cleanup.then(fn => fn && fn());
+      mountedRef.current = false;
+      if (channelRef.current) {
+        try {
+          supabase.removeChannel(channelRef.current);
+          channelRef.current = null;
+        } catch (err) {
+          console.error('Erreur lors de la suppression du canal:', err);
+        }
       }
     };
-  }, [user, fetchVideos]);
+  }, [user, fetchVideos]); // CORRECTION: Garder fetchVideos mais sans selectedVideo dans ses dépendances
+
+  // CORRECTION: Effet de nettoyage au démontage
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   if (!user) {
     return (
