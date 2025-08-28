@@ -171,8 +171,18 @@ export const getProfileId = async (userId) => {
  * @returns {Promise<Object>}
  */
 export const fetchDashboardData = async (userId) => {
+  if (!userId) {
+    throw new Error('ID utilisateur requis pour récupérer les données du dashboard');
+  }
+
   try {
     console.log('Récupération des données dashboard pour userId:', userId);
+    
+    // Vérifier la connexion avant de procéder
+    const connectionCheck = await checkSupabaseConnection();
+    if (!connectionCheck.connected) {
+      throw new Error(`Connexion Supabase échouée: ${connectionCheck.error}`);
+    }
     
     // Récupérer les vidéos avec leurs transcriptions associées en une seule requête
     const { data: videos, error: videosError } = await retryOperation(async () => {
@@ -183,7 +193,10 @@ export const fetchDashboardData = async (userId) => {
         .order('created_at', { ascending: false });
     });
       
-    if (videosError) throw videosError;
+    if (videosError) {
+      console.error('Erreur lors de la récupération des vidéos:', videosError);
+      throw new Error(`Impossible de récupérer les vidéos: ${videosError.message}`);
+    }
     
     // Si aucune vidéo n'est trouvée, retourner des valeurs par défaut
     if (!videos || videos.length === 0) {
@@ -191,7 +204,8 @@ export const fetchDashboardData = async (userId) => {
         totalVideos: 0,
         totalViews: 0,
         avgEngagement: 0,
-        recentVideos: []
+        recentVideos: [],
+        isEmpty: true
       };
     }
     
@@ -213,91 +227,21 @@ export const fetchDashboardData = async (userId) => {
       title: video.title || `Video ${video.id}`,
       created_at: video.created_at,
       views: video.views || 0,
-      engagement_score: video.engagement_score || 0
+      engagement_score: video.engagement_score || 0,
+      status: video.status || 'unknown'
     }));
     
     return {
       totalVideos,
       totalViews,
       avgEngagement,
-      recentVideos
+      recentVideos,
+      isEmpty: false
     };
   } catch (error) {
     console.error('Erreur lors de la récupération des données du dashboard:', error);
-    
-    // En cas d'erreur, essayer la méthode de fallback
-    try {
-      return await fetchDashboardDataFallback(userId);
-    } catch (fallbackError) {
-      console.error('Erreur dans le fallback dashboard:', fallbackError);
-      throw new Error(`Erreur de récupération des données: ${error.message}`);
-    }
-  }
-};
-
-/**
- * Version de fallback pour fetchDashboardData utilisant des requêtes séparées
- * @param {string} userId 
- * @returns {Promise<Object>}
- */
-const fetchDashboardDataFallback = async (userId) => {
-  try {
-    console.log('Utilisation du fallback pour les données dashboard');
-    
-    // Récupérer les statistiques des vidéos avec retry
-    const { data: videosData, error: videosError } = await retryOperation(async () => {
-      return await supabase
-        .from('videos')
-        .select('id, title, description, created_at, status, thumbnail_url, file_path, views, engagement_score')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-    });
-      
-    if (videosError && videosError.code !== 'PGRST116') {
-      console.error('Erreur vidéos:', videosError);
-      throw videosError;
-    }
-    
-    // Si aucune vidéo n'est trouvée, retourner des valeurs par défaut
-    if (!videosData || videosData.length === 0) {
-      return {
-        totalVideos: 0,
-        totalViews: 0,
-        avgEngagement: 0,
-        recentVideos: []
-      };
-    }
-    
-    // Calculer les statistiques
-    const totalVideos = videosData.length;
-    
-    // Calculer le nombre total de vues (avec une valeur par défaut de 0 si views est null)
-    const totalViews = videosData.reduce((sum, video) => sum + (video.views || 0), 0);
-    
-    // Calculer l'engagement moyen (avec une valeur par défaut de 0 si engagement_score est null)
-    const validEngagementScores = videosData.filter(video => video.engagement_score !== null && video.engagement_score !== undefined);
-    const avgEngagement = validEngagementScores.length > 0
-      ? validEngagementScores.reduce((sum, video) => sum + video.engagement_score, 0) / validEngagementScores.length
-      : 0;
-    
-    // Prendre les 5 vidéos les plus récentes pour l'affichage
-    const recentVideos = videosData.slice(0, 5).map(video => ({
-      id: video.id,
-      title: video.title || `Video ${video.id}`,
-      created_at: video.created_at,
-      views: video.views || 0,
-      engagement_score: video.engagement_score || 0
-    }));
-    
-    return {
-      totalVideos,
-      totalViews,
-      avgEngagement,
-      recentVideos
-    };
-  } catch (error) {
-    console.error('Erreur dans le fallback dashboard:', error);
-    throw new Error(`Erreur dashboard: ${error.message}`);
+    // Ne plus utiliser de fallback avec des données factices
+    throw new Error(`Impossible de charger les données du dashboard: ${error.message}`);
   }
 };
 
