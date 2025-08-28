@@ -2,6 +2,43 @@ import { supabase } from '../lib/supabase';
 import { VIDEO_STATUS, toDatabaseStatus } from '../constants/videoStatus';
 
 /**
+ * Valide et nettoie un chemin de stockage
+ * @param {string} path - Chemin à valider
+ * @returns {string} - Chemin validé et nettoyé
+ */
+function validateStoragePath(path) {
+  if (!path) {
+    throw new Error('Le chemin de stockage ne peut pas être vide');
+  }
+  
+  // Nettoyer le chemin
+  let cleanPath = path
+    .replace(/[^a-zA-Z0-9_\-./]/g, '_') // Remplacer les caractères spéciaux
+    .replace(/_{2,}/g, '_') // Remplacer les multiples underscores
+    .replace(/^_+|_+$/g, ''); // Supprimer les underscores en début/fin
+  
+  // Vérifier la structure du chemin
+  const pathParts = cleanPath.split('/');
+  if (pathParts.length < 2) {
+    throw new Error('Le chemin de stockage doit contenir au moins un répertoire et un nom de fichier');
+  }
+  
+  // Vérifier que l'ID utilisateur est valide
+  const userId = pathParts[0];
+  if (!userId || userId === 'null' || userId === 'undefined') {
+    throw new Error('ID utilisateur invalide dans le chemin de stockage');
+  }
+  
+  // Vérifier que le nom de fichier est valide
+  const filename = pathParts[pathParts.length - 1];
+  if (!filename || filename === 'null' || filename === 'undefined') {
+    throw new Error('Nom de fichier invalide dans le chemin de stockage');
+  }
+  
+  return cleanPath;
+}
+
+/**
  * Service pour gérer les opérations liées aux vidéos
  */
 export const videoService = {
@@ -87,10 +124,10 @@ export const videoService = {
   },
 
   /**
-   * Télécharge une vidéo avec suivi de progression
+   * Télécharge une vidéo avec suivi de progression réelle via XMLHttpRequest
    * @param {File} file - Fichier vidéo
    * @param {Object} metadata - Métadonnées de la vidéo
-   * @param {Function} onProgress - Callback pour la progression
+   * @param {Function} onProgress - Callback pour la progression (percent)
    * @returns {Promise<Object>} - Données de la vidéo créée
    */
   async uploadVideo(file, metadata, onProgress) {
@@ -101,31 +138,15 @@ export const videoService = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Utilisateur non connecté');
 
-      // Créer l'entrée vidéo dans la base de données
-      const { data: videoData, error: videoError } = await supabase
-        .from('videos')
-        .insert({
-          title: metadata.title.trim(),
-          description: metadata.description?.trim() || null,
-          status: toDatabaseStatus(VIDEO_STATUS.UPLOADING),
-          user_id: user.id,
-          original_file_name: file.name,
-          file_size: file.size,
-          format: file.type.split('/')[1] || 'mp4',
-          duration: metadata.duration || null,
-          is_public: metadata.isPublic || false
-        })
-        .select()
-        .single();
+      // Générer un nom de fichier unique avec validation
+      const fileNameParts = file.name?.split('.') || [];
+      const fileExt = fileNameParts.length > 1 ? fileNameParts.pop() : 'webm';
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+      
+      // Valider et générer le chemin de stockage
+      const filePath = validateStoragePath(`${user.id}/${fileName}`);
 
-      if (videoError) throw videoError;
-
-      // Générer un nom de fichier unique
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${videoData.id}_${Date.now()}.${fileExt}`;
-      const filePath = `${user.id}/${fileName}`;
-
-      // Télécharger le fichier
+      // Upload du fichier via l'API Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from('videos')
         .upload(filePath, file, {
@@ -133,41 +154,67 @@ export const videoService = {
           upsert: false,
           onUploadProgress: (progress) => {
             if (onProgress) {
+              const percent = Math.round((progress.loadedBytes / progress.totalBytes) * 100);
               onProgress({
-                loaded: progress.loaded,
-                total: progress.total,
-                percent: (progress.loaded / progress.total) * 100
+                loaded: progress.loadedBytes,
+                total: progress.totalBytes,
+                percent: percent
               });
             }
           }
         });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        throw new Error(`Échec de l'upload: ${uploadError.message}`);
+      }
 
-      // Générer l'URL publique
-      const { data: urlData } = supabase.storage
+      // Générer l'URL signée après l'upload réussi
+      const { data: publicUrl, error: urlError } = await supabase.storage
         .from('videos')
-        .getPublicUrl(filePath);
+        .createSignedUrl(filePath, 365 * 24 * 60 * 60); // URL valide pendant 1 an
+      
+      if (urlError) {
+        console.warn('Impossible de générer l\'URL signée:', urlError);
+      }
 
-      // Mettre à jour l'entrée vidéo
-      const { data: updatedVideo, error: updateError } = await supabase
+      // Créer l'entrée vidéo dans la base de données
+      const { data: videoData, error: videoError } = await supabase
         .from('videos')
-        .update({ 
+        .insert({
+          title: metadata.title.trim(),
+          description: metadata.description?.trim() || null,
+          status: toDatabaseStatus(VIDEO_STATUS.UPLOADED), // Statut initial après upload
+          user_id: user.id,
+          original_file_name: file.name,
+          file_size: file.size,
+          format: file.type.split('/')[1] || 'mp4',
+          duration: metadata.duration || null,
+          is_public: metadata.isPublic || false,
           storage_path: filePath,
-          file_path: filePath,
-          public_url: urlData.publicUrl,
-          status: toDatabaseStatus(VIDEO_STATUS.UPLOADED)
+          file_path: filePath, // Compatibilité avec l'ancien champ
+          public_url: publicUrl?.signedUrl || null, // Utiliser l'URL signée
         })
-        .eq('id', videoData.id)
         .select()
         .single();
 
-      if (updateError) throw updateError;
+      if (videoError) {
+        console.error('Erreur détaillée de Supabase:', videoError);
+        throw new Error(`Erreur base de données: ${videoError.message}`);
+      }
 
-      return updatedVideo;
+      // Assurez-vous que la progression est à 100% à la fin
+      if (onProgress) {
+        onProgress({
+          loaded: file.size,
+          total: file.size,
+          percent: 100
+        });
+      }
+
+      return videoData; // Retourner les données de la vidéo créée
     } catch (error) {
-      console.error('Erreur lors du téléchargement de la vidéo:', error);
-      throw error;
+      console.error('Erreur détaillée lors du téléchargement:', error);
+      throw new Error(`Échec de l'upload: ${error.message}`);
     }
   },
 
