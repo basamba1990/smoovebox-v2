@@ -42,55 +42,33 @@ function validateAndNormalizeUrl(url: string, supabaseUrl?: string): string {
   }
 }
 
-// Fonction utilitaire pour télécharger un fichier avec retry et en-têtes appropriés
-async function downloadVideoWithRetry(url: string, maxRetries = 3): Promise<Blob> {
-  let lastError: Error | null = null;
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+// Fonction pour télécharger avec réessais
+async function fetchWithRetry(url: string, retries = 3, delay = 1000): Promise<Response> {
+  for (let i = 0; i < retries; i++) {
     try {
-      console.log(`Tentative de téléchargement ${attempt}/${maxRetries}: ${url.substring(0, 100)}...`);
-      
       const response = await fetch(url, {
-        method: 'GET',
         headers: {
-          'User-Agent': 'Supabase-Edge-Functions/1.0',
-          'Accept': '*/*',
-          'Cache-Control': 'no-cache'
-        },
-        // Timeout pour éviter les blocages
-        signal: AbortSignal.timeout(60000) // 60 secondes
+          'Accept': 'video/*, audio/*',
+          'User-Agent': 'Mozilla/5.0 (compatible; Supabase-Functions/1.0)'
+        }
       });
       
-      console.log(`Réponse reçue: ${response.status} ${response.statusText}`);
-      console.log('En-têtes de réponse:', Object.fromEntries(response.headers.entries()));
+      if (response.ok) return response;
       
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Impossible de lire le corps de la réponse');
-        throw new Error(`HTTP ${response.status} ${response.statusText}: ${errorText}`);
+      if (response.status === 400 && i < retries - 1) {
+        console.log(`Tentative ${i + 1}/${retries} échouée (400), nouvelle tentative dans ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
+        continue;
       }
       
-      const blob = await response.blob();
-      console.log(`Téléchargement réussi, taille: ${blob.size} bytes, type: ${blob.type}`);
-      
-      if (blob.size === 0) {
-        throw new Error('Le fichier téléchargé est vide');
-      }
-      
-      return blob;
-      
-    } catch (error: any) {
-      lastError = error;
-      console.error(`Échec de la tentative ${attempt}:`, error.message);
-      
-      if (attempt < maxRetries) {
-        const delay = Math.pow(2, attempt) * 1000; // Backoff exponentiel
-        console.log(`Attente de ${delay}ms avant la prochaine tentative...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
+      throw new Error(`Échec du téléchargement: ${response.status} ${response.statusText}`);
+    } catch (error) {
+      if (i === retries - 1) throw error;
+      console.log(`Tentative ${i + 1}/${retries} échouée, nouvelle tentative dans ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
     }
   }
-  
-  throw new Error(`Échec du téléchargement après ${maxRetries} tentatives. Dernière erreur: ${lastError?.message}`);
+  throw new Error('Toutes les tentatives de téléchargement ont échoué');
 }
 
 Deno.serve(async (req) => {
@@ -435,57 +413,32 @@ Deno.serve(async (req) => {
       console.log(`Création d'URL signée pour bucket: ${bucket}, chemin: ${filePath}`)
 
       try {
-        const parentPath = filePath.split('/').slice(0, -1).join('/') || undefined
-        console.log(`Vérification du contenu du dossier: ${parentPath || '(racine)'}`)
-
-        const { data: fileList, error: fileListError } = await serviceClient.storage
+        // D'abord essayer d'obtenir une URL publique
+        const { data: { publicUrl } } = await serviceClient.storage
           .from(bucket)
-          .list(parentPath, { limit: 100, offset: 0, sortBy: { column: 'name', order: 'asc' } })
-
-        if (fileListError) {
-          console.error("Erreur lors de la vérification de l'existence du fichier:", fileListError)
+          .getPublicUrl(filePath);
+        
+        // Vérifier si l'URL publique est accessible
+        const testResponse = await fetch(publicUrl, { method: 'HEAD' });
+        if (testResponse.ok) {
+          videoUrl = publicUrl;
+          console.log(`URL publique utilisée: ${publicUrl.substring(0, 50)}...`);
         } else {
-          const fileName = filePath.split('/').pop()
-          console.log(
-            `Contenu du dossier '${parentPath || '(racine)'}':`,
-            (fileList || []).map((f: any) => f.name)
-          )
-          console.log(`Recherche du fichier ${fileName} dans la liste`)
-          const fileFound = (fileList || []).some((f: any) => f.name === fileName)
-          console.log(`Fichier ${fileName} trouvé dans le bucket ${bucket}: ${fileFound}`)
+          // Fallback sur l'URL signée si l'URL publique ne fonctionne pas
+          const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
+            .from(bucket)
+            .createSignedUrl(filePath, 60 * 60); // 1 heure
 
-          if (!fileFound) {
-            throw new Error(`Fichier ${fileName} non trouvé dans le bucket ${bucket}`)
-          }
+          if (signedUrlError) throw signedUrlError;
+          videoUrl = signedUrlData.signedUrl;
+          console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 50)}...`);
         }
-
-        // Créer une URL signée avec une durée plus longue et des permissions appropriées
-        const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
-          .from(bucket)
-          .createSignedUrl(filePath, 3600) // 1 heure au lieu de 60 minutes
-
-        if (signedUrlError) throw signedUrlError
-
-        videoUrl = signedUrlData.signedUrl
-        console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 100)}...`)
-        
-        // Vérifier que l'URL signée est accessible
-        try {
-          const testResponse = await fetch(videoUrl, { method: 'HEAD' });
-          console.log(`Test de l'URL signée: ${testResponse.status} ${testResponse.statusText}`);
-          if (!testResponse.ok) {
-            console.warn(`L'URL signée n'est pas accessible: ${testResponse.status}`);
-          }
-        } catch (testError) {
-          console.warn(`Impossible de tester l'URL signée:`, testError);
-        }
-        
       } catch (storageError: any) {
-        console.error('Erreur lors de la création de l\'URL signée:', storageError)
+        console.error('Erreur lors de la création de l\'URL:', storageError)
         return new Response(
           JSON.stringify({
             error: 'Erreur de stockage',
-            details: `Impossible de générer l'URL signée pour la vidéo: ${storageError.message}`
+            details: `Impossible de générer l'URL pour la vidéo: ${storageError.message}`
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
         )
@@ -522,7 +475,17 @@ Deno.serve(async (req) => {
     
     let audioBlob: Blob;
     try {
-      audioBlob = await downloadVideoWithRetry(videoUrl, 3);
+      console.log(`Tentative de téléchargement depuis: ${videoUrl}`);
+      
+      // Utiliser la fonction avec réessais et headers améliorés
+      const response = await fetchWithRetry(videoUrl, 3, 1000);
+      
+      if (!response.ok) {
+        throw new Error(`Échec du téléchargement: ${response.status} ${response.statusText}`);
+      }
+      
+      audioBlob = await response.blob();
+      console.log(`Téléchargement réussi, taille du blob: ${audioBlob.size} bytes`);
     } catch (fetchError) {
       console.error('Erreur lors du téléchargement de la vidéo:', fetchError);
       
@@ -534,8 +497,8 @@ Deno.serve(async (req) => {
           error_message: `Échec du téléchargement: ${fetchError.message}`,
           updated_at: new Date().toISOString()
         })
-        .eq('id', videoId as string)
-      
+        .eq('id', videoId as string);
+
       return new Response(
         JSON.stringify({
           error: 'Erreur de téléchargement',
