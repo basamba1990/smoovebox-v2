@@ -393,7 +393,6 @@ Deno.serve(async (req) => {
         if (signedUrlError) throw signedUrlError
 
         videoUrl = signedUrlData.signedUrl
-        console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 50)}...`)
       } catch (storageError: any) {
         console.error('Erreur lors de la création de l\'URL signée:', storageError)
         return new Response(
@@ -419,6 +418,7 @@ Deno.serve(async (req) => {
     // 6. TÉLÉCHARGER LA VIDÉO ET LA CONVERTIR EN AUDIO
     console.log('Téléchargement et conversion de la vidéo en audio...')
     
+    console.log('URL de la vidéo pour le téléchargement:', videoUrl);
     let audioBlob: Blob;
     try {
       const response = await fetch(videoUrl);
