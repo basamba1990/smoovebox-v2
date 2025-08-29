@@ -21,11 +21,35 @@ const corsHeaders = {
 // Timeout global pour l'exécution de la fonction
 const EXECUTION_TIMEOUT = 300000; // 5 minutes
 
+// Helper function pour valider et construire une URL complète
+function buildCompleteUrl(supabaseUrl: string, bucket: string, filePath: string): string {
+  // Nettoyer le chemin de fichier
+  const cleanPath = filePath.replace(/^\/+/, ''); // Supprimer les slashes de début
+  
+  // Construire l'URL publique
+  const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${cleanPath}`;
+  
+  console.log(`URL construite: ${publicUrl}`);
+  return publicUrl;
+}
+
+// Helper function pour valider qu'une URL est complète et valide
+function isValidUrl(urlString: string): boolean {
+  try {
+    const url = new URL(urlString);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 Deno.serve(async (req) => {
   // Gérer les requêtes OPTIONS (CORS preflight)
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+
+  let videoId: string | null = null;
 
   try {
     console.log('Fonction transcribe-video appelée')
@@ -219,7 +243,6 @@ Deno.serve(async (req) => {
     }
 
     // 2. RÉCUPÉRER LES DONNÉES DE LA REQUÊTE
-    let videoId: string | null = null
     let videoUrl: string | null = null
 
     // Essayer d'abord les paramètres d'URL (plus fiable)
@@ -315,13 +338,14 @@ Deno.serve(async (req) => {
     }
 
     // 5. RÉCUPÉRER L'URL DE LA VIDÉO - CORRECTION PRINCIPALE
-    // Utiliser d'abord videoUrl du corps de la requête si disponible
-    if (!videoUrl) {
+    // Utiliser d'abord videoUrl du corps de la requête si disponible et valide
+    if (videoUrl && isValidUrl(videoUrl)) {
+      console.log(`URL valide fournie dans la requête: ${videoUrl}`)
+    } else if ((video as any).url && isValidUrl((video as any).url)) {
       videoUrl = (video as any).url
-    }
-
-    if (!videoUrl && (video as any).storage_path) {
-      console.log(`Génération d'une URL signée pour ${(video as any).storage_path}`)
+      console.log(`URL valide trouvée dans la base de données: ${videoUrl}`)
+    } else if ((video as any).storage_path) {
+      console.log(`Génération d'une URL pour le chemin de stockage: ${(video as any).storage_path}`)
 
       // Extraire le bucket et le chemin
       let bucket = 'videos' // Bucket par défaut
@@ -359,9 +383,10 @@ Deno.serve(async (req) => {
         console.log(`Préfixe de bucket détecté et supprimé. Nouveau chemin: ${filePath}`)
       }
 
-      console.log(`Création d'URL signée pour bucket: ${bucket}, chemin: ${filePath}`)
+      console.log(`Tentative de création d'URL signée pour bucket: ${bucket}, chemin: ${filePath}`)
 
       try {
+        // Vérifier l'existence du fichier
         const parentPath = filePath.split('/').slice(0, -1).join('/') || undefined
         console.log(`Vérification du contenu du dossier: ${parentPath || '(racine)'}`)
 
@@ -386,7 +411,7 @@ Deno.serve(async (req) => {
           }
         }
 
-        // CORRECTION PRINCIPALE: Créer une signed URL avec une durée plus longue
+        // Essayer d'abord une signed URL
         const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
           .from(bucket)
           .createSignedUrl(filePath, 60 * 60) // 1 heure
@@ -401,8 +426,7 @@ Deno.serve(async (req) => {
         // CORRECTION: Essayer une URL publique en dernier recours
         try {
           console.log('Tentative de création d\'une URL publique en dernier recours...')
-          const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${filePath}`
-          console.log(`URL publique tentée: ${publicUrl}`)
+          const publicUrl = buildCompleteUrl(supabaseUrl, bucket, filePath)
           
           // Tester si l'URL publique fonctionne
           const testResponse = await fetch(publicUrl, { method: 'HEAD' })
@@ -410,7 +434,7 @@ Deno.serve(async (req) => {
             videoUrl = publicUrl
             console.log('URL publique fonctionnelle trouvée')
           } else {
-            throw new Error('URL publique non accessible')
+            throw new Error(`URL publique non accessible (status: ${testResponse.status})`)
           }
         } catch (publicUrlError) {
           console.error('Erreur avec l\'URL publique:', publicUrlError)
@@ -425,6 +449,7 @@ Deno.serve(async (req) => {
       }
     }
 
+    // VALIDATION FINALE DE L'URL
     if (!videoUrl) {
       return new Response(
         JSON.stringify({
@@ -433,6 +458,36 @@ Deno.serve(async (req) => {
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       )
+    }
+
+    // VALIDATION CRITIQUE: S'assurer que l'URL est complète et valide
+    if (!isValidUrl(videoUrl)) {
+      console.error(`URL invalide détectée: ${videoUrl}`)
+      
+      // Dernière tentative: construire une URL complète si on a juste un chemin
+      if (videoUrl && !videoUrl.startsWith('http')) {
+        console.log('Tentative de construction d\'une URL complète à partir du chemin...')
+        const bucket = 'videos'
+        videoUrl = buildCompleteUrl(supabaseUrl, bucket, videoUrl)
+        
+        if (!isValidUrl(videoUrl)) {
+          return new Response(
+            JSON.stringify({
+              error: 'URL vidéo invalide',
+              details: `L'URL générée n'est pas valide: ${videoUrl}`
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+          )
+        }
+      } else {
+        return new Response(
+          JSON.stringify({
+            error: 'URL vidéo invalide',
+            details: `L'URL fournie n'est pas valide: ${videoUrl}`
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+        )
+      }
     }
 
     // 6. TÉLÉCHARGER LA VIDÉO ET LA CONVERTIR EN AUDIO
@@ -464,6 +519,17 @@ Deno.serve(async (req) => {
       }
     } catch (fetchError) {
       console.error('Erreur lors du téléchargement de la vidéo:', fetchError);
+      
+      // Mettre à jour le statut de la vidéo à FAILED
+      await serviceClient
+        .from('videos')
+        .update({ 
+          status: VIDEO_STATUS.FAILED, 
+          error_message: `Échec du téléchargement: ${fetchError.message}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId as string)
+      
       return new Response(
         JSON.stringify({
           error: 'Erreur de téléchargement',
@@ -625,6 +691,11 @@ Deno.serve(async (req) => {
     // Tentative de mise à jour du statut d'erreur si videoId est disponible
     try {
       if (videoId) {
+        const serviceClient = createClient(
+          Deno.env.get('SUPABASE_URL') || '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+        );
+        
         await serviceClient
           .from('videos')
           .update({ 
