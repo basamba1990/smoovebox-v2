@@ -28,11 +28,11 @@ Deno.serve(async (req) => {
   }
 
   let videoId: string | null = null;
-  let serviceClient: ReturnType<typeof createClient>;
+  let serviceClient: ReturnType<typeof createClient> | null = null;
 
   try {
     console.log('Fonction transcribe-video appelée')
-    
+
     // Initialiser les variables d'environnement
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
         fetch: (input, init) => {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 30000);
-          
+
           return fetch(input, {
             ...init,
             signal: controller.signal
@@ -227,7 +227,18 @@ Deno.serve(async (req) => {
     // Essayer d'abord les paramètres d'URL (plus fiable)
     const url = new URL(req.url)
     videoId = url.searchParams.get('videoId')
-    
+
+    // Validation de l'ID vidéo
+    if (videoId && videoId.length !== 36) {
+      return new Response(
+        JSON.stringify({
+          error: 'ID vidéo invalide',
+          details: "L'ID vidéo doit être un UUID de 36 caractères"
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
+    }
+
     if (videoId) {
       console.log(`VideoId récupéré des paramètres d'URL: ${videoId}`)
       // Récupérer aussi videoUrl si fourni en paramètre
@@ -239,16 +250,16 @@ Deno.serve(async (req) => {
       try {
         const requestBody = await req.text()
         console.log('Corps de la requête reçu:', requestBody)
-        
+
         if (requestBody.trim()) {
           const requestData = JSON.parse(requestBody)
           console.log('Données de requête parsées:', requestData)
-          
+
           if (requestData.videoId) {
             videoId = requestData.videoId
             console.log(`VideoId récupéré du corps de la requête: ${videoId}`)
           }
-          
+
           if (requestData.videoUrl) {
             videoUrl = requestData.videoUrl
             console.log(`VideoUrl récupéré du corps de la requête: ${videoUrl}`)
@@ -264,7 +275,7 @@ Deno.serve(async (req) => {
     if (!videoId) {
       console.error('VideoId non trouvé dans les paramètres d\'URL ni dans le corps de la requête')
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           error: 'videoId est requis dans le corps de la requête ou en paramètre',
           details: 'Veuillez fournir videoId soit dans le corps JSON de la requête, soit comme paramètre d\'URL (?videoId=...)'
         }),
@@ -319,22 +330,22 @@ Deno.serve(async (req) => {
     // 5. GÉNÉRER L'URL SIGNÉE POUR LA VIDÉO
     if (!videoUrl && video.storage_path) {
       console.log(`Génération d'une URL signée pour le chemin: ${video.storage_path}`)
-      
+
       try {
         // Déterminer le bucket et le chemin du fichier
         let bucket = 'videos'; // Bucket par défaut
         let filePath = video.storage_path;
-        
+
         // Si le chemin contient un slash, le premier segment pourrait être le bucket
         if (filePath.includes('/')) {
           const pathParts = filePath.split('/');
           const possibleBucket = pathParts[0];
-          
+
           // Vérifier si le premier segment est un bucket valide
           try {
             const { data: buckets } = await serviceClient.storage.listBuckets();
             const bucketExists = buckets?.some((b: any) => b.name === possibleBucket);
-            
+
             if (bucketExists) {
               bucket = possibleBucket;
               filePath = pathParts.slice(1).join('/');
@@ -344,32 +355,32 @@ Deno.serve(async (req) => {
             console.log('Utilisation du bucket par défaut:', bucket);
           }
         }
-        
+
         // Créer l'URL signée
         const { data: signedUrlData, error: signedUrlError } = await serviceClient
           .storage
           .from(bucket)
           .createSignedUrl(filePath, 60 * 60); // 1 heure de validité
-        
+
         if (signedUrlError) {
           throw new Error(`Erreur lors de la création de l'URL signée: ${signedUrlError.message}`);
         }
-        
+
         videoUrl = signedUrlData.signedUrl;
         console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 100)}...`);
-        
+
       } catch (storageError: any) {
         console.error('Erreur lors de la génération de l\'URL signée:', storageError);
-        
+
         await serviceClient
           .from('videos')
-          .update({ 
-            status: VIDEO_STATUS.FAILED, 
+          .update({
+            status: VIDEO_STATUS.FAILED,
             error_message: `Erreur de stockage: ${storageError.message}`,
             updated_at: new Date().toISOString()
           })
           .eq('id', videoId as string);
-        
+
         return new Response(
           JSON.stringify({
             error: 'Erreur de stockage',
@@ -392,7 +403,7 @@ Deno.serve(async (req) => {
 
     // 6. TÉLÉCHARGER LA VIDÉO
     console.log('Téléchargement de la vidéo...')
-    
+
     let videoArrayBuffer: ArrayBuffer;
     try {
       const response = await fetch(videoUrl);
@@ -403,16 +414,16 @@ Deno.serve(async (req) => {
       console.log(`Vidéo téléchargée avec succès: ${videoArrayBuffer.byteLength} bytes`);
     } catch (fetchError: any) {
       console.error('Erreur lors du téléchargement de la vidéo:', fetchError);
-      
+
       await serviceClient
         .from('videos')
-        .update({ 
-          status: VIDEO_STATUS.FAILED, 
+        .update({
+          status: VIDEO_STATUS.FAILED,
           error_message: `Échec du téléchargement: ${fetchError.message}`,
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId as string);
-      
+
       return new Response(
         JSON.stringify({
           error: 'Erreur de téléchargement',
@@ -424,36 +435,36 @@ Deno.serve(async (req) => {
 
     // 7. TRANSCRIPTION AVEC OPENAI WHISPER
     console.log('Début de la transcription avec OpenAI Whisper...')
-    
+
     const openai = new OpenAI({ apiKey: openaiApiKey })
-    
+
     let transcription: any;
     try {
       // Déterminer le type MIME basé sur l'extension du fichier
       const fileExtension = video.storage_path.split('.').pop()?.toLowerCase() || 'mp4';
-      const mimeType = fileExtension === 'webm' ? 'video/webm' : 
-                      fileExtension === 'mp4' ? 'video/mp4' : 
-                      fileExtension === 'mov' ? 'video/quicktime' : 
-                      'video/mp4'; // par défaut
-      
+      const mimeType = fileExtension === 'webm' ? 'video/webm' :
+        fileExtension === 'mp4' ? 'video/mp4' :
+          fileExtension === 'mov' ? 'video/quicktime' :
+            'video/mp4'; // par défaut
+
       const videoFile = new File([videoArrayBuffer], `video.${fileExtension}`, { type: mimeType });
-      
+
       transcription = await openai.audio.transcriptions.create({
         file: videoFile,
         model: 'whisper-1',
         response_format: 'verbose_json',
         timestamp_granularities: ['segment']
       });
-      
+
       console.log('Transcription terminée avec succès')
       console.log(`Texte transcrit (${transcription.text.length} caractères):`, transcription.text.substring(0, 200) + '...')
     } catch (transcriptionError: any) {
       console.error('Erreur lors de la transcription:', transcriptionError)
-      
+
       await serviceClient
         .from('videos')
-        .update({ 
-          status: VIDEO_STATUS.FAILED, 
+        .update({
+          status: VIDEO_STATUS.FAILED,
           error_message: `Échec de la transcription: ${transcriptionError.message}`,
           updated_at: new Date().toISOString()
         })
@@ -470,7 +481,7 @@ Deno.serve(async (req) => {
 
     // 8. ENREGISTRER LA TRANSCRIPTION DANS LA BASE DE DONNÉES
     console.log('Enregistrement de la transcription dans la base de données...')
-    
+
     const transcriptionData = {
       text: transcription.text,
       segments: transcription.segments || [],
@@ -506,11 +517,11 @@ Deno.serve(async (req) => {
 
     if (transcriptionTableError) {
       console.error('Erreur lors de l\'enregistrement de la transcription:', transcriptionTableError)
-      
+
       await serviceClient
         .from('videos')
-        .update({ 
-          status: VIDEO_STATUS.FAILED, 
+        .update({
+          status: VIDEO_STATUS.FAILED,
           error_message: `Échec de l'enregistrement de la transcription: ${transcriptionTableError.message}`,
           updated_at: new Date().toISOString()
         })
@@ -544,23 +555,23 @@ Deno.serve(async (req) => {
       const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
       const headers = {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseServiceKey}`
+        'apikey': `${supabaseServiceKey}`  // Changement ici : utiliser apikey au lieu de Authorization
       };
-      
+
       console.log(`Appel de la fonction analyze-transcription via fetch à ${analyzeEndpoint}`);
-      
+
       const response = await fetch(analyzeEndpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify({ videoId })
       });
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`Erreur de la fonction d'analyse (${response.status}): ${errorText}`);
         throw new Error(`Erreur HTTP ${response.status}: ${errorText}`);
       }
-      
+
       const responseData = await response.json();
       console.log('Analyse démarrée avec succès:', responseData);
     } catch (invokeError) {
@@ -577,12 +588,12 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ 
-        message: 'Transcription terminée avec succès', 
+      JSON.stringify({
+        message: 'Transcription terminée avec succès',
         videoId,
         transcription_length: transcription.text.length,
         transcription_id: transcriptionRecord?.id
-      }), 
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200
@@ -590,14 +601,14 @@ Deno.serve(async (req) => {
     )
   } catch (error: any) {
     console.error('Erreur générale dans la fonction transcribe-video:', error)
-    
+
     // Tentative de mise à jour du statut d'erreur si videoId est disponible
     try {
       if (videoId && serviceClient) {
         await serviceClient
           .from('videos')
-          .update({ 
-            status: VIDEO_STATUS.FAILED, 
+          .update({
+            status: VIDEO_STATUS.FAILED,
             error_message: `Erreur interne: ${error.message}`,
             updated_at: new Date().toISOString()
           })
@@ -606,7 +617,7 @@ Deno.serve(async (req) => {
     } catch (updateError) {
       console.error('Erreur lors de la mise à jour du statut d\'erreur:', updateError);
     }
-    
+
     return new Response(
       JSON.stringify({
         error: 'Erreur interne du serveur',
