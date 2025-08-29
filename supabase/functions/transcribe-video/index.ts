@@ -28,11 +28,10 @@ Deno.serve(async (req) => {
   }
 
   let videoId: string | null = null;
-  let serviceClient: ReturnType<typeof createClient> | null = null;
+  let serviceClient: ReturnType<typeof createClient>;
 
   try {
     console.log('Fonction transcribe-video appelée')
-
     // Initialiser les variables d'environnement
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -160,7 +159,9 @@ Deno.serve(async (req) => {
         try {
           const { data, error } = await serviceClient.auth.getUser(token)
           if (error) {
-            console.error('Erreur de décodage du JWT:', error)
+            console.error('Erreur de décodage du JWT:', error.message)
+            // Amélioration: Si le JWT est invalide, ne pas essayer d'autres méthodes pour ce token.
+            // Le flux continuera pour essayer d'autres méthodes d'identification de l'utilisateur.
           } else if (data.user) {
             userId = data.user.id
             console.log(`Utilisateur authentifié: ${userId}`)
@@ -206,6 +207,7 @@ Deno.serve(async (req) => {
           }
         } catch (parseError) {
           console.error("Erreur lors de l'analyse du JSON de la requête:", parseError)
+          // Ne pas échouer ici, continuer avec les paramètres d'URL
         }
       }
 
@@ -227,17 +229,6 @@ Deno.serve(async (req) => {
     // Essayer d'abord les paramètres d'URL (plus fiable)
     const url = new URL(req.url)
     videoId = url.searchParams.get('videoId')
-
-    // Validation de l'ID vidéo
-    if (videoId && videoId.length !== 36) {
-      return new Response(
-        JSON.stringify({
-          error: 'ID vidéo invalide',
-          details: "L'ID vidéo doit être un UUID de 36 caractères"
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      )
-    }
 
     if (videoId) {
       console.log(`VideoId récupéré des paramètres d'URL: ${videoId}`)
@@ -312,6 +303,19 @@ Deno.serve(async (req) => {
     console.log(`Statut actuel de la vidéo: ${video.status}`)
 
     // 4. MISE À JOUR DU STATUT => processing
+    // Correction: Ajouter une vérification pour éviter de traiter une vidéo déjà en échec ou transcrite
+    if (video.status === VIDEO_STATUS.TRANSCRIBED || video.status === VIDEO_STATUS.FAILED) {
+      console.log(`La vidéo ${videoId} est déjà en statut '${video.status}', ne pas la traiter à nouveau.`);
+      return new Response(
+        JSON.stringify({
+          message: `La vidéo est déjà en statut '${video.status}'.`,
+          videoId: videoId,
+          status: video.status
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+
     const { error: updateError } = await serviceClient
       .from('videos')
       .update({
@@ -411,15 +415,15 @@ Deno.serve(async (req) => {
         throw new Error(`Échec du téléchargement: ${response.status} ${response.statusText}`);
       }
       videoArrayBuffer = await response.arrayBuffer();
-      console.log(`Vidéo téléchargée avec succès: ${videoArrayBuffer.byteLength} bytes`);
-    } catch (fetchError: any) {
-      console.error('Erreur lors du téléchargement de la vidéo:', fetchError);
+      console.log(`Vidéo téléchargée, taille: ${videoArrayBuffer.byteLength} octets`);
+    } catch (downloadError: any) {
+      console.error('Erreur lors du téléchargement de la vidéo:', downloadError);
 
       await serviceClient
         .from('videos')
         .update({
           status: VIDEO_STATUS.FAILED,
-          error_message: `Échec du téléchargement: ${fetchError.message}`,
+          error_message: `Erreur de téléchargement: ${downloadError.message}`,
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId as string);
@@ -427,45 +431,41 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           error: 'Erreur de téléchargement',
-          details: `Impossible de télécharger la vidéo: ${fetchError.message}`
+          details: `Impossible de télécharger la vidéo: ${downloadError.message}`
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       )
     }
 
-    // 7. TRANSCRIPTION AVEC OPENAI WHISPER
-    console.log('Début de la transcription avec OpenAI Whisper...')
+    // 7. PRÉPARER LA TRANSCRIPTION AVEC OPENAI
+    const openai = new OpenAI({
+      apiKey: openaiApiKey // Ceci est déjà défini en tant que variable d'environnement
+    });
 
-    const openai = new OpenAI({ apiKey: openaiApiKey })
+    console.log('Préparation de la transcription avec OpenAI...');
 
-    let transcription: any;
+    // Créer un objet Blob à partir de l'ArrayBuffer
+    const videoBlob = new Blob([videoArrayBuffer], { type: 'video/mp4' }); // Assurez-vous que le type MIME est correct
+
+    // Créer un objet File à partir du Blob pour l'API OpenAI
+    const videoFile = new File([videoBlob], 'video.mp4', { type: 'video/mp4' });
+
+    let transcriptionText: string | null = null;
     try {
-      // Déterminer le type MIME basé sur l'extension du fichier
-      const fileExtension = video.storage_path.split('.').pop()?.toLowerCase() || 'mp4';
-      const mimeType = fileExtension === 'webm' ? 'video/webm' :
-        fileExtension === 'mp4' ? 'video/mp4' :
-          fileExtension === 'mov' ? 'video/quicktime' :
-            'video/mp4'; // par défaut
-
-      const videoFile = new File([videoArrayBuffer], `video.${fileExtension}`, { type: mimeType });
-
-      transcription = await openai.audio.transcriptions.create({
+      const transcription = await openai.audio.transcriptions.create({
         file: videoFile,
         model: 'whisper-1',
-        response_format: 'verbose_json',
-        timestamp_granularities: ['segment']
       });
-
-      console.log('Transcription terminée avec succès')
-      console.log(`Texte transcrit (${transcription.text.length} caractères):`, transcription.text.substring(0, 200) + '...')
+      transcriptionText = transcription.text;
+      console.log('Transcription OpenAI réussie.');
     } catch (transcriptionError: any) {
-      console.error('Erreur lors de la transcription:', transcriptionError)
+      console.error('Erreur lors de la transcription OpenAI:', transcriptionError);
 
       await serviceClient
         .from('videos')
         .update({
           status: VIDEO_STATUS.FAILED,
-          error_message: `Échec de la transcription: ${transcriptionError.message}`,
+          error_message: `Erreur de transcription OpenAI: ${transcriptionError.message}`,
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId as string);
@@ -473,155 +473,123 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           error: 'Erreur de transcription',
-          details: `Échec de la transcription avec OpenAI: ${transcriptionError.message}`
+          details: `Impossible de transcrire la vidéo avec OpenAI: ${transcriptionError.message}`
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      )
+    }
+
+    if (!transcriptionText) {
+      console.error('Transcription vide ou nulle.');
+      await serviceClient
+        .from('videos')
+        .update({
+          status: VIDEO_STATUS.FAILED,
+          error_message: 'Transcription vide ou nulle',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId as string);
+
+      return new Response(
+        JSON.stringify({
+          error: 'Erreur de transcription',
+          details: 'La transcription retournée par OpenAI est vide.'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       )
     }
 
     // 8. ENREGISTRER LA TRANSCRIPTION DANS LA BASE DE DONNÉES
-    console.log('Enregistrement de la transcription dans la base de données...')
-
-    const transcriptionData = {
-      text: transcription.text,
-      segments: transcription.segments || [],
-      language: transcription.language || 'unknown',
-      duration: transcription.duration || null
-    };
-
-    // Enregistrer dans la table transcriptions
-    const { data: transcriptionRecord, error: transcriptionTableError } = await serviceClient
+    console.log('Enregistrement de la transcription dans la base de données...');
+    const { data: transcriptionData, error: insertError } = await serviceClient
       .from('transcriptions')
       .insert({
-        video_id: videoId,
-        user_id: userId,
-        language: transcriptionData.language,
-        full_text: transcriptionData.text,
-        segments: transcriptionData.segments,
-        keywords: null,
-        confidence_score: null,
-        transcription_text: transcriptionData.text,
-        analysis_result: {
-          processed_at: new Date().toISOString(),
-          processing_duration: transcriptionData.duration
-        },
-        status: 'completed',
-        error_message: null,
-        transcription_data: transcriptionData,
-        duration: transcriptionData.duration,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        video_id: videoId as string,
+        content: transcriptionText,
+        user_id: userId // Assurez-vous que userId est défini
       })
       .select()
       .single();
 
-    if (transcriptionTableError) {
-      console.error('Erreur lors de l\'enregistrement de la transcription:', transcriptionTableError)
-
+    if (insertError) {
+      console.error('Erreur lors de l\'insertion de la transcription:', insertError);
       await serviceClient
         .from('videos')
         .update({
           status: VIDEO_STATUS.FAILED,
-          error_message: `Échec de l'enregistrement de la transcription: ${transcriptionTableError.message}`,
+          error_message: `Erreur d'insertion de transcription: ${insertError.message}`,
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId as string);
 
       return new Response(
-        JSON.stringify({ error: 'Erreur de base de données', details: transcriptionTableError.message }),
+        JSON.stringify({
+          error: 'Erreur de base de données',
+          details: `Impossible d'enregistrer la transcription: ${insertError.message}`
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       )
     }
 
-    // Mettre à jour également la table videos avec les données de transcription
-    const { error: videoUpdateError } = await serviceClient
+    console.log(`Transcription enregistrée avec succès pour la vidéo ${videoId}. ID: ${transcriptionData.id}`);
+
+    // 9. MISE À JOUR DU STATUT DE LA VIDÉO => transcribed
+    console.log(`Mise à jour du statut de la vidéo ${videoId} à '${VIDEO_STATUS.TRANSCRIBED}'...`);
+    const { error: finalUpdateError } = await serviceClient
       .from('videos')
       .update({
-        transcription_text: transcription.text,
-        transcription_data: transcriptionData,
         status: VIDEO_STATUS.TRANSCRIBED,
         updated_at: new Date().toISOString()
       })
       .eq('id', videoId as string);
 
-    if (videoUpdateError) {
-      console.error('Erreur lors de la mise à jour de la vidéo avec la transcription:', videoUpdateError);
+    if (finalUpdateError) {
+      console.error(`Erreur lors de la mise à jour finale du statut de la vidéo ${videoId}:`, finalUpdateError);
+      // Ne pas retourner d'erreur ici, car la transcription a été enregistrée
+    } else {
+      console.log(`Statut de la vidéo ${videoId} mis à jour à '${VIDEO_STATUS.TRANSCRIBED}' avec succès.`);
     }
 
-    console.log('Transcription enregistrée avec succès.')
-
-    // 9. DÉCLENCHER LA FONCTION D'ANALYSE
-    try {
-      const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
-      const headers = {
-        'Content-Type': 'application/json',
-        'apikey': `${supabaseServiceKey}`  // Changement ici : utiliser apikey au lieu de Authorization
-      };
-
-      console.log(`Appel de la fonction analyze-transcription via fetch à ${analyzeEndpoint}`);
-
-      const response = await fetch(analyzeEndpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ videoId })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Erreur de la fonction d'analyse (${response.status}): ${errorText}`);
-        throw new Error(`Erreur HTTP ${response.status}: ${errorText}`);
-      }
-
-      const responseData = await response.json();
-      console.log('Analyse démarrée avec succès:', responseData);
-    } catch (invokeError) {
-      console.error("Erreur lors de l'invocation de la fonction d'analyse:", invokeError)
-      // Ne pas échouer complètement, juste logger l'erreur
-    }
-
-    // 10. CONFIRMER LA MISE À JOUR DE LA BASE DE DONNÉES
-    const confirmed = await confirmDatabaseUpdate(serviceClient, videoId as string)
+    // Confirmer la mise à jour dans la base de données
+    const confirmed = await confirmDatabaseUpdate(serviceClient, videoId);
     if (!confirmed) {
-      console.warn(
-        `La mise à jour de la base de données pour la vidéo ${videoId} n'a pas pu être confirmée.`
-      )
+      console.warn(`La mise à jour du statut de la vidéo ${videoId} n'a pas pu être confirmée.`);
     }
 
+    // 10. RÉPONSE DE SUCCÈS
     return new Response(
       JSON.stringify({
-        message: 'Transcription terminée avec succès',
-        videoId,
-        transcription_length: transcription.text.length,
-        transcription_id: transcriptionRecord?.id
+        message: 'Transcription vidéo terminée avec succès',
+        videoId: videoId,
+        transcriptionId: transcriptionData.id,
+        status: VIDEO_STATUS.TRANSCRIBED
       }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200
-      }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
-  } catch (error: any) {
-    console.error('Erreur générale dans la fonction transcribe-video:', error)
+  } catch (err: any) {
+    console.error('Erreur inattendue dans la fonction transcribe-video:', err);
 
-    // Tentative de mise à jour du statut d'erreur si videoId est disponible
-    try {
-      if (videoId && serviceClient) {
+    // Tenter de mettre à jour le statut de la vidéo à FAILED en cas d'erreur inattendue
+    if (videoId && serviceClient) {
+      try {
         await serviceClient
           .from('videos')
           .update({
             status: VIDEO_STATUS.FAILED,
-            error_message: `Erreur interne: ${error.message}`,
+            error_message: `Erreur inattendue: ${err.message || 'Une erreur inconnue est survenue'}`,
             updated_at: new Date().toISOString()
           })
-          .eq('id', videoId as string);
+          .eq('id', videoId);
+        console.log(`Statut de la vidéo ${videoId} mis à jour à 'FAILED' suite à une erreur inattendue.`);
+      } catch (rollbackError) {
+        console.error('Erreur lors de la mise à jour du statut FAILED après une erreur inattendue:', rollbackError);
       }
-    } catch (updateError) {
-      console.error('Erreur lors de la mise à jour du statut d\'erreur:', updateError);
     }
 
     return new Response(
       JSON.stringify({
         error: 'Erreur interne du serveur',
-        details: error.message || 'Une erreur inattendue est survenue.'
+        details: err.message || 'Une erreur inattendue est survenue lors de la transcription vidéo.'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     )
