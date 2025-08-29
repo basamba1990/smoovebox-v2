@@ -1,4 +1,3 @@
-
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import OpenAI from 'npm:openai@4.28.0'
 
@@ -945,7 +944,7 @@ async function transcribeVideoWithMonitoring(
 
 Deno.serve(withAuth(async (req: Request, user: any, serviceClient: any) => {
   const url = new URL(req.url);
-  const videoId = url.searchParams.get('videoId');
+  let videoId = url.searchParams.get('videoId');
   let providedUrl: string | undefined = undefined;
 
   if (!videoId) {
