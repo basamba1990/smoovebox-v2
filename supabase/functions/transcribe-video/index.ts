@@ -505,7 +505,7 @@ Deno.serve(async (req) => {
       .from('transcriptions')
       .insert({
         video_id: videoId as string,
-        content: transcriptionText,
+        transcription_text: transcriptionText,
         user_id: userId // Assurez-vous que userId est défini
       })
       .select()
