@@ -445,7 +445,7 @@ async function getVideoUrl(
   
   const { data: video, error: videoError } = await serviceClient
     .from('videos')
-    .select('storage_path, url, bucket_name')
+    .select('storage_path, url') // Removed bucket_name from select
     .eq('id', videoId)
     .single();
     
@@ -463,7 +463,7 @@ async function getVideoUrl(
   }
   
   if (video.storage_path) {
-    const bucket = video.bucket_name || 'videos';
+    const bucket = 'videos'; // Hardcoded bucket name as 'videos'
     const signedUrl = await generateSignedUrl(serviceClient, bucket, video.storage_path);
     logTranscriptionEvent('info', 'video_url_signed', videoId);
     return { url: signedUrl, source: 'signed' };
@@ -955,22 +955,22 @@ Deno.serve(withAuth(async (req: Request, user: any, serviceClient: any) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
       );
   }
-  
+
   try {
     const result = await transcribeVideoWithMonitoring(serviceClient, videoId, user.id, providedUrl);
-    return new Response(JSON.stringify(result), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 });
-  } catch (error: any) {
-    const status = error.type === TranscriptionErrorType.AUTHENTICATION ? 401 
-                 : error.type === TranscriptionErrorType.VIDEO_NOT_FOUND ? 404
-                 : 500;
-
     return new Response(
-      JSON.stringify({
-        error: error.message || 'Erreur lors de l\'exécution de la transcription',
-        details: error.originalError?.message,
-        type: error.type || TranscriptionErrorType.UNKNOWN
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status }
+      JSON.stringify({ message: 'Transcription réussie', data: result }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+    );
+  } catch (error: any) {
+    logTranscriptionEvent('error', 'main_handler_error', videoId, { error: error.message, stack: error.stack });
+    const status = error.type === TranscriptionErrorType.AUTHENTICATION ? 401 :
+                   error.type === TranscriptionErrorType.VIDEO_NOT_FOUND ? 404 :
+                   error.type === TranscriptionErrorType.VALIDATION_ERROR ? 400 :
+                   500; // Erreur interne du serveur par défaut
+    return new Response(
+      JSON.stringify({ error: error.message, details: error.originalError?.message || 'Erreur interne du serveur' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: status }
     );
   }
 }));
