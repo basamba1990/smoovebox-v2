@@ -437,35 +437,29 @@ Deno.serve(async (req) => {
       )
     }
 
-    // 7. PRÉPARER LA TRANSCRIPTION AVEC OPENAI
-    const openai = new OpenAI({
-      apiKey: openaiApiKey // Ceci est déjà défini en tant que variable d'environnement
-    });
+    // 7. TRANSCRIPTION AUDIO AVEC WHISPER
+    console.log('Transcription audio avec Whisper...');
+    const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    console.log('Préparation de la transcription avec OpenAI...');
-
-    // Créer un objet Blob à partir de l'ArrayBuffer
-    const videoBlob = new Blob([videoArrayBuffer], { type: 'video/mp4' }); // Assurez-vous que le type MIME est correct
-
-    // Créer un objet File à partir du Blob pour l'API OpenAI
-    const videoFile = new File([videoBlob], 'video.mp4', { type: 'video/mp4' });
-
-    let transcriptionText: string | null = null;
+    let transcriptionText: string;
     try {
+      const audioBlob = new Blob([videoArrayBuffer], { type: 'audio/mpeg' });
+      const audioFile = new File([audioBlob], 'audio.mp3', { type: 'audio/mpeg' });
+
       const transcription = await openai.audio.transcriptions.create({
-        file: videoFile,
+        file: audioFile,
         model: 'whisper-1',
       });
       transcriptionText = transcription.text;
-      console.log('Transcription OpenAI réussie.');
-    } catch (transcriptionError: any) {
-      console.error('Erreur lors de la transcription OpenAI:', transcriptionError);
+      console.log('Transcription Whisper terminée.');
+    } catch (whisperError: any) {
+      console.error('Erreur lors de la transcription Whisper:', whisperError);
 
       await serviceClient
         .from('videos')
         .update({
           status: VIDEO_STATUS.FAILED,
-          error_message: `Erreur de transcription OpenAI: ${transcriptionError.message}`,
+          error_message: `Erreur Whisper: ${whisperError.message}`,
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId as string);
@@ -473,27 +467,7 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           error: 'Erreur de transcription',
-          details: `Impossible de transcrire la vidéo avec OpenAI: ${transcriptionError.message}`
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      )
-    }
-
-    if (!transcriptionText) {
-      console.error('Transcription vide ou nulle.');
-      await serviceClient
-        .from('videos')
-        .update({
-          status: VIDEO_STATUS.FAILED,
-          error_message: 'Transcription vide ou nulle',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId as string);
-
-      return new Response(
-        JSON.stringify({
-          error: 'Erreur de transcription',
-          details: 'La transcription retournée par OpenAI est vide.'
+          details: `Impossible de transcrire l\'audio: ${whisperError.message}`
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       )
@@ -505,6 +479,7 @@ Deno.serve(async (req) => {
       .from('transcriptions')
       .insert({
         video_id: videoId as string,
+        full_text: transcriptionText, // Ajout de full_text ici
         transcription_text: transcriptionText,
         user_id: userId // Assurez-vous que userId est défini
       })
