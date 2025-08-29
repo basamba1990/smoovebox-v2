@@ -418,18 +418,29 @@ Deno.serve(async (req) => {
       )
     }
 
-    // 6. TÉLÉCHARGER LA VIDÉO ET LA CONVERTIR EN AUDIO
-    console.log('Téléchargement et conversion de la vidéo en audio...')
+    // 6. TÉLÉCHARGER LA VIDÉO ET LA PRÉPARER POUR WHISPER
+    console.log('Téléchargement de la vidéo et préparation pour Whisper...')
     
-    let audioBlob: Blob;
+    let videoArrayBuffer: ArrayBuffer;
     try {
       const response = await fetch(videoUrl);
       if (!response.ok) {
         throw new Error(`Échec du téléchargement: ${response.status} ${response.statusText}`);
       }
-      audioBlob = await response.blob();
-    } catch (fetchError) {
+      videoArrayBuffer = await response.arrayBuffer();
+    } catch (fetchError: any) {
       console.error('Erreur lors du téléchargement de la vidéo:', fetchError);
+      // Mettre à jour le statut de la vidéo à FAILED
+      if (videoId && serviceClient) {
+        await serviceClient
+          .from('videos')
+          .update({ 
+            status: VIDEO_STATUS.FAILED, 
+            error_message: `Échec du téléchargement: ${fetchError.message}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId as string);
+      }
       return new Response(
         JSON.stringify({
           error: 'Erreur de téléchargement',
@@ -446,11 +457,11 @@ Deno.serve(async (req) => {
     
     let transcription: any;
     try {
-      // Créer un fichier temporaire pour l'audio
-      const audioFile = new File([audioBlob], 'audio.mp4', { type: 'audio/mp4' });
+      // Passer l'ArrayBuffer directement à Whisper avec le type video/mp4
+      const videoFile = new File([videoArrayBuffer], 'video.mp4', { type: 'video/mp4' });
       
       transcription = await openai.audio.transcriptions.create({
-        file: audioFile,
+        file: videoFile,
         model: 'whisper-1',
         response_format: 'verbose_json',
         timestamp_granularities: ['segment']
@@ -462,15 +473,16 @@ Deno.serve(async (req) => {
       console.error('Erreur lors de la transcription:', transcriptionError)
       
       // Mettre à jour le statut de la vidéo à FAILED
-      await serviceClient
-        .from('videos')
-        .update({ 
-          status: VIDEO_STATUS.FAILED, 
-          error_message: `Échec de la transcription: ${transcriptionError.message}`,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId as string)
-
+      if (videoId && serviceClient) {
+        await serviceClient
+          .from('videos')
+          .update({ 
+            status: VIDEO_STATUS.FAILED, 
+            error_message: `Échec de la transcription: ${transcriptionError.message}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId as string);
+      }
       return new Response(
         JSON.stringify({
           error: 'Erreur de transcription',
@@ -491,7 +503,7 @@ Deno.serve(async (req) => {
     };
 
     // Utiliser la fonction SQL corrigée save_transcription_transaction
-    const { data: transcriptionId, error: transcriptionError } = await serviceClient
+    const { data: transcriptionId, error: transcriptionTableError } = await serviceClient
       .rpc('save_transcription_transaction', {
         p_video_id: videoId,
         p_user_id: userId,
@@ -511,21 +523,22 @@ Deno.serve(async (req) => {
         p_duration: transcriptionData.duration
       });
 
-    if (transcriptionError) {
-      console.error('Erreur lors de l\'enregistrement de la transcription:', transcriptionError)
+    if (transcriptionTableError) {
+      console.error('Erreur lors de l\'enregistrement de la transcription:', transcriptionTableError)
       
       // Mettre à jour le statut de la vidéo à FAILED en cas d'échec
-      await serviceClient
-        .from('videos')
-        .update({ 
-          status: VIDEO_STATUS.FAILED, 
-          error_message: `Échec de l'enregistrement de la transcription: ${transcriptionError.message}`,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId as string)
-
+      if (videoId && serviceClient) {
+        await serviceClient
+          .from('videos')
+          .update({ 
+            status: VIDEO_STATUS.FAILED, 
+            error_message: `Échec de l'enregistrement de la transcription: ${transcriptionTableError.message}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId as string);
+      }
       return new Response(
-        JSON.stringify({ error: 'Erreur de base de données', details: transcriptionError.message }),
+        JSON.stringify({ error: 'Erreur de base de données', details: transcriptionTableError.message }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       )
     }
