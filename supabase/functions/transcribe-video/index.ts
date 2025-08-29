@@ -316,92 +316,64 @@ Deno.serve(async (req) => {
       console.log(`Statut de la vidéo ${videoId} mis à jour à '${VIDEO_STATUS.PROCESSING}'`)
     }
 
-    // 5. RÉCUPÉRER L'URL DE LA VIDÉO
-    // Utiliser d'abord videoUrl du corps de la requête si disponible
-    if (!videoUrl) {
-      videoUrl = (video as any).url
-    }
-
-    if (!videoUrl && (video as any).storage_path) {
-      console.log(`Génération d'une URL signée pour ${(video as any).storage_path}`)
-
-      // Extraire le bucket et le chemin
-      let bucket = 'videos' // Bucket par défaut
-      let filePath = (video as any).storage_path as string
-
-      // Gestion intelligente du chemin: détection du bucket dans le chemin
-      if (filePath.includes('/')) {
-        const parts = filePath.split('/')
-        if (parts.length > 1) {
-          const possibleBucket = parts[0]
-
+    // 5. GÉNÉRER L'URL SIGNÉE POUR LA VIDÉO
+    if (!videoUrl && video.storage_path) {
+      console.log(`Génération d'une URL signée pour le chemin: ${video.storage_path}`)
+      
+      try {
+        // Déterminer le bucket et le chemin du fichier
+        let bucket = 'videos'; // Bucket par défaut
+        let filePath = video.storage_path;
+        
+        // Si le chemin contient un slash, le premier segment pourrait être le bucket
+        if (filePath.includes('/')) {
+          const pathParts = filePath.split('/');
+          const possibleBucket = pathParts[0];
+          
+          // Vérifier si le premier segment est un bucket valide
           try {
-            const { data: buckets } = await serviceClient.storage.listBuckets()
-            console.log('Buckets disponibles:', buckets?.map((b: any) => b.name) || [])
-            const bucketExists = (buckets || []).some((b: any) => b.name === possibleBucket)
-
+            const { data: buckets } = await serviceClient.storage.listBuckets();
+            const bucketExists = buckets?.some((b: any) => b.name === possibleBucket);
+            
             if (bucketExists) {
-              bucket = possibleBucket
-              filePath = parts.slice(1).join('/')
-              console.log(`Bucket identifié: ${bucket}, chemin ajusté: ${filePath}`)
-            } else {
-              console.log(
-                `Le segment "${possibleBucket}" n'est pas un bucket valide, utilisation du bucket par défaut: ${bucket}`
-              )
+              bucket = possibleBucket;
+              filePath = pathParts.slice(1).join('/');
+              console.log(`Bucket détecté: ${bucket}, chemin ajusté: ${filePath}`);
             }
           } catch (bucketError) {
-            console.error('Erreur lors de la vérification des buckets:', bucketError)
+            console.log('Utilisation du bucket par défaut:', bucket);
           }
         }
-      }
-
-      // Méthode alternative: vérifier si le chemin commence par le nom du bucket
-      if (filePath.startsWith(`${bucket}/`)) {
-        filePath = filePath.substring(bucket.length + 1)
-        console.log(`Préfixe de bucket détecté et supprimé. Nouveau chemin: ${filePath}`)
-      }
-
-      console.log(`Création d'URL signée pour bucket: ${bucket}, chemin: ${filePath}`)
-
-      try {
-        const parentPath = filePath.split('/').slice(0, -1).join('/') || undefined
-        console.log(`Vérification du contenu du dossier: ${parentPath || '(racine)'}`)
-
-        const { data: fileList, error: fileListError } = await serviceClient.storage
+        
+        // Créer l'URL signée
+        const { data: signedUrlData, error: signedUrlError } = await serviceClient
+          .storage
           .from(bucket)
-          .list(parentPath, { limit: 100, offset: 0, sortBy: { column: 'name', order: 'asc' } })
-
-        if (fileListError) {
-          console.error("Erreur lors de la vérification de l'existence du fichier:", fileListError)
-        } else {
-          const fileName = filePath.split('/').pop()
-          console.log(
-            `Contenu du dossier '${parentPath || '(racine)'}':`,
-            (fileList || []).map((f: any) => f.name)
-          )
-          console.log(`Recherche du fichier ${fileName} dans la liste`)
-          const fileFound = (fileList || []).some((f: any) => f.name === fileName)
-          console.log(`Fichier ${fileName} trouvé dans le bucket ${bucket}: ${fileFound}`)
-
-          if (!fileFound) {
-            throw new Error(`Fichier ${fileName} non trouvé dans le bucket ${bucket}`)
-          }
+          .createSignedUrl(filePath, 60 * 60); // 1 heure de validité
+        
+        if (signedUrlError) {
+          throw new Error(`Erreur lors de la création de l'URL signée: ${signedUrlError.message}`);
         }
-
-        const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
-          .from(bucket)
-          .createSignedUrl(filePath, 60 * 60)
-
-        if (signedUrlError) throw signedUrlError
-
-        videoUrl = signedUrlData.signedUrl
-        console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 50)}...`)
+        
+        videoUrl = signedUrlData.signedUrl;
+        console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 100)}...`);
+        
       } catch (storageError: any) {
-        console.error('Erreur lors de la création de l\'URL signée:', storageError)
+        console.error('Erreur lors de la génération de l\'URL signée:', storageError);
+        
+        await serviceClient
+          .from('videos')
+          .update({ 
+            status: VIDEO_STATUS.FAILED, 
+            error_message: `Erreur de stockage: ${storageError.message}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId as string);
+        
         return new Response(
           JSON.stringify({
             error: 'Erreur de stockage',
-            details: `Impossible de générer l'URL signée pour la vidéo: ${storageError.message}`
+            details: `Impossible de générer l'URL signée: ${storageError.message}`
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
         )
@@ -418,8 +390,8 @@ Deno.serve(async (req) => {
       )
     }
 
-    // 6. TÉLÉCHARGER LA VIDÉO ET LA PRÉPARER POUR WHISPER
-    console.log('Téléchargement de la vidéo et préparation pour Whisper...')
+    // 6. TÉLÉCHARGER LA VIDÉO
+    console.log('Téléchargement de la vidéo...')
     
     let videoArrayBuffer: ArrayBuffer;
     try {
@@ -428,19 +400,19 @@ Deno.serve(async (req) => {
         throw new Error(`Échec du téléchargement: ${response.status} ${response.statusText}`);
       }
       videoArrayBuffer = await response.arrayBuffer();
+      console.log(`Vidéo téléchargée avec succès: ${videoArrayBuffer.byteLength} bytes`);
     } catch (fetchError: any) {
       console.error('Erreur lors du téléchargement de la vidéo:', fetchError);
-      // Mettre à jour le statut de la vidéo à FAILED
-      if (videoId && serviceClient) {
-        await serviceClient
-          .from('videos')
-          .update({ 
-            status: VIDEO_STATUS.FAILED, 
-            error_message: `Échec du téléchargement: ${fetchError.message}`,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId as string);
-      }
+      
+      await serviceClient
+        .from('videos')
+        .update({ 
+          status: VIDEO_STATUS.FAILED, 
+          error_message: `Échec du téléchargement: ${fetchError.message}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId as string);
+      
       return new Response(
         JSON.stringify({
           error: 'Erreur de téléchargement',
@@ -457,8 +429,14 @@ Deno.serve(async (req) => {
     
     let transcription: any;
     try {
-      // Passer l'ArrayBuffer directement à Whisper avec le type video/mp4
-      const videoFile = new File([videoArrayBuffer], 'video.mp4', { type: 'video/mp4' });
+      // Déterminer le type MIME basé sur l'extension du fichier
+      const fileExtension = video.storage_path.split('.').pop()?.toLowerCase() || 'mp4';
+      const mimeType = fileExtension === 'webm' ? 'video/webm' : 
+                      fileExtension === 'mp4' ? 'video/mp4' : 
+                      fileExtension === 'mov' ? 'video/quicktime' : 
+                      'video/mp4'; // par défaut
+      
+      const videoFile = new File([videoArrayBuffer], `video.${fileExtension}`, { type: mimeType });
       
       transcription = await openai.audio.transcriptions.create({
         file: videoFile,
@@ -472,17 +450,15 @@ Deno.serve(async (req) => {
     } catch (transcriptionError: any) {
       console.error('Erreur lors de la transcription:', transcriptionError)
       
-      // Mettre à jour le statut de la vidéo à FAILED
-      if (videoId && serviceClient) {
-        await serviceClient
-          .from('videos')
-          .update({ 
-            status: VIDEO_STATUS.FAILED, 
-            error_message: `Échec de la transcription: ${transcriptionError.message}`,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId as string);
-      }
+      await serviceClient
+        .from('videos')
+        .update({ 
+          status: VIDEO_STATUS.FAILED, 
+          error_message: `Échec de la transcription: ${transcriptionError.message}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId as string);
+
       return new Response(
         JSON.stringify({
           error: 'Erreur de transcription',
@@ -502,41 +478,44 @@ Deno.serve(async (req) => {
       duration: transcription.duration || null
     };
 
-    // Utiliser la fonction SQL corrigée save_transcription_transaction
-    const { data: transcriptionId, error: transcriptionTableError } = await serviceClient
-      .rpc('save_transcription_transaction', {
-        p_video_id: videoId,
-        p_user_id: userId,
-        p_language: transcriptionData.language,
-        p_full_text: transcriptionData.text,
-        p_segments: JSON.stringify(transcriptionData.segments),
-        p_keywords: null,
-        p_confidence_score: null,
-        p_transcription_text: transcriptionData.text,
-        p_analysis_result: JSON.stringify({
+    // Enregistrer dans la table transcriptions
+    const { data: transcriptionRecord, error: transcriptionTableError } = await serviceClient
+      .from('transcriptions')
+      .insert({
+        video_id: videoId,
+        user_id: userId,
+        language: transcriptionData.language,
+        full_text: transcriptionData.text,
+        segments: transcriptionData.segments,
+        keywords: null,
+        confidence_score: null,
+        transcription_text: transcriptionData.text,
+        analysis_result: {
           processed_at: new Date().toISOString(),
           processing_duration: transcriptionData.duration
-        }),
-        p_status: 'completed',
-        p_error_message: null,
-        p_transcription_data: JSON.stringify(transcriptionData),
-        p_duration: transcriptionData.duration
-      });
+        },
+        status: 'completed',
+        error_message: null,
+        transcription_data: transcriptionData,
+        duration: transcriptionData.duration,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single();
 
     if (transcriptionTableError) {
       console.error('Erreur lors de l\'enregistrement de la transcription:', transcriptionTableError)
       
-      // Mettre à jour le statut de la vidéo à FAILED en cas d'échec
-      if (videoId && serviceClient) {
-        await serviceClient
-          .from('videos')
-          .update({ 
-            status: VIDEO_STATUS.FAILED, 
-            error_message: `Échec de l'enregistrement de la transcription: ${transcriptionTableError.message}`,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId as string);
-      }
+      await serviceClient
+        .from('videos')
+        .update({ 
+          status: VIDEO_STATUS.FAILED, 
+          error_message: `Échec de l'enregistrement de la transcription: ${transcriptionTableError.message}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId as string);
+
       return new Response(
         JSON.stringify({ error: 'Erreur de base de données', details: transcriptionTableError.message }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
@@ -602,7 +581,7 @@ Deno.serve(async (req) => {
         message: 'Transcription terminée avec succès', 
         videoId,
         transcription_length: transcription.text.length,
-        transcription_id: transcriptionId
+        transcription_id: transcriptionRecord?.id
       }), 
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
