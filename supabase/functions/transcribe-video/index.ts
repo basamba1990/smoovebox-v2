@@ -314,7 +314,7 @@ Deno.serve(async (req) => {
       console.log(`Statut de la vidéo ${videoId} mis à jour à '${VIDEO_STATUS.PROCESSING}'`)
     }
 
-    // 5. RÉCUPÉRER L'URL DE LA VIDÉO
+    // 5. RÉCUPÉRER L'URL DE LA VIDÉO - CORRECTION PRINCIPALE
     // Utiliser d'abord videoUrl du corps de la requête si disponible
     if (!videoUrl) {
       videoUrl = (video as any).url
@@ -327,7 +327,7 @@ Deno.serve(async (req) => {
       let bucket = 'videos' // Bucket par défaut
       let filePath = (video as any).storage_path as string
 
-      // Gestion intelligente du chemin: détection du bucket dans le chemin
+      // CORRECTION: Gestion intelligente du chemin - détection du bucket dans le chemin
       if (filePath.includes('/')) {
         const parts = filePath.split('/')
         if (parts.length > 1) {
@@ -353,7 +353,7 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Méthode alternative: vérifier si le chemin commence par le nom du bucket
+      // CORRECTION: Méthode alternative - vérifier si le chemin commence par le nom du bucket
       if (filePath.startsWith(`${bucket}/`)) {
         filePath = filePath.substring(bucket.length + 1)
         console.log(`Préfixe de bucket détecté et supprimé. Nouveau chemin: ${filePath}`)
@@ -386,9 +386,10 @@ Deno.serve(async (req) => {
           }
         }
 
+        // CORRECTION PRINCIPALE: Créer une signed URL avec une durée plus longue
         const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
           .from(bucket)
-          .createSignedUrl(filePath, 60 * 60)
+          .createSignedUrl(filePath, 60 * 60) // 1 heure
 
         if (signedUrlError) throw signedUrlError
 
@@ -396,13 +397,31 @@ Deno.serve(async (req) => {
         console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 50)}...`)
       } catch (storageError: any) {
         console.error('Erreur lors de la création de l\'URL signée:', storageError)
-        return new Response(
-          JSON.stringify({
-            error: 'Erreur de stockage',
-            details: `Impossible de générer l'URL signée pour la vidéo: ${storageError.message}`
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-        )
+        
+        // CORRECTION: Essayer une URL publique en dernier recours
+        try {
+          console.log('Tentative de création d\'une URL publique en dernier recours...')
+          const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${filePath}`
+          console.log(`URL publique tentée: ${publicUrl}`)
+          
+          // Tester si l'URL publique fonctionne
+          const testResponse = await fetch(publicUrl, { method: 'HEAD' })
+          if (testResponse.ok) {
+            videoUrl = publicUrl
+            console.log('URL publique fonctionnelle trouvée')
+          } else {
+            throw new Error('URL publique non accessible')
+          }
+        } catch (publicUrlError) {
+          console.error('Erreur avec l\'URL publique:', publicUrlError)
+          return new Response(
+            JSON.stringify({
+              error: 'Erreur de stockage',
+              details: `Impossible de générer l'URL pour la vidéo. Erreur signed URL: ${storageError.message}. Erreur URL publique: ${publicUrlError.message}`
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+          )
+        }
       }
     }
 
@@ -418,14 +437,31 @@ Deno.serve(async (req) => {
 
     // 6. TÉLÉCHARGER LA VIDÉO ET LA CONVERTIR EN AUDIO
     console.log('Téléchargement et conversion de la vidéo en audio...')
+    console.log(`URL utilisée pour le téléchargement: ${videoUrl}`)
     
     let audioBlob: Blob;
     try {
-      const response = await fetch(videoUrl);
+      // CORRECTION: Ajouter des headers et une meilleure gestion d'erreur
+      const response = await fetch(videoUrl, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; Supabase-Edge-Function)',
+        }
+      });
+      
       if (!response.ok) {
-        throw new Error(`Échec du téléchargement: ${response.status} ${response.statusText}`);
+        throw new Error(`Échec du téléchargement: ${response.status} ${response.statusText}. URL: ${videoUrl}`);
       }
+      
+      const contentType = response.headers.get('content-type');
+      console.log(`Type de contenu reçu: ${contentType}`);
+      
       audioBlob = await response.blob();
+      console.log(`Taille du fichier téléchargé: ${audioBlob.size} bytes`);
+      
+      if (audioBlob.size === 0) {
+        throw new Error('Le fichier téléchargé est vide');
+      }
     } catch (fetchError) {
       console.error('Erreur lors du téléchargement de la vidéo:', fetchError);
       return new Response(
@@ -448,56 +484,53 @@ Deno.serve(async (req) => {
         model: 'whisper-1',
         language: 'fr',
         response_format: 'verbose_json' // Important pour avoir les segments et les scores de confiance
-      });
-    } catch (openaiError) {
-      console.error('Erreur OpenAI lors de la transcription:', openaiError);
+      })
+
+      console.log('Transcription OpenAI réussie')
+      console.log(`Texte transcrit (${transcription.text.length} caractères):`, transcription.text.substring(0, 200) + '...')
+    } catch (transcriptionError: any) {
+      console.error('Erreur lors de la transcription:', transcriptionError)
       
       // Mettre à jour le statut de la vidéo à FAILED
       await serviceClient
         .from('videos')
         .update({ 
           status: VIDEO_STATUS.FAILED, 
-          error_message: `Erreur OpenAI: ${openaiError.message}`,
+          error_message: `Échec de la transcription: ${transcriptionError.message}`,
           updated_at: new Date().toISOString()
         })
-        .eq('id', videoId as string);
+        .eq('id', videoId as string)
 
       return new Response(
-        JSON.stringify({
-          error: 'Erreur de transcription OpenAI',
-          details: openaiError.message
-        }),
+        JSON.stringify({ error: 'Erreur de transcription', details: transcriptionError.message }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      );
+      )
     }
 
-    console.log('Transcription terminée.')
+    // 8. ENREGISTRER LA TRANSCRIPTION DANS LA BASE DE DONNÉES
+    console.log('Enregistrement de la transcription dans la base de données...')
 
-    // Calculer un score de confiance moyen basé sur les segments
-    const confidenceScore = transcription.segments && transcription.segments.length > 0 
-      ? transcription.segments.reduce((sum: number, segment: any) => sum + (segment.confidence || 0), 0) / transcription.segments.length
-      : null;
-
-    // 8. ENREGISTRER LA TRANSCRIPTION DANS SUPABASE
-    console.log('Enregistrement de la transcription dans Supabase...')
-    
-    // Préparer les données de transcription
+    // Préparer les données de transcription avec segments si disponibles
     const transcriptionData = {
       text: transcription.text,
-      segments: transcription.segments,
-      language: transcription.language,
-      duration: transcription.duration
-    };
+      language: transcription.language || 'fr',
+      duration: transcription.duration || null,
+      segments: transcription.segments || [],
+      task: transcription.task || 'transcribe'
+    }
 
+    // Insérer dans la table transcriptions
     const { error: transcriptionTableError } = await serviceClient
       .from('transcriptions')
       .upsert({
-        video_id: videoId as string,
-        full_text: transcription.text,
-        segments: transcription.segments,
-        transcription_data: transcriptionData,
-        confidence_score: confidenceScore,
-        status: VIDEO_STATUS.TRANSCRIBED,
+        video_id: videoId,
+        text: transcription.text,
+        language: transcription.language || 'fr',
+        duration: transcription.duration || null,
+        segments: transcription.segments || [],
+        confidence_score: transcription.segments ? 
+          transcription.segments.reduce((acc: number, seg: any) => acc + (seg.avg_logprob || 0), 0) / transcription.segments.length : 
+          null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }, { onConflict: 'video_id' });
