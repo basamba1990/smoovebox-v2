@@ -690,7 +690,7 @@ Deno.serve(async (req) => {
         videoId,  
         targetStatus: VIDEO_STATUS.TRANSCRIBED,  
         method: updateResult.method,  
-        httpExtensionStatus,  
+  
         error: updateResult.error,  
         timestamp: new Date().toISOString()  
       });  
