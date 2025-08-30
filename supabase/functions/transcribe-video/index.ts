@@ -628,7 +628,7 @@ Deno.serve(async (req) => {
       .insert({  
         video_id: videoId,  
         user_id: userId,  
-        transcription_text: transcriptionResult.text,  
+        full_text: transcriptionResult.text || '',  
         language: transcriptionResult.language,  
         duration: transcriptionResult.duration,  
         segments: transcriptionResult.segments  
