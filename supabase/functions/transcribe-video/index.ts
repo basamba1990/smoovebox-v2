@@ -642,7 +642,7 @@ Deno.serve(async (req) => {
       const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
       
       // Vérifier que la clé de service est valide avant de l'utiliser
-      if (!supabaseServiceKey || supabaseServiceKey.includes('YOUR_SUPABASE_SERVICE_ROLE_KEY')) {
+      if (!supabaseServiceKey || supabaseServiceKey.includes('SUPABASE_SERVICE_ROLE_KEY')) {
         throw new Error('Clé de service Supabase invalide pour l\'appel à analyze-transcription');
       }
       
