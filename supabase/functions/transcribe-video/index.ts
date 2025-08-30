@@ -675,9 +675,8 @@ Deno.serve(async (req) => {
       videoId as string,  
       VIDEO_STATUS.TRANSCRIBED,  
       {  
-        transcription_completed_at: new Date().toISOString(),  
-        transcription_method: 'openai_whisper',  
-        http_extension_available: httpExtensionStatus.available  
+          transcription_completed_at: new Date().toISOString(),  
+          transcription_method: 'openai_whisper'  
       }  
     );  
 
