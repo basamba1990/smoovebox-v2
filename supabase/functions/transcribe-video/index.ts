@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     }
 
     // Vérifier que la clé de service n'est pas un placeholder
-    if (supabaseServiceKey.includes('YOUR_SUPABASE_SERVICE_ROLE_KEY') || supabaseServiceKey.length < 50) {
+    if (supabaseServiceKey.includes('SUPABASE_SERVICE_ROLE_KEY') || supabaseServiceKey.length < 50) {
       console.error('Clé de service Supabase invalide ou placeholder détecté')
       return new Response(
         JSON.stringify({
