@@ -73,6 +73,31 @@ Deno.serve(async (req) => {
       }
     })
 
+    // Helper pour valider et corriger une URL
+    function validateAndFixUrl(url: string, supabaseUrl: string): string | null {
+      if (!url) return null;
+      
+      // Si l'URL est déjà complète, la retourner
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        console.log(`URL complète détectée: ${url.substring(0, 50)}...`)
+        return url;
+      }
+      
+      // Si c'est un chemin relatif, essayer de construire une URL complète
+      if (url.includes('/')) {
+        console.log(`Chemin relatif détecté: ${url}`)
+        
+        // Essayer de construire une URL publique Supabase
+        const baseUrl = supabaseUrl.replace('/rest/v1', '');
+        const publicUrl = `${baseUrl}/storage/v1/object/public/videos/${url}`;
+        console.log(`URL publique construite: ${publicUrl}`)
+        return publicUrl;
+      }
+      
+      console.error(`Format d'URL non reconnu: ${url}`)
+      return null;
+    }
+
     // Helper pour confirmer la mise à jour de la base de données
     async function confirmDatabaseUpdate(
       client: ReturnType<typeof createClient>,
@@ -342,8 +367,10 @@ Deno.serve(async (req) => {
       )
     }
 
-    console.log(`Vidéo trouvée: ${video.id}, titre: ${video.title}, chemin: ${video.storage_path}`)
+    console.log(`Vidéo trouvée: ${video.id}, titre: ${video.title}`)
     console.log(`Statut actuel de la vidéo: ${video.status}`)
+    console.log(`Chemin de stockage: ${video.storage_path}`)
+    console.log(`URL directe: ${video.url}`)
 
     // 4. MISE À JOUR DU STATUT => processing
     const statusUpdated = await updateVideoStatus(
@@ -360,18 +387,28 @@ Deno.serve(async (req) => {
       console.warn(`⚠️ Impossible de mettre à jour le statut vers 'processing', mais on continue...`)
     }
 
-    // 5. RÉCUPÉRER L'URL DE LA VIDÉO
-    // Utiliser d'abord videoUrl du corps de la requête si disponible
-    if (!videoUrl) {
-      videoUrl = (video as any).url
+    // 5. RÉCUPÉRER ET VALIDER L'URL DE LA VIDÉO
+    console.log('🔍 Récupération et validation de l\'URL de la vidéo...')
+    
+    // Priorité 1: videoUrl fourni dans la requête
+    if (videoUrl) {
+      console.log(`URL fournie dans la requête: ${videoUrl}`)
+      videoUrl = validateAndFixUrl(videoUrl, supabaseUrl);
     }
-
-    if (!videoUrl && (video as any).storage_path) {
-      console.log(`Génération d'une URL signée pour ${(video as any).storage_path}`)
+    
+    // Priorité 2: URL directe de la vidéo
+    if (!videoUrl && video.url) {
+      console.log(`URL directe de la vidéo: ${video.url}`)
+      videoUrl = validateAndFixUrl(video.url, supabaseUrl);
+    }
+    
+    // Priorité 3: Générer une URL signée à partir du storage_path
+    if (!videoUrl && video.storage_path) {
+      console.log(`Génération d'une URL signée pour: ${video.storage_path}`)
 
       // Extraire le bucket et le chemin
       let bucket = 'videos' // Bucket par défaut
-      let filePath = (video as any).storage_path as string
+      let filePath = video.storage_path as string
 
       // Gestion intelligente du chemin: détection du bucket dans le chemin
       if (filePath.includes('/')) {
@@ -408,6 +445,7 @@ Deno.serve(async (req) => {
       console.log(`Création d'URL signée pour bucket: ${bucket}, chemin: ${filePath}`)
 
       try {
+        // Vérifier l'existence du fichier
         const parentPath = filePath.split('/').slice(0, -1).join('/') || undefined
         console.log(`Vérification du contenu du dossier: ${parentPath || '(racine)'}`)
 
@@ -432,6 +470,7 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Créer l'URL signée
         const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
           .from(bucket)
           .createSignedUrl(filePath, 60 * 60)
@@ -439,38 +478,25 @@ Deno.serve(async (req) => {
         if (signedUrlError) throw signedUrlError
 
         videoUrl = signedUrlData.signedUrl
-        console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 50)}...`)
+        console.log(`✅ URL signée générée avec succès: ${videoUrl.substring(0, 50)}...`)
       } catch (storageError: any) {
-        console.error('Erreur lors de la création de l\'URL signée:', storageError)
+        console.error('❌ Erreur lors de la création de l\'URL signée:', storageError)
         
-        // Mettre à jour le statut d'erreur
-        await updateVideoStatus(
-          serviceClient,
-          videoId as string,
-          VIDEO_STATUS.FAILED,
-          {
-            error_message: `Erreur de stockage: ${storageError.message}`
-          },
-          'storage_error'
-        )
-        
-        return new Response(
-          JSON.stringify({
-            error: 'Erreur de stockage',
-            details: `Impossible de générer l'URL signée pour la vidéo: ${storageError.message}`
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-        )
+        // Essayer une URL publique comme fallback
+        const publicUrl = `${supabaseUrl.replace('/rest/v1', '')}/storage/v1/object/public/${bucket}/${filePath}`;
+        console.log(`🔄 Tentative avec URL publique: ${publicUrl}`);
+        videoUrl = publicUrl;
       }
     }
 
+    // Validation finale de l'URL
     if (!videoUrl) {
       await updateVideoStatus(
         serviceClient,
         videoId as string,
         VIDEO_STATUS.FAILED,
         {
-          error_message: 'URL vidéo manquante'
+          error_message: 'Impossible de récupérer ou générer une URL valide pour la vidéo'
         },
         'missing_url'
       )
@@ -484,18 +510,46 @@ Deno.serve(async (req) => {
       )
     }
 
+    // Vérifier que l'URL est valide
+    try {
+      new URL(videoUrl);
+      console.log(`✅ URL validée: ${videoUrl.substring(0, 50)}...`)
+    } catch (urlError) {
+      console.error(`❌ URL invalide: ${videoUrl}`)
+      
+      await updateVideoStatus(
+        serviceClient,
+        videoId as string,
+        VIDEO_STATUS.FAILED,
+        {
+          error_message: `URL invalide: ${videoUrl}`
+        },
+        'invalid_url'
+      )
+      
+      return new Response(
+        JSON.stringify({
+          error: 'URL vidéo invalide',
+          details: `L'URL générée n'est pas valide: ${videoUrl}`
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      )
+    }
+
     // 6. TÉLÉCHARGER LA VIDÉO ET LA CONVERTIR EN AUDIO
-    console.log('Téléchargement et conversion de la vidéo en audio...')
+    console.log('📥 Téléchargement et conversion de la vidéo en audio...')
     
     let audioBlob: Blob;
     try {
+      console.log(`Téléchargement depuis: ${videoUrl}`)
       const response = await fetch(videoUrl);
       if (!response.ok) {
         throw new Error(`Échec du téléchargement: ${response.status} ${response.statusText}`);
       }
       audioBlob = await response.blob();
+      console.log(`✅ Vidéo téléchargée avec succès (${audioBlob.size} bytes)`)
     } catch (fetchError) {
-      console.error('Erreur lors du téléchargement de la vidéo:', fetchError);
+      console.error('❌ Erreur lors du téléchargement de la vidéo:', fetchError);
       
       await updateVideoStatus(
         serviceClient,
@@ -517,7 +571,7 @@ Deno.serve(async (req) => {
     }
 
     // 7. TRANSCRIPTION AVEC OPENAI WHISPER
-    console.log('Début de la transcription avec OpenAI Whisper...')
+    console.log('🎤 Début de la transcription avec OpenAI Whisper...')
     
     const openai = new OpenAI({ apiKey: openaiApiKey })
     
@@ -533,10 +587,10 @@ Deno.serve(async (req) => {
         timestamp_granularities: ['segment']
       });
       
-      console.log('Transcription terminée avec succès')
+      console.log('✅ Transcription terminée avec succès')
       console.log(`Texte transcrit (${transcription.text.length} caractères):`, transcription.text.substring(0, 200) + '...')
     } catch (transcriptionError) {
-      console.error('Erreur lors de la transcription:', transcriptionError)
+      console.error('❌ Erreur lors de la transcription:', transcriptionError)
       
       await updateVideoStatus(
         serviceClient,
@@ -558,7 +612,7 @@ Deno.serve(async (req) => {
     }
 
     // 8. ENREGISTRER LA TRANSCRIPTION DANS LA BASE DE DONNÉES
-    console.log('Enregistrement de la transcription dans la base de données...')
+    console.log('💾 Enregistrement de la transcription dans la base de données...')
     
     const transcriptionData = {
       text: transcription.text,
@@ -586,7 +640,7 @@ Deno.serve(async (req) => {
       }, { onConflict: 'video_id' });
 
     if (transcriptionTableError) {
-      console.error('Erreur lors de l\'enregistrement de la transcription:', transcriptionTableError)
+      console.error('❌ Erreur lors de l\'enregistrement de la transcription:', transcriptionTableError)
       
       // Mettre à jour le statut de la vidéo à FAILED en cas d'échec
       await updateVideoStatus(
@@ -621,7 +675,7 @@ Deno.serve(async (req) => {
       console.warn(`⚠️ La transcription de la vidéo ${videoId} a été enregistrée avec succès, mais la mise à jour du statut a échoué. Investigation requise.`)
     }
 
-    console.log('Transcription enregistrée avec succès.')
+    console.log('✅ Transcription enregistrée avec succès.')
 
     // 9. DÉCLENCHER LA FONCTION D'ANALYSE
     try {
@@ -631,7 +685,7 @@ Deno.serve(async (req) => {
         'Authorization': `Bearer ${supabaseServiceKey}`
       };
       
-      console.log(`Appel de la fonction analyze-transcription via fetch à ${analyzeEndpoint}`);
+      console.log(`🔄 Appel de la fonction analyze-transcription via fetch à ${analyzeEndpoint}`);
       
       const response = await fetch(analyzeEndpoint, {
         method: 'POST',
@@ -641,14 +695,14 @@ Deno.serve(async (req) => {
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`Erreur de la fonction d'analyse (${response.status}): ${errorText}`);
+        console.error(`❌ Erreur de la fonction d'analyse (${response.status}): ${errorText}`);
         throw new Error(`Erreur HTTP ${response.status}: ${errorText}`);
       }
       
       const responseData = await response.json();
-      console.log('Analyse démarrée avec succès:', responseData);
+      console.log('✅ Analyse démarrée avec succès:', responseData);
     } catch (invokeError) {
-      console.error("Erreur lors de l'invocation de la fonction d'analyse:", invokeError)
+      console.error("⚠️ Erreur lors de l'invocation de la fonction d'analyse:", invokeError)
       // Ne pas échouer complètement, juste logger l'erreur
     }
 
@@ -656,7 +710,7 @@ Deno.serve(async (req) => {
     const confirmed = await confirmDatabaseUpdate(serviceClient, videoId as string)
     if (!confirmed) {
       console.warn(
-        `La mise à jour de la base de données pour la vidéo ${videoId} n'a pas pu être confirmée.`
+        `⚠️ La mise à jour de la base de données pour la vidéo ${videoId} n'a pas pu être confirmée.`
       )
     }
 
@@ -664,7 +718,8 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         message: 'Transcription terminée avec succès', 
         videoId,
-        transcription_length: transcription.text.length
+        transcription_length: transcription.text.length,
+        video_url_used: videoUrl.substring(0, 50) + '...'
       }), 
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -672,7 +727,7 @@ Deno.serve(async (req) => {
       }
     )
   } catch (error: any) {
-    console.error('Erreur générale dans la fonction transcribe-video:', error)
+    console.error('❌ Erreur générale dans la fonction transcribe-video:', error)
     
     // Tentative de mise à jour du statut d'erreur si videoId est disponible
     if (videoId && serviceClient) {
@@ -687,7 +742,7 @@ Deno.serve(async (req) => {
           'general_error'
         )
       } catch (updateError) {
-        console.error('Erreur lors de la mise à jour du statut d\'erreur:', updateError);
+        console.error('❌ Erreur lors de la mise à jour du statut d\'erreur:', updateError);
       }
     }
     
