@@ -7,7 +7,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Constante pour la gestion des sessions - à utiliser de manière cohérente dans toute l'application
-export const AUTH_STORAGE_KEY = 'smoovebox-auth-token';
+export const AUTH_STORAGE_KEY = 'spotbulle-auth-token';
 
 console.log('Configuration Supabase:', {
   url: supabaseUrl ? 'Définie' : 'Manquante',
@@ -25,7 +25,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
   global: {
     headers: {
-      'X-Client-Info': 'smoovebox-v2'
+      'X-Client-Info': 'spotbulle'
     }
   },
   realtime: {
@@ -258,8 +258,8 @@ export const transcribeVideo = async (videoId) => {
     
     // Récupérer le token d'authentification actuel
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      throw new Error('Utilisateur non authentifié');
+    if (!session || !session.access_token) {
+      throw new Error("Utilisateur non authentifié ou jeton d'accès manquant.");
     }
     
     // Appeler l'Edge Function avec le token d'authentification
