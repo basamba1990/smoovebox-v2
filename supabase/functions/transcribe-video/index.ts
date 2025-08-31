@@ -30,9 +30,9 @@ Deno.serve(async (req) => {
   try {
     console.log('Fonction transcribe-video appelée')
     
-    // Initialiser les variables d'environnement
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    // Initialiser les variables d'environnement avec les nouveaux noms
+    const supabaseUrl = Deno.env.get('MY_SUPABASE_URL')
+    const supabaseServiceKey = Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY')
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
 
     if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     }
 
     // Vérifier que la clé de service n'est pas un placeholder
-    if (supabaseServiceKey.includes('SUPABASE_SERVICE_ROLE_KEY') || supabaseServiceKey.length < 50) {
+    if (supabaseServiceKey.includes('MY_SUPABASE_SERVICE_ROLE_KEY') || supabaseServiceKey.length < 50) {
       console.error('Clé de service Supabase invalide ou placeholder détecté')
       return new Response(
         JSON.stringify({
@@ -642,7 +642,7 @@ Deno.serve(async (req) => {
       const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
       
       // Vérifier que la clé de service est valide avant de l'utiliser
-      if (!supabaseServiceKey || supabaseServiceKey.includes('SUPABASE_SERVICE_ROLE_KEY')) {
+      if (!supabaseServiceKey || supabaseServiceKey.includes('MY_SUPABASE_SERVICE_ROLE_KEY')) {
         throw new Error('Clé de service Supabase invalide pour l\'appel à analyze-transcription');
       }
       
