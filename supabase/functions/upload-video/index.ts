@@ -70,10 +70,6 @@ Deno.serve(async (req) => {
         }),
         { 
           status: 401, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
         }
       );
     }
@@ -357,58 +353,100 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Déclencher le traitement asynchrone de la vidéo
+    // Générer une URL signée pour la vidéo
+    const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
+      .from('videos')
+      .createSignedUrl(filePath, 3600); // URL valide pendant 1 heure
+
+    if (signedUrlError) {
+      console.error('Erreur lors de la génération de l\'URL signée:', signedUrlError);
+      await serviceClient.from('videos').update({
+        status: VIDEO_STATUS.FAILED,
+        error_message: 'Erreur lors de la génération de l\'URL de la vidéo'
+      }).eq('id', video.id);
+      
+      return new Response(
+        JSON.stringify({ 
+          error: 'Erreur de traitement', 
+          details: 'Impossible de générer l\'URL de la vidéo'
+        }),
+        { 
+          status: 500, 
+          headers: { 
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          } 
+        }
+      );
+    }
+
+    const videoUrl = signedUrlData.signedUrl;
+
+    // Mettre à jour la vidéo avec l'URL signée
+    const { error: updateError } = await serviceClient
+      .from('videos')
+      .update({
+        url: videoUrl,
+        status: VIDEO_STATUS.PROCESSING,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', video.id);
+
+    if (updateError) {
+      console.error('Erreur lors de la mise à jour de la vidéo:', updateError);
+      await serviceClient.from('videos').update({
+        status: VIDEO_STATUS.FAILED,
+        error_message: 'Erreur lors de la mise à jour de la vidéo'
+      }).eq('id', video.id);
+      
+      return new Response(
+        JSON.stringify({ 
+          error: 'Erreur de traitement', 
+          details: 'Impossible de mettre à jour la vidéo'
+        }),
+        { 
+          status: 500, 
+          headers: { 
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          } 
+        }
+      );
+    }
+
+    // Déclencher la transcription de la vidéo
     EdgeRuntime.waitUntil(
       (async () => {
         try {
-          // Simuler un délai de traitement
-          await new Promise(resolve => setTimeout(resolve, 5000));
-          
-          // Générer une URL publique pour la vidéo
-          const { data: publicUrlData, error: publicUrlError } = await serviceClient.storage
-            .from("videos")
-            .createSignedUrl(filePath, 365 * 24 * 60 * 60); // URL valide pendant 1 an
-
-          if (publicUrlError) {
-            throw publicUrlError;
-          }
-
-          const publicUrl = publicUrlData?.signedUrl || null;
-          
-          // Mettre à jour le statut de la vidéo et l'URL
-          const { error: updateError } = await serviceClient
-            .from('videos')
-            .update({
-              status: VIDEO_STATUS.PROCESSING,
-              url: publicUrl,
-              updated_at: new Date().toISOString()
+          // Appeler la fonction de transcription avec les bons en-têtes d'authentification
+          const transcribeResponse = await fetch(`${supabaseUrl}/functions/v1/transcribe-video`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseServiceKey}`,
+              'apikey': supabaseServiceKey  // Ajout de l'en-tête apikey essentiel
+            },
+            body: JSON.stringify({ 
+              videoId: video.id,
+              videoUrl: videoUrl
             })
-            .eq('id', video.id);
+          });
 
-          if (updateError) {
-            throw updateError;
-          }
-
-          // Déclencher la transcription
-          try {
-            const transcribeResponse = await fetch(`${supabaseUrl}/functions/v1/transcribe-video`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${supabaseServiceKey}`
-              },
-              body: JSON.stringify({ 
-                videoId: video.id,
-                videoUrl: publicUrl
+          if (!transcribeResponse.ok) {
+            const errorText = await transcribeResponse.text();
+            console.error('Erreur lors du déclenchement de la transcription:', errorText);
+            
+            // Mettre à jour le statut en cas d'erreur
+            await serviceClient
+              .from('videos')
+              .update({
+                status: VIDEO_STATUS.FAILED,
+                error_message: `Échec du déclenchement de la transcription: ${errorText}`,
+                updated_at: new Date().toISOString()
               })
-            });
-
-            if (!transcribeResponse.ok) {
-              const errorText = await transcribeResponse.text();
-              console.error('Erreur lors du déclenchement de la transcription:', errorText);
-            }
-          } catch (transcribeError) {
-            console.error('Exception lors du déclenchement de la transcription:', transcribeError);
+              .eq('id', video.id);
+          } else {
+            console.log('Transcription déclenchée avec succès pour la vidéo:', video.id);
           }
         } catch (err) {
           console.error('Erreur lors du traitement asynchrone:', err);
@@ -430,7 +468,12 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         message: 'Vidéo uploadée avec succès et en cours de traitement',
-        video
+        video: {
+          id: video.id,
+          title: video.title,
+          status: VIDEO_STATUS.PROCESSING,
+          url: videoUrl
+        }
       }),
       { 
         status: 200, 
