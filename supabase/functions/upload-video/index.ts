@@ -4,9 +4,13 @@ import { v4 as uuidv4 } from 'npm:uuid@9.0.1';
 
 // Constantes pour les statuts de vidéo
 const VIDEO_STATUS = {
+  UPLOADED: 'uploaded',
   PROCESSING: 'processing',
-  READY: 'ready',
-  ERROR: 'error'
+  TRANSCRIBED: 'transcribed',
+  ANALYZING: 'analyzing',
+  ANALYZED: 'analyzed',
+  PUBLISHED: 'published',
+  FAILED: 'failed'
 };
 
 // En-têtes CORS pour permettre les requêtes cross-origin
@@ -74,10 +78,31 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Initialiser les variables d'environnement avec les nouveaux noms
+    const supabaseUrl = Deno.env.get('MY_SUPABASE_URL') || '';
+    const supabaseAnonKey = Deno.env.get('MY_SUPABASE_ANON_KEY') || '';
+    const supabaseServiceKey = Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY') || '';
+
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Configuration incomplète',
+          details: 'Variables d\'environnement manquantes'
+        }),
+        { 
+          status: 500, 
+          headers: { 
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          } 
+        }
+      );
+    }
+
     // Initialiser le client Supabase avec le token de l'utilisateur
     const supabaseClient = createClient(
-      Deno.env.get('MY_SUPABASE_URL') || '',
-      Deno.env.get('MY_SUPABASE_ANON_KEY') || '',
+      supabaseUrl,
+      supabaseAnonKey,
       {
         global: {
           headers: { Authorization: `Bearer ${token}` }
@@ -107,10 +132,7 @@ Deno.serve(async (req) => {
     const user = userData.user;
 
     // Initialiser le client service_role pour les opérations privilégiées
-    const serviceClient = createClient(
-      Deno.env.get('SUPABASE_URL') || '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
-    );
+    const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
 
     // Parser le formulaire multipart
     const contentType = req.headers.get('content-type');
@@ -190,13 +212,31 @@ Deno.serve(async (req) => {
       
       if (!videoBucket) {
         // Créer le bucket s'il n'existe pas
-        await serviceClient.storage.createBucket('videos', {
+        const { error: createBucketError } = await serviceClient.storage.createBucket('videos', {
           public: false,
           fileSizeLimit: 104857600, // 100MB en octets
         });
+
+        if (createBucketError) {
+          console.error('Erreur lors de la création du bucket:', createBucketError);
+          throw createBucketError;
+        }
       }
     } catch (bucketError) {
       console.error('Erreur lors de la vérification/création du bucket:', bucketError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Erreur de stockage', 
+          details: 'Impossible de créer ou accéder au bucket de stockage'
+        }),
+        { 
+          status: 500, 
+          headers: { 
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          } 
+        }
+      );
     }
 
     // Convertir le fichier en ArrayBuffer pour l'upload
@@ -237,13 +277,13 @@ Deno.serve(async (req) => {
         // Créer la table
         const createTableSQL = `
           CREATE TABLE IF NOT EXISTS public.videos (
-            id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             title TEXT NOT NULL,
             description TEXT,
             user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
             storage_path TEXT NOT NULL,
             url TEXT,
-            status TEXT NOT NULL DEFAULT 'processing',
+            status TEXT NOT NULL DEFAULT 'uploaded',
             error_message TEXT,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
             updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -277,10 +317,11 @@ Deno.serve(async (req) => {
           CREATE INDEX IF NOT EXISTS videos_user_id_idx ON public.videos(user_id);
         `;
         
-        await serviceClient.rpc('exec_sql', { sql: createTableSQL }).catch(err => {
-          console.error('Erreur lors de la création de la table:', err);
+        const { error: execError } = await serviceClient.rpc('exec_sql', { sql: createTableSQL });
+        if (execError) {
+          console.error('Erreur lors de la création de la table:', execError);
           // Continuer même si la création de table échoue
-        });
+        }
       }
     } catch (tableError) {
       console.error('Erreur lors de la vérification de la table:', tableError);
@@ -294,7 +335,7 @@ Deno.serve(async (req) => {
         description,
         user_id: user.id,
         storage_path: storagePath,
-        status: VIDEO_STATUS.PROCESSING
+        status: VIDEO_STATUS.UPLOADED
       })
       .select()
       .single();
@@ -335,14 +376,40 @@ Deno.serve(async (req) => {
           const publicUrl = publicUrlData?.signedUrl || null;
           
           // Mettre à jour le statut de la vidéo et l'URL
-          await serviceClient
+          const { error: updateError } = await serviceClient
             .from('videos')
             .update({
-              status: VIDEO_STATUS.READY,
+              status: VIDEO_STATUS.PROCESSING,
               url: publicUrl,
               updated_at: new Date().toISOString()
             })
             .eq('id', video.id);
+
+          if (updateError) {
+            throw updateError;
+          }
+
+          // Déclencher la transcription
+          try {
+            const transcribeResponse = await fetch(`${supabaseUrl}/functions/v1/transcribe-video`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceKey}`
+              },
+              body: JSON.stringify({ 
+                videoId: video.id,
+                videoUrl: publicUrl
+              })
+            });
+
+            if (!transcribeResponse.ok) {
+              const errorText = await transcribeResponse.text();
+              console.error('Erreur lors du déclenchement de la transcription:', errorText);
+            }
+          } catch (transcribeError) {
+            console.error('Exception lors du déclenchement de la transcription:', transcribeError);
+          }
         } catch (err) {
           console.error('Erreur lors du traitement asynchrone:', err);
           
@@ -350,7 +417,7 @@ Deno.serve(async (req) => {
           await serviceClient
             .from('videos')
             .update({
-              status: VIDEO_STATUS.ERROR,
+              status: VIDEO_STATUS.FAILED,
               error_message: 'Erreur lors du traitement de la vidéo',
               updated_at: new Date().toISOString()
             })
@@ -379,8 +446,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         error: 'Erreur serveur', 
-        details: err.message,
-        stack: err.stack
+        details: err.message
       }),
       { 
         status: 500, 
