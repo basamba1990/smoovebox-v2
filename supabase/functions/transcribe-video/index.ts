@@ -1,8 +1,7 @@
-// Edge Function pour gérer l'upload de vidéos
-import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
-import { v4 as uuidv4 } from 'npm:uuid@9.0.1';
+import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
+import OpenAI from 'npm:openai@4.28.0'
 
-// Constantes pour les statuts de vidéo
+// Valeurs exactes autorisées pour le statut dans la base de données
 const VIDEO_STATUS = {
   UPLOADED: 'uploaded',
   PROCESSING: 'processing',
@@ -11,494 +10,715 @@ const VIDEO_STATUS = {
   ANALYZED: 'analyzed',
   PUBLISHED: 'published',
   FAILED: 'failed'
-};
+} as const
 
 // En-têtes CORS pour permettre les requêtes cross-origin
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-  'Access-Control-Max-Age': '86400',
-};
-
-// Gérer les requêtes OPTIONS pour CORS
-function handleOptions() {
-  return new Response(null, {
-    status: 204,
-    headers: new Headers(corsHeaders)
-  });
-}
-
-// Extraire le token JWT de l'en-tête Authorization
-function extractToken(req) {
-  const authHeader = req.headers.get('Authorization');
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    return authHeader.substring(7);
-  }
-  return null;
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
 }
 
 Deno.serve(async (req) => {
   // Gérer les requêtes OPTIONS (CORS preflight)
   if (req.method === 'OPTIONS') {
-    return handleOptions();
+    return new Response('ok', { headers: corsHeaders })
   }
-  
-  // Vérifier la méthode HTTP
-  if (req.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ error: 'Méthode non autorisée' }),
-      { 
-        status: 405, 
-        headers: { 
-          'Content-Type': 'application/json',
-          ...corsHeaders
-        } 
-      }
-    );
-  }
+
+  let videoId: string | null = null;
+  let serviceClient: any = null;
 
   try {
-    // Extraire le token d'authentification de l'en-tête
-    const token = extractToken(req);
+    console.log('Fonction transcribe-video appelée')
     
-    if (!token) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Authentification requise',
-          details: 'Token manquant dans l\'en-tête Authorization'
-        }),
-        { 
-          status: 401, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
-        }
-      );
-    }
-
     // Initialiser les variables d'environnement avec les nouveaux noms
-    const supabaseUrl = Deno.env.get('MY_SUPABASE_URL') || '';
-    const supabaseAnonKey = Deno.env.get('MY_SUPABASE_ANON_KEY') || '';
-    const supabaseServiceKey = Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY') || '';
+    const supabaseUrl = Deno.env.get('MY_SUPABASE_URL')
+    const supabaseServiceKey = Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY')
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
 
-    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
+    if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
+      console.error('Variables d\'environnement manquantes', {
+        supabaseUrl: !!supabaseUrl,
+        supabaseServiceKey: !!supabaseServiceKey,
+        openaiApiKey: !!openaiApiKey
+      })
+
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           error: 'Configuration incomplète',
-          details: 'Variables d\'environnement manquantes'
+          details: "Variables d'environnement manquantes"
         }),
-        { 
-          status: 500, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500
         }
-      );
+      )
     }
 
-    // Initialiser le client Supabase avec le token de l'utilisateur
-    const supabaseClient = createClient(
-      supabaseUrl,
-      supabaseAnonKey,
-      {
-        global: {
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      }
-    );
-
-    // Vérifier l'authentification
-    const { data: userData, error: userError } = await supabaseClient.auth.getUser();
-    
-    if (userError || !userData?.user) {
+    // Vérifier que la clé de service n'est pas un placeholder
+    if (supabaseServiceKey.includes('MY_SUPABASE_SERVICE_ROLE_KEY') || supabaseServiceKey.length < 50) {
+      console.error('Clé de service Supabase invalide ou placeholder détecté')
       return new Response(
-        JSON.stringify({ 
-          error: 'Authentification échouée', 
-          details: userError?.message || 'Utilisateur non trouvé'
+        JSON.stringify({
+          error: 'Configuration invalide',
+          details: "La clé de service Supabase n'est pas configurée correctement"
         }),
-        { 
-          status: 401, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500
         }
-      );
+      )
     }
 
-    const user = userData.user;
+    console.log('Variables d\'environnement validées avec succès')
 
-    // Initialiser le client service_role pour les opérations privilégiées
-    const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Parser le formulaire multipart
-    const contentType = req.headers.get('content-type');
-    if (!contentType || !contentType.includes('multipart/form-data')) {
-      return new Response(
-        JSON.stringify({ error: 'Le contenu doit être de type multipart/form-data' }),
-        { 
-          status: 400, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
-        }
-      );
-    }
-
-    // Utiliser FormData API native de Deno
-    const formData = await req.formData();
-    
-    // Extraire les données du formulaire
-    const videoFile = formData.get('video');
-    const title = formData.get('title')?.toString() || 'Sans titre';
-    const description = formData.get('description')?.toString() || '';
-    
-    if (!videoFile || !(videoFile instanceof File)) {
-      return new Response(
-        JSON.stringify({ error: 'Aucun fichier vidéo fourni' }),
-        { 
-          status: 400, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
-        }
-      );
-    }
-
-    // Vérifier le type de fichier
-    const validTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm'];
-    if (!validTypes.includes(videoFile.type)) {
-      return new Response(
-        JSON.stringify({ error: 'Format de fichier non supporté. Veuillez utiliser MP4, MOV, AVI ou WebM.' }),
-        { 
-          status: 400, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
-        }
-      );
-    }
-    
-    // Vérifier la taille du fichier (100MB max)
-    const MAX_SIZE = 100 * 1024 * 1024; // 100MB
-    if (videoFile.size > MAX_SIZE) {
-      return new Response(
-        JSON.stringify({ error: 'Le fichier est trop volumineux. La taille maximale est de 100MB.' }),
-        { 
-          status: 400, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
-        }
-      );
-    }
-
-    // Générer un nom de fichier unique
-    const fileExt = videoFile.name.split('.').pop();
-    const fileName = `${uuidv4()}.${fileExt}`;
-    const filePath = `${user.id}/${fileName}`;
-
-    // Vérifier si le bucket "videos" existe, sinon le créer
-    try {
-      const { data: buckets } = await serviceClient.storage.listBuckets();
-      const videoBucket = buckets.find(bucket => bucket.name === 'videos');
-      
-      if (!videoBucket) {
-        // Créer le bucket s'il n'existe pas
-        const { error: createBucketError } = await serviceClient.storage.createBucket('videos', {
-          public: false,
-          fileSizeLimit: 104857600, // 100MB en octets
-        });
-
-        if (createBucketError) {
-          console.error('Erreur lors de la création du bucket:', createBucketError);
-          throw createBucketError;
-        }
-      }
-    } catch (bucketError) {
-      console.error('Erreur lors de la vérification/création du bucket:', bucketError);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Erreur de stockage', 
-          details: 'Impossible de créer ou accéder au bucket de stockage'
-        }),
-        { 
-          status: 500, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
-        }
-      );
-    }
-
-    // Convertir le fichier en ArrayBuffer pour l'upload
-    const fileArrayBuffer = await videoFile.arrayBuffer();
-
-    // Uploader le fichier dans le bucket "videos"
-    const { data: uploadData, error: uploadError } = await serviceClient.storage
-      .from('videos')
-      .upload(filePath, fileArrayBuffer, {
-        contentType: videoFile.type,
-        cacheControl: '3600',
-        upsert: false
-      });
-
-    if (uploadError) {
-      console.error('Erreur d\'upload:', uploadError);
-      return new Response(
-        JSON.stringify({ error: 'Erreur lors de l\'upload de la vidéo', details: uploadError.message }),
-        { 
-          status: 500, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
-        }
-      );
-    }
-
-    // Construire le chemin de stockage
-    const storagePath = `videos/${filePath}`;
-
-    // Vérifier si la table "videos" existe, sinon la créer
-    try {
-      // Exécuter une requête SQL directement
-      const { data, error } = await serviceClient.from('videos').select('id').limit(1);
-      
-      if (error && error.code === '42P01') { // Relation n'existe pas
-        // Créer la table
-        const createTableSQL = `
-          CREATE TABLE IF NOT EXISTS public.videos (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            title TEXT NOT NULL,
-            description TEXT,
-            user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-            storage_path TEXT NOT NULL,
-            url TEXT,
-            status TEXT NOT NULL DEFAULT 'uploaded',
-            error_message TEXT,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-          );
-
-          -- Activer Row Level Security
-          ALTER TABLE public.videos ENABLE ROW LEVEL SECURITY;
-
-          -- Créer une politique pour permettre aux utilisateurs de voir leurs propres vidéos
-          CREATE POLICY "Les utilisateurs peuvent voir leurs propres vidéos"
-            ON public.videos FOR SELECT
-            USING (auth.uid() = user_id);
-
-          -- Créer une politique pour permettre aux utilisateurs d'insérer leurs propres vidéos
-          CREATE POLICY "Les utilisateurs peuvent insérer leurs propres vidéos"
-            ON public.videos FOR INSERT
-            WITH CHECK (auth.uid() = user_id);
-
-          -- Créer une politique pour permettre aux utilisateurs de mettre à jour leurs propres vidéos
-          CREATE POLICY "Les utilisateurs peuvent mettre à jour leurs propres vidéos"
-            ON public.videos FOR UPDATE
-            USING (auth.uid() = user_id)
-            WITH CHECK (auth.uid() = user_id);
-
-          -- Créer une politique pour permettre aux utilisateurs de supprimer leurs propres vidéos
-          CREATE POLICY "Les utilisateurs peuvent supprimer leurs propres vidéos"
-            ON public.videos FOR DELETE
-            USING (auth.uid() = user_id);
-            
-          -- Créer un index sur user_id pour améliorer les performances
-          CREATE INDEX IF NOT EXISTS videos_user_id_idx ON public.videos(user_id);
-        `;
-        
-        const { error: execError } = await serviceClient.rpc('exec_sql', { sql: createTableSQL });
-        if (execError) {
-          console.error('Erreur lors de la création de la table:', execError);
-          // Continuer même si la création de table échoue
-        }
-      }
-    } catch (tableError) {
-      console.error('Erreur lors de la vérification de la table:', tableError);
-    }
-
-    // Insérer l'enregistrement dans la base de données
-    const { data: video, error: insertError } = await serviceClient
-      .from('videos')
-      .insert({
-        title,
-        description,
-        user_id: user.id,
-        storage_path: storagePath,
-        status: VIDEO_STATUS.UPLOADED
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      // Si l'insertion échoue, supprimer le fichier uploadé
-      await serviceClient.storage.from('videos').remove([filePath]);
-      
-      console.error('Erreur d\'insertion:', insertError);
-      return new Response(
-        JSON.stringify({ error: 'Erreur lors de l\'enregistrement de la vidéo', details: insertError.message }),
-        { 
-          status: 500, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
-        }
-      );
-    }
-
-    // Générer une URL signée pour la vidéo
-    const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
-      .from('videos')
-      .createSignedUrl(filePath, 3600); // URL valide pendant 1 heure
-
-    if (signedUrlError) {
-      console.error('Erreur lors de la génération de l\'URL signée:', signedUrlError);
-      await serviceClient.from('videos').update({
-        status: VIDEO_STATUS.FAILED,
-        error_message: 'Erreur lors de la génération de l\'URL de la vidéo'
-      }).eq('id', video.id);
-      
-      return new Response(
-        JSON.stringify({ 
-          error: 'Erreur de traitement', 
-          details: 'Impossible de générer l\'URL de la vidéo'
-        }),
-        { 
-          status: 500, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
-        }
-      );
-    }
-
-    const videoUrl = signedUrlData.signedUrl;
-
-    // Mettre à jour la vidéo avec l'URL signée
-    const { error: updateError } = await serviceClient
-      .from('videos')
-      .update({
-        url: videoUrl,
-        status: VIDEO_STATUS.PROCESSING,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', video.id);
-
-    if (updateError) {
-      console.error('Erreur lors de la mise à jour de la vidéo:', updateError);
-      await serviceClient.from('videos').update({
-        status: VIDEO_STATUS.FAILED,
-        error_message: 'Erreur lors de la mise à jour de la vidéo'
-      }).eq('id', video.id);
-      
-      return new Response(
-        JSON.stringify({ 
-          error: 'Erreur de traitement', 
-          details: 'Impossible de mettre à jour la vidéo'
-        }),
-        { 
-          status: 500, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
-        }
-      );
-    }
-
-    // Déclencher la transcription de la vidéo
-    EdgeRuntime.waitUntil(
-      (async () => {
-        try {
-          // Appeler la fonction de transcription
-          const transcribeResponse = await fetch(`${supabaseUrl}/functions/v1/transcribe-video`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseServiceKey}`
-            },
-            body: JSON.stringify({ 
-              videoId: video.id,
-              videoUrl: videoUrl
-            })
-          });
-
-          if (!transcribeResponse.ok) {
-            const errorText = await transcribeResponse.text();
-            console.error('Erreur lors du déclenchement de la transcription:', errorText);
-            
-            // Mettre à jour le statut en cas d'erreur
-            await serviceClient
-              .from('videos')
-              .update({
-                status: VIDEO_STATUS.FAILED,
-                error_message: `Échec du déclenchement de la transcription: ${errorText}`,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', video.id);
-          }
-        } catch (err) {
-          console.error('Erreur lors du traitement asynchrone:', err);
+    // Créer un client Supabase avec timeout configuré
+    serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false },
+      global: {
+        fetch: (input, init) => {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 30000);
           
-          // En cas d'erreur, mettre à jour le statut
-          await serviceClient
-            .from('videos')
-            .update({
-              status: VIDEO_STATUS.FAILED,
-              error_message: 'Erreur lors du traitement de la vidéo',
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', video.id);
+          return fetch(input, {
+            ...init,
+            signal: controller.signal
+          }).finally(() => clearTimeout(timeoutId));
         }
-      })()
-    );
-
-    // Retourner la réponse avec les données de la vidéo
-    return new Response(
-      JSON.stringify({
-        message: 'Vidéo uploadée avec succès et en cours de traitement',
-        video: {
-          id: video.id,
-          title: video.title,
-          status: VIDEO_STATUS.PROCESSING,
-          url: videoUrl
-        }
-      }),
-      { 
-        status: 200, 
-        headers: { 
-          'Content-Type': 'application/json',
-          ...corsHeaders
-        } 
       }
-    );
+    })
 
-  } catch (err) {
-    console.error('Erreur non gérée:', err);
+    // Helper pour confirmer la mise à jour de la base de données
+    async function confirmDatabaseUpdate(
+      client: ReturnType<typeof createClient>,
+      videoId: string,
+      attempts = 0,
+      maxAttempts = 3
+    ): Promise<boolean> {
+      if (attempts >= maxAttempts) {
+        console.error(`Échec de confirmation de la mise à jour après ${maxAttempts} tentatives`)
+        return false
+      }
+
+      try {
+        // Attendre 2 secondes avant de vérifier
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+
+        // Vérifier simplement si la transcription existe
+        const { data: transcription, error: transcriptionError } = await client
+          .from('transcriptions')
+          .select('id')
+          .eq('video_id', videoId)
+          .single()
+
+        if (transcriptionError) {
+          console.log('Transcription pas encore disponible, nouvelle tentative...')
+          return await confirmDatabaseUpdate(client, videoId, attempts + 1, maxAttempts)
+        }
+
+        console.log(`Transcription confirmée pour la vidéo ${videoId}`)
+        return true
+      } catch (err) {
+        console.error('Erreur lors de la confirmation de mise à jour:', err)
+        return await confirmDatabaseUpdate(client, videoId, attempts + 1, maxAttempts)
+      }
+    }
+
+    // Helper pour mettre à jour le statut de la vidéo de manière sécurisée
+    async function updateVideoStatus(
+      client: ReturnType<typeof createClient>,
+      videoId: string,
+      status: string,
+      additionalData: Record<string, any> = {},
+      method: string = 'direct'
+    ): Promise<boolean> {
+      try {
+        console.log(`🔄 Tentative de mise à jour du statut de la vidéo ${videoId} vers '${status}' (méthode: ${method})`)
+        
+        const updateData = {
+          status,
+          updated_at: new Date().toISOString(),
+          ...additionalData
+        }
+
+        const { error: updateError } = await client
+          .from('videos')
+          .update(updateData)
+          .eq('id', videoId)
+
+        if (updateError) {
+          console.error(`❌ Échec de la mise à jour du statut de la vidéo ${videoId}:`, updateError)
+          
+          // Log détaillé de l'erreur pour le debugging
+          console.error('Détails de l\'erreur de mise à jour:', {
+            videoId,
+            targetStatus: status,
+            method,
+            error: updateError,
+            timestamp: new Date().toISOString()
+          })
+          
+          return false
+        }
+
+        console.log(`✅ Statut de la vidéo ${videoId} mis à jour avec succès vers '${status}'`)
+        return true
+      } catch (err) {
+        console.error(`❌ Exception lors de la mise à jour du statut de la vidéo ${videoId}:`, err)
+        return false
+      }
+    }
+
+    // MÉTHODES D'AUTHENTIFICATION MULTIPLES
+    let userId: string | null = null
+    let token: string | null = null
+
+    // Détecter l'agent utilisateur pour identifier WhatsApp
+    const userAgent = req.headers.get('user-agent') || ''
+    const isWhatsApp = userAgent.includes('WhatsApp')
+
+    // Pour WhatsApp ou requêtes GET, bypasser l'authentification
+    if (isWhatsApp || req.method === 'GET') {
+      // Utilisez un ID par défaut ou récupérez-le des paramètres
+      const url = new URL(req.url)
+      userId = url.searchParams.get('userId') || 'whatsapp-user'
+      console.log(`Utilisateur WhatsApp/GET détecté: ${userId}`)
+    } else {
+      // Méthode 1: Bearer token dans l'en-tête Authorization
+      const authHeader = req.headers.get('Authorization')
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.replace('Bearer ', '')
+        console.log("Token d'authentification trouvé dans l'en-tête Authorization")
+      } else if (req.headers.get('apikey')) {
+        // Méthode 2: Token dans l'en-tête 'apikey'
+        token = req.headers.get('apikey')
+        console.log("Token d'authentification trouvé dans l'en-tête apikey")
+      } else {
+        // Méthode 3: Extraire le JWT des cookies
+        const cookieHeader = req.headers.get('Cookie')
+        if (cookieHeader) {
+          const supabaseCookie = cookieHeader
+            .split(';')
+            .find(
+              (c) =>
+                c.trim().startsWith('sb-access-token=') ||
+                c.trim().startsWith('supabase-auth-token=')
+            )
+
+          if (supabaseCookie) {
+            token = supabaseCookie.split('=')[1].trim()
+            if (token.startsWith('"') && token.endsWith('"')) {
+              token = token.slice(1, -1) // Enlever les guillemets
+            }
+            console.log("Token d'authentification trouvé dans les cookies")
+          }
+        }
+      }
+
+      // Vérifier l'authentification et récupérer l'ID utilisateur
+      if (token) {
+        try {
+          const { data, error } = await serviceClient.auth.getUser(token)
+          if (error) {
+            console.error('Erreur de décodage du JWT:', error)
+          } else if (data.user) {
+            userId = data.user.id
+            console.log(`Utilisateur authentifié: ${userId}`)
+          }
+        } catch (authError) {
+          console.error("Exception lors de l'authentification:", authError)
+        }
+      }
+
+      // Récupérer l'identifiant d'utilisateur à partir des données de l'URL supabase
+      if (!userId) {
+        try {
+          const url = new URL(req.url)
+          const sbParam = url.searchParams.get('sb')
+          const supabaseData = sbParam ? JSON.parse(decodeURIComponent(sbParam)) : null
+
+          if (supabaseData?.auth_user) {
+            userId = supabaseData.auth_user
+            console.log(`Utilisateur trouvé dans les métadonnées Supabase: ${userId}`)
+          } else if (supabaseData?.jwt?.authorization?.payload) {
+            const payload = supabaseData.jwt.authorization.payload
+            if (payload.sub) {
+              userId = payload.sub
+              console.log(`Utilisateur trouvé dans le payload JWT: ${userId}`)
+            } else if ((payload as any).subject) {
+              userId = (payload as any).subject
+              console.log(`Utilisateur trouvé dans le payload JWT: ${userId}`)
+            }
+          }
+        } catch (sbDataError) {
+          console.error("Erreur lors de l'extraction des métadonnées Supabase:", sbDataError)
+        }
+      }
+
+      // Dernier recours: obtenir l'utilisateur à partir des données de la requête
+      if (!userId) {
+        try {
+          const clonedRequest = req.clone()
+          const requestData = await clonedRequest.json()
+          if (requestData.user_id) {
+            userId = requestData.user_id
+            console.log(`Utilisateur trouvé dans les données de la requête: ${userId}`)
+          }
+        } catch (parseError) {
+          console.error("Erreur lors de l'analyse du JSON de la requête:", parseError)
+        }
+      }
+
+      if (!userId && !isWhatsApp && req.method !== 'GET') {
+        return new Response(
+          JSON.stringify({
+            error: 'Authentification requise',
+            details:
+              "Impossible d'identifier l'utilisateur. Assurez-vous d'être connecté et d'envoyer le token d'authentification."
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+        )
+      }
+    }
+
+    // 2. RÉCUPÉRER LES DONNÉES DE LA REQUÊTE
+    let videoUrl: string | null = null
+
+    // Essayer d'abord les paramètres d'URL (plus fiable)
+    const url = new URL(req.url)
+    videoId = url.searchParams.get('videoId')
+    
+    if (videoId) {
+      console.log(`VideoId récupéré des paramètres d'URL: ${videoId}`)
+      // Récupérer aussi videoUrl si fourni en paramètre
+      videoUrl = url.searchParams.get('videoUrl')
+    }
+
+    // Si pas trouvé dans l'URL et que ce n'est pas une requête GET, essayer le corps de la requête
+    if (!videoId && req.method !== 'GET' && !isWhatsApp) {
+      try {
+        const requestBody = await req.text()
+        console.log('Corps de la requête reçu:', requestBody)
+        
+        if (requestBody.trim()) {
+          const requestData = JSON.parse(requestBody)
+          console.log('Données de requête parsées:', requestData)
+          
+          if (requestData.videoId) {
+            videoId = requestData.videoId
+            console.log(`VideoId récupéré du corps de la requête: ${videoId}`)
+          }
+          
+          if (requestData.videoUrl) {
+            videoUrl = requestData.videoUrl
+            console.log(`VideoUrl récupéré du corps de la requête: ${videoUrl}`)
+          }
+        }
+      } catch (parseError) {
+        console.error("Erreur lors de l'analyse du JSON de la requête:", parseError)
+        // Ne pas échouer ici, continuer avec les paramètres d'URL
+      }
+    }
+
+    // Vérification finale
+    if (!videoId) {
+      console.error('VideoId non trouvé dans les paramètres d\'URL ni dans le corps de la requête')
+      return new Response(
+        JSON.stringify({ 
+          error: 'videoId est requis dans le corps de la requête ou en paramètre',
+          details: 'Veuillez fournir videoId soit dans le corps JSON de la requête, soit comme paramètre d\'URL (?videoId=...)'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      )
+    }
+
+    // 3. VÉRIFIER L'ACCÈS À LA VIDÉO
+    const { data: video, error: videoError } = await serviceClient
+      .from('videos')
+      .select('*')
+      .eq('id', videoId as string)
+      .single()
+
+    if (videoError) {
+      console.error(`Erreur lors de la récupération de la vidéo ${videoId}`, videoError)
+      return new Response(
+        JSON.stringify({ error: 'Erreur lors de la récupération de la vidéo', details: videoError.message }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: (videoError as any).code === 'PGRST116' ? 404 : 500
+        }
+      )
+    }
+
+    if (!video) {
+      return new Response(
+        JSON.stringify({ error: 'Vidéo non trouvée ou accès non autorisé' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+      )
+    }
+
+    console.log(`Vidéo trouvée: ${video.id}, titre: ${video.title}`)
+    console.log(`Statut actuel de la vidéo: ${video.status}`)
+
+    // 4. MISE À JOUR DU STATUT => processing
+    const statusUpdated = await updateVideoStatus(
+      serviceClient,
+      videoId as string,
+      VIDEO_STATUS.PROCESSING,
+      {
+        transcription_attempts: (video.transcription_attempts || 0) + 1
+      },
+      'processing_start'
+    )
+
+    if (!statusUpdated) {
+      console.warn(`⚠️ Impossible de mettre à jour le statut vers 'processing', mais on continue...`)
+    }
+
+    // 5. RÉCUPÉRER L'URL DE LA VIDÉO
+    // Utiliser d'abord videoUrl du corps de la requête si disponible
+    if (!videoUrl) {
+      videoUrl = (video as any).url
+    }
+
+    if (!videoUrl && (video as any).storage_path) {
+      console.log(`Génération d'une URL signée pour ${(video as any).storage_path}`)
+
+      // Extraire le bucket et le chemin
+      let bucket = 'videos' // Bucket par défaut
+      let filePath = (video as any).storage_path as string
+
+      // Gestion intelligente du chemin: détection du bucket dans le chemin
+      if (filePath.includes('/')) {
+        const parts = filePath.split('/')
+        if (parts.length > 1) {
+          const possibleBucket = parts[0]
+
+          try {
+            const { data: buckets } = await serviceClient.storage.listBuckets()
+            console.log('Buckets disponibles:', buckets?.map((b: any) => b.name) || [])
+            const bucketExists = (buckets || []).some((b: any) => b.name === possibleBucket)
+
+            if (bucketExists) {
+              bucket = possibleBucket
+              filePath = parts.slice(1).join('/')
+              console.log(`Bucket identifié: ${bucket}, chemin ajusté: ${filePath}`)
+            } else {
+              console.log(
+                `Le segment "${possibleBucket}" n'est pas un bucket valide, utilisation du bucket par défaut: ${bucket}`
+              )
+            }
+          } catch (bucketError) {
+            console.error('Erreur lors de la vérification des buckets:', bucketError)
+          }
+        }
+      }
+
+      // Méthode alternative: vérifier si le chemin commence par le nom du bucket
+      if (filePath.startsWith(`${bucket}/`)) {
+        filePath = filePath.substring(bucket.length + 1)
+        console.log(`Préfixe de bucket détecté et supprimé. Nouveau chemin: ${filePath}`)
+      }
+
+      console.log(`Création d'URL signée pour bucket: ${bucket}, chemin: ${filePath}`)
+
+      try {
+        const parentPath = filePath.split('/').slice(0, -1).join('/') || undefined
+        console.log(`Vérification du contenu du dossier: ${parentPath || '(racine)'}`)
+
+        const { data: fileList, error: fileListError } = await serviceClient.storage
+          .from(bucket)
+          .list(parentPath, { limit: 100, offset: 0, sortBy: { column: 'name', order: 'asc' } })
+
+        if (fileListError) {
+          console.error("Erreur lors de la vérification de l'existence du fichier:", fileListError)
+        } else {
+          const fileName = filePath.split('/').pop()
+          console.log(
+            `Contenu du dossier '${parentPath || '(racine)'}':`,
+            (fileList || []).map((f: any) => f.name)
+          )
+          console.log(`Recherche du fichier ${fileName} dans la liste`)
+          const fileFound = (fileList || []).some((f: any) => f.name === fileName)
+          console.log(`Fichier ${fileName} trouvé dans le bucket ${bucket}: ${fileFound}`)
+
+          if (!fileFound) {
+            throw new Error(`Fichier ${fileName} non trouvé dans le bucket ${bucket}`)
+          }
+        }
+
+        const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
+          .from(bucket)
+          .createSignedUrl(filePath, 60 * 60)
+
+        if (signedUrlError) throw signedUrlError
+
+        videoUrl = signedUrlData.signedUrl
+        console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 50)}...`)
+      } catch (storageError: any) {
+        console.error('Erreur lors de la création de l\'URL signée:', storageError)
+        
+        // Mettre à jour le statut d'erreur
+        await updateVideoStatus(
+          serviceClient,
+          videoId as string,
+          VIDEO_STATUS.FAILED,
+          {
+            error_message: `Erreur de stockage: ${storageError.message}`
+          },
+          'storage_error'
+        )
+        
+        return new Response(
+          JSON.stringify({
+            error: 'Erreur de stockage',
+            details: `Impossible de générer l'URL signée pour la vidéo: ${storageError.message}`
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+        )
+      }
+    }
+
+    if (!videoUrl) {
+      await updateVideoStatus(
+        serviceClient,
+        videoId as string,
+        VIDEO_STATUS.FAILED,
+        {
+          error_message: 'URL vidéo manquante'
+        },
+        'missing_url'
+      )
+      
+      return new Response(
+        JSON.stringify({
+          error: 'URL vidéo manquante',
+          details: 'Impossible de récupérer ou de générer l\'URL de la vidéo.'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      )
+    }
+
+    // 6. TÉLÉCHARGER LA VIDÉO ET LA CONVERTIR EN AUDIO
+    console.log('Téléchargement et conversion de la vidéo en audio...')
+    
+    let audioBlob: Blob;
+    try {
+      const response = await fetch(videoUrl);
+      if (!response.ok) {
+        throw new Error(`Échec du téléchargement: ${response.status} ${response.statusText}`);
+      }
+      audioBlob = await response.blob();
+    } catch (fetchError) {
+      console.error('Erreur lors du téléchargement de la vidéo:', fetchError);
+      
+      await updateVideoStatus(
+        serviceClient,
+        videoId as string,
+        VIDEO_STATUS.FAILED,
+        {
+          error_message: `Erreur de téléchargement: ${fetchError.message}`
+        },
+        'download_error'
+      )
+      
+      return new Response(
+        JSON.stringify({
+          error: 'Erreur de téléchargement',
+          details: `Impossible de télécharger la vidéo: ${fetchError.message}`
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      )
+    }
+
+    // 7. TRANSCRIPTION AVEC OPENAI WHISPER
+    console.log('Début de la transcription avec OpenAI Whisper...')
+    
+    const openai = new OpenAI({ apiKey: openaiApiKey })
+    
+    let transcription: any;
+    try {
+      // Créer un fichier temporaire pour l'audio
+      const audioFile = new File([audioBlob], 'audio.mp4', { type: 'audio/mp4' });
+      
+      transcription = await openai.audio.transcriptions.create({
+        file: audioFile,
+        model: 'whisper-1',
+        response_format: 'verbose_json',
+        timestamp_granularities: ['segment']
+      });
+      
+      console.log('Transcription terminée avec succès')
+      console.log(`Texte transcrit (${transcription.text.length} caractères):`, transcription.text.substring(0, 200) + '...')
+    } catch (transcriptionError) {
+      console.error('Erreur lors de la transcription:', transcriptionError)
+      
+      await updateVideoStatus(
+        serviceClient,
+        videoId as string,
+        VIDEO_STATUS.FAILED,
+        {
+          error_message: `Erreur de transcription: ${transcriptionError.message}`
+        },
+        'transcription_error'
+      )
+      
+      return new Response(
+        JSON.stringify({
+          error: 'Erreur de transcription',
+          details: `Échec de la transcription: ${transcriptionError.message}`
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      )
+    }
+
+    // 8. ENREGISTRER LA TRANSCRIPTION DANS LA BASE DE DONNÉES
+    console.log('Enregistrement de la transcription dans la base de données...')
+    
+    const transcriptionData = {
+      text: transcription.text,
+      segments: transcription.segments || [],
+      language: transcription.language || 'unknown',
+      duration: transcription.duration || 0
+    }
+
+    // Enregistrer dans la table transcriptions
+    const { error: transcriptionTableError } = await serviceClient
+      .from('transcriptions')
+      .upsert({
+        video_id: videoId,
+        user_id: userId,
+        language: transcription.language || 'unknown',
+        full_text: transcription.text,
+        segments: transcription.segments || [],
+        transcription_text: transcription.text,
+        transcription_data: transcriptionData,
+        status: 'completed',
+        confidence_score: 0.95, // Score par défaut
+        processed_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'video_id' });
+
+    if (transcriptionTableError) {
+      console.error('Erreur lors de l\'enregistrement de la transcription:', transcriptionTableError)
+      
+      // Mettre à jour le statut de la vidéo à FAILED en cas d'échec
+      await updateVideoStatus(
+        serviceClient,
+        videoId as string,
+        VIDEO_STATUS.FAILED,
+        {
+          error_message: `Échec de l'enregistrement de la transcription: ${transcriptionTableError.message}`
+        },
+        'database_error'
+      )
+
+      return new Response(
+        JSON.stringify({ error: 'Erreur de base de données', details: transcriptionTableError.message }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      )
+    }
+
+    // Mettre à jour également la table videos avec les données de transcription
+    const videoUpdateSuccess = await updateVideoStatus(
+      serviceClient,
+      videoId as string,
+      VIDEO_STATUS.TRANSCRIBED,
+      {
+        transcription_text: transcription.text,
+        transcription_data: transcriptionData
+      },
+      'transcription_complete'
+    )
+
+    if (!videoUpdateSuccess) {
+      console.warn(`⚠️ La transcription de la vidéo ${videoId} a été enregistrée avec succès, mais la mise à jour du statut a échoué. Investigation requise.`)
+    }
+
+    console.log('Transcription enregistrée avec succès.')
+
+    // 9. DÉCLENCHER LA FONCTION D'ANALYSE AVEC AUTHENTIFICATION CORRECTE
+    try {
+      const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
+      
+      // Vérifier que la clé de service est valide avant de l'utiliser
+      if (!supabaseServiceKey || supabaseServiceKey.includes('MY_SUPABASE_SERVICE_ROLE_KEY')) {
+        throw new Error('Clé de service Supabase invalide pour l\'appel à analyze-transcription');
+      }
+      
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+        'apikey': supabaseServiceKey  // Ajout de l'en-tête apikey essentiel
+      };
+      
+      console.log(`🔄 Appel de la fonction analyze-transcription via fetch à ${analyzeEndpoint}`);
+      console.log('En-têtes d\'authentification configurés avec la clé de service');
+      
+      const response = await fetch(analyzeEndpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ videoId })
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Erreur de la fonction d'analyse (${response.status}): ${errorText}`);
+        throw new Error(`Erreur HTTP ${response.status}: ${errorText}`);
+      }
+      
+      const responseData = await response.json();
+      console.log('✅ Analyse démarrée avec succès:', responseData);
+    } catch (invokeError) {
+      console.error("⚠️ Erreur lors de l'invocation de la fonction d'analyse:", invokeError)
+      // Ne pas échouer complètement, juste logger l'erreur
+    }
+
+    // 10. CONFIRMER LA MISE À JOUR DE LA BASE DE DONNÉES
+    const confirmed = await confirmDatabaseUpdate(serviceClient, videoId as string)
+    if (!confirmed) {
+      console.warn(
+        `La mise à jour de la base de données pour la vidéo ${videoId} n'a pas pu être confirmée.`
+      )
+    }
+
     return new Response(
       JSON.stringify({ 
-        error: 'Erreur serveur', 
-        details: err.message
-      }),
-      { 
-        status: 500, 
-        headers: { 
-          'Content-Type': 'application/json',
-          ...corsHeaders
-        } 
+        message: 'Transcription terminée avec succès', 
+        videoId,
+        transcription_length: transcription.text.length
+      }), 
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
       }
-    );
+    )
+  } catch (error: any) {
+    console.error('❌ Erreur générale dans la fonction transcribe-video:', error)
+    
+    // Tentative de mise à jour du statut d'erreur si videoId est disponible
+    if (videoId && serviceClient) {
+      try {
+        await updateVideoStatus(
+          serviceClient,
+          videoId as string,
+          VIDEO_STATUS.FAILED,
+          {
+            error_message: `Erreur interne: ${error.message}`
+          },
+          'general_error'
+        )
+      } catch (updateError) {
+        console.error('❌ Erreur lors de la mise à jour du statut d\'erreur:', updateError);
+      }
+    }
+    
+    return new Response(
+      JSON.stringify({
+        error: 'Erreur interne du serveur',
+        details: error.message || 'Une erreur inattendue est survenue.'
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    )
   }
-});
+})
