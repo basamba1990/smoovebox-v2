@@ -134,10 +134,24 @@ Deno.serve(async (req) => {
       try {
         console.log(`🔄 Tentative de mise à jour du statut de la vidéo ${videoId} vers '${status}' (méthode: ${method})`)
         
-        const updateData = {
+        const updateData: any = {
           status,
-          updated_at: new Date().toISOString(),
-          ...additionalData
+          updated_at: new Date().toISOString()
+        }
+
+        // Ajouter les données supplémentaires seulement si elles sont valides
+        if (additionalData.transcription_text && typeof additionalData.transcription_text === 'string') {
+          updateData.transcription_text = additionalData.transcription_text;
+        }
+
+        if (additionalData.transcription_data && typeof additionalData.transcription_data === 'object') {
+          // S'assurer que transcription_data est un objet valide
+          try {
+            JSON.parse(JSON.stringify(additionalData.transcription_data));
+            updateData.transcription_data = additionalData.transcription_data;
+          } catch (e) {
+            console.error('Données de transcription invalides, ignorées:', e);
+          }
         }
 
         const { error: updateError } = await client
@@ -623,7 +637,7 @@ Deno.serve(async (req) => {
     const videoUpdateSuccess = await updateVideoStatus(
       serviceClient,
       videoId as string,
-      VIDEO_STATUS.TRANSCRIBED,
+      VIDEO_STATUS.TRANSCRIBED,  // Changer de 'processing' à 'transcribed'
       {
         transcription_text: transcription.text,
         transcription_data: transcriptionData
