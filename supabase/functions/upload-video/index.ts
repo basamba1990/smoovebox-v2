@@ -76,8 +76,8 @@ Deno.serve(async (req) => {
 
     // Initialiser le client Supabase avec le token de l'utilisateur
     const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') || '',
-      Deno.env.get('SUPABASE_ANON_KEY') || '',
+      Deno.env.get('MY_SUPABASE_URL') || '',
+      Deno.env.get('MY_SUPABASE_ANON_KEY') || '',
       {
         global: {
           headers: { Authorization: `Bearer ${token}` }
@@ -324,16 +324,22 @@ Deno.serve(async (req) => {
           await new Promise(resolve => setTimeout(resolve, 5000));
           
           // Générer une URL publique pour la vidéo
-          const { data: publicUrl } = await serviceClient.storage
-            .from('videos')
+          const { data: publicUrlData, error: publicUrlError } = await serviceClient.storage
+            .from("videos")
             .createSignedUrl(filePath, 365 * 24 * 60 * 60); // URL valide pendant 1 an
+
+          if (publicUrlError) {
+            throw publicUrlError;
+          }
+
+          const publicUrl = publicUrlData?.signedUrl || null;
           
           // Mettre à jour le statut de la vidéo et l'URL
           await serviceClient
             .from('videos')
             .update({
               status: VIDEO_STATUS.READY,
-              url: publicUrl?.signedUrl || null,
+              url: publicUrl,
               updated_at: new Date().toISOString()
             })
             .eq('id', video.id);
