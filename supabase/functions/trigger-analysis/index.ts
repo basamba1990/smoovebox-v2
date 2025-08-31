@@ -11,8 +11,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const supabaseUrl = Deno.env.get('MY_SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY');
 
     if (!supabaseUrl || !supabaseServiceKey) {
       console.error('Variables d\'environnement manquantes pour trigger-analysis');
@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}` // Ou une clé de service si nécessaire
+        'Authorization': `Bearer ${Deno.env.get('MY_SUPABASE_ANON_KEY')}` // Utilisation de la clé anonyme avec préfixe MY_
       },
       body: JSON.stringify({ videoId: videoId })
     });
