@@ -92,11 +92,16 @@ Deno.serve(async (req) => {
         // Vérifier que la transcription a été sauvegardée dans la table videos
         const { data: video, error: videoError } = await client
           .from('videos')
-          .select('transcription_text')
+          .select('transcription_text, status')
           .eq('id', videoId)
           .single()
 
-        if (videoError || !video?.transcription_text) {
+        if (videoError) {
+          console.log('Erreur lors de la vérification de la transcription:', videoError)
+          return await confirmDatabaseUpdate(client, videoId, attempts + 1, maxAttempts)
+        }
+
+        if (!video?.transcription_text || video.status !== VIDEO_STATUS.TRANSCRIBED) {
           console.log('Transcription pas encore disponible, nouvelle tentative...')
           return await confirmDatabaseUpdate(client, videoId, attempts + 1, maxAttempts)
         }
@@ -518,7 +523,7 @@ Deno.serve(async (req) => {
     }
     
     // Log pour débogage
-    console.log('Données de transcription à enregistrer:', transcriptionData);
+    console.log('Données de transcription à enregistrer:', JSON.stringify(transcriptionData, null, 2));
 
     const updatePayload: any = {
       transcription_text: transcriptionData?.text || '',
@@ -532,6 +537,8 @@ Deno.serve(async (req) => {
       updatePayload.transcription_data = transcriptionData;
     }
 
+    console.log('Payload de mise à jour:', JSON.stringify(updatePayload, null, 2));
+
     const { error: transcriptionUpdateError } = await serviceClient
       .from('videos')
       .update(updatePayload)
@@ -540,34 +547,30 @@ Deno.serve(async (req) => {
     if (transcriptionUpdateError) {
       console.error('Erreur lors de la mise à jour de la transcription:', transcriptionUpdateError);
       
-      // CORRECTION: Tentative alternative si l'erreur persiste
-      if (transcriptionUpdateError.code === '22P02') {
-        console.log('Tentative alternative avec formatage différent des données...');
-        
-        // Essayer avec une chaîne JSON au lieu d'un objet
-        const { error: retryError } = await serviceClient
-          .from('videos')
-          .update({
-            transcription_text: transcriptionData?.text || '',
-            transcription_data: JSON.stringify(transcriptionData),
-            status: VIDEO_STATUS.TRANSCRIBED,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId as string);
+      // CORRECTION: Tentative alternative avec des données simplifiées
+      console.log('Tentative alternative avec des données simplifiées...');
+      
+      // Essayer avec seulement les données essentielles
+      const simplifiedPayload = {
+        transcription_text: transcriptionData?.text || '',
+        status: VIDEO_STATUS.TRANSCRIBED,
+        updated_at: new Date().toISOString()
+      };
+      
+      const { error: retryError } = await serviceClient
+        .from('videos')
+        .update(simplifiedPayload)
+        .eq('id', videoId as string);
           
-        if (retryError) {
-          console.error('Échec de la tentative alternative:', retryError);
-        } else {
-          console.log('Tentative alternative réussie!');
-          // Continuer le traitement normal
-        }
-      } else {
+      if (retryError) {
+        console.error('Échec de la tentative alternative:', retryError);
+        
         // Mettre à jour le statut de la vidéo à FAILED
         await serviceClient
           .from('videos')
           .update({ 
             status: VIDEO_STATUS.FAILED, 
-            error_message: `Erreur lors de l'enregistrement de la transcription: ${transcriptionUpdateError.message}`,
+            error_message: `Erreur lors de l'enregistrement de la transcription: ${retryError.message}`,
             updated_at: new Date().toISOString()
           })
           .eq('id', videoId as string);
@@ -575,59 +578,69 @@ Deno.serve(async (req) => {
         return new Response(
           JSON.stringify({
             error: 'Erreur d\'enregistrement de la transcription',
-            details: transcriptionUpdateError.message
+            details: retryError.message
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
         );
+      } else {
+        console.log('Tentative alternative réussie!');
+        // Continuer le traitement normal
       }
     }
 
     console.log('Transcription enregistrée avec succès dans la table videos.')
 
-    // 8. DÉCLENCHER LA FONCTION D'ANALYSE
-    try {
-      const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
-      
-      // CORRECTION: Les en-têtes doivent être un objet simple, pas une chaîne JSON
-      const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseServiceKey}`
-      };
-      
-      console.log(`Appel de la fonction analyze-transcription via fetch à ${analyzeEndpoint}`);
-      
-      const response = await fetch(analyzeEndpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ videoId })
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Erreur de la fonction d'analyse (${response.status}): ${errorText}`);
-        throw new Error(`Erreur HTTP ${response.status}: ${errorText}`);
-      }
-      
-      const responseData = await response.json();
-      console.log('Analyse démarrée avec succès:', responseData);
-    } catch (invokeError) {
-      console.error("Erreur lors de l'invocation de la fonction d'analyse:", invokeError)
-      // Ne pas échouer complètement, juste logger l'erreur
-    }
-
-    // 9. CONFIRMER LA MISE À JOUR DE LA BASE DE DONNÉES
+    // 8. CONFIRMER LA MISE À JOUR DE LA BASE DE DONNÉES
     const confirmed = await confirmDatabaseUpdate(serviceClient, videoId as string)
     if (!confirmed) {
       console.warn(
         `La mise à jour de la base de données pour la vidéo ${videoId} n'a pas pu être confirmée.`
       )
+      
+      // Ne pas échouer pour autant, juste logger un avertissement
+    }
+
+    // 9. DÉCLENCHER LA FONCTION D'ANALYSE SEULEMENT SI LA TRANSCRIPTION EST CONFIRMÉE
+    if (confirmed) {
+      try {
+        const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
+        
+        // CORRECTION: Les en-têtes doivent être un objet simple, pas une chaîne JSON
+        const headers = {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseServiceKey}`
+        };
+        
+        console.log(`Appel de la fonction analyze-transcription via fetch à ${analyzeEndpoint}`);
+        
+        const response = await fetch(analyzeEndpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ videoId })
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`Erreur de la fonction d'analyse (${response.status}): ${errorText}`);
+          // Ne pas échouer complètement, juste logger l'erreur
+        } else {
+          const responseData = await response.json();
+          console.log('Analyse démarrée avec succès:', responseData);
+        }
+      } catch (invokeError) {
+        console.error("Erreur lors de l'invocation de la fonction d'analyse:", invokeError)
+        // Ne pas échouer complètement, juste logger l'erreur
+      }
+    } else {
+      console.warn('Analyse non déclenchée car la transcription n\'a pas été confirmée');
     }
 
     return new Response(
       JSON.stringify({ 
         message: 'Transcription terminée avec succès', 
         videoId,
-        transcription_length: transcriptionResult.text.length
+        transcription_length: transcriptionResult.text.length,
+        transcription_confirmed: confirmed
       }), 
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
