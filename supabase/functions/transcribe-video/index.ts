@@ -322,7 +322,7 @@ Deno.serve(async (req) => {
       videoUrl = (video as any).url
     }
 
-    // CORRECTION PRINCIPALE: Traitement correct des chemins de stockage
+    // CORRECTION FINALE: Construction manuelle de l'URL complète
     if (!videoUrl && (video as any).storage_path) {
       console.log(`Génération d'une URL signée pour ${(video as any).storage_path}`)
       
@@ -363,17 +363,45 @@ Deno.serve(async (req) => {
           throw new Error('URL signée non générée par Supabase Storage');
         }
 
-        videoUrl = signedUrlData.signedUrl;
-        console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 50)}...`);
+        let rawSignedUrl = signedUrlData.signedUrl;
+        console.log(`URL signée brute reçue: ${rawSignedUrl}`);
         
-        // VALIDATION SUPPLÉMENTAIRE: Vérifier que l'URL générée est complète
+        // CORRECTION CRITIQUE: Construire l'URL complète si nécessaire
         try {
-          const urlTest = new URL(videoUrl);
-          if (!urlTest.protocol || (!urlTest.protocol.startsWith('http'))) {
-            throw new Error(`URL générée invalide: protocole manquant ou incorrect`);
+          // Tester si l'URL est déjà complète
+          const testUrl = new URL(rawSignedUrl);
+          videoUrl = testUrl.href; // URL déjà complète
+          console.log(`URL déjà complète: ${videoUrl.substring(0, 50)}...`);
+        } catch (urlError) {
+          // L'URL n'est pas complète, la construire manuellement
+          console.log(`URL incomplète détectée, construction manuelle...`);
+          
+          // Nettoyer l'URL de base Supabase (enlever les slashes finaux)
+          const baseUrl = supabaseUrl.replace(/\/+$/, '');
+          
+          // Nettoyer l'URL signée (enlever les slashes initiaux)
+          const cleanSignedUrl = rawSignedUrl.replace(/^\/+/, '');
+          
+          // Construire l'URL complète
+          videoUrl = `${baseUrl}/storage/v1/object/sign/${bucketName}/${filePath}?${cleanSignedUrl.split('?')[1] || ''}`;
+          
+          // Alternative plus simple si la première méthode échoue
+          if (!cleanSignedUrl.includes('?')) {
+            videoUrl = `${baseUrl}/storage/v1/object/sign/${bucketName}/${filePath}?token=${cleanSignedUrl}`;
           }
-        } catch (urlValidationError) {
-          throw new Error(`URL générée invalide: ${videoUrl} - ${urlValidationError.message}`);
+          
+          console.log(`URL construite manuellement: ${videoUrl.substring(0, 50)}...`);
+        }
+        
+        // VALIDATION FINALE: Vérifier que l'URL construite est valide
+        try {
+          const finalUrlTest = new URL(videoUrl);
+          if (!finalUrlTest.protocol || (!finalUrlTest.protocol.startsWith('http'))) {
+            throw new Error(`URL finale invalide: protocole manquant ou incorrect`);
+          }
+          console.log(`URL finale validée: ${finalUrlTest.href.substring(0, 50)}...`);
+        } catch (finalValidationError) {
+          throw new Error(`URL finale invalide: ${videoUrl} - ${finalValidationError.message}`);
         }
         
       } catch (storageError: any) {
@@ -423,7 +451,7 @@ Deno.serve(async (req) => {
     
     let audioBlob: Blob;
     try {
-      // VALIDATION RENFORCÉE DE L'URL
+      // VALIDATION FINALE DE L'URL AVANT TÉLÉCHARGEMENT
       let validatedUrl: URL;
       try {
         validatedUrl = new URL(videoUrl);
@@ -434,7 +462,7 @@ Deno.serve(async (req) => {
         throw new Error(`URL invalide: ${videoUrl}. L'URL doit être complète avec protocole (http/https). Erreur: ${urlError.message}`);
       }
       
-      console.log(`URL validée: ${validatedUrl.href}`);
+      console.log(`URL validée pour téléchargement: ${validatedUrl.href.substring(0, 50)}...`);
       
       const response = await fetch(validatedUrl.href, {
         method: 'GET',
