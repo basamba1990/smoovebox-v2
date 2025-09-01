@@ -219,17 +219,33 @@ Deno.serve(async (req) => {
           // Simuler un délai de traitement
           await new Promise(resolve => setTimeout(resolve, 5000));
           
-          // Générer une URL publique pour la vidéo
-          const { data: publicUrl } = await serviceClient.storage
+          // CORRECTION: Utiliser createSignedUrl au lieu de générer une URL publique
+          const { data: signedUrl, error: urlError } = await serviceClient.storage
             .from('videos')
             .createSignedUrl(storagePath, 365 * 24 * 60 * 60); // URL valide pendant 1 an
+          
+          if (urlError) {
+            console.error('Erreur lors de la génération de l\'URL signée:', urlError);
+            
+            // En cas d'erreur, mettre à jour le statut
+            await serviceClient
+              .from('videos')
+              .update({
+                status: VIDEO_STATUS.ERROR,
+                error_message: `Erreur lors de la génération de l'URL: ${urlError.message}`,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', video.id);
+              
+            return;
+          }
           
           // Mettre à jour le statut de la vidéo et l'URL
           await serviceClient
             .from('videos')
             .update({
               status: VIDEO_STATUS.READY,
-              url: publicUrl?.signedUrl || null,
+              url: signedUrl?.signedUrl || null,
               updated_at: new Date().toISOString()
             })
             .eq('id', video.id);
