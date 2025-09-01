@@ -440,63 +440,30 @@ Deno.serve(async (req) => {
             }
           } catch (bucketError) {
             console.error('Erreur lors de la vérification des buckets:', bucketError)
+            // Continuer avec le bucket par défaut si la vérification échoue
           }
         }
       }
 
-      // Méthode alternative: vérifier si le chemin commence par le nom du bucket
-      if (filePath.startsWith(`${bucket}/`)) {
-        filePath = filePath.substring(bucket.length + 1)
-        console.log(`Préfixe de bucket détecté et supprimé. Nouveau chemin: ${filePath}`)
-      }
+      // CORRECTION PRINCIPALE: Utiliser createSignedUrl au lieu de fetch direct
+      const { data: signedUrl, error: storageError } = await serviceClient.storage
+        .from(bucket)
+        .createSignedUrl(filePath, 60) // URL valide pour 60 secondes
 
-      console.log(`Création d'URL signée pour bucket: ${bucket}, chemin: ${filePath}`)
-
-      try {
-        const parentPath = filePath.split('/').slice(0, -1).join('/') || undefined
-        console.log(`Vérification du contenu du dossier: ${parentPath || '(racine)'}`)
-
-        const { data: fileList, error: fileListError } = await serviceClient.storage
-          .from(bucket)
-          .list(parentPath, { limit: 100, offset: 0, sortBy: { column: 'name', order: 'asc' } })
-
-        if (fileListError) {
-          console.error("Erreur lors de la vérification de l'existence du fichier:", fileListError)
-        } else {
-          const fileName = filePath.split('/').pop()
-          console.log(
-            `Contenu du dossier '${parentPath || '(racine)'}':`,
-            (fileList || []).map((f: any) => f.name)
-          )
-          console.log(`Recherche du fichier ${fileName} dans la liste`)
-          const fileFound = (fileList || []).some((f: any) => f.name === fileName)
-          console.log(`Fichier ${fileName} trouvé dans le bucket ${bucket}: ${fileFound}`)
-
-          if (!fileFound) {
-            throw new Error(`Fichier ${fileName} non trouvé dans le bucket ${bucket}`)
-          }
-        }
-
-        const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
-          .from(bucket)
-          .createSignedUrl(filePath, 60 * 60)
-
-        if (signedUrlError) throw signedUrlError
-
-        videoUrl = signedUrlData.signedUrl
-        console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 50)}...`)
-      } catch (storageError: any) {
-        console.error('Erreur lors de la création de l\'URL signée:', storageError)
+      if (signedUrl) {
+        videoUrl = signedUrl.signedUrl
+        console.log(`URL signée générée: ${videoUrl}`)
+      } else if (storageError) {
+        console.error('Erreur lors de la génération de l\'URL signée:', storageError)
         
-        // Mettre à jour le statut d'erreur
         await updateVideoStatus(
           serviceClient,
           videoId as string,
           VIDEO_STATUS.FAILED,
           {
-            error_message: `Erreur de stockage: ${storageError.message}`
+            error_message: `Impossible de générer l'URL signée pour la vidéo: ${storageError.message}`
           },
-          'storage_error'
+          'signed_url_error'
         )
         
         return new Response(
