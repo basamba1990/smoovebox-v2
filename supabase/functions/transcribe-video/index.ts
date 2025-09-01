@@ -316,15 +316,12 @@ Deno.serve(async (req) => {
       console.log(`Statut de la vidéo ${videoId} mis à jour à '${VIDEO_STATUS.PROCESSING}'`)
     }
 
-    // 5. RÉCUPÉRER L'URL DE LA VIDÉO - APPROCHE COMPLÈTEMENT NOUVELLE
-    // Utiliser d'abord videoUrl du corps de la requête si disponible
-    if (!videoUrl) {
-      videoUrl = (video as any).url
-    }
+    // 5. TÉLÉCHARGEMENT ET TRANSCRIPTION - LOGIQUE CORRIGÉE
+    let audioBlob: Blob | null = null;
 
-    // NOUVELLE APPROCHE: Téléchargement direct via l'API Storage au lieu d'URL signée
-    if (!videoUrl && (video as any).storage_path) {
-      console.log(`Téléchargement direct du fichier depuis le storage: ${(video as any).storage_path}`)
+    // PRIORITÉ 1: Téléchargement direct via storage_path (TOUJOURS en premier)
+    if ((video as any).storage_path) {
+      console.log(`Tentative de téléchargement direct depuis le storage: ${(video as any).storage_path}`)
       
       try {
         // Extraire le chemin de stockage et le parser correctement
@@ -356,6 +353,7 @@ Deno.serve(async (req) => {
           .download(filePath);
 
         if (downloadError) {
+          console.error('Erreur de téléchargement direct:', downloadError);
           throw downloadError;
         }
 
@@ -363,251 +361,228 @@ Deno.serve(async (req) => {
           throw new Error('Aucune donnée de fichier retournée par le téléchargement');
         }
 
-        console.log(`Fichier téléchargé directement, taille: ${fileData.size} octets`);
+        console.log(`Fichier téléchargé directement avec succès, taille: ${fileData.size} octets`);
         
         // Vérifier que le fichier n'est pas vide
         if (fileData.size === 0) {
           throw new Error('Le fichier téléchargé est vide');
         }
 
-        // Convertir le Blob en audioBlob pour la transcription
-        const audioBlob = fileData;
-        console.log(`Fichier prêt pour la transcription, type: ${audioBlob.type}`);
+        // Succès du téléchargement direct
+        audioBlob = fileData;
+        console.log(`Téléchargement direct réussi, type: ${audioBlob.type}`);
+        
+      } catch (storageError: any) {
+        console.error('Échec du téléchargement direct:', storageError.message);
+        console.log('Tentative de fallback vers URL si disponible...');
+        // Ne pas retourner d'erreur ici, continuer vers le fallback URL
+      }
+    }
 
-        // 6. TRANSCRIRE L'AUDIO AVEC OPENAI WHISPER
-        console.log('Transcription de l\'audio avec OpenAI Whisper...');
-        const openai = new OpenAI({ apiKey: openaiApiKey });
+    // PRIORITÉ 2: Fallback URL SEULEMENT si téléchargement direct a échoué ET URL valide disponible
+    if (!audioBlob) {
+      // Récupérer videoUrl si pas encore fait
+      if (!videoUrl) {
+        videoUrl = (video as any).url
+      }
 
-        let transcription: OpenAI.Audio.Transcriptions.Transcription;
+      // Vérifier si l'URL est valide AVANT de tenter le téléchargement
+      let isValidUrl = false;
+      if (videoUrl) {
         try {
-          const audioFile = new File([audioBlob], 'audio.webm', { type: audioBlob.type });
-          transcription = await openai.audio.transcriptions.create({
-            file: audioFile,
-            model: 'whisper-1',
-          });
-          console.log('Transcription réussie:', transcription.text.substring(0, 100) + '...');
-        } catch (transcriptionError: any) {
-          console.error('Erreur lors de la transcription:', transcriptionError);
-          
-          // Mettre à jour le statut de la vidéo à FAILED
-          await serviceClient
-            .from('videos')
-            .update({ 
-              status: VIDEO_STATUS.FAILED, 
-              error_message: `Erreur lors de la transcription: ${transcriptionError.message}`,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', videoId as string);
-
-          return new Response(
-            JSON.stringify({
-              error: 'Erreur de transcription',
-              details: transcriptionError.message
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-          );
+          const testUrl = new URL(videoUrl);
+          if (testUrl.protocol && testUrl.protocol.startsWith('http')) {
+            isValidUrl = true;
+            console.log(`URL valide détectée pour fallback: ${videoUrl.substring(0, 50)}...`);
+          }
+        } catch (urlError) {
+          console.log(`URL invalide détectée, ignorée: ${videoUrl}`);
         }
+      }
 
-        // 7. ENREGISTRER LA TRANSCRIPTION DANS LA BASE DE DONNÉES
-        const { error: transcriptionInsertError } = await serviceClient
-          .from('transcriptions')
-          .insert({
-            video_id: videoId,
-            content: transcription.text,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-
-        if (transcriptionInsertError) {
-          console.error('Erreur lors de l\'insertion de la transcription:', transcriptionInsertError);
-          
-          // Mettre à jour le statut de la vidéo à FAILED
-          await serviceClient
-            .from('videos')
-            .update({ 
-              status: VIDEO_STATUS.FAILED, 
-              error_message: `Erreur lors de l'enregistrement de la transcription: ${transcriptionInsertError.message}`,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', videoId as string);
-
-          return new Response(
-            JSON.stringify({
-              error: 'Erreur d\'enregistrement de la transcription',
-              details: transcriptionInsertError.message
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-          );
-        }
-
-        // Mettre à jour le statut de la vidéo à TRANSCRIBED
-        const { error: videoUpdateError } = await serviceClient
-          .from('videos')
-          .update({
-            status: VIDEO_STATUS.TRANSCRIBED,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId as string);
-
-        if (videoUpdateError) {
-          console.error('Erreur lors de la mise à jour de la vidéo avec la transcription:', videoUpdateError);
-        }
-
-        console.log('Transcription enregistrée avec succès.')
-
-        // 8. DÉCLENCHER LA FONCTION D'ANALYSE
+      if (isValidUrl && videoUrl) {
+        console.log(`Tentative de téléchargement via URL fallback...`);
+        
         try {
-          const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
-          const headers = {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseServiceKey}`
-          };
-          
-          console.log(`Appel de la fonction analyze-transcription via fetch à ${analyzeEndpoint}`);
-          
-          const response = await fetch(analyzeEndpoint, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ videoId })
+          const response = await fetch(videoUrl, {
+            method: 'GET',
+            headers: {
+              'User-Agent': 'Supabase-Edge-Function/1.0'
+            }
           });
           
           if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`Erreur de la fonction d'analyse (${response.status}): ${errorText}`);
-            throw new Error(`Erreur HTTP ${response.status}: ${errorText}`);
+            throw new Error(`Échec du téléchargement via URL. Statut: ${response.status} ${response.statusText}`);
           }
           
-          const responseData = await response.json();
-          console.log('Analyse démarrée avec succès:', responseData);
-        } catch (invokeError) {
-          console.error("Erreur lors de l'invocation de la fonction d'analyse:", invokeError)
-          // Ne pas échouer complètement, juste logger l'erreur
-        }
-
-        // 9. CONFIRMER LA MISE À JOUR DE LA BASE DE DONNÉES
-        const confirmed = await confirmDatabaseUpdate(serviceClient, videoId as string)
-        if (!confirmed) {
-          console.warn(
-            `La mise à jour de la base de données pour la vidéo ${videoId} n'a pas pu être confirmée.`
-          )
-        }
-
-        return new Response(
-          JSON.stringify({ 
-            message: 'Transcription terminée avec succès', 
-            videoId,
-            transcription_length: transcription.text.length
-          }), 
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200
+          audioBlob = await response.blob();
+          console.log(`Téléchargement via URL réussi, taille: ${audioBlob.size} octets`);
+          
+          // Vérifier que le blob n'est pas vide
+          if (audioBlob.size === 0) {
+            throw new Error('Le fichier téléchargé via URL est vide');
           }
-        )
-        
-      } catch (storageError: any) {
-        console.error('Erreur lors du téléchargement direct du fichier:', storageError);
-        
-        // Mettre à jour le statut de la vidéo à FAILED
-        await serviceClient
-          .from('videos')
-          .update({ 
-            status: VIDEO_STATUS.FAILED, 
-            error_message: `Erreur de téléchargement direct: ${storageError.message}`,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId as string);
-        
-        return new Response(
-          JSON.stringify({
-            error: 'Erreur de téléchargement direct',
-            details: `Impossible de télécharger le fichier directement: ${storageError.message}`
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-        );
+          
+        } catch (fetchError: any) {
+          console.error('Échec du téléchargement via URL:', fetchError.message);
+          // audioBlob reste null
+        }
       }
     }
 
-    // FALLBACK: Si aucune URL n'est disponible et pas de storage_path
-    if (!videoUrl) {
-      await serviceClient
-        .from('videos')
-        .update({ 
-          status: VIDEO_STATUS.FAILED, 
-          error_message: 'URL vidéo manquante - impossible de récupérer ou générer l\'URL',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId as string);
-        
-      return new Response(
-        JSON.stringify({
-          error: 'URL vidéo manquante',
-          details: 'Impossible de récupérer ou de générer l\'URL de la vidéo.'
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      )
-    }
-
-    // FALLBACK: Téléchargement via URL si disponible
-    console.log(`Téléchargement de la vidéo depuis l'URL: ${videoUrl.substring(0, 50)}...`);
-    
-    let audioBlob: Blob;
-    try {
-      // VALIDATION FINALE DE L'URL AVANT TÉLÉCHARGEMENT
-      let validatedUrl: URL;
-      try {
-        validatedUrl = new URL(videoUrl);
-        if (!validatedUrl.protocol || (!validatedUrl.protocol.startsWith('http'))) {
-          throw new Error(`Protocole invalide: ${validatedUrl.protocol}. Seuls http et https sont supportés.`);
-        }
-      } catch (urlError) {
-        throw new Error(`URL invalide: ${videoUrl}. L'URL doit être complète avec protocole (http/https). Erreur: ${urlError.message}`);
-      }
-      
-      console.log(`URL validée pour téléchargement: ${validatedUrl.href.substring(0, 50)}...`);
-      
-      const response = await fetch(validatedUrl.href, {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Supabase-Edge-Function/1.0'
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Échec du téléchargement de la vidéo depuis l'URL. Statut: ${response.status} ${response.statusText}`);
-      }
-      
-      audioBlob = await response.blob();
-      console.log(`Vidéo téléchargée avec succès, taille: ${audioBlob.size} octets`);
-      
-      // Vérifier que le blob n'est pas vide
-      if (audioBlob.size === 0) {
-        throw new Error('Le fichier téléchargé est vide');
-      }
-      
-    } catch (fetchError: any) {
-      console.error('Erreur lors du téléchargement de la vidéo:', fetchError);
+    // VÉRIFICATION FINALE: Si aucune méthode n'a fonctionné
+    if (!audioBlob) {
+      const errorMessage = 'Impossible de télécharger le fichier vidéo par aucune méthode disponible';
+      console.error(errorMessage);
       
       // Mettre à jour le statut de la vidéo à FAILED
       await serviceClient
         .from('videos')
         .update({ 
           status: VIDEO_STATUS.FAILED, 
-          error_message: `Erreur lors du téléchargement de la vidéo: ${fetchError.message}`,
+          error_message: errorMessage,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId as string);
+      
+      return new Response(
+        JSON.stringify({
+          error: 'Erreur de téléchargement',
+          details: errorMessage
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
+    }
+
+    // 6. TRANSCRIRE L'AUDIO AVEC OPENAI WHISPER
+    console.log('Transcription de l\'audio avec OpenAI Whisper...');
+    const openai = new OpenAI({ apiKey: openaiApiKey });
+
+    let transcription: OpenAI.Audio.Transcriptions.Transcription;
+    try {
+      const audioFile = new File([audioBlob], 'audio.webm', { type: audioBlob.type });
+      transcription = await openai.audio.transcriptions.create({
+        file: audioFile,
+        model: 'whisper-1',
+      });
+      console.log('Transcription réussie:', transcription.text.substring(0, 100) + '...');
+    } catch (transcriptionError: any) {
+      console.error('Erreur lors de la transcription:', transcriptionError);
+      
+      // Mettre à jour le statut de la vidéo à FAILED
+      await serviceClient
+        .from('videos')
+        .update({ 
+          status: VIDEO_STATUS.FAILED, 
+          error_message: `Erreur lors de la transcription: ${transcriptionError.message}`,
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId as string);
 
       return new Response(
         JSON.stringify({
-          error: 'Erreur de téléchargement de la vidéo',
-          details: fetchError.message
+          error: 'Erreur de transcription',
+          details: transcriptionError.message
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
 
-    // Suite du traitement pour le fallback URL...
-    // [Le reste du code de transcription, enregistrement, etc. serait identique]
+    // 7. ENREGISTRER LA TRANSCRIPTION DANS LA BASE DE DONNÉES
+    const { error: transcriptionInsertError } = await serviceClient
+      .from('transcriptions')
+      .insert({
+        video_id: videoId,
+        content: transcription.text,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+    if (transcriptionInsertError) {
+      console.error('Erreur lors de l\'insertion de la transcription:', transcriptionInsertError);
+      
+      // Mettre à jour le statut de la vidéo à FAILED
+      await serviceClient
+        .from('videos')
+        .update({ 
+          status: VIDEO_STATUS.FAILED, 
+          error_message: `Erreur lors de l'enregistrement de la transcription: ${transcriptionInsertError.message}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId as string);
+
+      return new Response(
+        JSON.stringify({
+          error: 'Erreur d\'enregistrement de la transcription',
+          details: transcriptionInsertError.message
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
+    }
+
+    // Mettre à jour le statut de la vidéo à TRANSCRIBED
+    const { error: videoUpdateError } = await serviceClient
+      .from('videos')
+      .update({
+        status: VIDEO_STATUS.TRANSCRIBED,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', videoId as string);
+
+    if (videoUpdateError) {
+      console.error('Erreur lors de la mise à jour de la vidéo avec la transcription:', videoUpdateError);
+    }
+
+    console.log('Transcription enregistrée avec succès.')
+
+    // 8. DÉCLENCHER LA FONCTION D'ANALYSE
+    try {
+      const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`
+      };
+      
+      console.log(`Appel de la fonction analyze-transcription via fetch à ${analyzeEndpoint}`);
+      
+      const response = await fetch(analyzeEndpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ videoId })
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Erreur de la fonction d'analyse (${response.status}): ${errorText}`);
+        throw new Error(`Erreur HTTP ${response.status}: ${errorText}`);
+      }
+      
+      const responseData = await response.json();
+      console.log('Analyse démarrée avec succès:', responseData);
+    } catch (invokeError) {
+      console.error("Erreur lors de l'invocation de la fonction d'analyse:", invokeError)
+      // Ne pas échouer complètement, juste logger l'erreur
+    }
+
+    // 9. CONFIRMER LA MISE À JOUR DE LA BASE DE DONNÉES
+    const confirmed = await confirmDatabaseUpdate(serviceClient, videoId as string)
+    if (!confirmed) {
+      console.warn(
+        `La mise à jour de la base de données pour la vidéo ${videoId} n'a pas pu être confirmée.`
+      )
+    }
+
+    return new Response(
+      JSON.stringify({ 
+        message: 'Transcription terminée avec succès', 
+        videoId,
+        transcription_length: transcription.text.length
+      }), 
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
+      }
+    )
 
   } catch (error: any) {
     console.error('Erreur générale dans la fonction transcribe-video:', error)
