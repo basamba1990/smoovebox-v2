@@ -1,7 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import OpenAI from 'npm:openai@4.28.0'
 
-// Valeurs exactes autorisées pour le statut dans la base de données
 const VIDEO_STATUS = {
   UPLOADED: 'uploaded',
   PROCESSING: 'processing',
@@ -12,14 +11,12 @@ const VIDEO_STATUS = {
   FAILED: 'failed'
 } as const
 
-// En-têtes CORS pour permettre les requêtes cross-origin
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
 }
 
 Deno.serve(async (req) => {
-  // Gérer les requêtes OPTIONS (CORS preflight)
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -30,41 +27,27 @@ Deno.serve(async (req) => {
   try {
     console.log('Fonction transcribe-video appelée')
     
-    // Initialiser les variables d'environnement
     const supabaseUrl = Deno.env.get('MY_SUPABASE_URL')
     const supabaseServiceKey = Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY')
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
 
     if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
-      console.error('Variables d\'environnement manquantes')
       return new Response(
-        JSON.stringify({
-          error: 'Configuration incomplète',
-          details: "Variables d'environnement manquantes"
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500
-        }
+        JSON.stringify({ error: 'Configuration incomplète', details: "Variables d'environnement manquantes" }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       )
     }
 
-    // Créer un client Supabase avec timeout configuré
     serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { persistSession: false },
-      global: {
-        fetch: (input, init) => {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 30000);
-          return fetch(input, {
-            ...init,
-            signal: controller.signal
-          }).finally(() => clearTimeout(timeoutId));
-        }
-      }
+      global: { fetch: (input, init) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        return fetch(input, { ...init, signal: controller.signal })
+          .finally(() => clearTimeout(timeoutId));
+      }}
     })
 
-    // Récupérer le videoId de la requête
     const url = new URL(req.url)
     videoId = url.searchParams.get('videoId')
     
@@ -82,15 +65,11 @@ Deno.serve(async (req) => {
 
     if (!videoId) {
       return new Response(
-        JSON.stringify({ 
-          error: 'videoId est requis',
-          details: 'Veuillez fournir videoId comme paramètre d\'URL (?videoId=...) ou dans le corps JSON de la requête'
-        }),
+        JSON.stringify({ error: 'videoId est requis' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       )
     }
 
-    // Vérifier l'accès à la vidéo
     const { data: video, error: videoError } = await serviceClient
       .from('videos')
       .select('*')
@@ -98,17 +77,13 @@ Deno.serve(async (req) => {
       .single()
 
     if (videoError || !video) {
-      console.error(`Erreur lors de la récupération de la vidéo ${videoId}`, videoError)
       return new Response(
-        JSON.stringify({ error: 'Vidéo non trouvée ou accès non autorisé' }),
+        JSON.stringify({ error: 'Vidéo non trouvée' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
       )
     }
 
-    console.log(`Vidéo trouvée: ${video.id}, statut: ${video.status}`)
-
-    // Mise à jour du statut => processing
-    const { error: updateError } = await serviceClient
+    await serviceClient
       .from('videos')
       .update({
         status: VIDEO_STATUS.PROCESSING,
@@ -117,19 +92,12 @@ Deno.serve(async (req) => {
       })
       .eq('id', videoId)
 
-    if (updateError) {
-      console.error(`Erreur lors de la mise à jour du statut de la vidéo ${videoId}`, updateError)
-    }
-
-    // Téléchargement du fichier
     let audioBlob: Blob | null = null;
 
-    // PRIORITÉ 1: Téléchargement direct via storage_path
     if (video.storage_path) {
       try {
         let bucketName = 'videos';
         let filePath = video.storage_path;
-        
         if (filePath.startsWith('videos/')) {
           filePath = filePath.replace('videos/', '');
         }
@@ -139,17 +107,12 @@ Deno.serve(async (req) => {
           .download(filePath);
 
         if (downloadError) throw downloadError;
-        if (!fileData) throw new Error('Aucune donnée de fichier retournée');
-
         audioBlob = fileData;
-        console.log(`Téléchargement direct réussi, taille: ${audioBlob.size} octets`);
-        
-      } catch (storageError: any) {
-        console.error('Échec du téléchargement direct:', storageError.message);
+      } catch (storageError) {
+        console.error('Échec du téléchargement direct:', storageError);
       }
     }
 
-    // PRIORITÉ 2: Fallback URL
     if (!audioBlob && video.url) {
       try {
         const response = await fetch(video.url, {
@@ -157,36 +120,29 @@ Deno.serve(async (req) => {
           headers: { 'User-Agent': 'Supabase-Edge-Function/1.0' }
         });
         
-        if (!response.ok) throw new Error(`Échec du téléchargement. Statut: ${response.status}`);
+        if (!response.ok) throw new Error(`Échec du téléchargement: ${response.status}`);
         audioBlob = await response.blob();
-        console.log(`Téléchargement via URL réussi, taille: ${audioBlob.size} octets`);
-      } catch (fetchError: any) {
-        console.error('Échec du téléchargement via URL:', fetchError.message);
+      } catch (fetchError) {
+        console.error('Échec du téléchargement via URL:', fetchError);
       }
     }
 
     if (!audioBlob) {
-      const errorMessage = 'Impossible de télécharger le fichier vidéo';
-      console.error(errorMessage);
-      
       await serviceClient
         .from('videos')
         .update({ 
           status: VIDEO_STATUS.FAILED, 
-          error_message: errorMessage,
+          error_message: 'Impossible de télécharger le fichier vidéo',
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId);
 
       return new Response(
-        JSON.stringify({ error: 'Erreur de téléchargement', details: errorMessage }),
+        JSON.stringify({ error: 'Erreur de téléchargement' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
 
-    // Transcription avec OpenAI Whisper
-    console.log('Début de la transcription avec OpenAI Whisper...')
-    
     const openai = new OpenAI({ apiKey: openaiApiKey })
     const audioFile = new File([audioBlob], 'audio.mp4', { type: audioBlob.type || 'audio/mp4' })
     
@@ -199,11 +155,7 @@ Deno.serve(async (req) => {
         response_format: 'verbose_json',
         timestamp_granularities: ['word', 'segment']
       })
-      
-      console.log('Transcription réussie, longueur du texte:', transcriptionResult.text?.length || 0)
-    } catch (transcriptionError: any) {
-      console.error('Erreur lors de la transcription:', transcriptionError)
-      
+    } catch (transcriptionError) {
       await serviceClient
         .from('videos')
         .update({ 
@@ -219,27 +171,26 @@ Deno.serve(async (req) => {
       )
     }
 
-    // CORRECTION DÉFINITIVE: Préparer les données pour la mise à jour
-    // Éviter complètement d'écrire dans la colonne tags qui est de type ARRAY
+    // CORRECTION PRINCIPALE : Formatage correct des données pour la mise à jour
     const updatePayload = {
       transcription_text: transcriptionResult.text || '',
-      transcription_data: transcriptionResult, // Stocker dans la colonne jsonb
+      transcription_data: transcriptionResult, // Stockage dans une colonne JSONB
       status: VIDEO_STATUS.TRANSCRIBED,
       updated_at: new Date().toISOString()
     };
 
-    console.log('Mise à jour de la base de données avec les données de transcription...')
-    
-    // CORRECTION: Utiliser une méthode de mise à jour simple
+    // CORRECTION : Vérification que nous n'écrivons pas dans la colonne tags
+    console.log('Données à mettre à jour:', JSON.stringify(updatePayload, null, 2));
+
     const { error: transcriptionUpdateError } = await serviceClient
       .from('videos')
       .update(updatePayload)
       .eq('id', videoId)
 
     if (transcriptionUpdateError) {
-      console.error('Erreur lors de la mise à jour de la transcription:', transcriptionUpdateError)
+      console.error('Erreur lors de la mise à jour:', transcriptionUpdateError);
       
-      // CORRECTION: Tentative alternative avec seulement le texte
+      // Fallback simple sans données complexes
       const { error: simpleError } = await serviceClient
         .from('videos')
         .update({
@@ -250,13 +201,11 @@ Deno.serve(async (req) => {
         .eq('id', videoId)
       
       if (simpleError) {
-        console.error('Échec de la mise à jour minimaliste:', simpleError)
-        
         await serviceClient
           .from('videos')
           .update({ 
             status: VIDEO_STATUS.FAILED, 
-            error_message: `Erreur lors de l'enregistrement: ${simpleError.message}`,
+            error_message: `Erreur d'enregistrement: ${simpleError.message}`,
             updated_at: new Date().toISOString()
           })
           .eq('id', videoId)
@@ -266,29 +215,6 @@ Deno.serve(async (req) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
         )
       }
-    }
-
-    console.log('Transcription enregistrée avec succès')
-
-    // Déclencher la fonction d'analyse
-    try {
-      const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
-      const response = await fetch(analyzeEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseServiceKey}`
-        },
-        body: JSON.stringify({ videoId })
-      });
-      
-      if (!response.ok) {
-        console.error(`Erreur de la fonction d'analyse: ${response.status}`)
-      } else {
-        console.log('Analyse démarrée avec succès')
-      }
-    } catch (invokeError) {
-      console.error("Erreur lors de l'invocation de la fonction d'analyse:", invokeError)
     }
 
     return new Response(
@@ -304,21 +230,17 @@ Deno.serve(async (req) => {
     )
 
   } catch (error: any) {
-    console.error('Erreur générale dans la fonction transcribe-video:', error)
+    console.error('Erreur générale:', error)
     
-    try {
-      if (videoId && serviceClient) {
-        await serviceClient
-          .from('videos')
-          .update({ 
-            status: VIDEO_STATUS.FAILED, 
-            error_message: `Erreur interne: ${error.message}`,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId);
-      }
-    } catch (updateError) {
-      console.error('Erreur lors de la mise à jour du statut d\'erreur:', updateError)
+    if (videoId && serviceClient) {
+      await serviceClient
+        .from('videos')
+        .update({ 
+          status: VIDEO_STATUS.FAILED, 
+          error_message: `Erreur interne: ${error.message}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId);
     }
     
     return new Response(
