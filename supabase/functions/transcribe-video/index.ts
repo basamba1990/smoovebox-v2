@@ -542,6 +542,8 @@ Deno.serve(async (req) => {
     // 8. DÉCLENCHER LA FONCTION D'ANALYSE
     try {
       const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
+      
+      // CORRECTION: Les en-têtes doivent être un objet simple, pas une chaîne JSON
       const headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${supabaseServiceKey}`
