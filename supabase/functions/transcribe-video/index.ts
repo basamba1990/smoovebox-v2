@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
           videoId = requestData.videoId
         }
       } catch (parseError) {
-        console.error("Erreur lors de l'analyse du JSON de la requête:", parseError)
+        console.error("Erreur lors de l'analyse du JSON:", parseError)
       }
     }
 
@@ -219,23 +219,18 @@ Deno.serve(async (req) => {
       )
     }
 
-    // CORRECTION PRINCIPALE: Éviter d'écrire des objets dans des colonnes de type ARRAY
-    // Préparer les données pour la mise à jour
-    const updatePayload: any = {
+    // CORRECTION DÉFINITIVE: Préparer les données pour la mise à jour
+    // Éviter complètement d'écrire dans la colonne tags qui est de type ARRAY
+    const updatePayload = {
       transcription_text: transcriptionResult.text || '',
+      transcription_data: transcriptionResult, // Stocker dans la colonne jsonb
       status: VIDEO_STATUS.TRANSCRIBED,
       updated_at: new Date().toISOString()
     };
 
-    // CORRECTION: Stocker les données de transcription dans la colonne jsonb appropriée
-    // plutôt que dans la colonne tags qui est de type ARRAY
-    if (transcriptionResult) {
-      updatePayload.transcription_data = transcriptionResult;
-    }
-
     console.log('Mise à jour de la base de données avec les données de transcription...')
     
-    // CORRECTION: Utiliser une méthode de mise à jour simple et directe
+    // CORRECTION: Utiliser une méthode de mise à jour simple
     const { error: transcriptionUpdateError } = await serviceClient
       .from('videos')
       .update(updatePayload)
@@ -244,8 +239,8 @@ Deno.serve(async (req) => {
     if (transcriptionUpdateError) {
       console.error('Erreur lors de la mise à jour de la transcription:', transcriptionUpdateError)
       
-      // CORRECTION: En cas d'erreur, essayer une mise à jour minimaliste
-      const { error: simpleUpdateError } = await serviceClient
+      // CORRECTION: Tentative alternative avec seulement le texte
+      const { error: simpleError } = await serviceClient
         .from('videos')
         .update({
           transcription_text: transcriptionResult.text || '',
@@ -254,20 +249,20 @@ Deno.serve(async (req) => {
         })
         .eq('id', videoId)
       
-      if (simpleUpdateError) {
-        console.error('Échec de la mise à jour minimaliste:', simpleUpdateError)
+      if (simpleError) {
+        console.error('Échec de la mise à jour minimaliste:', simpleError)
         
         await serviceClient
           .from('videos')
           .update({ 
             status: VIDEO_STATUS.FAILED, 
-            error_message: `Erreur lors de l'enregistrement: ${simpleUpdateError.message}`,
+            error_message: `Erreur lors de l'enregistrement: ${simpleError.message}`,
             updated_at: new Date().toISOString()
           })
           .eq('id', videoId)
 
         return new Response(
-          JSON.stringify({ error: 'Erreur d\'enregistrement', details: simpleUpdateError.message }),
+          JSON.stringify({ error: 'Erreur d\'enregistrement', details: simpleError.message }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
         )
       }
