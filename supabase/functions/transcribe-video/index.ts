@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
 
           if (supabaseCookie) {
             token = supabaseCookie.split('=')[1].trim()
-            if (token.startsWith('"') && token.endsWith('"')) {
+            if (token.startsWith('\"') && token.endsWith('\"')) {
               token = token.slice(1, -1) // Enlever les guillemets
             }
             console.log("Token d'authentification trouvé dans les cookies")
@@ -322,32 +322,43 @@ Deno.serve(async (req) => {
       videoUrl = (video as any).url
     }
 
+    // CORRECTION ICI: Traitement correct des chemins de stockage
     if (!videoUrl && (video as any).storage_path) {
       console.log(`Génération d'une URL signée pour ${(video as any).storage_path}`)
-
-      const fullStoragePath = (video as any).storage_path as string;
-      // Assurer que le storage_path est au format 'bucket_name/path/to/file.ext'
-      const pathParts = fullStoragePath.split('/');
-      const bucketName = pathParts[0];
-      const filePathInBucket = pathParts.slice(1).join('/');
-
-      if (!bucketName || !filePathInBucket) {
-        throw new Error(`Chemin de stockage invalide: ${fullStoragePath}`);
-      }
-
+      
       try {
+        // Extraire le chemin de stockage et le parser correctement
+        const storagePath = (video as any).storage_path as string;
+        
+        // Déterminer si le chemin contient déjà le nom du bucket ou non
+        let bucketName, filePath;
+        
+        // Différentes structures possibles de storage_path
+        if (storagePath.startsWith('videos/')) {
+          // Format "videos/user_id/filename.ext"
+          bucketName = 'videos';
+          filePath = storagePath.replace('videos/', '');
+        } else if (storagePath.includes('/')) {
+          // Format "user_id/filename.ext" (bucket implicite "videos")
+          bucketName = 'videos';
+          filePath = storagePath;
+        } else {
+          // Format simple "filename.ext" (peu probable, mais par sécurité)
+          bucketName = 'videos';
+          filePath = storagePath;
+        }
+        
+        console.log(`Bucket: ${bucketName}, Fichier: ${filePath}`);
+        
+        // Génération de l'URL signée
         const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
           .from(bucketName)
-          .createSignedUrl(filePathInBucket, 60 * 60); // URL valide pour 1 heure
+          .createSignedUrl(filePath, 60 * 60); // URL valide pour 1 heure
 
         if (signedUrlError) {
           throw signedUrlError;
         }
-        
-        if (!signedUrlData.signedUrl) {
-          throw new Error("L'URL signée générée est vide");
-        }
-        
+
         videoUrl = signedUrlData.signedUrl;
         console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 50)}...`);
       } catch (storageError: any) {
@@ -373,23 +384,21 @@ Deno.serve(async (req) => {
     }
 
     // 6. TÉLÉCHARGER LA VIDÉO ET LA CONVERTIR EN AUDIO
-    console.log('Téléchargement et conversion de la vidéo en audio...');
-    
-    // S'assurer que l'URL est complète avec un protocole
-    if (!videoUrl.startsWith('http://') && !videoUrl.startsWith('https://')) {
-      console.log(`URL vidéo sans protocole, ajout de https:// : ${videoUrl}`);
-      videoUrl = `https://${videoUrl}`;
-    }
+    console.log(`Téléchargement de la vidéo depuis l'URL: ${videoUrl.substring(0, 50)}...`);
     
     let audioBlob: Blob;
     try {
-      console.log(`Tentative de téléchargement depuis: ${videoUrl.substring(0, 50)}...`);
-      const response = await fetch(videoUrl);
-      
-      if (!response.ok) {
-        throw new Error(`Échec du téléchargement de la vidéo. Statut: ${response.status} ${response.statusText}`);
+      // Vérifier si l'URL est valide
+      try {
+        new URL(videoUrl);
+      } catch (urlError) {
+        throw new Error(`URL invalide: ${videoUrl}. L'URL doit être complète avec protocole (http/https).`);
       }
       
+      const response = await fetch(videoUrl);
+      if (!response.ok) {
+        throw new Error(`Échec du téléchargement de la vidéo depuis l'URL. Statut: ${response.status} ${response.statusText}`);
+      }
       audioBlob = await response.blob();
       console.log(`Vidéo téléchargée avec succès, taille: ${audioBlob.size} octets`);
     } catch (fetchError: any) {
