@@ -34,8 +34,8 @@ Deno.serve(async (req) => {
     console.log('Fonction transcribe-video appelée')
     
     // Initialiser les variables d'environnement
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    const supabaseUrl = Deno.env.get('MY_SUPABASE_URL')
+    const supabaseServiceKey = Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY')
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
 
     if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
@@ -322,7 +322,7 @@ Deno.serve(async (req) => {
       videoUrl = (video as any).url
     }
 
-    // CORRECTION ICI: Traitement correct des chemins de stockage
+    // CORRECTION PRINCIPALE: Traitement correct des chemins de stockage
     if (!videoUrl && (video as any).storage_path) {
       console.log(`Génération d'une URL signée pour ${(video as any).storage_path}`)
       
@@ -359,10 +359,36 @@ Deno.serve(async (req) => {
           throw signedUrlError;
         }
 
+        if (!signedUrlData || !signedUrlData.signedUrl) {
+          throw new Error('URL signée non générée par Supabase Storage');
+        }
+
         videoUrl = signedUrlData.signedUrl;
         console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 50)}...`);
+        
+        // VALIDATION SUPPLÉMENTAIRE: Vérifier que l'URL générée est complète
+        try {
+          const urlTest = new URL(videoUrl);
+          if (!urlTest.protocol || (!urlTest.protocol.startsWith('http'))) {
+            throw new Error(`URL générée invalide: protocole manquant ou incorrect`);
+          }
+        } catch (urlValidationError) {
+          throw new Error(`URL générée invalide: ${videoUrl} - ${urlValidationError.message}`);
+        }
+        
       } catch (storageError: any) {
         console.error('Erreur lors de la création de l\'URL signée:', storageError);
+        
+        // Mettre à jour le statut de la vidéo à FAILED
+        await serviceClient
+          .from('videos')
+          .update({ 
+            status: VIDEO_STATUS.FAILED, 
+            error_message: `Erreur de génération d'URL signée: ${storageError.message}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId as string);
+        
         return new Response(
           JSON.stringify({
             error: 'Erreur de stockage',
@@ -374,6 +400,15 @@ Deno.serve(async (req) => {
     }
 
     if (!videoUrl) {
+      await serviceClient
+        .from('videos')
+        .update({ 
+          status: VIDEO_STATUS.FAILED, 
+          error_message: 'URL vidéo manquante - impossible de récupérer ou générer l\'URL',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId as string);
+        
       return new Response(
         JSON.stringify({
           error: 'URL vidéo manquante',
@@ -388,21 +423,41 @@ Deno.serve(async (req) => {
     
     let audioBlob: Blob;
     try {
-      // Vérifier si l'URL est valide
+      // VALIDATION RENFORCÉE DE L'URL
+      let validatedUrl: URL;
       try {
-        new URL(videoUrl);
+        validatedUrl = new URL(videoUrl);
+        if (!validatedUrl.protocol || (!validatedUrl.protocol.startsWith('http'))) {
+          throw new Error(`Protocole invalide: ${validatedUrl.protocol}. Seuls http et https sont supportés.`);
+        }
       } catch (urlError) {
-        throw new Error(`URL invalide: ${videoUrl}. L'URL doit être complète avec protocole (http/https).`);
+        throw new Error(`URL invalide: ${videoUrl}. L'URL doit être complète avec protocole (http/https). Erreur: ${urlError.message}`);
       }
       
-      const response = await fetch(videoUrl);
+      console.log(`URL validée: ${validatedUrl.href}`);
+      
+      const response = await fetch(validatedUrl.href, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Supabase-Edge-Function/1.0'
+        }
+      });
+      
       if (!response.ok) {
         throw new Error(`Échec du téléchargement de la vidéo depuis l'URL. Statut: ${response.status} ${response.statusText}`);
       }
+      
       audioBlob = await response.blob();
       console.log(`Vidéo téléchargée avec succès, taille: ${audioBlob.size} octets`);
+      
+      // Vérifier que le blob n'est pas vide
+      if (audioBlob.size === 0) {
+        throw new Error('Le fichier téléchargé est vide');
+      }
+      
     } catch (fetchError: any) {
       console.error('Erreur lors du téléchargement de la vidéo:', fetchError);
+      
       // Mettre à jour le statut de la vidéo à FAILED
       await serviceClient
         .from('videos')
@@ -435,67 +490,63 @@ Deno.serve(async (req) => {
       });
       console.log('Transcription réussie:', transcription.text.substring(0, 100) + '...');
     } catch (transcriptionError: any) {
-      console.error('Erreur lors de la transcription audio:', transcriptionError);
+      console.error('Erreur lors de la transcription:', transcriptionError);
+      
       // Mettre à jour le statut de la vidéo à FAILED
       await serviceClient
         .from('videos')
         .update({ 
           status: VIDEO_STATUS.FAILED, 
-          error_message: `Échec de la transcription: ${transcriptionError.message}`,
+          error_message: `Erreur lors de la transcription: ${transcriptionError.message}`,
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId as string);
 
       return new Response(
-        JSON.stringify({ error: 'Erreur de transcription', details: transcriptionError.message }),
+        JSON.stringify({
+          error: 'Erreur de transcription',
+          details: transcriptionError.message
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
 
     // 8. ENREGISTRER LA TRANSCRIPTION DANS LA BASE DE DONNÉES
-    console.log('Enregistrement de la transcription dans la base de données...');
-    const transcriptionData = { 
-      text: transcription.text,
-      language: 'french', // Assumer le français pour l'instant
-      duration: 0 // Placeholder, à remplacer par la durée réelle si disponible
-    };
-
-    const { error: transcriptionTableError } = await serviceClient
+    const { error: transcriptionInsertError } = await serviceClient
       .from('transcriptions')
-      .upsert({
-        video_id: videoId as string,
-        transcription_text: transcription.text,
-        transcription_data: transcriptionData,
-        status: 'completed',
+      .insert({
+        video_id: videoId,
+        content: transcription.text,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
-      }, { onConflict: 'video_id' });
+      });
 
-    if (transcriptionTableError) {
-      console.error('Erreur lors de l\'enregistrement de la transcription:', transcriptionTableError)
+    if (transcriptionInsertError) {
+      console.error('Erreur lors de l\'insertion de la transcription:', transcriptionInsertError);
       
-      // Mettre à jour le statut de la vidéo à FAILED en cas d'échec
+      // Mettre à jour le statut de la vidéo à FAILED
       await serviceClient
         .from('videos')
         .update({ 
           status: VIDEO_STATUS.FAILED, 
-          error_message: `Échec de l'enregistrement de la transcription: ${transcriptionTableError.message}`,
+          error_message: `Erreur lors de l'enregistrement de la transcription: ${transcriptionInsertError.message}`,
           updated_at: new Date().toISOString()
         })
-        .eq('id', videoId as string)
+        .eq('id', videoId as string);
 
       return new Response(
-        JSON.stringify({ error: 'Erreur de base de données', details: transcriptionTableError.message }),
+        JSON.stringify({
+          error: 'Erreur d\'enregistrement de la transcription',
+          details: transcriptionInsertError.message
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      )
+      );
     }
 
-    // Mettre à jour également la table videos avec les données de transcription
+    // Mettre à jour le statut de la vidéo à TRANSCRIBED
     const { error: videoUpdateError } = await serviceClient
       .from('videos')
       .update({
-        transcription_text: transcription.text,
-        transcription_data: transcriptionData,
         status: VIDEO_STATUS.TRANSCRIBED,
         updated_at: new Date().toISOString()
       })
