@@ -464,9 +464,9 @@ Deno.serve(async (req) => {
     // Créer un fichier temporaire pour l'audio
     const audioFile = new File([audioBlob], 'audio.mp4', { type: audioBlob.type || 'audio/mp4' })
     
-    let transcription: any;
+    let transcriptionResult: any;
     try {
-      transcription = await openai.audio.transcriptions.create({
+      transcriptionResult = await openai.audio.transcriptions.create({
         file: audioFile,
         model: 'whisper-1',
         language: 'fr', // Français par défaut
@@ -475,9 +475,9 @@ Deno.serve(async (req) => {
       })
       
       console.log('Transcription réussie:', {
-        duration: transcription.duration,
-        language: transcription.language,
-        text_length: transcription.text?.length || 0
+        duration: transcriptionResult.duration,
+        language: transcriptionResult.language,
+        text_length: transcriptionResult.text?.length || 0
       })
     } catch (transcriptionError: any) {
       console.error('Erreur lors de la transcription:', transcriptionError)
@@ -504,37 +504,82 @@ Deno.serve(async (req) => {
     // 7. ENREGISTREMENT DE LA TRANSCRIPTION DANS LA TABLE VIDEOS
     console.log('Enregistrement de la transcription dans la base de données...')
     
-    // CORRECTION: Sauvegarder directement dans la table videos au lieu de créer une table transcriptions séparée
+    // Préparer les données de transcription pour éviter l'erreur "22P02"
+    let transcriptionData = transcriptionResult;
+    
+    // Si la transcription est une chaîne JSON, la parser en objet
+    if (typeof transcriptionResult === 'string') {
+      try {
+        transcriptionData = JSON.parse(transcriptionResult);
+      } catch (e) {
+        console.error('Erreur lors du parsing de la transcription en JSON:', e);
+        transcriptionData = null;
+      }
+    }
+    
+    // Log pour débogage
+    console.log('Données de transcription à enregistrer:', transcriptionData);
+
+    const updatePayload: any = {
+      transcription_text: transcriptionData?.text || '',
+      status: VIDEO_STATUS.TRANSCRIBED,
+      updated_at: new Date().toISOString()
+    };
+
+    // Si transcriptionData est null, nous ne mettrons pas à jour transcription_data
+    if (transcriptionData !== null) {
+      // CORRECTION: Assurer que les données sont dans un format compatible avec PostgreSQL
+      updatePayload.transcription_data = transcriptionData;
+    }
+
     const { error: transcriptionUpdateError } = await serviceClient
       .from('videos')
-      .update({
-        transcription_text: transcription.text,
-        transcription_data: transcription, // Données complètes de la transcription
-        status: VIDEO_STATUS.TRANSCRIBED,
-        updated_at: new Date().toISOString()
-      })
+      .update(updatePayload)
       .eq('id', videoId as string);
 
     if (transcriptionUpdateError) {
       console.error('Erreur lors de la mise à jour de la transcription:', transcriptionUpdateError);
       
-      // Mettre à jour le statut de la vidéo à FAILED
-      await serviceClient
-        .from('videos')
-        .update({ 
-          status: VIDEO_STATUS.FAILED, 
-          error_message: `Erreur lors de l'enregistrement de la transcription: ${transcriptionUpdateError.message}`,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId as string);
+      // CORRECTION: Tentative alternative si l'erreur persiste
+      if (transcriptionUpdateError.code === '22P02') {
+        console.log('Tentative alternative avec formatage différent des données...');
+        
+        // Essayer avec une chaîne JSON au lieu d'un objet
+        const { error: retryError } = await serviceClient
+          .from('videos')
+          .update({
+            transcription_text: transcriptionData?.text || '',
+            transcription_data: JSON.stringify(transcriptionData),
+            status: VIDEO_STATUS.TRANSCRIBED,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId as string);
+          
+        if (retryError) {
+          console.error('Échec de la tentative alternative:', retryError);
+        } else {
+          console.log('Tentative alternative réussie!');
+          // Continuer le traitement normal
+        }
+      } else {
+        // Mettre à jour le statut de la vidéo à FAILED
+        await serviceClient
+          .from('videos')
+          .update({ 
+            status: VIDEO_STATUS.FAILED, 
+            error_message: `Erreur lors de l'enregistrement de la transcription: ${transcriptionUpdateError.message}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId as string);
 
-      return new Response(
-        JSON.stringify({
-          error: 'Erreur d\'enregistrement de la transcription',
-          details: transcriptionUpdateError.message
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      );
+        return new Response(
+          JSON.stringify({
+            error: 'Erreur d\'enregistrement de la transcription',
+            details: transcriptionUpdateError.message
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+        );
+      }
     }
 
     console.log('Transcription enregistrée avec succès dans la table videos.')
@@ -582,7 +627,7 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         message: 'Transcription terminée avec succès', 
         videoId,
-        transcription_length: transcription.text.length
+        transcription_length: transcriptionResult.text.length
       }), 
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
