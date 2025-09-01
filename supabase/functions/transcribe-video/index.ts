@@ -89,14 +89,14 @@ Deno.serve(async (req) => {
         // Attendre 2 secondes avant de vérifier
         await new Promise((resolve) => setTimeout(resolve, 2000))
 
-        // Vérifier simplement si la transcription existe
-        const { data: transcription, error: transcriptionError } = await client
-          .from('transcriptions')
-          .select('id')
-          .eq('video_id', videoId)
+        // Vérifier que la transcription a été sauvegardée dans la table videos
+        const { data: video, error: videoError } = await client
+          .from('videos')
+          .select('transcription_text')
+          .eq('id', videoId)
           .single()
 
-        if (transcriptionError) {
+        if (videoError || !video?.transcription_text) {
           console.log('Transcription pas encore disponible, nouvelle tentative...')
           return await confirmDatabaseUpdate(client, videoId, attempts + 1, maxAttempts)
         }
@@ -444,7 +444,7 @@ Deno.serve(async (req) => {
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId as string);
-      
+
       return new Response(
         JSON.stringify({
           error: 'Erreur de téléchargement',
@@ -454,59 +454,76 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 6. TRANSCRIRE L'AUDIO AVEC OPENAI WHISPER
-    console.log('Transcription de l\'audio avec OpenAI Whisper...');
-    const openai = new OpenAI({ apiKey: openaiApiKey });
+    // 6. TRANSCRIPTION AVEC OPENAI WHISPER
+    console.log('Début de la transcription avec OpenAI Whisper...')
+    
+    const openai = new OpenAI({
+      apiKey: openaiApiKey
+    })
 
-    let transcription: OpenAI.Audio.Transcriptions.Transcription;
+    // Créer un fichier temporaire pour l'audio
+    const audioFile = new File([audioBlob], 'audio.mp4', { type: audioBlob.type || 'audio/mp4' })
+    
+    let transcription: any;
     try {
-      const audioFile = new File([audioBlob], 'audio.webm', { type: audioBlob.type });
       transcription = await openai.audio.transcriptions.create({
         file: audioFile,
         model: 'whisper-1',
-      });
-      console.log('Transcription réussie:', transcription.text.substring(0, 100) + '...');
+        language: 'fr', // Français par défaut
+        response_format: 'verbose_json',
+        timestamp_granularities: ['word', 'segment']
+      })
+      
+      console.log('Transcription réussie:', {
+        duration: transcription.duration,
+        language: transcription.language,
+        text_length: transcription.text?.length || 0
+      })
     } catch (transcriptionError: any) {
-      console.error('Erreur lors de la transcription:', transcriptionError);
+      console.error('Erreur lors de la transcription:', transcriptionError)
       
       // Mettre à jour le statut de la vidéo à FAILED
       await serviceClient
         .from('videos')
         .update({ 
           status: VIDEO_STATUS.FAILED, 
-          error_message: `Erreur lors de la transcription: ${transcriptionError.message}`,
+          error_message: `Échec de la transcription: ${transcriptionError.message}`,
           updated_at: new Date().toISOString()
         })
-        .eq('id', videoId as string);
+        .eq('id', videoId as string)
 
       return new Response(
         JSON.stringify({
-          error: 'Erreur de transcription',
+          error: 'Échec de la transcription',
           details: transcriptionError.message
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      );
+      )
     }
 
-    // 7. ENREGISTRER LA TRANSCRIPTION DANS LA BASE DE DONNÉES
-    const { error: transcriptionInsertError } = await serviceClient
-      .from('transcriptions')
-      .insert({
-        video_id: videoId,
-        content: transcription.text,
-        created_at: new Date().toISOString(),
+    // 7. ENREGISTREMENT DE LA TRANSCRIPTION DANS LA TABLE VIDEOS
+    console.log('Enregistrement de la transcription dans la base de données...')
+    
+    // CORRECTION: Sauvegarder directement dans la table videos au lieu de créer une table transcriptions séparée
+    const { error: transcriptionUpdateError } = await serviceClient
+      .from('videos')
+      .update({
+        transcription_text: transcription.text,
+        transcription_data: transcription, // Données complètes de la transcription
+        status: VIDEO_STATUS.TRANSCRIBED,
         updated_at: new Date().toISOString()
-      });
+      })
+      .eq('id', videoId as string);
 
-    if (transcriptionInsertError) {
-      console.error('Erreur lors de l\'insertion de la transcription:', transcriptionInsertError);
+    if (transcriptionUpdateError) {
+      console.error('Erreur lors de la mise à jour de la transcription:', transcriptionUpdateError);
       
       // Mettre à jour le statut de la vidéo à FAILED
       await serviceClient
         .from('videos')
         .update({ 
           status: VIDEO_STATUS.FAILED, 
-          error_message: `Erreur lors de l'enregistrement de la transcription: ${transcriptionInsertError.message}`,
+          error_message: `Erreur lors de l'enregistrement de la transcription: ${transcriptionUpdateError.message}`,
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId as string);
@@ -514,26 +531,13 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           error: 'Erreur d\'enregistrement de la transcription',
-          details: transcriptionInsertError.message
+          details: transcriptionUpdateError.message
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
 
-    // Mettre à jour le statut de la vidéo à TRANSCRIBED
-    const { error: videoUpdateError } = await serviceClient
-      .from('videos')
-      .update({
-        status: VIDEO_STATUS.TRANSCRIBED,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', videoId as string);
-
-    if (videoUpdateError) {
-      console.error('Erreur lors de la mise à jour de la vidéo avec la transcription:', videoUpdateError);
-    }
-
-    console.log('Transcription enregistrée avec succès.')
+    console.log('Transcription enregistrée avec succès dans la table videos.')
 
     // 8. DÉCLENCHER LA FONCTION D'ANALYSE
     try {
