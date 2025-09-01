@@ -326,7 +326,7 @@ Deno.serve(async (req) => {
       console.log(`Génération d'une URL signée pour ${(video as any).storage_path}`)
 
       const fullStoragePath = (video as any).storage_path as string;
-      // Assumer que le storage_path est au format 'bucket_name/path/to/file.ext'
+      // Assurer que le storage_path est au format 'bucket_name/path/to/file.ext'
       const pathParts = fullStoragePath.split('/');
       const bucketName = pathParts[0];
       const filePathInBucket = pathParts.slice(1).join('/');
@@ -343,6 +343,11 @@ Deno.serve(async (req) => {
         if (signedUrlError) {
           throw signedUrlError;
         }
+        
+        if (!signedUrlData.signedUrl) {
+          throw new Error("L'URL signée générée est vide");
+        }
+        
         videoUrl = signedUrlData.signedUrl;
         console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 50)}...`);
       } catch (storageError: any) {
@@ -370,13 +375,23 @@ Deno.serve(async (req) => {
     // 6. TÉLÉCHARGER LA VIDÉO ET LA CONVERTIR EN AUDIO
     console.log('Téléchargement et conversion de la vidéo en audio...');
     
+    // S'assurer que l'URL est complète avec un protocole
+    if (!videoUrl.startsWith('http://') && !videoUrl.startsWith('https://')) {
+      console.log(`URL vidéo sans protocole, ajout de https:// : ${videoUrl}`);
+      videoUrl = `https://${videoUrl}`;
+    }
+    
     let audioBlob: Blob;
     try {
+      console.log(`Tentative de téléchargement depuis: ${videoUrl.substring(0, 50)}...`);
       const response = await fetch(videoUrl);
+      
       if (!response.ok) {
-        throw new Error(`Échec du téléchargement de la vidéo depuis l'URL: ${videoUrl}. Statut: ${response.status} ${response.statusText}`);
+        throw new Error(`Échec du téléchargement de la vidéo. Statut: ${response.status} ${response.statusText}`);
       }
+      
       audioBlob = await response.blob();
+      console.log(`Vidéo téléchargée avec succès, taille: ${audioBlob.size} octets`);
     } catch (fetchError: any) {
       console.error('Erreur lors du téléchargement de la vidéo:', fetchError);
       // Mettre à jour le statut de la vidéo à FAILED
