@@ -432,15 +432,17 @@ Deno.serve(async (req) => {
           
         } catch (fetchError: any) {
           console.error('Échec du téléchargement via URL:', fetchError.message);
-          // audioBlob reste null
+          // Continuer vers l'erreur finale si aucune méthode n'a fonctionné
         }
       }
     }
 
-    // VÉRIFICATION FINALE: Si aucune méthode n'a fonctionné
+    // ÉCHEC FINAL: Aucune méthode de téléchargement n'a fonctionné
     if (!audioBlob) {
-      const errorMessage = 'Impossible de télécharger le fichier audio/vidéo. Ni storage_path ni videoUrl valide n\'ont permis le téléchargement.';
+      const errorMessage = `Impossible de télécharger la vidéo. Storage path: ${(video as any).storage_path || 'non défini'}, URL: ${videoUrl || 'non définie'}`;
       console.error(errorMessage);
+      
+      // Mettre à jour le statut de la vidéo à FAILED
       await serviceClient
         .from('videos')
         .update({ 
@@ -449,31 +451,44 @@ Deno.serve(async (req) => {
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId as string);
+
       return new Response(
-        JSON.stringify({ error: 'Échec du téléchargement du fichier audio/vidéo', details: errorMessage }),
+        JSON.stringify({ error: 'Téléchargement impossible', details: errorMessage }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
 
-    // 6. TRANSCRIPTION AUDIO AVEC OPENAI
-    console.log('Début de la transcription audio avec OpenAI...');
-    const openai = new OpenAI({ apiKey: openaiApiKey });
+    // 6. TRANSCRIPTION AVEC OPENAI WHISPER
+    console.log('Début de la transcription avec OpenAI Whisper...');
+    
+    const openai = new OpenAI({
+      apiKey: openaiApiKey,
+    });
 
-    let transcriptionResult;
+    let transcriptionResult: any;
     try {
-      // Convertir le Blob en File pour l'API OpenAI
-      const audioFile = new File([audioBlob], 'audio.mp3', { type: audioBlob.type });
-
+      // Créer un fichier temporaire pour OpenAI
+      const file = new File([audioBlob], 'audio.mp4', { type: audioBlob.type || 'video/mp4' });
+      
+      console.log(`Envoi du fichier à OpenAI Whisper, taille: ${file.size} octets`);
+      
       transcriptionResult = await openai.audio.transcriptions.create({
-        file: audioFile,
+        file: file,
         model: 'whisper-1',
-        language: 'fr',
+        language: 'fr', // Français par défaut
         response_format: 'verbose_json',
+        timestamp_granularities: ['word', 'segment']
       });
-      console.log('Transcription OpenAI réussie.');
-    } catch (openaiError: any) {
-      console.error('Erreur OpenAI lors de la transcription:', openaiError);
-      const errorMessage = `Erreur OpenAI lors de la transcription: ${openaiError.message}`;
+      
+      console.log('Transcription OpenAI terminée avec succès');
+      console.log(`Texte transcrit (${transcriptionResult.text.length} caractères):`, transcriptionResult.text.substring(0, 200) + '...');
+      
+    } catch (transcriptionError: any) {
+      console.error('Erreur lors de la transcription OpenAI:', transcriptionError);
+      
+      const errorMessage = `Erreur de transcription OpenAI: ${transcriptionError.message}`;
+      
+      // Mettre à jour le statut de la vidéo à FAILED
       await serviceClient
         .from('videos')
         .update({ 
@@ -482,15 +497,19 @@ Deno.serve(async (req) => {
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId as string);
+
       return new Response(
-        JSON.stringify({ error: 'Échec de la transcription audio', details: errorMessage }),
+        JSON.stringify({ error: 'Erreur de transcription', details: errorMessage }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
 
-    if (!transcriptionResult || !transcriptionResult.text) {
-      const errorMessage = 'La transcription OpenAI n\'a pas retourné de texte.';
+    // Vérifier que la transcription n'est pas vide
+    if (!transcriptionResult || !transcriptionResult.text || transcriptionResult.text.trim().length === 0) {
+      const errorMessage = 'La transcription est vide ou invalide';
       console.error(errorMessage);
+      
+      // Mettre à jour le statut de la vidéo à FAILED
       await serviceClient
         .from('videos')
         .update({ 
@@ -726,3 +745,4 @@ Deno.serve(async (req) => {
     )
   }
 })
+
