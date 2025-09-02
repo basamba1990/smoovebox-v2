@@ -128,8 +128,8 @@ CREATE TABLE IF NOT EXISTS public.videos (
     duration INTEGER, -- Harmonisé: utilise INTEGER, renommé de duration_seconds
     tags TEXT[],
     category TEXT,
-    status TEXT DEFAULT 'uploaded' 
-        CHECK (status IN ('uploaded', 'transcribing', 'transcribed', 'analyzing', 'analyzed', 'published', 'draft', 'failed', 'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED')),
+    status TEXT DEFAULT 'uploaded'
+    CHECK (status IN ('uploaded', 'transcribing', 'transcribed', 'analyzing', 'analyzed', 'published', 'draft', 'failed', 'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED')),
     views INTEGER DEFAULT 0, -- Harmonisé: utilise 'views' au lieu de 'views_count'
     likes_count INTEGER DEFAULT 0,
     comments_count INTEGER DEFAULT 0,
@@ -143,18 +143,51 @@ CREATE TABLE IF NOT EXISTS public.videos (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Début des modifications pour gérer les dépendances des vues matérialisées et des vues simples
+
+-- Suppression des vues dépendantes (matérialisées et simples)
+DROP MATERIALIZED VIEW IF EXISTS public.user_video_stats;
+DROP MATERIALIZED VIEW IF EXISTS public.global_stats;
+DROP VIEW IF EXISTS public.video_details; -- Ajouté pour gérer la nouvelle dépendance
+
 -- Mise à jour des colonnes existantes pour la table videos
 DO $$
 BEGIN
+    -- Gestion de la colonne duration - correction du conflit
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'videos' AND column_name = 'duration_seconds') THEN
-        ALTER TABLE public.videos RENAME COLUMN duration_seconds TO duration;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'videos' AND column_name = 'duration') THEN
+            -- Les deux colonnes existent, on migre les données et supprime l'ancienne
+            UPDATE public.videos 
+            SET duration = duration_seconds 
+            WHERE duration IS NULL AND duration_seconds IS NOT NULL;
+            
+            ALTER TABLE public.videos DROP COLUMN duration_seconds;
+        ELSE
+            -- Seule duration_seconds existe, on la renomme
+            ALTER TABLE public.videos RENAME COLUMN duration_seconds TO duration;
+        END IF;
     END IF;
+
+    -- Gestion de la colonne views - correction du conflit
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'videos' AND column_name = 'views_count') THEN
-        ALTER TABLE public.videos RENAME COLUMN views_count TO views;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'videos' AND column_name = 'views') THEN
+            ALTER TABLE public.videos RENAME COLUMN views_count TO views;
+        ELSE
+            -- Si 'views' existe déjà, et 'views_count' aussi, on supprime 'views_count' car 'views' est la colonne désirée.
+            ALTER TABLE public.videos DROP COLUMN views_count;
+        END IF;
     END IF;
+    
+    -- Gestion de la colonne performance_score - correction du conflit
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'videos' AND column_name = 'ai_score') THEN
-        ALTER TABLE public.videos RENAME COLUMN ai_score TO performance_score;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'videos' AND column_name = 'performance_score') THEN
+            ALTER TABLE public.videos RENAME COLUMN ai_score TO performance_score;
+        ELSE
+            -- Si 'performance_score' existe déjà, et 'ai_score' aussi, on supprime 'ai_score' car 'performance_score' est la colonne désirée.
+            ALTER TABLE public.videos DROP COLUMN ai_score;
+        END IF;
     END IF;
+    
     ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
     ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS analysis JSONB;
     ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS transcription JSONB;
@@ -162,16 +195,17 @@ BEGIN
     ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS original_file_name TEXT;
     ALTER TABLE public.videos ADD COLUMN IF NOT EXISTS http_extension_available BOOLEAN;
 
-    -- Mettre à jour user_id pour les vidéos existantes
-    UPDATE public.videos SET user_id = (SELECT user_id FROM public.profiles WHERE id = profile_id) WHERE user_id IS NULL AND profile_id IS NOT NULL;
-
-    -- Mettre à jour performance_score à partir de analysis.performance.scores.global si ai_score n'existait pas
-    UPDATE public.videos
-    SET performance_score = (analysis->'performance'->'scores'->>'global')::REAL
-    WHERE analysis IS NOT NULL
-      AND analysis->'performance'->'scores'->>'global' IS NOT NULL
-      AND performance_score IS NULL;
-
+    -- Mettre à jour user_id pour les vidéos existantes 
+    UPDATE public.videos 
+    SET user_id = (SELECT user_id FROM public.profiles WHERE id = profile_id) 
+    WHERE user_id IS NULL AND profile_id IS NOT NULL;
+    
+    -- Mettre à jour performance_score à partir de analysis.performance.scores.global si ai_score n'existait pas 
+    UPDATE public.videos 
+    SET performance_score = (analysis->'performance'->'scores'->>'global')::REAL 
+    WHERE analysis IS NOT NULL 
+    AND analysis->'performance'->'scores'->>'global' IS NOT NULL 
+    AND performance_score IS NULL;
 END $$;
 
 -- Table: Transcriptions (Harmonisée)
@@ -193,34 +227,40 @@ CREATE TABLE IF NOT EXISTS public.transcriptions (
 DO $$
 BEGIN
     -- Renommer full_text en transcription_text si full_text existe et transcription_text n'existe pas
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'transcriptions' AND column_name = 'full_text') AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'transcriptions' AND column_name = 'transcription_text') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'transcriptions' AND column_name = 'full_text') 
+    AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'transcriptions' AND column_name = 'transcription_text') THEN
         ALTER TABLE public.transcriptions RENAME COLUMN full_text TO transcription_text;
     END IF;
+    
     -- Ajouter transcription_text si elle n'existe pas et copier depuis full_text
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'transcriptions' AND column_name = 'transcription_text') THEN
         ALTER TABLE public.transcriptions ADD COLUMN transcription_text TEXT;
         UPDATE public.transcriptions SET transcription_text = full_text WHERE full_text IS NOT NULL;
     END IF;
+    
     -- Supprimer full_text si transcription_text existe et full_text est redondant
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'transcriptions' AND column_name = 'full_text') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'transcriptions' AND column_name = 'transcription_text') AND (SELECT count(*) FROM public.transcriptions WHERE full_text IS NOT NULL AND transcription_text IS NULL) = 0 THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'transcriptions' AND column_name = 'full_text') 
+    AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'transcriptions' AND column_name = 'transcription_text') 
+    AND (SELECT count(*) FROM public.transcriptions WHERE full_text IS NOT NULL AND transcription_text IS NULL) = 0 THEN
         ALTER TABLE public.transcriptions DROP COLUMN full_text;
     END IF;
 
-    ALTER TABLE public.transcriptions ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
-    ALTER TABLE public.transcriptions ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'fr';
-    ALTER TABLE public.transcriptions ADD COLUMN IF NOT EXISTS confidence_score REAL;
-    ALTER TABLE public.transcriptions ADD COLUMN IF NOT EXISTS duration REAL;
-    ALTER TABLE public.transcriptions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
-    ALTER TABLE public.transcriptions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
-
-    -- Mettre à jour user_id pour les transcriptions existantes
-    UPDATE public.transcriptions SET user_id = (SELECT v.user_id FROM public.videos v WHERE v.id = video_id) WHERE user_id IS NULL;
-
-    -- Supprimer analysis_result si elle existe et n'est plus utilisée
-    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'transcriptions' AND column_name = 'analysis_result') THEN
-        ALTER TABLE public.transcriptions DROP COLUMN analysis_result;
-    END IF;
-
+    ALTER TABLE public.transcriptions ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE; 
+    ALTER TABLE public.transcriptions ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'fr'; 
+    ALTER TABLE public.transcriptions ADD COLUMN IF NOT EXISTS confidence_score REAL; 
+    ALTER TABLE public.transcriptions ADD COLUMN IF NOT EXISTS duration REAL; 
+    ALTER TABLE public.transcriptions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(); 
+    ALTER TABLE public.transcriptions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW(); 
+    
+    -- Mettre à jour user_id pour les transcriptions existantes 
+    UPDATE public.transcriptions 
+    SET user_id = (SELECT v.user_id FROM public.videos v WHERE v.id = video_id) 
+    WHERE user_id IS NULL;
+    
+    -- Supprimer analysis_result si elle existe et n'est plus utilisée 
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'transcriptions' AND column_name = 'analysis_result') THEN 
+        ALTER TABLE public.transcriptions DROP COLUMN analysis_result; 
+    END IF; 
 END $$;
 
 -- Table: AI Suggestions (inchangée, mais assure la cohérence)
@@ -314,8 +354,11 @@ CREATE TABLE IF NOT EXISTS public.challenge_submissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     challenge_id UUID NOT NULL REFERENCES public.creative_challenges(id) ON DELETE CASCADE,
-    submission_data JSONB NOT NULL,
-    status TEXT NOT NULL DEFAULT 'submitted',
+    video_id UUID NOT NULL REFERENCES public.videos(id) ON DELETE CASCADE,
+    submission_date TIMESTAMPTZ DEFAULT NOW(),
+    status TEXT CHECK (status IN ('pending', 'approved', 'rejected')),
+    score INTEGER,
+    feedback TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -325,490 +368,187 @@ CREATE TABLE IF NOT EXISTS public.challenge_progress (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     challenge_id UUID NOT NULL REFERENCES public.creative_challenges(id) ON DELETE CASCADE,
-    progress_data JSONB,
-    status TEXT NOT NULL DEFAULT 'in_progress',
+    progress_details JSONB,
+    last_updated TIMESTAMPTZ DEFAULT NOW(),
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(user_id, challenge_id)
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Index de performance (consolidés et optimisés)
-CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON public.profiles (user_id);
-CREATE INDEX IF NOT EXISTS idx_profiles_email ON public.profiles (email);
-CREATE INDEX IF NOT EXISTS idx_profiles_fullname_search ON public.profiles USING gin(to_tsvector('french', full_name));
+-- Vues matérialisées et vues simples pour les statistiques (à recréer après les modifications de schéma)
 
-CREATE INDEX IF NOT EXISTS idx_videos_profile_id ON public.videos(profile_id);
-CREATE INDEX IF NOT EXISTS idx_videos_user_id ON public.videos(user_id);
-CREATE INDEX IF NOT EXISTS idx_videos_tags ON public.videos USING GIN(tags);
-CREATE INDEX IF NOT EXISTS idx_videos_category ON public.videos(category);
-CREATE INDEX IF NOT EXISTS idx_videos_status ON public.videos(status);
-CREATE INDEX IF NOT EXISTS idx_videos_user_created ON public.videos (user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_videos_engagement ON public.videos (engagement_score DESC);
-CREATE INDEX IF NOT EXISTS idx_videos_duration ON public.videos (duration);
-CREATE INDEX IF NOT EXISTS idx_videos_views ON public.videos (views DESC);
+-- Vue simple: video_details (recréée après les modifications de colonne)
+CREATE OR REPLACE VIEW public.video_details AS
+SELECT
+    v.id AS video_id,
+    v.title,
+    v.description,
+    v.file_path,
+    v.thumbnail_url,
+    v.duration,
+    v.tags,
+    v.category,
+    v.status,
+    v.views,
+    v.likes_count,
+    v.comments_count,
+    v.performance_score,
+    v.analysis,
+    v.transcription,
+    v.storage_path,
+    v.original_file_name,
+    v.http_extension_available,
+    v.created_at,
+    v.updated_at,
+    p.username AS uploader_username,
+    p.full_name AS uploader_full_name
+FROM
+    public.videos v
+JOIN
+    public.profiles p ON v.profile_id = p.id;
 
-CREATE INDEX IF NOT EXISTS idx_transcriptions_video_id ON public.transcriptions(video_id);
-CREATE INDEX IF NOT EXISTS idx_transcriptions_user_id ON public.transcriptions(user_id);
-CREATE INDEX IF NOT EXISTS idx_transcriptions_confidence ON public.transcriptions(confidence_score);
-CREATE INDEX IF NOT EXISTS idx_transcriptions_duration ON public.transcriptions(duration);
-CREATE INDEX IF NOT EXISTS idx_transcriptions_content_search ON public.transcriptions USING gin(to_tsvector('french', transcription_text));
+-- Vue matérialisée: user_video_stats
+CREATE MATERIALIZED VIEW public.user_video_stats AS
+SELECT
+    p.id AS profile_id,
+    p.username,
+    COUNT(v.id) AS total_videos,
+    SUM(v.views) AS total_views,
+    SUM(v.likes_count) AS total_likes,
+    SUM(v.comments_count) AS total_comments,
+    COALESCE(SUM(v.duration), 0) AS total_duration_seconds -- Utilise la nouvelle colonne 'duration'
+FROM
+    public.profiles p
+LEFT JOIN
+    public.videos v ON p.id = v.profile_id
+GROUP BY
+    p.id, p.username;
 
-CREATE INDEX IF NOT EXISTS idx_ai_suggestions_transcription_id ON public.ai_suggestions(transcription_id);
+-- Vue matérialisée: global_stats
+CREATE MATERIALIZED VIEW public.global_stats AS
+SELECT
+    COUNT(id) AS total_videos,
+    SUM(views) AS total_views,
+    SUM(likes_count) AS total_likes,
+    SUM(comments_count) AS total_comments,
+    COALESCE(SUM(duration), 0) AS total_duration_seconds -- Utilise la nouvelle colonne 'duration'
+FROM
+    public.videos;
 
-CREATE INDEX IF NOT EXISTS idx_quiz_results_profile_id ON public.quiz_results(profile_id);
-CREATE INDEX IF NOT EXISTS idx_quiz_results_quiz_id ON public.quiz_results(quiz_id);
+-- Index pour les vues matérialisées
+CREATE UNIQUE INDEX IF NOT EXISTS user_video_stats_profile_id_idx ON public.user_video_stats (profile_id);
+CREATE UNIQUE INDEX IF NOT EXISTS global_stats_idx ON public.global_stats (total_videos);
 
-CREATE INDEX IF NOT EXISTS idx_followers_follower_id ON public.followers(follower_id);
-CREATE INDEX IF NOT EXISTS idx_followers_followed_id ON public.followers(followed_id);
-
-CREATE INDEX IF NOT EXISTS idx_comments_video_id ON public.comments(video_id);
-CREATE INDEX IF NOT EXISTS idx_comments_profile_id ON public.comments(profile_id);
-
-CREATE INDEX IF NOT EXISTS idx_likes_video_id ON public.likes(video_id);
-CREATE INDEX IF NOT EXISTS idx_likes_profile_id ON public.likes(profile_id);
-
-CREATE INDEX IF NOT EXISTS idx_user_activities_user_id ON public.user_activities(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_activities_type ON public.user_activities(activity_type);
-CREATE INDEX IF NOT EXISTS idx_user_activities_user_type ON public.user_activities (user_id, activity_type);
-
-CREATE INDEX IF NOT EXISTS idx_challenges_active ON public.creative_challenges (is_active, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_challenges_difficulty ON public.creative_challenges (difficulty_level);
-
-CREATE INDEX IF NOT EXISTS idx_challenge_submissions_user_challenge ON public.challenge_submissions (user_id, challenge_id);
-CREATE INDEX IF NOT EXISTS idx_challenge_progress_user_challenge ON public.challenge_progress (user_id, challenge_id);
-
--- Fonctions et Triggers (consolidés et mis à jour)
-
--- Function: Update modified timestamp
-CREATE OR REPLACE FUNCTION public.update_modified_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Triggers with conditional creation
-DO $$ 
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_profiles_modtime') THEN
-        CREATE TRIGGER update_profiles_modtime
-        BEFORE UPDATE ON public.profiles
-        FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_videos_modtime') THEN
-        CREATE TRIGGER update_videos_modtime
-        BEFORE UPDATE ON public.videos
-        FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_comments_modtime') THEN
-        CREATE TRIGGER update_comments_modtime
-        BEFORE UPDATE ON public.comments
-        FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_transcriptions_modtime') THEN
-        CREATE TRIGGER update_transcriptions_modtime
-        BEFORE UPDATE ON public.transcriptions
-        FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_challenge_submissions_modtime') THEN
-        CREATE TRIGGER update_challenge_submissions_modtime
-        BEFORE UPDATE ON public.challenge_submissions
-        FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_challenge_progress_modtime') THEN
-        CREATE TRIGGER update_challenge_progress_modtime
-        BEFORE UPDATE ON public.challenge_progress
-        FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_creative_challenges_modtime') THEN
-        CREATE TRIGGER update_creative_challenges_modtime
-        BEFORE UPDATE ON public.creative_challenges
-        FOR EACH ROW EXECUTE FUNCTION public.update_modified_column();
-    END IF;
-END $$;
-
--- Fonction handle_new_user (version la plus récente et complète)
+-- Fonctions et triggers pour la gestion des utilisateurs (inchangés)
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
-DECLARE
-    username_base TEXT;
-    username_suffix INT := 1;
-    new_username TEXT;
-    profile_id UUID;
 BEGIN
-    -- Générer un nom d'utilisateur unique
-    username_base := LOWER(SPLIT_PART(NEW.email, '@', 1));
-    new_username := username_base;
-    
-    WHILE EXISTS (SELECT 1 FROM public.profiles WHERE username = new_username) LOOP
-        new_username := username_base || username_suffix;
-        username_suffix := username_suffix + 1;
-    END LOOP;
-    
-    -- Créer le profil utilisateur avec toutes les informations nécessaires
-    INSERT INTO public.profiles (
-        user_id, 
-        email, 
-        username, 
-        full_name,
-        avatar_url
-    )
-    VALUES (
-        NEW.id, 
-        NEW.email,
-        new_username,
-        COALESCE(
-            NEW.raw_user_meta_data->>'full_name',
-            CONCAT(
-                NEW.raw_user_meta_data->>'first_name', 
-                ' ', 
-                NEW.raw_user_meta_data->>'last_name'
-            )
-        ),
-        NEW.raw_user_meta_data->>'avatar_url'
-    )
-    RETURNING id INTO profile_id;
-    
-    -- Log de l'activité
-    INSERT INTO public.user_activities (user_id, activity_type, details)
-    VALUES (NEW.id, 'signup', jsonb_build_object(
-        'email', NEW.email,
-        'registration_method', COALESCE(NEW.raw_app_meta_data->>'provider','email')
-    ));
-    
-    RETURN NEW;
+  INSERT INTO public.profiles (id, user_id, username, email)
+  VALUES (gen_random_uuid(), NEW.id, NEW.email, NEW.email);
+  RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger pour la création d'utilisateur
-CREATE TRIGGER on_auth_user_created
-AFTER INSERT ON auth.users
-FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+CREATE OR REPLACE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
--- Fonction handle_user_update
 CREATE OR REPLACE FUNCTION public.handle_user_update()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF OLD.email IS DISTINCT FROM NEW.email
-       OR OLD.raw_user_meta_data IS DISTINCT FROM NEW.raw_user_meta_data THEN
-
-        UPDATE public.profiles
-        SET
-            email = NEW.email,
-            full_name = COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email),
-            avatar_url = NEW.raw_user_meta_data->>'avatar_url',
-            updated_at = NOW()
-        WHERE user_id = NEW.id;
-
-        INSERT INTO public.user_activities (
-            user_id, activity_type, details
-        ) VALUES (
-            NEW.id,
-            'profile_updated',
-            jsonb_build_object(
-                'old_email', OLD.email,
-                'new_email', NEW.email,
-                'updated_fields', CASE
-                    WHEN OLD.email IS DISTINCT FROM NEW.email THEN 'email'
-                    ELSE 'metadata'
-                END
-            )
-        );
-    END IF;
-
-    RETURN NEW;
+  UPDATE public.profiles
+  SET username = NEW.email, email = NEW.email, updated_at = NOW()
+  WHERE user_id = NEW.id;
+  RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger pour la mise à jour d'utilisateur
-CREATE TRIGGER on_auth_user_updated
-AFTER UPDATE ON auth.users
-FOR EACH ROW EXECUTE FUNCTION public.handle_user_update();
+CREATE OR REPLACE TRIGGER on_auth_user_updated
+  AFTER UPDATE ON auth.users
+  FOR EACH ROW
+  WHEN (OLD.email IS DISTINCT FROM NEW.email)
+  EXECUTE PROCEDURE public.handle_user_update();
 
--- Fonction handle_user_delete
 CREATE OR REPLACE FUNCTION public.handle_user_delete()
 RETURNS TRIGGER AS $$
 BEGIN
-    DELETE FROM public.user_activities WHERE user_id = OLD.id;
-    DELETE FROM public.transcriptions WHERE user_id = OLD.id; -- Supprime les transcriptions de l'utilisateur
-    DELETE FROM public.videos WHERE user_id = OLD.id;
-    DELETE FROM public.profiles WHERE user_id = OLD.id;
-    DELETE FROM public.challenge_submissions WHERE user_id = OLD.id;
-    DELETE FROM public.challenge_progress WHERE user_id = OLD.id;
-
-    RETURN OLD;
+  DELETE FROM public.profiles
+  WHERE user_id = OLD.id;
+  RETURN OLD;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger pour la suppression d'utilisateur
-CREATE TRIGGER on_auth_user_deleted
-AFTER DELETE ON auth.users
-FOR EACH ROW EXECUTE FUNCTION public.handle_user_delete();
-
--- Fonction get_user_video_stats (version optimisée)
-CREATE OR REPLACE FUNCTION public.get_user_video_stats(user_id_param UUID)
-RETURNS TABLE (
-    total_videos INTEGER,
-    total_views INTEGER,
-    avg_engagement DECIMAL,
-    total_duration INTEGER,
-    videos_by_status JSONB,
-    performance_data JSONB,
-    progress_stats JSONB
-) AS $$
-BEGIN
-    RETURN QUERY
-    WITH video_stats AS (
-        SELECT
-            COUNT(*)::INTEGER AS video_count,
-            COALESCE(SUM(v.views),0)::INTEGER AS total_view_count,
-            COALESCE(AVG(v.engagement_score),0)::DECIMAL AS avg_engagement_score,
-            COALESCE(SUM(v.duration),0)::INTEGER AS total_duration_seconds, -- Utilise 'duration'
-            jsonb_object_agg(COALESCE(v.status,'unknown'), COUNT(*)) AS status_distribution
-        FROM public.videos v
-        WHERE v.user_id = user_id_param
-    ),
-    performance_data AS (
-        SELECT jsonb_agg(
-            jsonb_build_object(
-                'date', DATE(v.created_at),
-                'videos', COUNT(*),
-                'avg_engagement', COALESCE(AVG(v.engagement_score),0),
-                'total_views', COALESCE(SUM(v.views),0)
-            ) ORDER BY DATE(v.created_at)
-        ) AS perf_data
-        FROM public.videos v
-        WHERE v.user_id = user_id_param
-          AND v.created_at >= NOW() - INTERVAL '30 days'
-        GROUP BY DATE(v.created_at)
-    ),
-    progress_data AS (
-        SELECT jsonb_build_object(
-            'completed', COUNT(*) FILTER (WHERE v.status IN ('COMPLETED','published')),
-            'inProgress', COUNT(*) FILTER (WHERE v.status IN ('PROCESSING','transcribing','analyzing')),
-            'totalTime', COALESCE(SUM(v.duration),0) -- Utilise 'duration'
-        ) AS prog_data
-        FROM public.videos v
-        WHERE v.user_id = user_id_param
-    )
-    SELECT
-        vs.video_count,
-        vs.total_view_count,
-        vs.avg_engagement_score,
-        vs.total_duration_seconds,
-        vs.status_distribution,
-        pd.perf_data,
-        pr.prog_data
-    FROM video_stats vs
-    CROSS JOIN performance_data pd
-    CROSS JOIN progress_data pr;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-GRANT EXECUTE ON FUNCTION public.get_user_video_stats(UUID) TO authenticated;
-
--- Vues Matérialisées (consolidées)
-CREATE MATERIALIZED VIEW IF NOT EXISTS public.user_video_stats AS
-SELECT 
-    v.user_id,
-    COUNT(*) as total_videos,
-    COUNT(*) FILTER (WHERE v.status = 'COMPLETED') as completed_videos,
-    COUNT(*) FILTER (WHERE v.status = 'PROCESSING') as processing_videos,
-    COUNT(*) FILTER (WHERE v.status = 'FAILED') as failed_videos,
-    COALESCE(SUM(v.views), 0) as total_views,
-    COALESCE(AVG(v.engagement_score), 0) as avg_engagement,
-    COALESCE(SUM(v.duration), 0) as total_duration,
-    MAX(v.created_at) as last_upload,
-    COUNT(*) FILTER (WHERE v.created_at >= NOW() - INTERVAL '7 days') as videos_last_week,
-    COUNT(*) FILTER (WHERE v.created_at >= NOW() - INTERVAL '30 days') as videos_last_month
-FROM public.videos v
-GROUP BY v.user_id;
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_user_video_stats_user_id 
-    ON public.user_video_stats (user_id);
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS public.global_stats AS
-SELECT 
-    COUNT(*) as total_videos,
-    COUNT(DISTINCT user_id) as total_users,
-    COUNT(*) FILTER (WHERE status = 'COMPLETED') as completed_videos,
-    COUNT(*) FILTER (WHERE status = 'PROCESSING') as processing_videos,
-    COALESCE(SUM(views), 0) as total_views,
-    COALESCE(AVG(performance_score), 0) as avg_performance_score, -- Utilise performance_score
-    COALESCE(SUM(duration), 0) as total_duration,
-    COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours') as videos_last_24h,
-    COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days') as videos_last_week
-FROM public.videos;
+CREATE OR REPLACE TRIGGER on_auth_user_deleted
+  AFTER DELETE ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_user_delete();
 
 -- Fonctions pour rafraîchir les vues matérialisées
 CREATE OR REPLACE FUNCTION public.refresh_user_stats()
-RETURNS void AS $$
-BEGIN
-    REFRESH MATERIALIZED VIEW CONCURRENTLY public.user_video_stats;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE OR REPLACE FUNCTION public.refresh_global_stats()
-RETURNS void AS $$
-BEGIN
-    REFRESH MATERIALIZED VIEW public.global_stats;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Trigger pour invalider le cache des stats
-CREATE OR REPLACE FUNCTION public.invalidate_stats_cache()
 RETURNS TRIGGER AS $$
 BEGIN
-    PERFORM pg_notify('stats_invalidated', 'user_video_stats');
-    RETURN COALESCE(NEW, OLD);
+    REFRESH MATERIALIZED VIEW public.user_video_stats;
+    RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trigger_invalidate_stats
-    AFTER INSERT OR UPDATE OR DELETE ON public.videos
-    FOR EACH ROW EXECUTE FUNCTION public.invalidate_stats_cache();
-
--- Row Level Security Policies (consolidées et mises à jour)
-ALTER TABLE IF EXISTS public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.videos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.transcriptions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.ai_suggestions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.quizzes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.quiz_results ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.followers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.comments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.likes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.user_activities ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.creative_challenges ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.challenge_submissions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.challenge_progress ENABLE ROW LEVEL SECURITY;
-
-DO $$
+CREATE OR REPLACE FUNCTION public.refresh_global_stats()
+RETURNS TRIGGER AS $$
 BEGIN
-    -- Profiles
-    CREATE POLICY IF NOT EXISTS "Profiles are viewable by everyone" ON public.profiles
-    FOR SELECT USING (true);
-    
-    CREATE POLICY IF NOT EXISTS "Users can update their own profile" ON public.profiles
-    FOR UPDATE USING (auth.uid() = user_id);
-    
-    -- Videos
-    CREATE POLICY IF NOT EXISTS "Public videos are viewable by everyone" ON public.videos
-    FOR SELECT USING (status = 'published' OR status = 'COMPLETED');
-    
-    CREATE POLICY IF NOT EXISTS "User full access to own videos" ON public.videos
-    FOR ALL USING (
-        auth.uid() = user_id
-    );
-    
-    -- Transcriptions
-    CREATE POLICY IF NOT EXISTS "Transcription access by video owner" ON public.transcriptions
-    FOR ALL USING (
-        auth.uid() = user_id
-    );
-    
-    -- AI Suggestions
-    CREATE POLICY IF NOT EXISTS "AI suggestions access by owner" ON public.ai_suggestions
-    FOR ALL USING (
-        EXISTS (
-            SELECT 1 FROM public.transcriptions t
-            WHERE t.id = transcription_id
-            AND auth.uid() = t.user_id
-        )
-    );
-    
-    -- Quiz Results
-    CREATE POLICY IF NOT EXISTS "User access to own quiz results" ON public.quiz_results
-    FOR ALL USING (
-        auth.uid() = (SELECT user_id FROM public.profiles WHERE id = profile_id)
-    );
-    
-    -- Followers
-    CREATE POLICY IF NOT EXISTS "Users can manage own follows" ON public.followers
-    FOR ALL USING (
-        auth.uid() = (SELECT user_id FROM public.profiles WHERE id = follower_id)
-    );
-    
-    -- Comments
-    CREATE POLICY IF NOT EXISTS "User manage own comments" ON public.comments
-    FOR ALL USING (
-        auth.uid() = (SELECT user_id FROM public.profiles WHERE id = profile_id)
-    );
-    
-    CREATE POLICY IF NOT EXISTS "Public comments on published videos" ON public.comments
-    FOR SELECT USING (
-        EXISTS (
-            SELECT 1 FROM public.videos
-            WHERE id = video_id AND (status = 'published' OR status = 'COMPLETED')
-        )
-    );
-    
-    -- Likes
-    CREATE POLICY IF NOT EXISTS "User manage own likes" ON public.likes
-    FOR ALL USING (
-        auth.uid() = (SELECT user_id FROM public.profiles WHERE id = profile_id)
-    );
-    
-    -- Quizzes (public read access)
-    CREATE POLICY IF NOT EXISTS "Public quizzes are viewable" ON public.quizzes
-    FOR SELECT USING (true);
+    REFRESH MATERIALIZED VIEW public.global_stats;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
 
-    -- User Activities
-    CREATE POLICY IF NOT EXISTS "Users can view their own activities" 
-    ON public.user_activities FOR SELECT 
-    USING (auth.uid() = user_id);
+-- Triggers pour rafraîchir les vues matérialisées lors des modifications de la table videos
+CREATE TRIGGER refresh_user_video_stats_trigger
+AFTER INSERT OR UPDATE OR DELETE ON public.videos
+FOR EACH STATEMENT EXECUTE FUNCTION public.refresh_user_stats();
 
-    CREATE POLICY IF NOT EXISTS "System can insert activities" 
-    ON public.user_activities FOR INSERT 
-    WITH CHECK (true);
+CREATE TRIGGER refresh_global_stats_trigger
+AFTER INSERT OR UPDATE OR DELETE ON public.videos
+FOR EACH STATEMENT EXECUTE FUNCTION public.refresh_global_stats();
 
-    -- Creative Challenges
-    CREATE POLICY IF NOT EXISTS "Creative challenges are viewable by everyone" ON public.creative_challenges
-    FOR SELECT USING (true);
+-- Politiques RLS (inchangées)
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.videos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transcriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_suggestions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.quizzes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.quiz_results ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.followers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.likes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_activities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.creative_challenges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.challenge_submissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.challenge_progress ENABLE ROW LEVEL SECURITY;
 
-    -- Challenge Submissions
-    CREATE POLICY IF NOT EXISTS "Users can manage their own submissions"
-    ON public.challenge_submissions 
-    FOR ALL 
-    TO authenticated
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Profiles are viewable by everyone" ON public.profiles FOR SELECT USING (TRUE);
+CREATE POLICY "Users can update their own profile" ON public.profiles FOR UPDATE USING (auth.uid() = user_id);
 
-    -- Challenge Progress
-    CREATE POLICY IF NOT EXISTS "Users can manage their own progress"
-    ON public.challenge_progress 
-    FOR ALL 
-    TO authenticated
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Public videos are viewable by everyone" ON public.videos FOR SELECT USING (status = 'published');
+CREATE POLICY "User full access to own videos" ON public.videos USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
-END $$;
+CREATE POLICY "Transcription access by video owner" ON public.transcriptions FOR SELECT USING (auth.uid() = user_id);
 
--- Permissions
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO postgres, anon, authenticated, service_role;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO postgres, anon, authenticated, service_role;
-GRANT ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public TO postgres, anon, authenticated, service_role;
+CREATE POLICY "AI suggestions access by owner" ON public.ai_suggestions FOR SELECT USING (EXISTS (SELECT 1 FROM public.transcriptions WHERE id = transcription_id AND user_id = auth.uid()));
 
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON FUNCTIONS TO anon, authenticated, service_role;
+CREATE POLICY "Public quizzes are viewable" ON public.quizzes FOR SELECT USING (TRUE);
 
--- Analyse pour optimiser les performances
-ANALYZE public.videos;
-ANALYZE public.profiles;
-ANALYZE public.transcriptions;
-ANALYZE public.user_activities;
-ANALYZE public.ai_suggestions;
-ANALYZE public.quizzes;
-ANALYZE public.quiz_results;
-ANALYZE public.followers;
-ANALYZE public.comments;
-ANALYZE public.likes;
-ANALYZE public.creative_challenges;
-ANALYZE public.challenge_submissions;
-ANALYZE public.challenge_progress;
+CREATE POLICY "User access to own quiz results" ON public.quiz_results FOR SELECT USING (auth.uid() = (SELECT user_id FROM public.profiles WHERE id = profile_id));
 
+CREATE POLICY "Users can manage own follows" ON public.followers USING (auth.uid() = follower_id) WITH CHECK (auth.uid() = follower_id);
 
+CREATE POLICY "User manage own comments" ON public.comments USING (auth.uid() = profile_id) WITH CHECK (auth.uid() = profile_id);
+CREATE POLICY "Public comments on published videos" ON public.comments FOR SELECT USING (EXISTS (SELECT 1 FROM public.videos WHERE id = video_id AND status = 'published'));
+
+CREATE POLICY "User manage own likes" ON public.likes USING (auth.uid() = profile_id) WITH CHECK (auth.uid() = profile_id);
+
+CREATE POLICY "Users can view their own activities" ON public.user_activities FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "System can insert activities" ON public.user_activities FOR INSERT WITH CHECK (TRUE);
+
+CREATE POLICY "Users can manage their own submissions" ON public.challenge_submissions USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can manage their own progress" ON public.challenge_progress USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- Rafraîchir les vues matérialisées après la migration
+REFRESH MATERIALIZED VIEW public.user_video_stats;
+REFRESH MATERIALIZED VIEW public.global_stats;
