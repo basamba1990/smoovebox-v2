@@ -15,10 +15,40 @@ const VideoUploader = ({ onUploadComplete }) => {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  const [uploadPhase, setUploadPhase] = useState('idle'); // idle, uploading, processing, success, error
+  const [uploadPhase, setUploadPhase] = useState('idle');
   const [transcribing, setTranscribing] = useState(false);
   const fileInputRef = useRef(null);
   
+  // Fonction pour appeler l'Edge Function de rafraîchissement des stats
+  const refreshStats = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+
+      if (!accessToken) {
+        console.error("Impossible de récupérer le token d'authentification");
+        return;
+      }
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/refresh-stats`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('Erreur lors du rafraîchissement des stats:', errorData);
+      } else {
+        console.log('Stats rafraîchies avec succès');
+      }
+    } catch (error) {
+      console.error('Erreur réseau lors du rafraîchissement des stats:', error);
+    }
+  };
+
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     setError(null);
@@ -52,16 +82,14 @@ const VideoUploader = ({ onUploadComplete }) => {
     
     // Utiliser le nom du fichier comme titre par défaut si aucun titre n'est défini
     if (!title) {
-      const fileName = selectedFile.name.replace(/\.[^/.]+$/, ''); // Enlever l'extension
+      const fileName = selectedFile.name.replace(/\.[^/.]+$/, '');
       setTitle(fileName);
     }
   };
 
-  // Fonction d'upload avec progression réelle utilisant XMLHttpRequest
   const uploadWithProgress = (file, filePath, onProgress) => {
     return new Promise(async (resolve, reject) => {
       try {
-        // Obtenir le token d'authentification actuel
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError || !session) {
@@ -70,12 +98,9 @@ const VideoUploader = ({ onUploadComplete }) => {
         }
 
         const xhr = new XMLHttpRequest();
-        
-        // Configuration de l'URL pour l'API Supabase Storage
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
         const url = `${supabaseUrl}/storage/v1/object/videos/${filePath}`;
         
-        // Gestionnaire de progression réelle
         xhr.upload.addEventListener('progress', (event) => {
           if (event.lengthComputable) {
             const percent = Math.round((event.loaded / event.total) * 100);
@@ -83,7 +108,6 @@ const VideoUploader = ({ onUploadComplete }) => {
           }
         });
         
-        // Gestionnaire de fin de requête
         xhr.addEventListener('load', () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
@@ -97,54 +121,20 @@ const VideoUploader = ({ onUploadComplete }) => {
           }
         });
         
-        // Gestionnaire d'erreur
         xhr.addEventListener('error', () => {
           reject(new Error('Upload failed due to network error'));
         });
         
-        // Configuration de la requête
         xhr.open('POST', url);
         xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
         xhr.setRequestHeader('Content-Type', file.type);
         xhr.setRequestHeader('Cache-Control', '3600');
-        
-        // Envoyer le fichier
         xhr.send(file);
         
       } catch (error) {
         reject(error);
       }
     });
-  };
-
-  // Fonction pour appeler l'Edge Function de rafraîchissement des stats
-  const refreshStats = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const accessToken = session?.access_token;
-
-      if (!accessToken) {
-        console.error("Impossible de récupérer le token d'authentification");
-        return;
-      }
-
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/refresh-stats`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error('Erreur lors du rafraîchissement des stats:', errorData);
-      } else {
-        console.log('Stats rafraîchies avec succès');
-      }
-    } catch (error) {
-      console.error('Erreur réseau lors du rafraîchissement des stats:', error);
-    }
   };
   
   const handleSubmit = async (e) => {
@@ -172,30 +162,21 @@ const VideoUploader = ({ onUploadComplete }) => {
       setUploadPhase('uploading');
       setProgress(0);
       
-      // Créer un chemin unique pour la vidéo
       const filePath = `${user.id}/${Date.now()}_${file.name}`;
-      console.log('Uploading file to path:', filePath);
       
-      // Upload avec progression réelle
       await uploadWithProgress(file, filePath, (percent) => {
         setProgress(percent);
-        console.log(`Upload progress: ${percent}%`);
       });
       
-      console.log('Upload completed successfully');
       setUploadPhase('processing');
       
-      // Générer l'URL signée après l'upload réussi
       const { data: publicUrl, error: urlError } = await supabase.storage
         .from('videos')
-        .createSignedUrl(filePath, 365 * 24 * 60 * 60); // URL valide pendant 1 an
+        .createSignedUrl(filePath, 365 * 24 * 60 * 60);
       
       if (urlError) {
-        console.warn('Impossible de générer l'URL signée:', urlError);
+        console.warn("Impossible de générer l'URL signée:", urlError);
       }
-      
-      // Créer l'entrée dans la base de données avec l'URL signée
-      console.log('Creating database entry...');
       
       const { data: videoData, error: dbError } = await supabase
         .from('videos')
@@ -205,9 +186,9 @@ const VideoUploader = ({ onUploadComplete }) => {
             title: title.trim(),
             description: description.trim() || null,
             storage_path: filePath,
-            file_path: filePath, // Compatibilité avec l'ancien champ
-            url: publicUrl?.signedUrl || null, // Ajouter l'URL signée
-            status: 'ready', // Utiliser 'ready' au lieu de 'processing'
+            file_path: filePath,
+            url: publicUrl?.signedUrl || null,
+            status: 'ready',
             original_file_name: file.name,
             file_size: file.size,
             created_at: new Date().toISOString(),
@@ -218,65 +199,42 @@ const VideoUploader = ({ onUploadComplete }) => {
         .single();
       
       if (dbError) {
-        console.error('Erreur de base de données:', dbError);
         throw new Error(`Erreur lors de la création de l'entrée: ${dbError.message}`);
       }
-      
-      console.log('Video entry created successfully:', videoData);
       
       // Appeler la transcription avec la fonction Edge
       try {
         setTranscribing(true);
-        console.log('Démarrage de la transcription pour la vidéo:', videoData.id);
-        
-        // Récupérer le token d'authentification
         const { data: { session } } = await supabase.auth.getSession();
         const accessToken = session?.access_token;
         
-        if (!accessToken) {
-          console.error("Impossible de récupérer le token d'authentification");
-          setSuccess("Vidéo uploadée avec succès! La transcription n'a pas pu être démarrée automatiquement.");
-          return;
-        }
-        
-        // Utiliser fetch pour appeler la fonction Edge
-        const transcribeResponse = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-video`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${accessToken}`
-            },
-            body: JSON.stringify({
-              videoId: videoData.id,
-              videoUrl: publicUrl?.signedUrl || null // Passer l'URL signée à la fonction Edge
-            })
-          }
-        );
-        
-        if (!transcribeResponse.ok) {
-          const errorData = await transcribeResponse.json();
-          console.error('Erreur lors de la demande de transcription:', errorData);
-          setSuccess("Vidéo uploadée avec succès! La transcription n'a pas pu être démarrée automatiquement.");
-        } else {
-          const responseData = await transcribeResponse.json();
-          console.log('Transcription initiée avec succès:', responseData);
-          setSuccess("Vidéo uploadée avec succès! La transcription est en cours...");
-          
-          // Mettre à jour la liste des vidéos pour refléter le statut de transcription
-          if (onUploadComplete) {
-            onUploadComplete();
-          }
+        if (accessToken) {
+          await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-video`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${accessToken}`
+              },
+              body: JSON.stringify({
+                videoId: videoData.id,
+                videoUrl: publicUrl?.signedUrl || null
+              })
+            }
+          );
         }
       } catch (transcribeError) {
         console.error('Erreur lors de l\'appel à la fonction de transcription:', transcribeError);
-        setSuccess("Vidéo uploadée avec succès! La transcription n'a pas pu être démarrée automatiquement.");
       } finally {
         setTranscribing(false);
       }
       
+      // Rafraîchir les statistiques après l'upload réussi
+      await refreshStats();
+      
       setUploadPhase('success');
+      setSuccess("Vidéo uploadée avec succès! La transcription est en cours...");
       
       // Réinitialiser le formulaire
       setFile(null);
@@ -286,16 +244,11 @@ const VideoUploader = ({ onUploadComplete }) => {
         fileInputRef.current.value = null;
       }
       
-      // Notifier le parent du succès
       if (onUploadComplete && videoData) {
         onUploadComplete(videoData);
       }
-
-      // Rafraîchir les statistiques après l'upload
-      await refreshStats();
       
     } catch (err) {
-      console.error('Erreur lors de l\'upload:', err);
       setUploadPhase('error');
       setError(`Erreur lors de l'upload: ${err.message}`);
     } finally {
@@ -366,12 +319,10 @@ const VideoUploader = ({ onUploadComplete }) => {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Messages d'état */}
         <div className={`text-center p-3 rounded-lg ${getPhaseColor()}`}>
           <p className="font-medium">{getPhaseMessage()}</p>
         </div>
 
-        {/* Barre de progression réelle */}
         {(uploading || uploadPhase === 'processing' || transcribing) && (
           <div className="space-y-2">
             <Progress value={progress} className="w-full" />
@@ -379,18 +330,9 @@ const VideoUploader = ({ onUploadComplete }) => {
               {uploadPhase === 'uploading' ? `${progress}% uploadé` : 
                transcribing ? 'Démarrage de la transcription...' : 'Traitement en cours...'}
             </p>
-            {transcribing && (
-              <div className="mt-2">
-                <div className="w-full bg-gray-200 rounded-full h-1.5">
-                  <div className="bg-green-500 h-1.5 rounded-full animate-pulse"></div>
-                </div>
-                <p className="text-xs mt-1">Démarrage de la transcription...</p>
-              </div>
-            )}
           </div>
         )}
 
-        {/* Message de succès détaillé */}
         {success && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
@@ -411,7 +353,6 @@ const VideoUploader = ({ onUploadComplete }) => {
           </div>
         )}
 
-        {/* Message d'erreur détaillé */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
@@ -432,7 +373,6 @@ const VideoUploader = ({ onUploadComplete }) => {
           </div>
         )}
 
-        {/* Formulaire d'upload */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="video-file" className="block text-sm font-medium text-gray-700 mb-2">
