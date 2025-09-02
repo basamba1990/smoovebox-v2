@@ -15,8 +15,8 @@ serve(async (req) => {
   try {
     // Client utilisateur pour vérifier l'auth
     const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      Deno.env.get('MY_SUPABASE_URL') ?? '',
+      Deno.env.get('MY_SUPABASE_ANON_KEY') ?? ''
     )
 
     const { data: { user } } = await supabase.auth.getUser()
@@ -29,8 +29,8 @@ serve(async (req) => {
 
     // Client admin / service role pour rafraîchir les vues
     const adminSupabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('MY_SUPABASE_URL') ?? '',
+      Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
     // Rafraîchir toutes les vues matérialisées nécessaires
