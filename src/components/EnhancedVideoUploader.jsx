@@ -65,7 +65,8 @@ const EnhancedVideoUploader = () => {
         return;
       }
 
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/refresh-stats`, {
+      // Utilisation de la nouvelle fonction de rafraîchissement
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/refresh-user-video-stats`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -78,9 +79,41 @@ const EnhancedVideoUploader = () => {
         console.error('Erreur lors du rafraîchissement des stats:', errorData);
       } else {
         console.log('Stats rafraîchies avec succès');
+        
+        // Mettre à jour les données affichées après le rafraîchissement
+        updateDisplayedStats();
       }
     } catch (error) {
       console.error('Erreur réseau lors du rafraîchissement des stats:', error);
+    }
+  };
+
+  // Fonction pour récupérer les statistiques depuis la vue sécurisée
+  const updateDisplayedStats = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) return;
+      
+      // Utilisation de la vue sécurisée pour récupérer les statistiques
+      const { data, error } = await supabase
+        .from('user_video_stats_secure')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (error) {
+        console.error('Erreur lors de la récupération des stats:', error);
+        return;
+      }
+      
+      // Ici vous pouvez mettre à jour votre state avec les nouvelles données
+      // Par exemple, si vous avez un state pour les stats:
+      // setUserStats(data);
+      
+      console.log('Statistiques mises à jour:', data);
+    } catch (error) {
+      console.error('Erreur lors de la mise à jour des stats:', error);
     }
   };
 
