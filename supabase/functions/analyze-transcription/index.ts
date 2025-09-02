@@ -28,6 +28,8 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  let videoId: string | null = null; // Déclarer videoId ici pour qu'il soit accessible dans le bloc catch
+
   try {
     console.log("Fonction analyze-transcription appelée");
 
@@ -68,8 +70,6 @@ Deno.serve(async (req) => {
         }
       }
     });
-
-    let videoId: string | null = null;
 
     // Tenter d'obtenir videoId du corps de la requête (pour les requêtes POST)
     try {
@@ -308,10 +308,13 @@ Assurez-vous que la sortie est un objet JSON valide.`;
     }
 
     // Après l'analyse, mettre à jour aussi la table transcriptions
+    // IMPORTANT: Assurez-vous que la colonne 'analysis_result' dans la table 'transcriptions' est de type JSONB.
+    // Si elle est de type ARRAY ou TEXT, cela causera l'erreur 22P02.
+    // La correction la plus robuste est de modifier le schéma de la base de données.
     const { error: transcriptionUpdateError } = await serviceClient
       .from('transcriptions')
       .update({
-        analysis_result: analysisResult,
+        analysis_result: analysisResult, // Ceci doit être un JSONB dans la DB
         updated_at: new Date().toISOString()
       })
       .eq('video_id', videoId);
@@ -319,6 +322,7 @@ Assurez-vous que la sortie est un objet JSON valide.`;
     if (transcriptionUpdateError) {
       console.error('Erreur lors de la mise à jour de la transcription avec les résultats d\'analyse:', transcriptionUpdateError);
       // Ne pas échouer complètement, juste logger l'erreur
+      // Si cette erreur est critique, vous pourriez vouloir mettre à jour le statut de la vidéo à FAILED ici aussi.
     }
 
     console.log(`Vidéo ${videoId} analysée et statut mis à jour à '${VIDEO_STATUS.ANALYZED}'.`);
@@ -340,7 +344,7 @@ Assurez-vous que la sortie est un objet JSON valide.`;
     
     // Tentative de mise à jour du statut d'erreur si videoId est disponible
     try {
-      if (videoId) {
+      if (videoId && serviceClient) { // Ajouter serviceClient pour s'assurer qu'il est initialisé
         await serviceClient
           .from('videos')
           .update({ 
