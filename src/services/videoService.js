@@ -188,7 +188,7 @@ export const videoService = {
           original_file_name: file.name,
           file_size: file.size,
           format: file.type.split('/')[1] || 'mp4',
-          duration: metadata.duration || null,
+          duration: metadata.duration || null, // Utilise 'duration' au lieu de 'duration_seconds'
           is_public: metadata.isPublic || false,
           storage_path: filePath,
           file_path: filePath, // Compatibilité avec l'ancien champ
@@ -513,47 +513,47 @@ export const videoService = {
   /**
    * Supprime une vidéo
    * @param {string} videoId - ID de la vidéo
-   * @returns {Promise<void>}
+   * @returns {Promise<Object>} - Résultat de la suppression
    */
   async deleteVideo(videoId) {
     if (!videoId) throw new Error('ID de vidéo requis');
     
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Utilisateur non connecté');
+      
       // Récupérer les informations de la vidéo
       const { data: video, error: fetchError } = await supabase
         .from('videos')
-        .select('storage_path, file_path')
+        .select('*')
         .eq('id', videoId)
+        .eq('user_id', user.id)
         .single();
       
       if (fetchError) throw fetchError;
+      if (!video) throw new Error('Vidéo non trouvée ou accès non autorisé');
       
-      // Supprimer le fichier du stockage si un chemin existe
-      const storagePath = video.storage_path || video.file_path;
-      if (storagePath) {
-        try {
-          const { error: storageError } = await supabase.storage
-            .from('videos')
-            .remove([storagePath]);
-          
-          if (storageError) {
-            console.error('Erreur lors de la suppression du fichier:', storageError);
-            // Continuer même si la suppression du fichier échoue
-          }
-        } catch (storageError) {
-          console.error('Exception lors de la suppression du fichier:', storageError);
-          // Continuer même si la suppression du fichier échoue
+      // Supprimer le fichier du stockage si storage_path existe
+      if (video.storage_path) {
+        const { error: storageError } = await supabase.storage
+          .from('videos')
+          .remove([video.storage_path]);
+        
+        if (storageError) {
+          console.warn('Erreur lors de la suppression du fichier:', storageError);
         }
       }
       
-      // Supprimer l'entrée de la base de données
-      const { error: dbDeleteError } = await supabase
+      // Supprimer l'enregistrement de la base de données
+      const { error: deleteError } = await supabase
         .from('videos')
         .delete()
-        .eq('id', videoId);
+        .eq('id', videoId)
+        .eq('user_id', user.id);
       
-      if (dbDeleteError) throw dbDeleteError;
+      if (deleteError) throw deleteError;
       
+      return { success: true };
     } catch (error) {
       console.error('Erreur lors de la suppression de la vidéo:', error);
       throw error;
@@ -561,79 +561,24 @@ export const videoService = {
   },
 
   /**
-   * Récupère l'URL publique d'une vidéo
-   * @param {string} storagePath - Chemin de stockage de la vidéo
-   * @returns {string | null} - URL publique de la vidéo
-   */
-  getPublicVideoUrl(storagePath) {
-    if (!storagePath) return null;
-    const { data } = supabase.storage.from('videos').getPublicUrl(storagePath);
-    return data?.publicUrl || null;
-  },
-
-  /**
-   * Récupère le statut de traitement d'une vidéo
+   * Incrémente le nombre de vues d'une vidéo
    * @param {string} videoId - ID de la vidéo
-   * @returns {Promise<string>} - Statut de la vidéo
-   */
-  async getVideoProcessingStatus(videoId) {
-    try {
-      const { data, error } = await supabase
-        .from('videos')
-        .select('status')
-        .eq('id', videoId)
-        .single();
-
-      if (error) throw error;
-      return data.status;
-    } catch (error) {
-      console.error('Erreur lors de la récupération du statut de la vidéo:', error);
-      return VIDEO_STATUS.ERROR;
-    }
-  },
-
-  /**
-   * Met à jour le score de performance d'une vidéo
-   * @param {string} videoId - ID de la vidéo
-   * @param {number} score - Score de performance
    * @returns {Promise<Object>} - Données de la vidéo mise à jour
    */
-  async updateVideoPerformanceScore(videoId, score) {
+  async incrementViews(videoId) {
+    if (!videoId) throw new Error('ID de vidéo requis');
+    
     try {
-      const { data, error } = await supabase
-        .from('videos')
-        .update({ performance_score: score })
-        .eq('id', videoId)
-        .select()
-        .single();
-
+      const { data, error } = await supabase.rpc('increment_video_views', {
+        video_id: videoId
+      });
+      
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Erreur lors de la mise à jour du score de performance:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Récupère les statistiques de progression de l'utilisateur
-   * @param {string} userId - ID de l'utilisateur
-   * @returns {Promise<Object>} - Statistiques de progression
-   */
-  async getUserProgressStats(userId) {
-    try {
-      // Cette fonction suppose que vous avez une vue ou fonction pour les stats
-      const { data, error } = await supabase
-        .from('user_progress_stats')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-
-      if (error && error.code !== 'PGRST116') throw error;
-      return data || {};
-    } catch (error) {
-      console.error('Erreur lors de la récupération des statistiques de progression:', error);
+      console.error('Erreur lors de l\'incrémentation des vues:', error);
       throw error;
     }
   }
 };
+
