@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
 
     if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
-      console.error('Variables d\'environnement manquantes', {
+      console.error('Variables d\\'environnement manquantes', {
         supabaseUrl: !!supabaseUrl,
         supabaseServiceKey: !!supabaseServiceKey,
         openaiApiKey: !!openaiApiKey
@@ -267,11 +267,11 @@ Deno.serve(async (req) => {
 
     // Vérification finale
     if (!videoId) {
-      console.error('VideoId non trouvé dans les paramètres d\'URL ni dans le corps de la requête')
+      console.error('VideoId non trouvé dans les paramètres d\\'URL ni dans le corps de la requête')
       return new Response(
         JSON.stringify({ 
           error: 'videoId est requis dans le corps de la requête ou en paramètre',
-          details: 'Veuillez fournir videoId soit dans le corps JSON de la requête, soit comme paramètre d\'URL (?videoId=...)'
+          details: 'Veuillez fournir videoId soit dans le corps JSON de la requête, soit comme paramètre d\\'URL (?videoId=...)'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       )
@@ -431,7 +431,7 @@ Deno.serve(async (req) => {
 
     // VÉRIFICATION FINALE: Si aucune méthode n'a fonctionné
     if (!audioBlob) {
-      const errorMessage = 'Impossible de télécharger le fichier audio/vidéo. Ni storage_path ni videoUrl valide n\'ont permis le téléchargement.';
+      const errorMessage = 'Impossible de télécharger le fichier audio/vidéo. Ni storage_path ni videoUrl valide n\\'ont permis le téléchargement.';
       console.error(errorMessage);
       await serviceClient
         .from('videos')
@@ -557,7 +557,7 @@ Deno.serve(async (req) => {
 
         return new Response(
           JSON.stringify({
-            error: 'Erreur d\'enregistrement de la transcription',
+            error: 'Erreur d\\'enregistrement de la transcription',
             details: retryError.message
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
@@ -638,7 +638,7 @@ Deno.serve(async (req) => {
           .eq('id', videoId as string);
       }
     } else {
-      console.warn('Analyse non déclenchée car la transcription n\'a pas été confirmée');
+      console.warn('Analyse non déclenchée car la transcription n\\\'a pas été confirmée');
     }
 
     return new Response(
@@ -670,7 +670,7 @@ Deno.serve(async (req) => {
           .eq('id', videoId as string);
       }
     } catch (updateError) {
-      console.error('Erreur lors de la mise à jour du statut d\'erreur:', updateError);
+      console.error('Erreur lors de la mise à jour du statut d\\\'erreur:', updateError);
     }
     
     return new Response(
