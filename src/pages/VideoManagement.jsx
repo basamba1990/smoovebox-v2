@@ -70,8 +70,7 @@ const VideoManagement = () => {
           file_path,
           public_url,
           duration,
-          performance_score,
-          ai_score
+          performance_score
         `)
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
