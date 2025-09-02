@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
 
     if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
-      console.error('Variables d\\'environnement manquantes', {
+      console.error('Variables d\'environnement manquantes', {
         supabaseUrl: !!supabaseUrl,
         supabaseServiceKey: !!supabaseServiceKey,
         openaiApiKey: !!openaiApiKey
@@ -204,13 +204,21 @@ Deno.serve(async (req) => {
       if (!userId) {
         try {
           const clonedRequest = req.clone()
-          const requestData = await clonedRequest.json()
-          if (requestData.user_id) {
-            userId = requestData.user_id
-            console.log(`Utilisateur trouvé dans les données de la requête: ${userId}`)
+          const requestBody = await clonedRequest.text(); // Lire le corps comme texte
+          if (requestBody.trim().length > 0) {
+            try {
+              const requestData = JSON.parse(requestBody);
+              if (requestData.user_id) {
+                userId = requestData.user_id;
+                console.log(`Utilisateur trouvé dans les données de la requête: ${userId}`);
+              }
+            } catch (parseError) {
+              console.warn("Le corps de la requête n'est pas un JSON valide ou ne contient pas user_id.", parseError);
+              // C'est ici que l'erreur 22P02 pourrait se produire si le corps est malformé et traité comme des données
+            }
           }
-        } catch (parseError) {
-          console.error("Erreur lors de l'analyse du JSON de la requête:", parseError)
+        } catch (readError) {
+          console.error("Erreur lors de la lecture du corps de la requête:", readError);
         }
       }
 
@@ -260,18 +268,18 @@ Deno.serve(async (req) => {
           }
         }
       } catch (parseError) {
-        console.error("Erreur lors de l'analyse du JSON de la requête:", parseError)
+        console.error("Erreur lors de l'analyse du JSON de la requête (pour videoId/videoUrl):", parseError)
         // Ne pas échouer ici, continuer avec les paramètres d'URL
       }
     }
 
     // Vérification finale
     if (!videoId) {
-      console.error('VideoId non trouvé dans les paramètres d\\'URL ni dans le corps de la requête')
+      console.error('VideoId non trouvé dans les paramètres d\'URL ni dans le corps de la requête')
       return new Response(
         JSON.stringify({ 
           error: 'videoId est requis dans le corps de la requête ou en paramètre',
-          details: 'Veuillez fournir videoId soit dans le corps JSON de la requête, soit comme paramètre d\\'URL (?videoId=...)'
+          details: 'Veuillez fournir videoId soit dans le corps JSON de la requête, soit comme paramètre d\'URL (?videoId=...)'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       )
@@ -431,7 +439,7 @@ Deno.serve(async (req) => {
 
     // VÉRIFICATION FINALE: Si aucune méthode n'a fonctionné
     if (!audioBlob) {
-      const errorMessage = 'Impossible de télécharger le fichier audio/vidéo. Ni storage_path ni videoUrl valide n\\'ont permis le téléchargement.';
+      const errorMessage = 'Impossible de télécharger le fichier audio/vidéo. Ni storage_path ni videoUrl valide n\'ont permis le téléchargement.';
       console.error(errorMessage);
       await serviceClient
         .from('videos')
@@ -441,65 +449,94 @@ Deno.serve(async (req) => {
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId as string);
-
       return new Response(
-        JSON.stringify({
-          error: 'Échec du téléchargement',
-          details: errorMessage
-        }),
+        JSON.stringify({ error: 'Échec du téléchargement du fichier audio/vidéo', details: errorMessage }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
 
-    // 6. TRANSCRIPTION AUDIO AVEC OPENAI WHISPER
-    console.log('Démarrage de la transcription audio avec OpenAI Whisper...')
-    const openai = new OpenAI({ apiKey: openaiApiKey })
+    // 6. TRANSCRIPTION AUDIO AVEC OPENAI
+    console.log('Début de la transcription audio avec OpenAI...');
+    const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    let transcriptionResult: OpenAI.Audio.Transcriptions.Transcription | null = null;
+    let transcriptionResult;
     try {
-      // Créer un objet File à partir du Blob pour l'API OpenAI
-      const audioFile = new File([audioBlob], `video_${videoId}.mp3`, { type: audioBlob.type });
+      // Convertir le Blob en File pour l'API OpenAI
+      const audioFile = new File([audioBlob], 'audio.mp3', { type: audioBlob.type });
 
       transcriptionResult = await openai.audio.transcriptions.create({
         file: audioFile,
         model: 'whisper-1',
-        language: 'fr' // Spécifier la langue pour une meilleure précision
+        language: 'fr',
+        response_format: 'verbose_json',
       });
-      console.log('Transcription réussie:', transcriptionResult.text.substring(0, 100) + '...');
-    } catch (transcriptionError: any) {
-      console.error('Erreur lors de la transcription audio:', transcriptionError);
+      console.log('Transcription OpenAI réussie.');
+    } catch (openaiError: any) {
+      console.error('Erreur OpenAI lors de la transcription:', openaiError);
+      const errorMessage = `Erreur OpenAI lors de la transcription: ${openaiError.message}`;
       await serviceClient
         .from('videos')
         .update({ 
           status: VIDEO_STATUS.FAILED, 
-          error_message: `Erreur de transcription: ${transcriptionError.message}`,
+          error_message: errorMessage,
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId as string);
-
       return new Response(
-        JSON.stringify({
-          error: 'Échec de la transcription',
-          details: transcriptionError.message
-        }),
+        JSON.stringify({ error: 'Échec de la transcription audio', details: errorMessage }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      )
+      );
     }
 
-    // 7. ENREGISTREMENT DE LA TRANSCRIPTION DANS LA TABLE VIDEOS
-    console.log('Enregistrement de la transcription dans la base de données...')
-    
-    // Préparer les données de transcription pour éviter l'erreur "22P02"
-    let transcriptionData = transcriptionResult;
-    
-    // Si la transcription est une chaîne JSON, la parser en objet
-    if (typeof transcriptionResult === 'string') {
-      try {
-        transcriptionData = JSON.parse(transcriptionResult);
-      } catch (e) {
-        console.error('Erreur lors du parsing de la transcription en JSON:', e);
-        transcriptionData = null;
-      }
+    if (!transcriptionResult || !transcriptionResult.text) {
+      const errorMessage = 'La transcription OpenAI n\'a pas retourné de texte.';
+      console.error(errorMessage);
+      await serviceClient
+        .from('videos')
+        .update({ 
+          status: VIDEO_STATUS.FAILED, 
+          error_message: errorMessage,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId as string);
+      return new Response(
+        JSON.stringify({ error: 'Transcription vide', details: errorMessage }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
+    }
+
+    // 7. ENREGISTRER LA TRANSCRIPTION DANS LA BASE DE DONNÉES
+    console.log('Enregistrement de la transcription dans la base de données...');
+
+    // Préparer les données de transcription pour l'insertion
+    let transcriptionData: any = null;
+    if (transcriptionResult.segments) {
+      transcriptionData = {
+        text: transcriptionResult.text,
+        language: transcriptionResult.language,
+        duration: transcriptionResult.duration,
+        segments: transcriptionResult.segments.map((s: any) => ({
+          id: s.id,
+          seek: s.seek,
+          start: s.start,
+          end: s.end,
+          text: s.text,
+          tokens: s.tokens,
+          temperature: s.temperature,
+          avg_logprob: s.avg_logprob,
+          compression_ratio: s.compression_ratio,
+          no_speech_prob: s.no_speech_prob,
+          words: s.words || [] // Assurer que words est un tableau même s'il est vide
+        }))
+      };
+    } else {
+      // Fallback pour les cas où segments n'est pas disponible
+      transcriptionData = {
+        text: transcriptionResult.text,
+        language: transcriptionResult.language,
+        duration: transcriptionResult.duration,
+        segments: []
+      };
     }
     
     // Log pour débogage
@@ -514,7 +551,14 @@ Deno.serve(async (req) => {
     // Si transcriptionData est null, nous ne mettrons pas à jour transcription_data
     if (transcriptionData !== null) {
       // CORRECTION: Assurer que les données sont dans un format compatible avec PostgreSQL
-      updatePayload.transcription_data = transcriptionData;
+      // Valider que transcriptionData est un objet JSON valide et non un tableau malformé
+      if (typeof transcriptionData === 'object' && !Array.isArray(transcriptionData)) {
+        updatePayload.transcription_data = transcriptionData;
+      } else {
+        console.warn('transcription_data n\'est pas un objet JSON valide, ne sera pas enregistré.');
+        // Optionnel: Mettre à jour error_message si ce cas est considéré comme une erreur grave
+        // updatePayload.error_message = 'Données de transcription malformées';
+      }
     }
 
     console.log('Payload de mise à jour:', JSON.stringify(updatePayload, null, 2));
@@ -557,7 +601,7 @@ Deno.serve(async (req) => {
 
         return new Response(
           JSON.stringify({
-            error: 'Erreur d\\'enregistrement de la transcription',
+            error: 'Erreur d\'enregistrement de la transcription',
             details: retryError.message
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
@@ -625,7 +669,7 @@ Deno.serve(async (req) => {
           const responseData = await response.json();
           console.log('Analyse démarrée avec succès:', responseData);
         }
-      } catch (invokeError) {
+      } catch (invokeError: any) {
         console.error("Erreur lors de l'invocation de la fonction d'analyse:", invokeError)
         // Mettre à jour le statut de la vidéo à FAILED si l'invocation de l'analyse échoue
         await serviceClient
@@ -638,7 +682,7 @@ Deno.serve(async (req) => {
           .eq('id', videoId as string);
       }
     } else {
-      console.warn('Analyse non déclenchée car la transcription n\\\'a pas été confirmée');
+      console.warn('Analyse non déclenchée car la transcription n\'a pas été confirmée');
     }
 
     return new Response(
@@ -670,7 +714,7 @@ Deno.serve(async (req) => {
           .eq('id', videoId as string);
       }
     } catch (updateError) {
-      console.error('Erreur lors de la mise à jour du statut d\\\'erreur:', updateError);
+      console.error('Erreur lors de la mise à jour du statut d\'erreur:', updateError);
     }
     
     return new Response(
