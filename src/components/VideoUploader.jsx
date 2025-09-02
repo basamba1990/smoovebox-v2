@@ -116,6 +116,36 @@ const VideoUploader = ({ onUploadComplete }) => {
       }
     });
   };
+
+  // Fonction pour appeler l'Edge Function de rafraîchissement des stats
+  const refreshStats = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+
+      if (!accessToken) {
+        console.error("Impossible de récupérer le token d'authentification");
+        return;
+      }
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/refresh-stats`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('Erreur lors du rafraîchissement des stats:', errorData);
+      } else {
+        console.log('Stats rafraîchies avec succès');
+      }
+    } catch (error) {
+      console.error('Erreur réseau lors du rafraîchissement des stats:', error);
+    }
+  };
   
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -161,7 +191,7 @@ const VideoUploader = ({ onUploadComplete }) => {
         .createSignedUrl(filePath, 365 * 24 * 60 * 60); // URL valide pendant 1 an
       
       if (urlError) {
-        console.warn('Impossible de générer l\'URL signée:', urlError);
+        console.warn('Impossible de générer l'URL signée:', urlError);
       }
       
       // Créer l'entrée dans la base de données avec l'URL signée
@@ -260,6 +290,9 @@ const VideoUploader = ({ onUploadComplete }) => {
       if (onUploadComplete && videoData) {
         onUploadComplete(videoData);
       }
+
+      // Rafraîchir les statistiques après l'upload
+      await refreshStats();
       
     } catch (err) {
       console.error('Erreur lors de l\'upload:', err);
