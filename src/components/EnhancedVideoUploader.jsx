@@ -27,6 +27,7 @@ import CollectiveMode from './CollectiveMode.jsx';
 import { videoService } from '../services/videoService';
 import VideoAnalysisResults from './VideoAnalysisResults';
 import TranscriptionViewer from './TranscriptionViewer';
+import { supabase } from '../lib/supabase';
 
 const EnhancedVideoUploader = () => {
   const [currentStep, setCurrentStep] = useState('mode_selection');
@@ -52,6 +53,36 @@ const EnhancedVideoUploader = () => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const previewVideoRef = useRef(null);
+
+  // Fonction pour appeler l'Edge Function de rafraîchissement des stats
+  const refreshStats = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const accessToken = session?.access_token;
+
+      if (!accessToken) {
+        console.error("Impossible de récupérer le token d'authentification");
+        return;
+      }
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/refresh-stats`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('Erreur lors du rafraîchissement des stats:', errorData);
+      } else {
+        console.log('Stats rafraîchies avec succès');
+      }
+    } catch (error) {
+      console.error('Erreur réseau lors du rafraîchissement des stats:', error);
+    }
+  };
 
   const modes = [
     {
@@ -83,12 +114,10 @@ const EnhancedVideoUploader = () => {
     }
   ];
 
-  // Vérifier si le navigateur supporte la caméra
   const checkCameraSupport = () => {
     return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
   };
 
-  // Gestion de la caméra avec meilleure gestion d'erreurs
   const startCamera = async () => {
     if (!checkCameraSupport()) {
       setCameraError('Votre navigateur ne supporte pas l\'accès à la caméra. Veuillez utiliser un navigateur moderne comme Chrome, Firefox ou Edge.');
@@ -99,12 +128,11 @@ const EnhancedVideoUploader = () => {
     setCameraError(null);
 
     try {
-      // Demander les permissions de caméra et microphone
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
           width: { ideal: 1280 },
           height: { ideal: 720 },
-          facingMode: 'user' // Utiliser la caméra frontale par défaut
+          facingMode: 'user'
         },
         audio: {
           echoCancellation: true,
@@ -146,7 +174,6 @@ const EnhancedVideoUploader = () => {
     }
   };
 
-  // Gestion de l'enregistrement
   const startRecording = () => {
     if (!mediaStream) return;
 
@@ -177,7 +204,6 @@ const EnhancedVideoUploader = () => {
     setIsRecording(true);
     setRecordingTime(0);
 
-    // Timer d'enregistrement
     const timer = setInterval(() => {
       setRecordingTime(prev => prev + 1);
     }, 1000);
@@ -195,7 +221,6 @@ const EnhancedVideoUploader = () => {
     }
   };
 
-  // Nettoyage
   useEffect(() => {
     return () => {
       stopCamera();
@@ -216,7 +241,6 @@ const EnhancedVideoUploader = () => {
     };
   }, [recordedVideo]);
 
-  // Gestionnaires d'événements
   const handleModeSelect = (mode) => {
     setSelectedMode(mode);
     if (mode.id === 'individual') {
@@ -288,7 +312,6 @@ const EnhancedVideoUploader = () => {
         isPublic: false,
       };
 
-      // Validation supplémentaire
       if (!metadata.title) {
         throw new Error('Le titre de la vidéo est invalide');
       }
@@ -306,7 +329,6 @@ const EnhancedVideoUploader = () => {
       setUploadSuccess('Vidéo uploadée avec succès !');
       setUploadedVideoData(uploadedVideo);
 
-      // Déclencher la transcription après l'upload réussi
       try {
         await videoService.transcribeVideo(uploadedVideo.id);
         setUploadSuccess('Vidéo uploadée et transcription initiée avec succès !');
@@ -315,20 +337,22 @@ const EnhancedVideoUploader = () => {
         setUploadSuccess('Vidéo uploadée avec succès, mais erreur lors du démarrage de la transcription');
       }
       
+      // Rafraîchir les statistiques après l'upload réussi
+      await refreshStats();
+      
       setShowResults(true);
       setCurrentStep('results');
 
     } catch (error) {
       console.error('Erreur lors de l\'upload de la vidéo:', error);
       
-      // Message d'erreur plus précis
       let errorMessage = `Erreur lors de l'upload: ${error.message}`;
       
       if (error.message.includes('Chemin de stockage invalide')) {
         errorMessage = 'Erreur: Impossible de générer un chemin de stockage valide pour la vidéo';
       } else if (error.message.includes('Le chemin de stockage est null')) {
         errorMessage = 'Erreur: Le système de stockage n\'a pas pu identifier où sauvegarder la vidéo';
-      } else if (error.message.includes('Fichier vidéo est vide')) {
+      } else if (error.message.includes('Fichier vidéo est empty')) {
         errorMessage = 'Erreur: La vidéo enregistrée est vide ou corrompue';
       }
       
@@ -368,7 +392,6 @@ const EnhancedVideoUploader = () => {
 
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6">
-      {/* En-tête */}
       <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
         <CardHeader>
           <div className="flex items-center gap-3">
@@ -385,7 +408,6 @@ const EnhancedVideoUploader = () => {
         </CardHeader>
       </Card>
 
-      {/* Messages d'état globaux */}
       {uploadError && (
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
           <strong className="font-bold">Erreur:</strong>
@@ -399,7 +421,6 @@ const EnhancedVideoUploader = () => {
         </div>
       )}
 
-      {/* Étapes du processus */}
       {currentStep === 'mode_selection' && (
         <div className="space-y-6">
           <h2 className="text-2xl font-bold text-center text-gray-800 mb-8">
@@ -443,7 +464,6 @@ const EnhancedVideoUploader = () => {
         </div>
       )}
 
-      {/* Assistant de pitch */}
       {currentStep === 'assistant' && (
         <PitchAssistant
           onComplete={handleAssistantComplete}
@@ -452,7 +472,6 @@ const EnhancedVideoUploader = () => {
         />
       )}
 
-      {/* Ateliers créatifs */}
       {currentStep === 'creative_workshop' && (
         <CreativeWorkshops
           onSelectChallenge={handleCreativeSelect}
@@ -461,7 +480,6 @@ const EnhancedVideoUploader = () => {
         />
       )}
 
-      {/* Configuration collective */}
       {currentStep === 'collective_setup' && (
         <CollectiveMode
           onStartRecording={handleCollectiveStart}
@@ -470,7 +488,6 @@ const EnhancedVideoUploader = () => {
         />
       )}
 
-      {/* Interface d'enregistrement */}
       {currentStep === 'recording' && (
         <div className="space-y-6">
           <Card className="bg-white shadow-lg">
@@ -496,7 +513,6 @@ const EnhancedVideoUploader = () => {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Aperçu vidéo */}
               <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
                 <video
                   ref={videoRef}
@@ -515,7 +531,6 @@ const EnhancedVideoUploader = () => {
                 )}
               </div>
 
-              {/* Messages d'erreur de caméra */}
               {cameraError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                   <div className="flex items-start gap-3">
@@ -538,7 +553,6 @@ const EnhancedVideoUploader = () => {
                 </div>
               )}
 
-              {/* Informations contextuelles */}
               {assistantData && (
                 <Card className="bg-blue-50 border-blue-200">
                   <CardContent className="p-4">
@@ -589,7 +603,6 @@ const EnhancedVideoUploader = () => {
                 </Card>
               )}
 
-              {/* Contrôles d'enregistrement */}
               <div className="flex justify-center gap-4">
                 {!isRecording ? (
                   <Button 
@@ -610,7 +623,6 @@ const EnhancedVideoUploader = () => {
         </div>
       )}
 
-      {/* Étape de prévisualisation */}
       {currentStep === 'preview' && recordedVideo && (
         <div className="space-y-6">
           <Card className="bg-white shadow-lg">
@@ -621,7 +633,6 @@ const EnhancedVideoUploader = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Aperçu de la vidéo enregistrée */}
               <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
                 <video
                   ref={previewVideoRef}
@@ -631,7 +642,6 @@ const EnhancedVideoUploader = () => {
                 />
               </div>
 
-              {/* Informations sur la vidéo */}
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
@@ -645,7 +655,6 @@ const EnhancedVideoUploader = () => {
                 </div>
               </div>
 
-              {/* Informations contextuelles de l'enregistrement */}
               {assistantData && (
                 <Card className="bg-blue-50 border-blue-200">
                   <CardContent className="p-4">
@@ -661,7 +670,6 @@ const EnhancedVideoUploader = () => {
                 </Card>
               )}
 
-              {/* Boutons d'action */}
               <div className="flex justify-center gap-4">
                 <Button onClick={handleRetakeVideo} variant="outline">
                   <RotateCcw className="h-5 w-5 mr-2" /> Refaire l'enregistrement
@@ -681,7 +689,6 @@ const EnhancedVideoUploader = () => {
                 </Button>
               </div>
 
-              {/* Barre de progression de l'upload */}
               {uploading && (
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div 
@@ -695,7 +702,6 @@ const EnhancedVideoUploader = () => {
         </div>
       )}
 
-      {/* Étape des résultats */}
       {currentStep === 'results' && showResults && uploadedVideoData && (
         <Card className="mt-6">
           <CardHeader>
@@ -716,7 +722,6 @@ const EnhancedVideoUploader = () => {
         </Card>
       )}
 
-      {/* Bouton de réinitialisation pour revenir au début */}
       {(currentStep === 'results' || showResults) && (
         <div className="text-center mt-6">
           <Button onClick={resetUploader} variant="outline">
