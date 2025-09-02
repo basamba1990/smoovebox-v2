@@ -215,10 +215,10 @@ export const fetchDashboardData = async (userId) => {
     // Calculer le nombre total de vues (avec une valeur par défaut de 0 si views est null)
     const totalViews = videos.reduce((sum, video) => sum + (video.views || 0), 0);
     
-    // Calculer l'engagement moyen (avec une valeur par défaut de 0 si engagement_score est null)
-    const validEngagementScores = videos.filter(video => video.engagement_score !== null && video.engagement_score !== undefined);
+    // Calculer l'engagement moyen (avec une valeur par défaut de 0 si performance_score est null)
+    const validEngagementScores = videos.filter(video => video.performance_score !== null && video.performance_score !== undefined);
     const avgEngagement = validEngagementScores.length > 0
-      ? validEngagementScores.reduce((sum, video) => sum + video.engagement_score, 0) / validEngagementScores.length
+      ? validEngagementScores.reduce((sum, video) => sum + video.performance_score, 0) / validEngagementScores.length
       : 0;
     
     // Prendre les 5 vidéos les plus récentes pour l'affichage
@@ -227,7 +227,7 @@ export const fetchDashboardData = async (userId) => {
       title: video.title || `Video ${video.id}`,
       created_at: video.created_at,
       views: video.views || 0,
-      engagement_score: video.engagement_score || 0,
+      performance_score: video.performance_score || 0,
       status: video.status || 'unknown'
     }));
     
@@ -271,7 +271,7 @@ export const transcribeVideo = async (videoId) => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
-        body: JSON.stringify({ video_id: videoId })
+        body: JSON.stringify({ videoId: videoId })
       }
     );
     
@@ -328,3 +328,4 @@ export const watchVideoStatus = (videoId, onStatusChange) => {
 };
 
 export default supabase;
+

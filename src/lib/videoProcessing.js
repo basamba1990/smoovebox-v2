@@ -246,3 +246,112 @@ export const getVideoDetails = async (videoId, userId) => {
     return { video: null, error };
   }
 };
+
+/**
+ * Met à jour les statistiques d'une vidéo
+ * @param {string} videoId - ID de la vidéo
+ * @param {Object} stats - Nouvelles statistiques
+ * @returns {Promise<Object>} - Résultat de la mise à jour
+ */
+export const updateVideoStats = async (videoId, stats) => {
+  try {
+    if (!videoId) {
+      throw new Error('ID vidéo manquant');
+    }
+
+    const updateData = {};
+    
+    // Utiliser les nouveaux noms de colonnes harmonisés
+    if (stats.views !== undefined) {
+      updateData.views = stats.views; // Utilise 'views' au lieu de 'views_count'
+    }
+    
+    if (stats.likes !== undefined) {
+      updateData.likes_count = stats.likes;
+    }
+    
+    if (stats.comments !== undefined) {
+      updateData.comments_count = stats.comments;
+    }
+    
+    if (stats.performance_score !== undefined) {
+      updateData.performance_score = stats.performance_score; // Utilise 'performance_score' au lieu de 'ai_score'
+    }
+    
+    if (stats.duration !== undefined) {
+      updateData.duration = stats.duration; // Utilise 'duration' au lieu de 'duration_seconds'
+    }
+
+    const { data, error } = await supabase
+      .from('videos')
+      .update(updateData)
+      .eq('id', videoId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Erreur lors de la mise à jour des statistiques: ${error.message}`);
+    }
+
+    return { success: true, video: data, error: null };
+  } catch (error) {
+    console.error('Erreur lors de la mise à jour des statistiques de la vidéo:', error);
+    return { success: false, video: null, error };
+  }
+};
+
+/**
+ * Incrémente le nombre de vues d'une vidéo
+ * @param {string} videoId - ID de la vidéo
+ * @returns {Promise<Object>} - Résultat de l'incrémentation
+ */
+export const incrementVideoViews = async (videoId) => {
+  try {
+    if (!videoId) {
+      throw new Error('ID vidéo manquant');
+    }
+
+    // Utiliser une fonction RPC pour incrémenter atomiquement
+    const { data, error } = await supabase.rpc('increment_video_views', {
+      video_id: videoId
+    });
+
+    if (error) {
+      // Si la fonction RPC n'existe pas, faire une mise à jour manuelle
+      if (error.code === '42883') {
+        console.warn('Fonction increment_video_views non trouvée, utilisation de la mise à jour manuelle');
+        
+        // Récupérer la vidéo actuelle
+        const { data: video, error: fetchError } = await supabase
+          .from('videos')
+          .select('views')
+          .eq('id', videoId)
+          .single();
+          
+        if (fetchError) throw fetchError;
+        
+        // Incrémenter les vues
+        const newViews = (video.views || 0) + 1;
+        
+        const { data: updatedVideo, error: updateError } = await supabase
+          .from('videos')
+          .update({ views: newViews })
+          .eq('id', videoId)
+          .select()
+          .single();
+          
+        if (updateError) throw updateError;
+        
+        return { success: true, video: updatedVideo, error: null };
+      }
+      
+      throw error;
+    }
+
+    return { success: true, data, error: null };
+  } catch (error) {
+    console.error('Erreur lors de l\'incrémentation des vues:', error);
+    return { success: false, data: null, error };
+  }
+};
+
