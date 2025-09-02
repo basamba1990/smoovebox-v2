@@ -1,56 +1,104 @@
-// functions/refresh-stats/index.ts
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
+import { createClient } from 'npm:@supabase/supabase-js@2.38.4';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-}
-
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
-
+// Cette fonction permet de rafraîchir les statistiques utilisateur
+Deno.serve(async (req: Request) => {
   try {
-    // Vérifier l'authentification
-    const supabase = createClient(
-      Deno.env.get('MY_SUPABASE_URL') ?? '',
-      Deno.env.get('MY_SUPABASE_ANON_KEY') ?? ''
-    )
+    // Vérification que la méthode est POST
+    if (req.method !== 'POST') {
+      return new Response(JSON.stringify({ error: 'Méthode non autorisée' }), { 
+        status: 405,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+    // Récupération du token d'authentification
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Non autorisé' }), {
         status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
-    // Client admin pour les opérations privilégiées
-    const adminSupabase = createClient(
+    const token = authHeader.split(' ')[1];
+
+    // Création du client Supabase avec le token de l'utilisateur
+    const supabaseClient = createClient(
       Deno.env.get('MY_SUPABASE_URL') ?? '',
-      Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+      Deno.env.get('MY_SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+        auth: {
+          persistSession: false,
+        }
+      }
+    );
 
-    // Utiliser la fonction sécurisée pour rafraîchir les stats
-    const { error: refreshError } = await adminSupabase.rpc('refresh_user_video_stats')
-
-    if (refreshError) {
-      return new Response(
-        JSON.stringify({ error: refreshError.message }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    // Vérification de l'authentification
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    if (userError || !user) {
+      return new Response(JSON.stringify({ error: 'Utilisateur non authentifié', details: userError }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), {
+    // Création du client Supabase avec le rôle service pour rafraîchir les vues matérialisées
+    const supabaseAdmin = createClient(
+      Deno.env.get('MY_SUPABASE_URL') ?? '',
+      Deno.env.get('MY_UPABASE_SERVICE_ROLE_KEY') ?? '',
+      {
+        auth: {
+          persistSession: false,
+        }
+      }
+    );
+
+    // Exécution des requêtes pour rafraîchir les vues matérialisées
+    const { error: refreshUserStatsError } = await supabaseAdmin.rpc(
+      'refresh_materialized_view',
+      { view_name: 'private.user_video_stats' }
+    );
+
+    const { error: refreshGlobalStatsError } = await supabaseAdmin.rpc(
+      'refresh_materialized_view',
+      { view_name: 'public.global_stats' }
+    );
+
+    if (refreshUserStatsError || refreshGlobalStatsError) {
+      console.error('Erreur lors du rafraîchissement des vues matérialisées:', { 
+        userStatsError: refreshUserStatsError,
+        globalStatsError: refreshGlobalStatsError
+      });
+      
+      return new Response(JSON.stringify({ 
+        error: 'Erreur lors du rafraîchissement des statistiques',
+        details: {
+          userStatsError: refreshUserStatsError?.message,
+          globalStatsError: refreshGlobalStatsError?.message
+        }
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    return new Response(JSON.stringify({ 
+      success: true, 
+      message: 'Statistiques rafraîchies avec succès'
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('Erreur dans la fonction refresh-stats:', error);
+    return new Response(JSON.stringify({ error: 'Erreur serveur interne', details: error.message }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
-})
+});
