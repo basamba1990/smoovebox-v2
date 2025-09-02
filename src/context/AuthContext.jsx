@@ -456,11 +456,13 @@ export const AuthProvider = ({ children }) => {
     updatePassword,
     updateUserProfile,
     hasRole,
-    isAdmin
+    isAdmin,
+    handleAuthError
   }), [
     user, profile, loading, error, connectionStatus,
     signUp, signIn, signInWithProvider, signOut,
-    resetPassword, updatePassword, updateUserProfile, hasRole, isAdmin
+    resetPassword, updatePassword, updateUserProfile, 
+    hasRole, isAdmin, handleAuthError
   ]);
 
   return (
