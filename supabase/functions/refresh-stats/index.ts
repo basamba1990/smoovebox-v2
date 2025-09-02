@@ -1,3 +1,4 @@
+// functions/refresh-stats/index.ts
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 
@@ -13,7 +14,7 @@ serve(async (req) => {
   }
 
   try {
-    // Client utilisateur pour vérifier l'auth
+    // Vérifier l'authentification
     const supabase = createClient(
       Deno.env.get('MY_SUPABASE_URL') ?? '',
       Deno.env.get('MY_SUPABASE_ANON_KEY') ?? ''
@@ -27,19 +28,18 @@ serve(async (req) => {
       })
     }
 
-    // Client admin / service role pour rafraîchir les vues
+    // Client admin pour les opérations privilégiées
     const adminSupabase = createClient(
       Deno.env.get('MY_SUPABASE_URL') ?? '',
       Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Rafraîchir toutes les vues matérialisées nécessaires
-    const { error: errorGlobal } = await adminSupabase.rpc('refresh_global_stats')
-    const { error: errorUser } = await adminSupabase.rpc('refresh_user_stats')
+    // Utiliser la fonction sécurisée pour rafraîchir les stats
+    const { error: refreshError } = await adminSupabase.rpc('refresh_user_video_stats')
 
-    if (errorGlobal || errorUser) {
+    if (refreshError) {
       return new Response(
-        JSON.stringify({ error: errorGlobal?.message || errorUser?.message }),
+        JSON.stringify({ error: refreshError.message }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
