@@ -30,7 +30,7 @@ const VideoUploader = ({ onUploadComplete }) => {
         return;
       }
 
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/refresh-stats`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/refresh-user-video-stats`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
