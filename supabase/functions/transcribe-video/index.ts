@@ -21,6 +21,46 @@ const corsHeaders = {
 // Timeout global pour l'exécution de la fonction
 const EXECUTION_TIMEOUT = 300000; // 5 minutes
 
+// Fonction utilitaire pour sécuriser les données JSON
+function safeJsonParse(data: any): any {
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data);
+    } catch {
+      return null;
+    }
+  }
+  return data;
+}
+
+// Fonction utilitaire pour valider et nettoyer les données de transcription
+function validateTranscriptionData(data: any): any {
+  if (!data || typeof data !== 'object') return null;
+  
+  try {
+    // S'assurer que tous les champs de segments sont valides
+    if (data.segments && Array.isArray(data.segments)) {
+      data.segments = data.segments.map((segment: any) => {
+        // Nettoyer les champs qui pourraient contenir des tableaux mal formés
+        if (segment.tokens && !Array.isArray(segment.tokens)) {
+          segment.tokens = [];
+        }
+        if (segment.words && !Array.isArray(segment.words)) {
+          segment.words = [];
+        }
+        return segment;
+      });
+    }
+    
+    // Double validation par sérialisation/désérialisation
+    const jsonString = JSON.stringify(data);
+    return JSON.parse(jsonString);
+  } catch (error) {
+    console.error('Erreur de validation des données de transcription:', error);
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   // Gérer les requêtes OPTIONS (CORS preflight)
   if (req.method === 'OPTIONS') {
@@ -78,7 +118,7 @@ Deno.serve(async (req) => {
       client: ReturnType<typeof createClient>,
       videoId: string,
       attempts = 0,
-      maxAttempts = 5 // Augmenté à 5 tentatives
+      maxAttempts = 5
     ): Promise<boolean> {
       if (attempts >= maxAttempts) {
         console.error(`Échec de confirmation de la mise à jour après ${maxAttempts} tentatives`)
@@ -86,7 +126,7 @@ Deno.serve(async (req) => {
       }
 
       try {
-        // Attendre 1 seconde avant de vérifier (réduit le délai)
+        // Attendre 1 seconde avant de vérifier
         await new Promise((resolve) => setTimeout(resolve, 1000))
 
         // Vérifier que la transcription a été sauvegardée dans la table videos
@@ -124,7 +164,6 @@ Deno.serve(async (req) => {
 
     // Pour WhatsApp ou requêtes GET, bypasser l'authentification
     if (isWhatsApp || req.method === 'GET') {
-      // Utilisez un ID par défaut ou récupérez-le des paramètres
       const url = new URL(req.url)
       userId = url.searchParams.get('userId') || 'whatsapp-user'
       console.log(`Utilisateur WhatsApp/GET détecté: ${userId}`)
@@ -204,17 +243,17 @@ Deno.serve(async (req) => {
       if (!userId) {
         try {
           const clonedRequest = req.clone()
-          const requestBody = await clonedRequest.text(); // Lire le corps comme texte
+          const requestBody = await clonedRequest.text();
+          
           if (requestBody.trim().length > 0) {
             try {
-              const requestData = JSON.parse(requestBody);
-              if (requestData.user_id) {
+              const requestData = safeJsonParse(requestBody);
+              if (requestData && requestData.user_id) {
                 userId = requestData.user_id;
                 console.log(`Utilisateur trouvé dans les données de la requête: ${userId}`);
               }
             } catch (parseError) {
               console.warn("Le corps de la requête n'est pas un JSON valide ou ne contient pas user_id.", parseError);
-              // C'est ici que l'erreur 22P02 pourrait se produire si le corps est malformé et traité comme des données
             }
           }
         } catch (readError) {
@@ -254,22 +293,21 @@ Deno.serve(async (req) => {
         console.log('Corps de la requête reçu:', requestBody)
         
         if (requestBody.trim()) {
-          const requestData = JSON.parse(requestBody)
+          const requestData = safeJsonParse(requestBody);
           console.log('Données de requête parsées:', requestData)
           
-          if (requestData.videoId) {
+          if (requestData && requestData.videoId) {
             videoId = requestData.videoId
             console.log(`VideoId récupéré du corps de la requête: ${videoId}`)
           }
           
-          if (requestData.videoUrl) {
+          if (requestData && requestData.videoUrl) {
             videoUrl = requestData.videoUrl
             console.log(`VideoUrl récupéré du corps de la requête: ${videoUrl}`)
           }
         }
       } catch (parseError) {
         console.error("Erreur lors de l'analyse du JSON de la requête (pour videoId/videoUrl):", parseError)
-        // Ne pas échouer ici, continuer avec les paramètres d'URL
       }
     }
 
@@ -329,10 +367,10 @@ Deno.serve(async (req) => {
       console.log(`Statut de la vidéo ${videoId} mis à jour à '${VIDEO_STATUS.PROCESSING}'`)
     }
 
-    // 5. TÉLÉCHARGEMENT ET TRANSCRIPTION - LOGIQUE CORRIGÉE
+    // 5. TÉLÉCHARGEMENT ET TRANSCRIPTION
     let audioBlob: Blob | null = null;
 
-    // PRIORITÉ 1: Téléchargement direct via storage_path (TOUJOURS en premier)
+    // PRIORITÉ 1: Téléchargement direct via storage_path
     if ((video as any).storage_path) {
       console.log(`Tentative de téléchargement direct depuis le storage: ${(video as any).storage_path}`)
       
@@ -341,20 +379,17 @@ Deno.serve(async (req) => {
         let bucketName: string;
         let filePath: string;
 
-        // Simplification du parsing de storage_path
         const pathParts = storagePath.split('/');
         if (pathParts.length > 1 && pathParts[0] === 'videos') {
           bucketName = pathParts[0];
           filePath = pathParts.slice(1).join('/');
         } else {
-          // Si le chemin ne commence pas par 'videos/', on suppose que c'est le filePath dans le bucket 'videos'
           bucketName = 'videos'; 
           filePath = storagePath;
         }
         
         console.log(`Téléchargement direct - Bucket: ${bucketName}, Fichier: ${filePath}`);
         
-        // TÉLÉCHARGEMENT DIRECT VIA L'API STORAGE
         const { data: fileData, error: downloadError } = await serviceClient.storage
           .from(bucketName)
           .download(filePath);
@@ -370,30 +405,25 @@ Deno.serve(async (req) => {
 
         console.log(`Fichier téléchargé directement avec succès, taille: ${fileData.size} octets`);
         
-        // Vérifier que le fichier n'est pas vide
         if (fileData.size === 0) {
           throw new Error('Le fichier téléchargé est vide');
         }
 
-        // Succès du téléchargement direct
         audioBlob = fileData;
         console.log(`Téléchargement direct réussi, type: ${audioBlob.type}`);
         
       } catch (storageError: any) {
         console.error('Échec du téléchargement direct:', storageError.message);
         console.log('Tentative de fallback vers URL si disponible...');
-        // Ne pas retourner d'erreur ici, continuer vers le fallback URL
       }
     }
 
-    // PRIORITÉ 2: Fallback URL SEULEMENT si téléchargement direct a échoué ET URL valide disponible
+    // PRIORITÉ 2: Fallback URL SEULEMENT si téléchargement direct a échoué
     if (!audioBlob) {
-      // Récupérer videoUrl si pas encore fait
       if (!videoUrl) {
         videoUrl = (video as any).url
       }
 
-      // Vérifier si l'URL est valide AVANT de tenter le téléchargement
       let isValidUrl = false;
       if (videoUrl) {
         try {
@@ -425,14 +455,12 @@ Deno.serve(async (req) => {
           audioBlob = await response.blob();
           console.log(`Téléchargement via URL réussi, taille: ${audioBlob.size} octets`);
           
-          // Vérifier que le blob n'est pas vide
           if (audioBlob.size === 0) {
             throw new Error('Le fichier téléchargé via URL est vide');
           }
           
         } catch (fetchError: any) {
           console.error('Échec du téléchargement via URL:', fetchError.message);
-          // Continuer vers l'erreur finale si aucune méthode n'a fonctionné
         }
       }
     }
@@ -442,7 +470,6 @@ Deno.serve(async (req) => {
       const errorMessage = `Impossible de télécharger la vidéo. Storage path: ${(video as any).storage_path || 'non défini'}, URL: ${videoUrl || 'non définie'}`;
       console.error(errorMessage);
       
-      // Mettre à jour le statut de la vidéo à FAILED
       await serviceClient
         .from('videos')
         .update({ 
@@ -467,7 +494,6 @@ Deno.serve(async (req) => {
 
     let transcriptionResult: any;
     try {
-      // Créer un fichier temporaire pour OpenAI
       const file = new File([audioBlob], 'audio.mp4', { type: audioBlob.type || 'video/mp4' });
       
       console.log(`Envoi du fichier à OpenAI Whisper, taille: ${file.size} octets`);
@@ -475,7 +501,7 @@ Deno.serve(async (req) => {
       transcriptionResult = await openai.audio.transcriptions.create({
         file: file,
         model: 'whisper-1',
-        language: 'fr', // Français par défaut
+        language: 'fr',
         response_format: 'verbose_json',
         timestamp_granularities: ['word', 'segment']
       });
@@ -488,7 +514,6 @@ Deno.serve(async (req) => {
       
       const errorMessage = `Erreur de transcription OpenAI: ${transcriptionError.message}`;
       
-      // Mettre à jour le statut de la vidéo à FAILED
       await serviceClient
         .from('videos')
         .update({ 
@@ -506,10 +531,9 @@ Deno.serve(async (req) => {
 
     // Vérifier que la transcription n'est pas vide
     if (!transcriptionResult || !transcriptionResult.text || transcriptionResult.text.trim().length === 0) {
-      const errorMessage = 'La transcription est vide ou invalide';
+      const errorMessage = 'La transcription est empty ou invalide';
       console.error(errorMessage);
       
-      // Mettre à jour le statut de la vidéo à FAILED
       await serviceClient
         .from('videos')
         .update({ 
@@ -545,11 +569,10 @@ Deno.serve(async (req) => {
           avg_logprob: s.avg_logprob,
           compression_ratio: s.compression_ratio,
           no_speech_prob: s.no_speech_prob,
-          words: s.words || [] // Assurer que words est un tableau même s'il est vide
+          words: s.words || []
         }))
       };
     } else {
-      // Fallback pour les cas où segments n'est pas disponible
       transcriptionData = {
         text: transcriptionResult.text,
         language: transcriptionResult.language,
@@ -558,26 +581,20 @@ Deno.serve(async (req) => {
       };
     }
     
-    // Log pour débogage
-    console.log('Données de transcription à enregistrer:', JSON.stringify(transcriptionData, null, 2));
+    // VALIDER ET NETTOYER LES DONNÉES DE TRANSCRIPTION
+    const validatedTranscriptionData = validateTranscriptionData(transcriptionData);
+    
+    console.log('Données de transcription validées:', JSON.stringify(validatedTranscriptionData, null, 2));
 
     const updatePayload: any = {
-      transcription_text: transcriptionData?.text || '',
+      transcription_text: validatedTranscriptionData?.text || '',
       status: VIDEO_STATUS.TRANSCRIBED,
       updated_at: new Date().toISOString()
     };
 
-    // Si transcriptionData est null, nous ne mettrons pas à jour transcription_data
-    if (transcriptionData !== null) {
-      // CORRECTION: Assurer que les données sont dans un format compatible avec PostgreSQL
-      // Valider que transcriptionData est un objet JSON valide et non un tableau malformé
-      if (typeof transcriptionData === 'object' && !Array.isArray(transcriptionData)) {
-        updatePayload.transcription_data = transcriptionData;
-      } else {
-        console.warn('transcription_data n\'est pas un objet JSON valide, ne sera pas enregistré.');
-        // Optionnel: Mettre à jour error_message si ce cas est considéré comme une erreur grave
-        // updatePayload.error_message = 'Données de transcription malformées';
-      }
+    // Ajouter les données de transcription validées
+    if (validatedTranscriptionData !== null) {
+      updatePayload.transcription_data = validatedTranscriptionData;
     }
 
     console.log('Payload de mise à jour:', JSON.stringify(updatePayload, null, 2));
@@ -590,12 +607,11 @@ Deno.serve(async (req) => {
     if (transcriptionUpdateError) {
       console.error('Erreur lors de la mise à jour de la transcription:', transcriptionUpdateError);
       
-      // CORRECTION: Tentative alternative avec des données simplifiées
+      // Tentative alternative avec des données simplifiées
       console.log('Tentative alternative avec des données simplifiées...');
       
-      // Essayer avec seulement les données essentielles
       const simplifiedPayload = {
-        transcription_text: transcriptionData?.text || '',
+        transcription_text: validatedTranscriptionData?.text || '',
         status: VIDEO_STATUS.TRANSCRIBED,
         updated_at: new Date().toISOString()
       };
@@ -608,7 +624,6 @@ Deno.serve(async (req) => {
       if (retryError) {
         console.error('Échec de la tentative alternative:', retryError);
         
-        // Mettre à jour le statut de la vidéo à FAILED
         await serviceClient
           .from('videos')
           .update({ 
@@ -627,7 +642,6 @@ Deno.serve(async (req) => {
         );
       } else {
         console.log('Tentative alternative réussie!');
-        // Continuer le traitement normal
       }
     }
 
@@ -640,7 +654,6 @@ Deno.serve(async (req) => {
         `La mise à jour de la base de données pour la vidéo ${videoId} n'a pas pu être confirmée.`
       )
       
-      // Mettre à jour le statut de la vidéo à FAILED si la confirmation échoue
       await serviceClient
         .from('videos')
         .update({ 
@@ -649,8 +662,6 @@ Deno.serve(async (req) => {
           updated_at: new Date().toISOString()
         })
         .eq('id', videoId as string);
-
-      // Ne pas échouer pour autant, juste logger un avertissement
     }
 
     // 9. DÉCLENCHER LA FONCTION D'ANALYSE SEULEMENT SI LA TRANSCRIPTION EST CONFIRMÉE
@@ -658,7 +669,6 @@ Deno.serve(async (req) => {
       try {
         const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
         
-        // CORRECTION: Les en-têtes doivent être un objet simple, pas une chaîne JSON
         const headers = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${supabaseServiceKey}`
@@ -675,7 +685,6 @@ Deno.serve(async (req) => {
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`Erreur de la fonction d'analyse (${response.status}): ${errorText}`);
-          // Mettre à jour le statut de la vidéo à FAILED si l'appel à l'analyse échoue
           await serviceClient
             .from('videos')
             .update({ 
@@ -690,7 +699,6 @@ Deno.serve(async (req) => {
         }
       } catch (invokeError: any) {
         console.error("Erreur lors de l'invocation de la fonction d'analyse:", invokeError)
-        // Mettre à jour le statut de la vidéo à FAILED si l'invocation de l'analyse échoue
         await serviceClient
           .from('videos')
           .update({ 
@@ -720,7 +728,6 @@ Deno.serve(async (req) => {
   } catch (error: any) {
     console.error('Erreur générale dans la fonction transcribe-video:', error)
     
-    // Tentative de mise à jour du statut d'erreur si videoId est disponible et serviceClient initialisé
     try {
       if (videoId && serviceClient) {
         await serviceClient
@@ -745,4 +752,3 @@ Deno.serve(async (req) => {
     )
   }
 })
-
