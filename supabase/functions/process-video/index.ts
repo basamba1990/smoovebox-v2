@@ -67,8 +67,8 @@ Deno.serve(async (req) => {
     // Cela fonctionne car l'Edge Function est appelée via supabase.functions.invoke()
     // qui transmet automatiquement le token d'authentification
     const supabaseClient = createClient(
-      Deno.env.get('MY_SUPABASE_URL') || '',
-      Deno.env.get('MY_SUPABASE_ANON_KEY') || '',
+      Deno.env.get('SUPABASE_URL') || '',
+      Deno.env.get('SUPABASE_ANON_KEY') || '',
       {
         auth: {
           persistSession: false
@@ -97,8 +97,8 @@ Deno.serve(async (req) => {
 
     // Initialiser le client service_role pour les opérations privilégiées
     const serviceClient = createClient(
-      Deno.env.get('MY_SUPABASE_URL') || '',
-      Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY') || ''
+      Deno.env.get('SUPABASE_URL') || '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
     );
 
     // Vérifier si la table "videos" existe, sinon la créer
