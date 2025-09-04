@@ -75,9 +75,9 @@ Deno.serve(async (req) => {
     }
 
     // Initialiser les variables d'environnement avec les nouveaux noms
-    const supabaseUrl = Deno.env.get('MY_SUPABASE_URL') || '';
-    const supabaseAnonKey = Deno.env.get('MY_SUPABASE_ANON_KEY') || '';
-    const supabaseServiceKey = Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY') || '';
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
     if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
       return new Response(
