@@ -456,7 +456,7 @@ Deno.serve(async (req) => {
           console.log(`Téléchargement via URL réussi, taille: ${audioBlob.size} octets`);
           
           if (audioBlob.size === 0) {
-            throw new Error('Le fichier téléchargé via URL est vide');
+            throw new Error('Le fichier téléchargé via URL est vacant');
           }
           
         } catch (fetchError: any) {
@@ -531,7 +531,7 @@ Deno.serve(async (req) => {
 
     // Vérifier que la transcription n'est pas vide
     if (!transcriptionResult || !transcriptionResult.text || transcriptionResult.text.trim().length === 0) {
-      const errorMessage = 'La transcription est empty ou invalide';
+      const errorMessage = 'La transcription est vide ou invalide';
       console.error(errorMessage);
       
       await serviceClient
@@ -552,6 +552,8 @@ Deno.serve(async (req) => {
     console.log('Enregistrement de la transcription dans la base de données...');
 
     // Préparer les données de transcription pour l'insertion
+    const transcriptionText = transcriptionResult.text;
+
     let transcriptionData: any = null;
     if (transcriptionResult.segments) {
       transcriptionData = {
@@ -564,7 +566,7 @@ Deno.serve(async (req) => {
           start: s.start,
           end: s.end,
           text: s.text,
-          tokens: s.tokens,
+          tokens: s.tokens || [],
           temperature: s.temperature,
           avg_logprob: s.avg_logprob,
           compression_ratio: s.compression_ratio,
@@ -572,57 +574,81 @@ Deno.serve(async (req) => {
           words: s.words || []
         }))
       };
-    } else {
-      transcriptionData = {
-        text: transcriptionResult.text,
-        language: transcriptionResult.language,
-        duration: transcriptionResult.duration,
-        segments: []
-      };
     }
-    
+
     // VALIDER ET NETTOYER LES DONNÉES DE TRANSCRIPTION
     const validatedTranscriptionData = validateTranscriptionData(transcriptionData);
     
     console.log('Données de transcription validées:', JSON.stringify(validatedTranscriptionData, null, 2));
 
-    const updatePayload: any = {
-      transcription_text: validatedTranscriptionData?.text || '',
-      status: VIDEO_STATUS.TRANSCRIBED,
-      updated_at: new Date().toISOString()
-    };
+    // Utiliser la fonction RPC pour mettre à jour la base de données
+    try {
+      const { error: transcriptionUpdateError } = await serviceClient.rpc(
+        'update_video_transcription',
+        {
+          p_video_id: videoId,
+          p_transcription_text: transcriptionText,
+          p_transcription_data: validatedTranscriptionData
+        }
+      );
 
-    // Ajouter les données de transcription validées
-    if (validatedTranscriptionData !== null) {
-      updatePayload.transcription_data = validatedTranscriptionData;
-    }
+      if (transcriptionUpdateError) {
+        console.error('Erreur lors de la mise à jour de la transcription via RPC:', transcriptionUpdateError);
+        
+        // Tentative alternative avec une mise à jour simplifiée
+        console.log('Tentative alternative avec mise à jour simplifiée...');
+        
+        const simplifiedPayload = {
+          transcription_text: transcriptionText,
+          status: VIDEO_STATUS.TRANSCRIBED,
+          updated_at: new Date().toISOString()
+        };
+        
+        const { error: retryError } = await serviceClient
+          .from('videos')
+          .update(simplifiedPayload)
+          .eq('id', videoId as string);
+            
+        if (retryError) {
+          console.error('Échec de la tentative alternative:', retryError);
+          
+          await serviceClient
+            .from('videos')
+            .update({ 
+              status: VIDEO_STATUS.FAILED, 
+              error_message: `Erreur lors de l'enregistrement de la transcription: ${retryError.message}`,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', videoId as string);
 
-    console.log('Payload de mise à jour:', JSON.stringify(updatePayload, null, 2));
-
-    const { error: transcriptionUpdateError } = await serviceClient
-      .from('videos')
-      .update(updatePayload)
-      .eq('id', videoId as string);
-
-    if (transcriptionUpdateError) {
-      console.error('Erreur lors de la mise à jour de la transcription:', transcriptionUpdateError);
+          return new Response(
+            JSON.stringify({
+              error: 'Erreur d\'enregistrement de la transcription',
+              details: retryError.message
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+          );
+        } else {
+          console.log('Tentative alternative réussie! (sans données détaillées)');
+        }
+      } else {
+        console.log('Mise à jour par RPC réussie!');
+      }
+    } catch (rpcError) {
+      console.error('Exception lors de l\'appel RPC:', rpcError);
       
-      // Tentative alternative avec des données simplifiées
-      console.log('Tentative alternative avec des données simplifiées...');
-      
-      const simplifiedPayload = {
-        transcription_text: validatedTranscriptionData?.text || '',
-        status: VIDEO_STATUS.TRANSCRIBED,
-        updated_at: new Date().toISOString()
-      };
-      
+      // Tentative alternative avec une mise à jour simplifiée
       const { error: retryError } = await serviceClient
         .from('videos')
-        .update(simplifiedPayload)
+        .update({ 
+          transcription_text: transcriptionText,
+          status: VIDEO_STATUS.TRANSCRIBED,
+          updated_at: new Date().toISOString()
+        })
         .eq('id', videoId as string);
           
       if (retryError) {
-        console.error('Échec de la tentative alternative:', retryError);
+        console.error('Échec de la tentative alternative après exception RPC:', retryError);
         
         await serviceClient
           .from('videos')
@@ -641,7 +667,7 @@ Deno.serve(async (req) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
         );
       } else {
-        console.log('Tentative alternative réussie!');
+        console.log('Tentative alternative réussie après exception RPC!');
       }
     }
 
