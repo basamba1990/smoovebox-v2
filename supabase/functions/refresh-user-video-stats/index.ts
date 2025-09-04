@@ -24,8 +24,8 @@ serve(async (req) => {
 
     // Initialisation du client Supavec la clé service role
     const supabaseAdmin = createClient(
-      Deno.env.get('MY_SUPABASE_URL') ?? '',
-      Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
     // Appel de la fonction de rafraîchissement
