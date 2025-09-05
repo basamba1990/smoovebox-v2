@@ -15,16 +15,17 @@ const VIDEO_STATUS = {
 // En-têtes CORS pour permettre les requêtes cross-origin
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS'
 }
-
-// Timeout global pour l'exécution de la fonction
-const EXECUTION_TIMEOUT = 300000; // 5 minutes
 
 Deno.serve(async (req) => {
   // Gérer les requêtes OPTIONS (CORS preflight)
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { 
+      headers: corsHeaders,
+      status: 200
+    })
   }
 
   let videoId: string | null = null;
@@ -110,37 +111,32 @@ Deno.serve(async (req) => {
       }
     }
 
-    // MÉTHODES D'AUTHENTIFICATION MULTIPLES
-    let userId: string | null = null
-    let token: string | null = null
-
-    // Détecter l'agent utilisateur pour identifier WhatsApp
-    const userAgent = req.headers.get('user-agent') || ''
-    const isWhatsApp = userAgent.includes('WhatsApp')
-
-    if (isWhatsApp || req.method === 'GET') {
-      const url = new URL(req.url)
-      userId = url.searchParams.get('userId') || 'whatsapp-user'
-      console.log(`Utilisateur WhatsApp/GET détecté: ${userId}`)
-    } else {
-      // Méthodes d'authentification standard...
-      const authHeader = req.headers.get('Authorization')
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        token = authHeader.replace('Bearer ', '')
-      }
-      // ... (le reste du code d'authentification reste inchangé)
-    }
-
     // RÉCUPÉRATION DES DONNÉES DE LA REQUÊTE
     let videoUrl: string | null = null
+    
+    // Essayer d'abord les paramètres d'URL
     const url = new URL(req.url)
     videoId = url.searchParams.get('videoId')
+
+    // Si pas trouvé dans l'URL et que c'est une requête POST, essayer le corps
+    if (!videoId && req.method === 'POST') {
+      try {
+        const requestBody = await req.text()
+        if (requestBody) {
+          const data = JSON.parse(requestBody)
+          videoId = data.videoId
+          videoUrl = data.videoUrl
+        }
+      } catch (e) {
+        console.error('Erreur lors de l\'analyse du corps JSON:', e)
+      }
+    }
 
     if (!videoId) {
       return new Response(
         JSON.stringify({ 
           error: 'videoId est requis',
-          details: 'Veuillez fournir videoId comme paramètre d\'URL (?videoId=...)' 
+          details: 'Veuillez fournir videoId soit dans les paramètres d\'URL (?videoId=...), soit dans le corps de la requête POST' 
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
