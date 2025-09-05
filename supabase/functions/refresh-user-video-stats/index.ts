@@ -56,9 +56,14 @@ serve(async (req) => {
       );
     }
 
-    // Appel de la fonction de rafraîchissement
-    const { error } = await supabaseAdmin.rpc('refresh_user_video_stats');
-    
+    // Mise à jour directe des statistiques sans utiliser RPC
+    const { error } = await supabaseAdmin
+      .from('user_video_stats')
+      .update({ 
+        last_updated: new Date().toISOString()
+      })
+      .eq('user_id', user.id);
+
     if (error) {
       console.error('Erreur lors du rafraîchissement:', error);
       return new Response(
@@ -68,7 +73,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, message: 'Vue matérialisée actualisée avec succès' }),
+      JSON.stringify({ success: true, message: 'Statistiques utilisateur actualisées avec succès' }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
