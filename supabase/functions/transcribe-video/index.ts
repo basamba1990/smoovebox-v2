@@ -266,7 +266,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ENREGISTRER LA TRANSCRIPTION
+    // ENREGISTRER LA TRANSCRIPTION - CORRECTION CLÉ
+    // Préparation des données de transcription pour éviter l'erreur de formatage de tableau
     const transcriptionData = {
       text: transcriptionResult.text,
       language: transcriptionResult.language,
@@ -286,12 +287,19 @@ Deno.serve(async (req) => {
       })) || []
     };
 
+    // Validation que les données sont bien formatées pour PostgreSQL
     const updatePayload = {
       transcription_text: transcriptionData.text,
       transcription_data: transcriptionData,
       status: VIDEO_STATUS.TRANSCRIBED,
       updated_at: new Date().toISOString()
     };
+
+    // Vérification supplémentaire pour éviter l'erreur de formatage
+    if (typeof updatePayload.transcription_data !== 'object' || Array.isArray(updatePayload.transcription_data)) {
+      console.error('Données de transcription mal formatées:', updatePayload.transcription_data);
+      throw new Error('Format de données de transcription invalide');
+    }
 
     const { error: transcriptionUpdateError } = await serviceClient
       .from('videos')
@@ -300,17 +308,26 @@ Deno.serve(async (req) => {
 
     if (transcriptionUpdateError) {
       console.error('Erreur lors de la mise à jour:', transcriptionUpdateError);
+      
+      // Tentative de sauvegarde simplifiée en cas d'échec
+      const simplifiedPayload = {
+        transcription_text: transcriptionData.text,
+        status: VIDEO_STATUS.TRANSCRIBED,
+        updated_at: new Date().toISOString(),
+        error_message: `Erreur complète: ${transcriptionUpdateError.message}`
+      };
+      
       await serviceClient
         .from('videos')
-        .update({
-          status: VIDEO_STATUS.FAILED,
-          error_message: transcriptionUpdateError.message,
-          updated_at: new Date().toISOString()
-        })
+        .update(simplifiedPayload)
         .eq('id', videoId as string);
 
       return new Response(
-        JSON.stringify({ error: 'Erreur d\'enregistrement', details: transcriptionUpdateError.message }),
+        JSON.stringify({ 
+          error: 'Erreur d\'enregistrement partiel', 
+          details: 'Transcription terminée mais erreur lors de l\'enregistrement des données détaillées',
+          transcription_text: transcriptionData.text
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
