@@ -26,11 +26,35 @@ serve(async (req) => {
       );
     }
 
+    // Extraction du token JWT correct (pas une clé API)
+    const token = authHeader.replace('Bearer ', '');
+    
     // Initialisation du client Supabase avec la clé service role
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
+
+    // Vérification que le token est un JWT utilisateur valide et non une clé API
+    try {
+      const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+      
+      if (userError || !user) {
+        console.error('Erreur de vérification du token:', userError);
+        return new Response(
+          JSON.stringify({ error: 'Token d\'authentification invalide' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      console.log(`Utilisateur authentifié: ${user.id}`);
+    } catch (authError) {
+      console.error('Exception lors de la vérification du token:', authError);
+      return new Response(
+        JSON.stringify({ error: 'Erreur d\'authentification' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Appel de la fonction de rafraîchissement
     const { error } = await supabaseAdmin.rpc('refresh_user_video_stats');
