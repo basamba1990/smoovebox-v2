@@ -266,7 +266,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ENREGISTRER LA TRANSCRIPTION
+    // CORRECTION: Structure correctement les données de transcription pour éviter l'erreur d'array malformé
+    // Créer un objet JSON valide plutôt qu'un array
     const transcriptionData = {
       text: transcriptionResult.text,
       language: transcriptionResult.language,
@@ -286,12 +287,19 @@ Deno.serve(async (req) => {
       })) || []
     };
 
+    // S'assurer que les données sont de type JSONB et pas ARRAY
     const updatePayload = {
       transcription_text: transcriptionData.text,
       transcription_data: transcriptionData,
       status: VIDEO_STATUS.TRANSCRIBED,
       updated_at: new Date().toISOString()
     };
+
+    // Vérifier que transcription_data est un objet et non un tableau
+    if (typeof updatePayload.transcription_data !== 'object' || Array.isArray(updatePayload.transcription_data)) {
+      console.error('Données de transcription mal formatées:', updatePayload.transcription_data);
+      throw new Error('Format de données de transcription invalide');
+    }
 
     const { error: transcriptionUpdateError } = await serviceClient
       .from('videos')
@@ -324,7 +332,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // DÉCLENCHER L'ANALYSE - UTILISATION DIRECTE DE SUPABASE AU LIEU DE RPC
+    // DÉCLENCHER L'ANALYSE VIA MISE À JOUR DU STATUT
     try {
       // Mise à jour directe du statut pour déclencher l'analyse
       const { error: analysisError } = await serviceClient
