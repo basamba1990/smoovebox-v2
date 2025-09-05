@@ -266,8 +266,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ENREGISTRER LA TRANSCRIPTION - CORRECTION CLÉ
-    // Préparation des données de transcription pour éviter l'erreur de formatage de tableau
+    // ENREGISTRER LA TRANSCRIPTION
     const transcriptionData = {
       text: transcriptionResult.text,
       language: transcriptionResult.language,
@@ -287,19 +286,12 @@ Deno.serve(async (req) => {
       })) || []
     };
 
-    // Validation que les données sont bien formatées pour PostgreSQL
     const updatePayload = {
       transcription_text: transcriptionData.text,
       transcription_data: transcriptionData,
       status: VIDEO_STATUS.TRANSCRIBED,
       updated_at: new Date().toISOString()
     };
-
-    // Vérification supplémentaire pour éviter l'erreur de formatage
-    if (typeof updatePayload.transcription_data !== 'object' || Array.isArray(updatePayload.transcription_data)) {
-      console.error('Données de transcription mal formatées:', updatePayload.transcription_data);
-      throw new Error('Format de données de transcription invalide');
-    }
 
     const { error: transcriptionUpdateError } = await serviceClient
       .from('videos')
