@@ -4,12 +4,16 @@ import { createClient } from "npm:@supabase/supabase-js@2.39.3";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
 serve(async (req) => {
   // Gestion des requêtes OPTIONS pour CORS
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { 
+      headers: corsHeaders,
+      status: 200
+    });
   }
 
   try {
@@ -22,7 +26,7 @@ serve(async (req) => {
       );
     }
 
-    // Initialisation du client Supavec la clé service role
+    // Initialisation du client Supabase avec la clé service role
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
