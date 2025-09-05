@@ -332,23 +332,36 @@ Deno.serve(async (req) => {
       );
     }
 
-    // DÉCLENCHER L'ANALYSE
+    // DÉCLENCHER L'ANALYSE - UTILISATION DIRECTE DE SUPABASE AU LIEU DE RPC
     try {
-      const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
-      const response = await fetch(analyzeEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseServiceKey}`
-        },
-        body: JSON.stringify({ videoId })
-      });
+      // Mise à jour directe du statut pour déclencher l'analyse
+      const { error: analysisError } = await serviceClient
+        .from('videos')
+        .update({
+          status: VIDEO_STATUS.ANALYZING,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId);
 
-      if (!response.ok) {
-        throw new Error(`Échec de l'analyse: ${response.status}`);
+      if (analysisError) {
+        console.error('Erreur lors du déclenchement de l\'analyse:', analysisError);
+        throw new Error(`Échec du déclenchement de l'analyse: ${analysisError.message}`);
       }
+
+      console.log('Analyse démarrée avec succès via mise à jour directe');
+
     } catch (invokeError) {
-      console.error("Erreur lors de l'invocation:", invokeError);
+      console.error("Erreur lors de l'invocation de l'analyse:", invokeError);
+      
+      // Mettre à jour le statut en cas d'erreur
+      await serviceClient
+        .from('videos')
+        .update({
+          status: VIDEO_STATUS.FAILED,
+          error_message: `Erreur lors du déclenchement de l'analyse: ${invokeError.message}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId);
     }
 
     return new Response(
