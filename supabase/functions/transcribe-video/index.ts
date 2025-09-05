@@ -59,17 +59,7 @@ Deno.serve(async (req) => {
 
     // Créer un client Supabase avec timeout configuré
     serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { persistSession: false },
-      global: {
-        fetch: (input, init) => {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 30000);
-          return fetch(input, { 
-            ...init, 
-            signal: controller.signal 
-          }).finally(() => clearTimeout(timeoutId));
-        }
-      }
+      auth: { persistSession: false }
     })
 
     // Helper pour confirmer la mise à jour de la base de données
@@ -266,41 +256,50 @@ Deno.serve(async (req) => {
       );
     }
 
-    // CORRECTION: Structure correctement les données de transcription pour éviter l'erreur d'array malformé
-    // Créer un objet JSON valide plutôt qu'un array
-    const transcriptionData = {
-      text: transcriptionResult.text,
-      language: transcriptionResult.language,
-      duration: transcriptionResult.duration,
-      segments: transcriptionResult.segments?.map((s: any) => ({
-        id: s.id,
-        seek: s.seek,
-        start: s.start,
-        end: s.end,
-        text: s.text,
-        tokens: s.tokens,
-        temperature: s.temperature,
-        avg_logprob: s.avg_logprob,
-        compression_ratio: s.compression_ratio,
-        no_speech_prob: s.no_speech_prob,
-        words: s.words || []
-      })) || []
-    };
-
-    // S'assurer que les données sont de type JSONB et pas ARRAY
-    const updatePayload = {
-      transcription_text: transcriptionData.text,
-      transcription_data: transcriptionData,
+    // SOLUTION POUR LE FORMAT DE DONNÉES PROBLÉMATIQUE
+    // 1. Stockez simplement le texte brut de la transcription pour éviter les problèmes de format
+    const transcriptionText = transcriptionResult.text || '';
+    
+    // 2. Vérifier le schéma de la table pour déterminer le format correct à utiliser
+    const { data: columns, error: schemaError } = await serviceClient.rpc(
+      'exec_sql_with_return',
+      {
+        sql: `
+          SELECT column_name, data_type 
+          FROM information_schema.columns 
+          WHERE table_name = 'videos' 
+          AND column_name = 'transcription_data';
+        `
+      }
+    );
+    
+    console.log("Structure de la colonne transcription_data:", columns);
+    
+    // 3. Préparer la mise à jour avec seulement les données essentielles
+    const updatePayload: any = {
+      transcription_text: transcriptionText,
       status: VIDEO_STATUS.TRANSCRIBED,
       updated_at: new Date().toISOString()
     };
 
-    // Vérifier que transcription_data est un objet et non un tableau
-    if (typeof updatePayload.transcription_data !== 'object' || Array.isArray(updatePayload.transcription_data)) {
-      console.error('Données de transcription mal formatées:', updatePayload.transcription_data);
-      throw new Error('Format de données de transcription invalide');
+    // 4. N'ajouter transcription_data que si on peut déterminer son type
+    if (columns && columns.length > 0) {
+      const columnType = columns[0].data_type;
+      if (columnType === 'jsonb') {
+        // Si c'est JSONB, stocker un objet
+        updatePayload.transcription_data = {
+          text: transcriptionResult.text,
+          language: transcriptionResult.language,
+          duration: transcriptionResult.duration
+        };
+      } else if (columnType.includes('text[]')) {
+        // Si c'est un ARRAY de texte, stocker un tableau de chaînes
+        updatePayload.transcription_data = [transcriptionResult.text];
+      } 
+      // Sinon ne pas inclure ce champ du tout
     }
 
+    // ENREGISTRER LA TRANSCRIPTION
     const { error: transcriptionUpdateError } = await serviceClient
       .from('videos')
       .update(updatePayload)
@@ -311,7 +310,7 @@ Deno.serve(async (req) => {
       
       // Tentative de sauvegarde simplifiée en cas d'échec
       const simplifiedPayload = {
-        transcription_text: transcriptionData.text,
+        transcription_text: transcriptionText,
         status: VIDEO_STATUS.TRANSCRIBED,
         updated_at: new Date().toISOString(),
         error_message: `Erreur complète: ${transcriptionUpdateError.message}`
@@ -326,13 +325,13 @@ Deno.serve(async (req) => {
         JSON.stringify({ 
           error: 'Erreur d\'enregistrement partiel', 
           details: 'Transcription terminée mais erreur lors de l\'enregistrement des données détaillées',
-          transcription_text: transcriptionData.text
+          transcription_text: transcriptionText
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
 
-    // DÉCLENCHER L'ANALYSE VIA MISE À JOUR DU STATUT
+    // DÉCLENCHER L'ANALYSE - UTILISATION DIRECTE DE SUPABASE AU LIEU DE RPC
     try {
       // Mise à jour directe du statut pour déclencher l'analyse
       const { error: analysisError } = await serviceClient
@@ -368,7 +367,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         message: 'Transcription terminée avec succès',
         videoId,
-        transcription_length: transcriptionResult.text.length
+        transcription_length: transcriptionText.length
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
