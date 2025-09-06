@@ -18,14 +18,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
 }
 
-// Timeout global pour l'exécution de la fonction
-const EXECUTION_TIMEOUT = 300000; // 5 minutes
-
 Deno.serve(async (req) => {
   // Gérer les requêtes OPTIONS (CORS preflight)
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+
+  let videoId: string | null = null
 
   try {
     console.log('Fonction transcribe-video appelée')
@@ -219,17 +218,12 @@ Deno.serve(async (req) => {
     }
 
     // 2. RÉCUPÉRER LES DONNÉES DE LA REQUÊTE
-    let videoId: string | null = null
-    let videoUrl: string | null = null
-
     // Essayer d'abord les paramètres d'URL (plus fiable)
     const url = new URL(req.url)
     videoId = url.searchParams.get('videoId')
     
     if (videoId) {
       console.log(`VideoId récupéré des paramètres d'URL: ${videoId}`)
-      // Récupérer aussi videoUrl si fourni en paramètre
-      videoUrl = url.searchParams.get('videoUrl')
     }
 
     // Si pas trouvé dans l'URL et que ce n'est pas une requête GET, essayer le corps de la requête
@@ -245,11 +239,6 @@ Deno.serve(async (req) => {
           if (requestData.videoId) {
             videoId = requestData.videoId
             console.log(`VideoId récupéré du corps de la requête: ${videoId}`)
-          }
-          
-          if (requestData.videoUrl) {
-            videoUrl = requestData.videoUrl
-            console.log(`VideoUrl récupéré du corps de la requête: ${videoUrl}`)
           }
         }
       } catch (parseError) {
@@ -314,103 +303,97 @@ Deno.serve(async (req) => {
       console.log(`Statut de la vidéo ${videoId} mis à jour à '${VIDEO_STATUS.PROCESSING}'`)
     }
 
-    // 5. RÉCUPÉRER L'URL DE LA VIDÉO
-    // Utiliser d'abord videoUrl du corps de la requête si disponible
-    if (!videoUrl) {
-      videoUrl = (video as any).url
-    }
-
-    if (!videoUrl && (video as any).storage_path) {
-      console.log(`Génération d'une URL signée pour ${(video as any).storage_path}`)
-
-      // Extraire le bucket et le chemin
-      let bucket = 'videos' // Bucket par défaut
-      let filePath = (video as any).storage_path as string
-
-      // Gestion intelligente du chemin: détection du bucket dans le chemin
-      if (filePath.includes('/')) {
-        const parts = filePath.split('/')
-        if (parts.length > 1) {
-          const possibleBucket = parts[0]
-
-          try {
-            const { data: buckets } = await serviceClient.storage.listBuckets()
-            console.log('Buckets disponibles:', buckets?.map((b: any) => b.name) || [])
-            const bucketExists = (buckets || []).some((b: any) => b.name === possibleBucket)
-
-            if (bucketExists) {
-              bucket = possibleBucket
-              filePath = parts.slice(1).join('/')
-              console.log(`Bucket identifié: ${bucket}, chemin ajusté: ${filePath}`)
-            } else {
-              console.log(
-                `Le segment "${possibleBucket}" n'est pas un bucket valide, utilisation du bucket par défaut: ${bucket}`
-              )
-            }
-          } catch (bucketError) {
-            console.error('Erreur lors de la vérification des buckets:', bucketError)
-          }
-        }
-      }
-
-      // Méthode alternative: vérifier si le chemin commence par le nom du bucket
-      if (filePath.startsWith(`${bucket}/`)) {
-        filePath = filePath.substring(bucket.length + 1)
-        console.log(`Préfixe de bucket détecté et supprimé. Nouveau chemin: ${filePath}`)
-      }
-
-      console.log(`Création d'URL signée pour bucket: ${bucket}, chemin: ${filePath}`)
-
-      try {
-        const parentPath = filePath.split('/').slice(0, -1).join('/') || undefined
-        console.log(`Vérification du contenu du dossier: ${parentPath || '(racine)'}`)
-
-        const { data: fileList, error: fileListError } = await serviceClient.storage
-          .from(bucket)
-          .list(parentPath, { limit: 100, offset: 0, sortBy: { column: 'name', order: 'asc' } })
-
-        if (fileListError) {
-          console.error("Erreur lors de la vérification de l'existence du fichier:", fileListError)
-        } else {
-          const fileName = filePath.split('/').pop()
-          console.log(
-            `Contenu du dossier '${parentPath || '(racine)'}':`,
-            (fileList || []).map((f: any) => f.name)
-          )
-          console.log(`Recherche du fichier ${fileName} dans la liste`)
-          const fileFound = (fileList || []).some((f: any) => f.name === fileName)
-          console.log(`Fichier ${fileName} trouvé dans le bucket ${bucket}: ${fileFound}`)
-
-          if (!fileFound) {
-            throw new Error(`Fichier ${fileName} non trouvé dans le bucket ${bucket}`)
-          }
-        }
-
-        const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
-          .from(bucket)
-          .createSignedUrl(filePath, 60 * 60)
-
-        if (signedUrlError) throw signedUrlError
-
-        videoUrl = signedUrlData.signedUrl
-        console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 50)}...`)
-      } catch (storageError: any) {
-        console.error('Erreur lors de la création de l\'URL signée:', storageError)
-        return new Response(
-          JSON.stringify({
-            error: 'Erreur de stockage',
-            details: `Impossible de générer l'URL signée pour la vidéo: ${storageError.message}`
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-        )
-      }
-    }
-
-    if (!videoUrl) {
+    // 5. RÉCUPÉRER L'URL DE LA VIDÉO À PARTIR DU STORAGE_PATH
+    if (!video.storage_path) {
       return new Response(
         JSON.stringify({
-          error: 'URL vidéo manquante',
-          details: 'Impossible de récupérer ou de générer l\'URL de la vidéo.'
+          error: 'Chemin de stockage manquant',
+          details: 'La vidéo ne possède pas de chemin de stockage (storage_path).'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      )
+    }
+
+    console.log(`Génération d'une URL signée pour ${video.storage_path}`)
+
+    // Extraire le bucket et le chemin
+    let bucket = 'videos' // Bucket par défaut
+    let filePath = video.storage_path as string
+
+    // Gestion intelligente du chemin: détection du bucket dans le chemin
+    if (filePath.includes('/')) {
+      const parts = filePath.split('/')
+      if (parts.length > 1) {
+        const possibleBucket = parts[0]
+
+        try {
+          const { data: buckets } = await serviceClient.storage.listBuckets()
+          console.log('Buckets disponibles:', buckets?.map((b: any) => b.name) || [])
+          const bucketExists = (buckets || []).some((b: any) => b.name === possibleBucket)
+
+          if (bucketExists) {
+            bucket = possibleBucket
+            filePath = parts.slice(1).join('/')
+            console.log(`Bucket identifié: ${bucket}, chemin ajusté: ${filePath}`)
+          } else {
+            console.log(
+              `Le segment "${possibleBucket}" n'est pas un bucket valide, utilisation du bucket par défaut: ${bucket}`
+            )
+          }
+        } catch (bucketError) {
+          console.error('Erreur lors de la vérification des buckets:', bucketError)
+        }
+      }
+    }
+
+    // Méthode alternative: vérifier si le chemin commence par le nom du bucket
+    if (filePath.startsWith(`${bucket}/`)) {
+      filePath = filePath.substring(bucket.length + 1)
+      console.log(`Préfixe de bucket détecté et supprimé. Nouveau chemin: ${filePath}`)
+    }
+
+    console.log(`Création d'URL signée pour bucket: ${bucket}, chemin: ${filePath}`)
+
+    let videoUrl: string;
+    try {
+      const parentPath = filePath.split('/').slice(0, -1).join('/') || undefined
+      console.log(`Vérification du contenu du dossier: ${parentPath || '(racine)'}`)
+
+      const { data: fileList, error: fileListError } = await serviceClient.storage
+        .from(bucket)
+        .list(parentPath, { limit: 100, offset: 0, sortBy: { column: 'name', order: 'asc' } })
+
+      if (fileListError) {
+        console.error("Erreur lors de la vérification de l'existence du fichier:", fileListError)
+      } else {
+        const fileName = filePath.split('/').pop()
+        console.log(
+          `Contenu du dossier '${parentPath || '(racine)'}':`,
+          (fileList || []).map((f: any) => f.name)
+        )
+        console.log(`Recherche du fichier ${fileName} dans la liste`)
+        const fileFound = (fileList || []).some((f: any) => f.name === fileName)
+        console.log(`Fichier ${fileName} trouvé dans le bucket ${bucket}: ${fileFound}`)
+
+        if (!fileFound) {
+          throw new Error(`Fichier ${fileName} non trouvé dans le bucket ${bucket}`)
+        }
+      }
+
+      const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
+        .from(bucket)
+        .createSignedUrl(filePath, 60 * 60)
+
+      if (signedUrlError) throw signedUrlError
+
+      videoUrl = signedUrlData.signedUrl
+      console.log(`URL signée générée avec succès: ${videoUrl.substring(0, 50)}...`)
+    } catch (storageError: any) {
+      console.error('Erreur lors de la création de l\'URL signée:', storageError)
+      return new Response(
+        JSON.stringify({
+          error: 'Erreur de stockage',
+          details: `Impossible de générer l'URL signée pour la vidéo: ${storageError.message}`
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       )
