@@ -212,7 +212,7 @@ Deno.serve(async (req) => {
           JSON.stringify({
             error: 'Authentification requise',
             details:
-              "Impossible d'identifierv l'utilisateur. Assurez-vous d'être connecté et d'envoyer le token d'authentification."
+              "Impossible d'identifier l'utilisateur. Assurez-vous d'être connecté et d'envoyer le token d'authentification."
           }),
           { headers: corsHeaders, status: 401 }
         )
@@ -341,9 +341,12 @@ Deno.serve(async (req) => {
             console.log(
               `Le segment "${possibleBucket}" n'est pas un bucket valide, utilisation du bucket par défaut: ${bucket}`
             )
+            // Réinitialiser le chemin si le bucket n'est pas valide
+            filePath = video.storage_path;
           }
         } catch (bucketError) {
           console.error('Erreur lors de la vérification des buckets:', bucketError)
+          filePath = video.storage_path;
         }
       }
     }
@@ -358,30 +361,6 @@ Deno.serve(async (req) => {
 
     let videoUrl: string;
     try {
-      const parentPath = filePath.split('/').slice(0, -1).join('/') || undefined
-      console.log(`Vérification du contenu du dossier: ${parentPath || '(racine)'}`)
-
-      const { data: fileList, error: fileListError } = await serviceClient.storage
-        .from(bucket)
-        .list(parentPath, { limit: 100, offset: 0, sortBy: { column: 'name', order: 'asc' } })
-
-      if (fileListError) {
-        console.error("Erreur lors de la vérification de l'existence du fichier:", fileListError)
-      } else {
-        const fileName = filePath.split('/').pop()
-        console.log(
-          `Contenu du dossier '${parentPath || '(racine)'}':`,
-          (fileList || []).map((f: any) => f.name)
-        )
-        console.log(`Recherche du fichier ${fileName} dans la liste`)
-        const fileFound = (fileList || []).some((f: any) => f.name === fileName)
-        console.log(`Fichier ${fileName} trouvé dans le bucket ${bucket}: ${fileFound}`)
-
-        if (!fileFound) {
-          throw new Error(`Fichier ${fileName} non trouvé dans le bucket ${bucket}`)
-        }
-      }
-
       const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
         .from(bucket)
         .createSignedUrl(filePath, 60 * 60)
@@ -466,22 +445,35 @@ Deno.serve(async (req) => {
     // 8. ENREGISTRER LA TRANSCRIPTION DANS SUPABASE
     console.log('Enregistrement de la transcription dans Supabase...')
     
-    // Préparer les données de transcription - CORRECTION ICI
-    // Assurez-vous que les segments sont correctement formatés
+    // CORRECTION DÉFINITIVE: Préparer les données de transcription de manière sécurisée
+    // Nettoyer les segments pour s'assurer qu'ils sont valides
+    const cleanSegments = Array.isArray(transcription.segments) 
+      ? transcription.segments.map((segment: any) => ({
+          id: segment.id || null,
+          start: segment.start || 0,
+          end: segment.end || 0,
+          text: segment.text || '',
+          confidence: segment.confidence || 0,
+          tokens: segment.tokens || []
+        }))
+      : [];
+
+    // Préparer les données de transcription
     const transcriptionData = {
-      text: transcription.text,
-      segments: Array.isArray(transcription.segments) ? transcription.segments : [],
-      language: transcription.language,
-      duration: transcription.duration
+      text: transcription.text || '',
+      segments: cleanSegments,
+      language: transcription.language || 'fr',
+      duration: transcription.duration || 0
     };
 
+    // CORRECTION DÉFINITIVE: Utiliser JSON.stringify pour garantir un format valide
     const { error: transcriptionTableError } = await serviceClient
       .from('transcriptions')
       .upsert({
         video_id: videoId as string,
         full_text: transcription.text,
-        segments: transcriptionData.segments,
-        transcription_data: transcriptionData,
+        segments: JSON.stringify(cleanSegments), // Conversion explicite en JSON
+        transcription_data: JSON.stringify(transcriptionData), // Conversion explicite en JSON
         confidence_score: confidenceScore,
         status: VIDEO_STATUS.TRANSCRIBED,
         created_at: new Date().toISOString(),
@@ -508,12 +500,12 @@ Deno.serve(async (req) => {
     }
 
     // Mettre à jour également la table videos avec les données de transcription
-    // CORRECTION: Simplifier les données pour éviter l'erreur de sérialisation
+    // CORRECTION DÉFINITIVE: Utiliser JSON.stringify pour garantir un format valide
     const { error: videoUpdateError } = await serviceClient
       .from('videos')
       .update({
         transcription_text: transcription.text,
-        transcription_data: transcriptionData,
+        transcription_data: JSON.stringify(transcriptionData), // Conversion explicite en JSON
         status: VIDEO_STATUS.TRANSCRIBED,
         updated_at: new Date().toISOString()
       })
