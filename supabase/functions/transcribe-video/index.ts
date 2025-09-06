@@ -62,45 +62,6 @@ Deno.serve(async (req) => {
       auth: { persistSession: false }
     })
 
-    // Helper pour confirmer la mise à jour de la base de données
-    async function confirmDatabaseUpdate(
-      client: ReturnType<typeof createClient>,
-      videoId: string,
-      attempts = 0,
-      maxAttempts = 5
-    ): Promise<boolean> {
-      if (attempts >= maxAttempts) {
-        console.error(`Échec de confirmation de la mise à jour après ${maxAttempts} tentatives`)
-        return false
-      }
-
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-        
-        const { data: video, error: videoError } = await client
-          .from('videos')
-          .select('transcription_text, status')
-          .eq('id', videoId)
-          .single()
-
-        if (videoError) {
-          console.log('Erreur lors de la vérification de la transcription:', videoError)
-          return await confirmDatabaseUpdate(client, videoId, attempts + 1, maxAttempts)
-        }
-
-        if (!video?.transcription_text || video.status !== VIDEO_STATUS.TRANSCRIBED) {
-          console.log('Transcription pas encore disponible, nouvelle tentative...')
-          return await confirmDatabaseUpdate(client, videoId, attempts + 1, maxAttempts)
-        }
-
-        console.log(`Transcription confirmée pour la vidéo ${videoId}`)
-        return true
-      } catch (err) {
-        console.error('Erreur lors de la confirmation de mise à jour:', err)
-        return await confirmDatabaseUpdate(client, videoId, attempts + 1, maxAttempts)
-      }
-    }
-
     // RÉCUPÉRATION DES DONNÉES DE LA REQUÊTE
     let videoUrl: string | null = null
     
@@ -261,19 +222,24 @@ Deno.serve(async (req) => {
     const transcriptionText = transcriptionResult.text || '';
     
     // 2. Vérifier le schéma de la table pour déterminer le format correct à utiliser
-    const { data: columns, error: schemaError } = await serviceClient.rpc(
-      'exec_sql_with_return',
-      {
-        sql: `
-          SELECT column_name, data_type 
-          FROM information_schema.columns 
-          WHERE table_name = 'videos' 
-          AND column_name = 'transcription_data';
-        `
+    // Remplacement de l'appel RPC par une requête directe sur information_schema
+    let columnType = null;
+    try {
+      const { data: columns, error: schemaError } = await serviceClient
+        .from('information_schema.columns')
+        .select('data_type')
+        .eq('table_name', 'videos')
+        .eq('column_name', 'transcription_data')
+        .single();
+      
+      if (!schemaError && columns) {
+        columnType = columns.data_type;
       }
-    );
+    } catch (err) {
+      console.error("Erreur lors de la vérification du schéma:", err);
+    }
     
-    console.log("Structure de la colonne transcription_data:", columns);
+    console.log("Type de colonne transcription_data:", columnType);
     
     // 3. Préparer la mise à jour avec seulement les données essentielles
     const updatePayload: any = {
@@ -283,17 +249,16 @@ Deno.serve(async (req) => {
     };
 
     // 4. N'ajouter transcription_data que si on peut déterminer son type
-    if (columns && columns.length > 0) {
-      const columnType = columns[0].data_type;
-      if (columnType === 'jsonb') {
-        // Si c'est JSONB, stocker un objet
+    if (columnType) {
+      if (columnType === 'jsonb' || columnType === 'json') {
+        // Si c'est JSONB/JSON, stocker un objet
         updatePayload.transcription_data = {
           text: transcriptionResult.text,
           language: transcriptionResult.language,
           duration: transcriptionResult.duration
         };
-      } else if (columnType.includes('text[]')) {
-        // Si c'est un ARRAY de texte, stocker un tableau de chaînes
+      } else if (columnType.includes('[]') || columnType === 'ARRAY') {
+        // Si c'est un ARRAY, stocker un tableau de chaînes
         updatePayload.transcription_data = [transcriptionResult.text];
       } 
       // Sinon ne pas inclure ce champ du tout
