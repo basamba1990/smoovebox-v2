@@ -232,7 +232,7 @@ Deno.serve(async (req) => {
     if (!videoId && req.method !== 'GET' && !isWhatsApp) {
       try {
         const requestBody = await req.text()
-        console.log('Corps de la requête reçu:', requestBody)
+        console.log('Corpus de la requête reçu:', requestBody)
         
         if (requestBody.trim()) {
           const requestData = JSON.parse(requestBody)
@@ -466,14 +466,14 @@ Deno.serve(async (req) => {
       duration: transcription.duration || 0
     };
 
-    // CORRECTION DÉFINITIVE: Utiliser JSON.stringify pour garantir un format valide
+    // CORRECTION DÉFINITIVE: Ne PAS utiliser JSON.stringify pour les colonnes JSONB
     const { error: transcriptionTableError } = await serviceClient
       .from('transcriptions')
       .upsert({
         video_id: videoId as string,
         full_text: transcription.text,
-        segments: JSON.stringify(cleanSegments), // Conversion explicite en JSON
-        transcription_data: JSON.stringify(transcriptionData), // Conversion explicite en JSON
+        segments: cleanSegments, // Envoyer directement l'objet (pas de JSON.stringify)
+        transcription_data: transcriptionData, // Envoyer directement l'objet (pas de JSON.stringify)
         confidence_score: confidenceScore,
         status: VIDEO_STATUS.TRANSCRIBED,
         created_at: new Date().toISOString(),
@@ -500,12 +500,12 @@ Deno.serve(async (req) => {
     }
 
     // Mettre à jour également la table videos avec les données de transcription
-    // CORRECTION DÉFINITIVE: Utiliser JSON.stringify pour garantir un format valide
+    // CORRECTION DÉFINITIVE: Ne PAS utiliser JSON.stringify pour les colonnes JSONB
     const { error: videoUpdateError } = await serviceClient
       .from('videos')
       .update({
         transcription_text: transcription.text,
-        transcription_data: JSON.stringify(transcriptionData), // Conversion explicite en JSON
+        transcription_data: transcriptionData, // Envoyer directement l'objet (pas de JSON.stringify)
         status: VIDEO_STATUS.TRANSCRIBED,
         updated_at: new Date().toISOString()
       })
