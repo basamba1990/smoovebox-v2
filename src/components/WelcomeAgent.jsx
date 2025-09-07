@@ -1,4 +1,4 @@
-// src/components/WelcomeAgent.tsx
+// src/components/WelcomeAgent.jsx
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
