@@ -232,7 +232,7 @@ Deno.serve(async (req) => {
     if (!videoId && req.method !== 'GET' && !isWhatsApp) {
       try {
         const requestBody = await req.text()
-        console.log('Corpus de la requête reçu:', requestBody)
+        console.log('Corps de la requête reçu:', requestBody)
         
         if (requestBody.trim()) {
           const requestData = JSON.parse(requestBody)
