@@ -3,13 +3,13 @@ import { AuthProvider } from './context/AuthContext.jsx';
 import AuthModal from './AuthModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import VideoManagement from './pages/VideoManagement.jsx';
-import VideoUploader from './components/VideoUploader.jsx';
 import EnhancedVideoUploader from './components/EnhancedVideoUploader.jsx';
 import ProgressTracking from './components/ProgressTracking.jsx';
 import ErrorBoundaryEnhanced, { SupabaseErrorFallback } from './components/ErrorBoundaryEnhanced.jsx';
 import EmptyState from './components/EmptyState.jsx';
 import ProfessionalHeader from './components/ProfessionalHeader.jsx';
 import ModernTabs from './components/ModernTabs.jsx';
+import WelcomeAgent from './components/WelcomeAgent.jsx'; // Import du nouveau composant
 import { useAuth } from './context/AuthContext.jsx';
 import { Button } from './components/ui/button-enhanced.jsx';
 import { Tabs, TabsContent } from './components/ui/tabs.jsx';
@@ -31,6 +31,7 @@ function AppContent() {
   const [dashboardError, setDashboardError] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('connected');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(true); // État pour contrôler l'affichage de WelcomeAgent
   const { user, loading, signOut, profile, error: authError, connectionStatus: authConnectionStatus } = useAuth();
 
   // CORRECTION: Gestion améliorée de l'état d'authentification
@@ -38,6 +39,7 @@ function AppContent() {
     if (!loading) {
       if (user && profile) {
         setIsAuthenticated(true);
+        setShowWelcome(false); // Cacher WelcomeAgent une fois authentifié
         console.log('Utilisateur authentifié avec profil:', user.id, profile);
         // Fermer automatiquement le modal d'auth si ouvert
         if (isAuthModalOpen) {
@@ -54,6 +56,7 @@ function AppContent() {
       } else {
         setIsAuthenticated(false);
         setDashboardData(null);
+        setShowWelcome(true); // Afficher WelcomeAgent si non authentifié
       }
     }
   }, [user, profile, loading, activeTab, isAuthModalOpen]);
@@ -163,12 +166,12 @@ function AppContent() {
           ready: videos.filter(v => v.status === 'ready' || v.status === 'uploaded' || v.status === 'published').length,
           processing: videos.filter(v => v.status === 'processing' || v.status === 'analyzing' || v.status === 'transcribing').length,
           transcribed: videos.filter(v => {
-            // Vérifier selon la structure de données
+            // Vérifier selon la struktur de données
             return v.transcription_text && v.transcription_text.length > 0 || 
                    (v.transcription_data && Object.keys(v.transcription_data).length > 0);
           }).length,
           analyzed: videos.filter(v => {
-            // Vérifier selon la structure de données
+            // Vérifier selon la struktur de données
             return v.analysis_result && Object.keys(v.analysis_result).length > 0 || 
                    (v.analysis && Object.keys(v.analysis).length > 0) ||
                    (v.ai_result && v.ai_result.length > 0);
@@ -268,6 +271,7 @@ function AppContent() {
   const handleAuthSuccess = (userData) => {
     console.log('Utilisateur authentifié avec succès:', userData.id);
     setIsAuthModalOpen(false);
+    setShowWelcome(false); // Cacher WelcomeAgent après authentification réussie
     // Attendre que le contexte d'auth soit mis à jour
     setTimeout(() => {
       setActiveTab('dashboard');
@@ -284,11 +288,13 @@ function AppContent() {
       setDashboardData(null);
       setIsAuthenticated(false);
       setActiveTab('dashboard');
+      setShowWelcome(true); // Afficher WelcomeAgent après déconnexion
     } catch (error) {
       console.error('Erreur de déconnexion:', error);
       setDashboardData(null);
       setIsAuthenticated(false);
       setActiveTab('dashboard');
+      setShowWelcome(true); // Afficher WelcomeAgent en cas d'erreur de déconnexion
     }
   };
 
@@ -350,6 +356,20 @@ function AppContent() {
         onRetry={handleRetryConnection}
         onContinue={() => setSupabaseError(null)}
       />
+    );
+  }
+
+  // Afficher WelcomeAgent si l'utilisateur n'est pas authentifié
+  if (showWelcome && !isAuthenticated) {
+    return (
+      <div>
+        <WelcomeAgent onOpenAuthModal={() => setIsAuthModalOpen(true)} />
+        <AuthModal 
+          isOpen={isAuthModalOpen} 
+          onClose={() => setIsAuthModalOpen(false)}
+          onSuccess={handleAuthSuccess}
+        />
+      </div>
     );
   }
 
