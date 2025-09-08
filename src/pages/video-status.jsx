@@ -1,167 +1,148 @@
-import { useEffect, useState } from 'react';
-import { useSupabaseClient } from '@supabase/auth-helpers-react';
-import { useRouter } from 'next/router';
-import {
-  VIDEO_STATUS,
-  getStatusLabel,
-  getStatusClass,
-  isProcessingStatus,
-  isCompletedStatus,
-  isErrorStatus
-} from '../constants/videoStatus';
+// src/constants/videoStatus.js
 
-const VideoStatus = () => {
-  const [videoData, setVideoData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [progress, setProgress] = useState(0);
-  const supabase = useSupabaseClient();
-  const router = useRouter();
-  const { id } = router.query;
-
-  useEffect(() => {
-    if (id) {
-      checkVideoStatus();
-      
-      // Vérifier le statut toutes les 5 secondes
-      const interval = setInterval(checkVideoStatus, 5000);
-      
-      return () => clearInterval(interval);
-    }
-  }, [id]);
-
-  const checkVideoStatus = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('videos')
-        .select('*')
-        .eq('id', id)
-        .single();
-      
-      if (error) throw error;
-      
-      setVideoData(data);
-      
-      // Mettre à jour la barre de progression en fonction du statut
-      if (isProcessingStatus(data.status)) {
-        setProgress(50);
-      } else if (data.status === VIDEO_STATUS.TRANSCRIBING) {
-        setProgress(75);
-      } else if (isCompletedStatus(data.status)) {
-        setProgress(100);
-        // Rediriger vers la page de succès quand c'est terminé
-        setTimeout(() => {
-          router.push(`/video-success?id=${id}`);
-        }, 2000);
-      } else if (isErrorStatus(data.status)) {
-        setProgress(0);
-      } else {
-        setProgress(25); // Statut par défaut (uploaded/draft)
-      }
-      
-    } catch (error) {
-      console.error('Erreur récupération statut vidéo:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loading) {
-    return <div style={{ padding: '20px', textAlign: 'center' }}>Chargement...</div>;
-  }
-
-  if (!videoData) {
-    return <div style={{ padding: '20px', textAlign: 'center' }}>Vidéo non trouvée</div>;
-  }
-
-  // Utiliser les fonctions utilitaires pour obtenir le libellé et la classe du statut
-  const statusLabel = getStatusLabel(videoData.status);
-  const statusClass = getStatusClass(videoData.status);
-
-  return (
-    <div style={{ 
-      padding: '20px', 
-      maxWidth: '600px', 
-      margin: '0 auto',
-      textAlign: 'center'
-    }}>
-      <h1 style={{ color: '#38b2ac' }}>Traitement de votre vidéo</h1>
-      
-      <div style={{ 
-        margin: '30px 0', 
-        padding: '20px', 
-        border: '2px solid #38b2ac',
-        borderRadius: '12px'
-      }}>
-        <h3>Statut: {statusLabel}</h3>
-        
-        {/* Barre de progression */}
-        <div style={{ 
-          width: '100%', 
-          backgroundColor: '#e2e8f0', 
-          borderRadius: '10px',
-          margin: '20px 0'
-        }}>
-          <div style={{ 
-            width: `${progress}%`, 
-            height: '20px', 
-            backgroundColor: '#38b2ac',
-            borderRadius: '10px',
-            transition: 'width 0.5s ease-in-out'
-          }}></div>
-        </div>
-        
-        <p style={{ fontSize: '14px', color: '#718096' }}>
-          {getStatusDescription(videoData.status)}
-        </p>
-      </div>
-      
-      {isErrorStatus(videoData.status) && (
-        <div style={{ 
-          backgroundColor: '#fed7d7', 
-          color: '#c53030',
-          padding: '15px',
-          borderRadius: '8px',
-          margin: '20px 0'
-        }}>
-          <p>Une erreur est survenue lors du traitement de votre vidéo.</p>
-          <button
-            onClick={() => router.push('/record-video')}
-            style={{
-              backgroundColor: '#e53e3e',
-              color: 'white',
-              padding: '10px 20px',
-              borderRadius: '8px',
-              border: 'none',
-              cursor: 'pointer',
-              marginTop: '10px'
-            }}
-          >
-            Réessayer
-          </button>
-        </div>
-      )}
-    </div>
-  );
+// Constantes pour les statuts vidéo alignées avec les valeurs de la base de données
+export const VIDEO_STATUS = {
+  // Statuts utilisés dans l'application
+  UPLOADING: 'draft',       // Pendant l'upload, considéré comme brouillon
+  UPLOADED: 'uploaded',     // Nouveau statut: Fichier uploadé, prêt pour traitement
+  PROCESSING: 'processing', // En cours de traitement (général)
+  TRANSCRIBING: 'transcribing', // Nouveau statut: Transcription en cours
+  TRANSCRIBED: 'transcribed', // Nouveau statut: Transcription terminée
+  ANALYZING: 'analyzing',   // Nouveau statut: Analyse en cours
+  ANALYZED: 'published',    // Analyse terminée (correspond à 'published' en DB)
+  FAILED: 'failed',         // Échec du traitement
+  ERROR: 'failed',          // Alias pour FAILED
+  
+  // Statuts correspondant aux valeurs de la base de données
+  PENDING: 'draft',
+  COMPLETED: 'published'
 };
 
-// Fonction helper pour obtenir la description du statut
-function getStatusDescription(status) {
+// Constantes pour les statuts de transcription
+export const TRANSCRIPTION_STATUS = {
+  PENDING: 'pending',
+  PROCESSING: 'processing',
+  COMPLETED: 'completed',
+  FAILED: 'failed'
+};
+
+// Fonctions utilitaires pour vérifier les statuts
+export const isProcessingStatus = (status) => {
+  return status === VIDEO_STATUS.PROCESSING || 
+         status === VIDEO_STATUS.TRANSCRIBING ||
+         status === VIDEO_STATUS.ANALYZING ||
+         status === 'processing';
+};
+
+export const isCompletedStatus = (status) => {
+  return status === VIDEO_STATUS.PUBLISHED || 
+         status === VIDEO_STATUS.COMPLETED ||
+         status === VIDEO_STATUS.TRANSCRIBED ||
+         status === VIDEO_STATUS.ANALYZED ||
+         status === 'published';
+};
+
+export const isErrorStatus = (status) => {
+  return status === VIDEO_STATUS.ERROR || 
+         status === VIDEO_STATUS.FAILED ||
+         status === 'failed';
+};
+
+export const isDraftStatus = (status) => {
+  return status === VIDEO_STATUS.PENDING ||
+         status === VIDEO_STATUS.UPLOADING ||
+         status === 'draft';
+};
+
+// Obtenir le libellé d'un statut pour l'affichage
+export const getStatusLabel = (status) => {
+  // Normaliser le statut pour la comparaison
   const normalizedStatus = status?.toLowerCase();
   
-  const descriptionMap = {
-    'draft': 'Votre vidéo a été uploadée avec succès.',
-    'uploaded': 'Votre vidéo a été uploadée avec succès.',
-    'processing': 'Préparation de votre vidéo pour la transcription.',
-    'transcribing': 'Notre IA est en train de transcrire votre vidéo.',
-    'transcribed': 'Transcription terminée. Analyse en cours...',
-    'analyzing': 'Analyse en cours par notre IA...',
-    'published': 'Traitement terminé! Redirection...',
-    'analyzed': 'Traitement terminé! Redirection...',
-    'failed': 'Une erreur est survenue pendant le traitement.',
-    'error': 'Une erreur est survenue pendant le traitement.'
+  const labels = {
+    'draft': 'En attente',
+    'uploading': 'Téléchargement en cours',
+    'uploaded': 'Téléchargée',
+    'processing': 'En traitement',
+    'published': 'Analyse terminée',
+    'completed': 'Analyse terminée',
+    'transcribing': 'Transcription en cours',
+    'transcribed': 'Transcrite',
+    'analyzing': 'Analyse en cours',
+    'analyzed': 'Analyse terminée',
+    'failed': 'Échec',
+    'error': 'Erreur',
   };
   
-  return descriptionMap[normalizedStatus] || 'Statut inconnu';
-}
+  return labels[normalizedStatus] || status || 'Inconnu';
+};
 
-export default VideoStatus;
+// Obtenir la classe CSS pour un statut
+export const getStatusClass = (status) => {
+  // Normaliser le statut pour la comparaison
+  const normalizedStatus = status?.toLowerCase();
+  
+  const classes = {
+    'draft': 'bg-gray-100 text-gray-800',
+    'uploading': 'bg-blue-100 text-blue-800',
+    'uploaded': 'bg-purple-100 text-purple-800',
+    'processing': 'bg-yellow-100 text-yellow-800',
+    'published': 'bg-green-100 text-green-800',
+    'completed': 'bg-green-100 text-green-800',
+    'transcribing': 'bg-indigo-100 text-indigo-800',
+    'transcribed': 'bg-teal-100 text-teal-800',
+    'analyzing': 'bg-orange-100 text-orange-800',
+    'analyzed': 'bg-green-100 text-green-800',
+    'failed': 'bg-red-100 text-red-800',
+    'error': 'bg-red-100 text-red-800',
+  };
+  
+  return classes[normalizedStatus] || 'bg-gray-100 text-gray-800';
+};
+
+// Convertir un statut d'application en statut de base de données valide
+export const toDatabaseStatus = (appStatus) => {
+  // Normaliser le statut pour la comparaison
+  const normalizedStatus = appStatus?.toLowerCase();
+  
+  // Mapping des statuts d'application vers les statuts de base de données
+  const statusMapping = {
+    // Statuts d'application -> statuts DB
+    'uploading': 'draft',
+    'uploaded': 'draft', // Le fichier est uploadé, mais le traitement n'a pas commencé
+    'processing': 'processing',
+    'transcribing': 'processing',
+    'transcribed': 'published',
+    'analyzing': 'processing',
+    'analyzed': 'published',
+    'failed': 'failed',
+    'error': 'failed',
+    'published': 'published',
+    'completed': 'published',
+    'pending': 'draft',
+    // Déjà des statuts DB valides
+    'draft': 'draft',
+  };
+  
+  return statusMapping[normalizedStatus] || 'draft'; // Par défaut 'draft' si statut inconnu
+};
+
+// Convertir un statut de base de données en statut d'application
+export const fromDatabaseStatus = (dbStatus) => {
+  // Normaliser le statut pour la comparaison
+  const normalizedStatus = dbStatus?.toLowerCase();
+  
+  // Mapping des statuts de base de données vers les statuts d'application
+  const statusMapping = {
+    'draft': VIDEO_STATUS.UPLOADED,
+    'uploaded': VIDEO_STATUS.UPLOADED,
+    'processing': VIDEO_STATUS.PROCESSING,
+    'transcribing': VIDEO_STATUS.TRANSCRIBING,
+    'transcribed': VIDEO_STATUS.TRANSCRIBED,
+    'analyzing': VIDEO_STATUS.ANALYZING,
+    'published': VIDEO_STATUS.ANALYZED,
+    'failed': VIDEO_STATUS.FAILED
+  };
+  
+  return statusMapping[normalizedStatus] || VIDEO_STATUS.UPLOADED;
+};
