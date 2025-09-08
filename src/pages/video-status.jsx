@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useSupabaseClient } from '@supabase/auth-helpers-react';
 import { useRouter } from 'next/router';
+import {
+  VIDEO_STATUS,
+  getStatusLabel,
+  getStatusClass,
+  isProcessingStatus,
+  isCompletedStatus,
+  isErrorStatus
+} from '../constants/videoStatus';
 
 const VideoStatus = () => {
   const [videoData, setVideoData] = useState(null);
@@ -34,29 +42,20 @@ const VideoStatus = () => {
       setVideoData(data);
       
       // Mettre à jour la barre de progression en fonction du statut
-      switch(data.status) {
-        case 'uploaded':
-          setProgress(25);
-          break;
-        case 'processing':
-          setProgress(50);
-          break;
-        case 'transcribing':
-          setProgress(75);
-          break;
-        case 'transcribed':
-        case 'analyzed':
-          setProgress(100);
-          // Rediriger vers la page de succès quand c'est terminé
-          setTimeout(() => {
-            router.push(`/video-success?id=${id}`);
-          }, 2000);
-          break;
-        case 'failed':
-          setProgress(0);
-          break;
-        default:
-          setProgress(0);
+      if (isProcessingStatus(data.status)) {
+        setProgress(50);
+      } else if (data.status === VIDEO_STATUS.TRANSCRIBING) {
+        setProgress(75);
+      } else if (isCompletedStatus(data.status)) {
+        setProgress(100);
+        // Rediriger vers la page de succès quand c'est terminé
+        setTimeout(() => {
+          router.push(`/video-success?id=${id}`);
+        }, 2000);
+      } else if (isErrorStatus(data.status)) {
+        setProgress(0);
+      } else {
+        setProgress(25); // Statut par défaut (uploaded/draft)
       }
       
     } catch (error) {
@@ -74,6 +73,10 @@ const VideoStatus = () => {
     return <div style={{ padding: '20px', textAlign: 'center' }}>Vidéo non trouvée</div>;
   }
 
+  // Utiliser les fonctions utilitaires pour obtenir le libellé et la classe du statut
+  const statusLabel = getStatusLabel(videoData.status);
+  const statusClass = getStatusClass(videoData.status);
+
   return (
     <div style={{ 
       padding: '20px', 
@@ -89,7 +92,7 @@ const VideoStatus = () => {
         border: '2px solid #38b2ac',
         borderRadius: '12px'
       }}>
-        <h3>Statut: {getStatusText(videoData.status)}</h3>
+        <h3>Statut: {statusLabel}</h3>
         
         {/* Barre de progression */}
         <div style={{ 
@@ -112,7 +115,7 @@ const VideoStatus = () => {
         </p>
       </div>
       
-      {videoData.status === 'failed' && (
+      {isErrorStatus(videoData.status) && (
         <div style={{ 
           backgroundColor: '#fed7d7', 
           color: '#c53030',
@@ -141,29 +144,24 @@ const VideoStatus = () => {
   );
 };
 
-// Helper functions
-function getStatusText(status) {
-  const statusMap = {
-    'uploaded': 'Uploadé',
-    'processing': 'En traitement',
-    'transcribing': 'Transcription en cours',
-    'transcribed': 'Transcription terminée',
-    'analyzed': 'Analyse terminée',
-    'failed': 'Échec'
-  };
-  return statusMap[status] || status;
-}
-
+// Fonction helper pour obtenir la description du statut
 function getStatusDescription(status) {
+  const normalizedStatus = status?.toLowerCase();
+  
   const descriptionMap = {
+    'draft': 'Votre vidéo a été uploadée avec succès.',
     'uploaded': 'Votre vidéo a été uploadée avec succès.',
     'processing': 'Préparation de votre vidéo pour la transcription.',
     'transcribing': 'Notre IA est en train de transcrire votre vidéo.',
     'transcribed': 'Transcription terminée. Analyse en cours...',
+    'analyzing': 'Analyse en cours par notre IA...',
+    'published': 'Traitement terminé! Redirection...',
     'analyzed': 'Traitement terminé! Redirection...',
-    'failed': 'Une erreur est survenue pendant le traitement.'
+    'failed': 'Une erreur est survenue pendant le traitement.',
+    'error': 'Une erreur est survenue pendant le traitement.'
   };
-  return descriptionMap[status] || 'Statut inconnu';
+  
+  return descriptionMap[normalizedStatus] || 'Statut inconnu';
 }
 
 export default VideoStatus;
