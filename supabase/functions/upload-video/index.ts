@@ -43,17 +43,14 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return handleOptions();
   }
-  
+
   // Vérifier la méthode HTTP
   if (req.method !== 'POST') {
     return new Response(
       JSON.stringify({ error: 'Méthode non autorisée' }),
-      { 
-        status: 405, 
-        headers: { 
-          'Content-Type': 'application/json',
-          ...corsHeaders
-        } 
+      {
+        status: 405,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
       }
     );
   }
@@ -61,7 +58,7 @@ Deno.serve(async (req) => {
   try {
     // Extraire le token d'authentification de l'en-tête
     const token = extractToken(req);
-    
+
     if (!token) {
       return new Response(
         JSON.stringify({ 
@@ -69,7 +66,8 @@ Deno.serve(async (req) => {
           details: 'Token manquant dans l\'en-tête Authorization'
         }),
         { 
-          status: 401, 
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
         }
       );
     }
@@ -86,11 +84,8 @@ Deno.serve(async (req) => {
           details: 'Variables d\'environnement manquantes'
         }),
         { 
-          status: 500, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
+          status: 500,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
         }
       );
     }
@@ -116,11 +111,8 @@ Deno.serve(async (req) => {
           details: userError?.message || 'Utilisateur non trouvé'
         }),
         { 
-          status: 401, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
         }
       );
     }
@@ -136,11 +128,8 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Le contenu doit être de type multipart/form-data' }),
         { 
-          status: 400, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
         }
       );
     }
@@ -152,16 +141,13 @@ Deno.serve(async (req) => {
     const videoFile = formData.get('video');
     const title = formData.get('title')?.toString() || 'Sans titre';
     const description = formData.get('description')?.toString() || '';
-    
+
     if (!videoFile || !(videoFile instanceof File)) {
       return new Response(
         JSON.stringify({ error: 'Aucun fichier vidéo fourni' }),
         { 
-          status: 400, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
         }
       );
     }
@@ -172,11 +158,8 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Format de fichier non supporté. Veuillez utiliser MP4, MOV, AVI ou WebM.' }),
         { 
-          status: 400, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
         }
       );
     }
@@ -187,11 +170,8 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Le fichier est trop volumineux. La taille maximale est de 100MB.' }),
         { 
-          status: 400, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
         }
       );
     }
@@ -226,11 +206,8 @@ Deno.serve(async (req) => {
           details: 'Impossible de créer ou accéder au bucket de stockage'
         }),
         { 
-          status: 500, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
+          status: 500,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
         }
       );
     }
@@ -252,11 +229,8 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Erreur lors de l\'upload de la vidéo', details: uploadError.message }),
         { 
-          status: 500, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
+          status: 500,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
         }
       );
     }
@@ -308,7 +282,7 @@ Deno.serve(async (req) => {
           CREATE POLICY "Les utilisateurs peuvent supprimer leurs propres vidéos"
             ON public.videos FOR DELETE
             USING (auth.uid() = user_id);
-            
+                    
           -- Créer un index sur user_id pour améliorer les performances
           CREATE INDEX IF NOT EXISTS videos_user_id_idx ON public.videos(user_id);
         `;
@@ -344,11 +318,8 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Erreur lors de l\'enregistrement de la vidéo', details: insertError.message }),
         { 
-          status: 500, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
+          status: 500,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
         }
       );
     }
@@ -371,11 +342,8 @@ Deno.serve(async (req) => {
           details: 'Impossible de générer l\'URL de la vidéo'
         }),
         { 
-          status: 500, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
+          status: 500,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
         }
       );
     }
@@ -405,16 +373,13 @@ Deno.serve(async (req) => {
           details: 'Impossible de mettre à jour la vidéo'
         }),
         { 
-          status: 500, 
-          headers: { 
-            'Content-Type': 'application/json',
-            ...corsHeaders
-          } 
+          status: 500,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
         }
       );
     }
 
-    // Déclencher la transcription de la vidéo
+    // Déclencher la transcription de la vidéo de manière asynchrone
     EdgeRuntime.waitUntil(
       (async () => {
         try {
@@ -428,6 +393,7 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify({ 
               videoId: video.id,
+              // Nous pourrions passer l'URL signée pour éviter de la regénérer, mais transcribe-video la regénère de toute façon
               videoUrl: videoUrl
             })
           });
@@ -476,27 +442,17 @@ Deno.serve(async (req) => {
         }
       }),
       { 
-        status: 200, 
-        headers: { 
-          'Content-Type': 'application/json',
-          ...corsHeaders
-        } 
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
       }
     );
-
   } catch (err) {
     console.error('Erreur non gérée:', err);
     return new Response(
-      JSON.stringify({ 
-        error: 'Erreur serveur', 
-        details: err.message
-      }),
-      { 
-        status: 500, 
-        headers: { 
-          'Content-Type': 'application/json',
-          ...corsHeaders
-        } 
+      JSON.stringify({ error: 'Erreur serveur', details: err.message }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
       }
     );
   }
