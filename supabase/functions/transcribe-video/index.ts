@@ -252,6 +252,7 @@ Deno.serve(async (req) => {
 
     console.log('Enregistrement de la transcription dans Supabase...');
 
+    // CORRECTION: Suppression de l'objet Authorization dans les données de transcription
     // Enregistrement dans la table transcriptions
     const { error: transcriptionTableError } = await serviceClient
       .from('transcriptions')
@@ -260,7 +261,7 @@ Deno.serve(async (req) => {
         user_id: userId,
         full_text: transcription.text,
         transcription_text: transcription.text,
-        transcription_data: transcriptionData,
+        transcription_data: transcriptionData, // Données propres sans en-têtes
         segments: cleanSegments,
         confidence_score: confidenceScore,
         status: 'transcribed',
@@ -272,12 +273,12 @@ Deno.serve(async (req) => {
       throw new Error(`Échec de l'enregistrement: ${transcriptionTableError.message}`);
     }
 
-    // Mise à jour de la table videos
+    // CORRECTION: Mise à jour de la table videos avec des données propres
     const { error: videoUpdateError } = await serviceClient
       .from('videos')
       .update({
         transcription_text: transcription.text,
-        transcription_data: transcriptionData,
+        transcription_data: transcriptionData, // Données propres sans en-têtes
         status: VIDEO_STATUS.TRANSCRIBED,
         updated_at: new Date().toISOString()
       })
