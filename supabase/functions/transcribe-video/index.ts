@@ -205,7 +205,7 @@ Deno.serve(async (req) => {
     }
     
     const videoBlob = await response.blob();
-    console.log(`Vidéo téléchargée (${videoBlob.size} bytes)`);
+    console.log(`Vidéo téléchargée (${videoBlob.size) bytes)`);
 
     // Utilisation directe du blob vidéo sans conversion
     console.log('Envoi à Whisper pour transcription...');
@@ -243,16 +243,17 @@ Deno.serve(async (req) => {
         }))
       : [];
 
+    // CORRECTION: Utilisation d'un objet JavaScript au lieu d'une chaîne JSON
     const transcriptionData = {
       text: transcription.text || '',
       segments: cleanSegments,
       language: transcription.language || 'fr',
-      duration: transcription.duration || 0
+      duration: transcription.duration || 0,
+      // N'ajoutez PAS les headers d'authentification ici
     };
 
     console.log('Enregistrement de la transcription dans Supabase...');
 
-    // CORRECTION: Suppression de l'objet Authorization dans les données de transcription
     // Enregistrement dans la table transcriptions
     const { error: transcriptionTableError } = await serviceClient
       .from('transcriptions')
