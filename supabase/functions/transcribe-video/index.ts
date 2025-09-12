@@ -205,7 +205,8 @@ Deno.serve(async (req) => {
     }
     
     const videoBlob = await response.blob();
-    console.log(`Vidéo téléchargée (${videoBlob.size) bytes)`);
+    // CORRECTION: Erreur de syntaxe fixée ici
+    console.log(`Vidéo téléchargée (${videoBlob.size} bytes)`);
 
     // Utilisation directe du blob vidéo sans conversion
     console.log('Envoi à Whisper pour transcription...');
