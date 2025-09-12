@@ -31,7 +31,7 @@ async function withRetry<T>(
       return await operation();
     } catch (error) {
       attempt++;
-      lastError = error;
+      lastError = error as Error;
       
       if (attempt >= maxAttempts) break;
       
@@ -205,7 +205,6 @@ Deno.serve(async (req) => {
     }
     
     const videoBlob = await response.blob();
-    // CORRECTION: Erreur de syntaxe fixée ici
     console.log(`Vidéo téléchargée (${videoBlob.size} bytes)`);
 
     // Utilisation directe du blob vidéo sans conversion
@@ -244,13 +243,12 @@ Deno.serve(async (req) => {
         }))
       : [];
 
-    // CORRECTION: Utilisation d'un objet JavaScript au lieu d'une chaîne JSON
+    // Construction des données propres sans en-têtes
     const transcriptionData = {
       text: transcription.text || '',
       segments: cleanSegments,
       language: transcription.language || 'fr',
       duration: transcription.duration || 0,
-      // N'ajoutez PAS les headers d'authentification ici
     };
 
     console.log('Enregistrement de la transcription dans Supabase...');
@@ -263,7 +261,7 @@ Deno.serve(async (req) => {
         user_id: userId,
         full_text: transcription.text,
         transcription_text: transcription.text,
-        transcription_data: transcriptionData, // Données propres sans en-têtes
+        transcription_data: transcriptionData,
         segments: cleanSegments,
         confidence_score: confidenceScore,
         status: 'transcribed',
@@ -275,12 +273,12 @@ Deno.serve(async (req) => {
       throw new Error(`Échec de l'enregistrement: ${transcriptionTableError.message}`);
     }
 
-    // CORRECTION: Mise à jour de la table videos avec des données propres
+    // Mise à jour de la table videos
     const { error: videoUpdateError } = await serviceClient
       .from('videos')
       .update({
         transcription_text: transcription.text,
-        transcription_data: transcriptionData, // Données propres sans en-têtes
+        transcription_data: transcriptionData,
         status: VIDEO_STATUS.TRANSCRIBED,
         updated_at: new Date().toISOString()
       })
