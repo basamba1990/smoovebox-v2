@@ -41,7 +41,6 @@ async function withRetry<T>(
   throw lastError;
 }
 
-// Fonction pour s'assurer que toutes les données sont sérialisables
 function ensureSerializable(obj: any): any {
   if (obj === null || obj === undefined) return null;
   if (typeof obj !== 'object') return obj;
@@ -232,11 +231,13 @@ Deno.serve(async (req) => {
       confidence_score: confidenceScore
     });
 
+    // CORRECTION: Ajout de full_text qui est requis dans la table transcriptions
     const { error: transcriptionTableError } = await serviceClient
       .from('transcriptions')
       .upsert({
         video_id: videoId,
         user_id: userId,
+        full_text: transcriptionText, // Colonne obligatoire
         transcription_text: transcriptionText,
         transcription_data: transcriptionData,
         segments: cleanSegments,
