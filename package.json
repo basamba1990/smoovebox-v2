@@ -39,7 +39,7 @@
     "@radix-ui/react-toggle-group": "^1.1.0",
     "@radix-ui/react-tooltip": "^1.1.3",
     "@supabase/supabase-js": "^2.45.4",
-    "@tailwindcss/vite": "^3.0.0", // Corrigez si nécessaire
+    "@tailwindcss/vite": "^3.0.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
@@ -74,7 +74,7 @@
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.4.12",
     "globals": "^15.11.0",
-    "supabase": "^2.45.4", // Synchronisé avec @supabase/supabase-js
+    "supabase": "^2.45.4",
     "terser": "^5.34.1",
     "tw-animate-css": "^1.0.0",
     "vite": "^5.4.9"
