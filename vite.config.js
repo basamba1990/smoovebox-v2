@@ -10,20 +10,20 @@ export default defineConfig({
     tailwindcss(),
   ],
   optimizeDeps: {
-    include: ['uuid'],
+    include: ['uuid', '@supabase/supabase-js'], // Ajout de supabase-js pour optimisation
   },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
-      "@components": path.resolve(__dirname, "./src/components"),
-      "@context": path.resolve(__dirname, "./src/context"),
-      "@lib": path.resolve(__dirname, "./src/lib"),
+      '@': path.resolve(__dirname, './src'),
+      '@components': path.resolve(__dirname, './src/components'),
+      '@context': path.resolve(__dirname, './src/context'),
+      '@lib': path.resolve(__dirname, './src/lib'),
     },
   },
-  envDir: "./",
-  base: "/",
+  envDir: './',
+  base: '/',
   build: {
-    outDir: "dist",
+    outDir: 'dist',
     sourcemap: process.env.NODE_ENV !== 'production',
     minify: 'terser',
     terserOptions: {
@@ -35,9 +35,9 @@ export default defineConfig({
       external: [/^react-icons\/fi/],
       output: {
         manualChunks: {
-          react: ["react", "react-dom"],
-          supabase: ["@supabase/supabase-js"],
-          ui: ["@radix-ui/react-dialog", "@radix-ui/react-tabs"],
+          react: ['react', 'react-dom'],
+          supabase: ['@supabase/supabase-js'],
+          ui: ['@radix-ui/react-dialog', '@radix-ui/react-tabs'],
         },
       },
     },
@@ -47,6 +47,10 @@ export default defineConfig({
     strictPort: true,
     open: true,
     host: '0.0.0.0',
-    allowedHosts: ["https://smoovebox-v2.vercel.app", "smoovebox-*-v2-samba-bas-projects.vercel.app", "5173-ia44f8gbv6a2gpc18pdjh-0ec895f8.manus.computer"]
+    // Suppression de allowedHosts, car non pris en charge par Vite
+    cors: {
+      origin: ['http://localhost:5173', 'https://smoovebox-v2.vercel.app'], // Autoriser les origines spécifiques pour le développement
+      credentials: true,
+    },
   },
 });
