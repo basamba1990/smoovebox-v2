@@ -8,168 +8,207 @@ const RecordVideo = () => {
   const [uploading, setUploading] = useState(false);
   const [cameraAccess, setCameraAccess] = useState(false);
   const [countdown, setCountdown] = useState(0);
-  const videoRef = useRef();
-  const mediaRecorderRef = useRef();
+  const [error, setError] = useState(null);
+  const videoRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
+  const streamRef = useRef(null); // Référence pour le flux média
   const supabase = useSupabaseClient();
   const user = useUser();
   const router = useRouter();
 
   useEffect(() => {
-    // Demander l'accès à la caméra au chargement de la page
+    // Demander l'accès à la caméra au chargement
     requestCameraAccess();
+
+    // Nettoyage du flux média lors du démontage
+    return () => {
+      stopStream();
+    };
   }, []);
+
+  const stopStream = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+  };
 
   const requestCameraAccess = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 1280, height: 720 },
-        audio: true 
+        audio: true,
       });
-      
+      streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         setCameraAccess(true);
       }
     } catch (error) {
       console.error('Erreur accès caméra:', error);
-      alert('Impossible d\'accéder à la caméra. Veuillez vérifier les permissions.');
+      setError('Impossible d\'accéder à la caméra. Veuillez vérifier les permissions et activer la caméra/micro.');
     }
   };
 
   const startRecording = async () => {
     if (!cameraAccess) {
-      alert('Veuillez autoriser l\'accès à la caméra pour enregistrer une vidéo');
+      setError('Veuillez autoriser l\'accès à la caméra pour enregistrer une vidéo');
       return;
     }
 
-    // Countdown avant le début de l'enregistrement
+    setError(null);
+    // Compte à rebours avant l'enregistrement
     setCountdown(3);
-    
+
     for (let i = 3; i > 0; i--) {
       await new Promise(resolve => setTimeout(resolve, 1000));
       setCountdown(i - 1);
     }
-    
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      const stream = streamRef.current || await navigator.mediaDevices.getUserMedia({
         video: { width: 1280, height: 720 },
-        audio: true 
+        audio: true,
       });
-      
+      streamRef.current = stream;
       videoRef.current.srcObject = stream;
       recordedChunksRef.current = [];
-      
+
       const options = { mimeType: 'video/webm; codecs=vp9,opus' };
       mediaRecorderRef.current = new MediaRecorder(stream, options);
-      
+
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) {
           recordedChunksRef.current.push(event.data);
         }
       };
-      
+
       mediaRecorderRef.current.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, { 
-          type: 'video/webm' 
-        });
-        setRecordedVideo(blob);
+        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        setRecordedVideo({ blob, url: URL.createObjectURL(blob) });
+        stopStream();
       };
-      
+
       mediaRecorderRef.current.start();
       setRecording(true);
     } catch (error) {
       console.error('Erreur démarrage enregistrement:', error);
-      alert('Impossible de démarrer l\'enregistrement');
+      setError('Impossible de démarrer l\'enregistrement. Veuillez réessayer.');
     }
   };
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && recording) {
       mediaRecorderRef.current.stop();
-      videoRef.current.srcObject.getTracks().forEach(track => track.stop());
       setRecording(false);
     }
   };
 
   const uploadVideo = async () => {
-    if (!recordedVideo || !user) return;
-    
+    if (!recordedVideo || !user) {
+      setError('Vous devez être connecté et avoir une vidéo enregistrée.');
+      return;
+    }
+
     setUploading(true);
-    
+    setError(null);
+
     try {
-      // Convertir le blob en fichier
       const file = new File(
-        [recordedVideo], 
-        `video-${Date.now()}.webm`, 
+        [recordedVideo.blob],
+        `video-${Date.now()}.webm`,
         { type: 'video/webm' }
       );
-      
-      // Créer un FormData pour l'upload
+
       const formData = new FormData();
       formData.append('video', file);
       formData.append('title', 'Ma vidéo SpotBulle');
       formData.append('description', 'Vidéo enregistrée via SpotBulle');
-      
-      // Appeler l'Edge Function d'upload
+
       const { data, error } = await supabase.functions.invoke('upload-video', {
-        body: formData
+        body: formData,
       });
-      
+
       if (error) throw error;
-      
-      // Rediriger vers la page de statut avec l'ID de la vidéo
-      router.push(`/video-status?id=${data.video.id}`);
+
+      // Rediriger vers la page de succès
+      router.push(`/video-success?id=${data.video.id}`);
     } catch (error) {
       console.error('Erreur upload:', error);
-      alert('Erreur lors de l\'upload de la vidéo');
+      setError(`Erreur lors de l'upload de la vidéo : ${error.message}`);
     } finally {
       setUploading(false);
     }
   };
 
   const retryRecording = () => {
+    if (recordedVideo?.url) {
+      URL.revokeObjectURL(recordedVideo.url);
+    }
     setRecordedVideo(null);
+    setError(null);
     requestCameraAccess();
   };
 
   if (countdown > 0) {
     return (
-      <div style={{ 
-        padding: '20px', 
-        maxWidth: '600px', 
+      <div style={{
+        padding: '20px',
+        maxWidth: '600px',
         margin: '0 auto',
-        textAlign: 'center'
+        textAlign: 'center',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
       }}>
-        <h1 style={{ color: '#38b2ac', fontSize: '48px' }}>{countdown}</h1>
-        <p>Préparez-vous à parler...</p>
+        <h1 style={{ color: '#38b2ac', fontSize: '72px', fontWeight: 'bold' }}>{countdown}</h1>
+        <p style={{ color: '#4a5568', fontSize: '24px' }}>Préparez-vous à parler...</p>
       </div>
     );
   }
 
   return (
-    <div style={{ 
-      padding: '20px', 
-      maxWidth: '600px', 
+    <div style={{
+      padding: '20px',
+      maxWidth: '600px',
       margin: '0 auto',
-      textAlign: 'center'
+      textAlign: 'center',
     }}>
-      <h1 style={{ color: '#38b2ac' }}>Enregistrez votre vidéo</h1>
-      
+      <h1 style={{ color: '#38b2ac', fontSize: '28px', marginBottom: '20px' }}>
+        Enregistrez votre vidéo
+      </h1>
+
+      {error && (
+        <div style={{
+          backgroundColor: '#fed7d7',
+          color: '#9b2c2c',
+          padding: '10px',
+          borderRadius: '4px',
+          marginBottom: '20px',
+        }}>
+          {error}
+        </div>
+      )}
+
       <div style={{ margin: '20px 0' }}>
         <video
           ref={videoRef}
           autoPlay
-          muted
-          style={{ 
-            width: '100%', 
-            maxWidth: '500px', 
+          muted={!recordedVideo}
+          style={{
+            width: '100%',
+            maxWidth: '500px',
             border: '2px solid #38b2ac',
-            borderRadius: '8px'
+            borderRadius: '8px',
+            backgroundColor: '#000',
           }}
+          src={recordedVideo?.url}
         />
       </div>
-      
+
       {!recordedVideo ? (
         <div>
           {!recording ? (
@@ -177,14 +216,14 @@ const RecordVideo = () => {
               onClick={startRecording}
               disabled={!cameraAccess}
               style={{
-                backgroundColor: '#38b2ac',
+                backgroundColor: cameraAccess ? '#38b2ac' : '#a0aec0',
                 color: 'white',
                 padding: '12px 24px',
                 borderRadius: '8px',
                 border: 'none',
                 fontSize: '16px',
                 cursor: cameraAccess ? 'pointer' : 'not-allowed',
-                opacity: cameraAccess ? 1 : 0.5
+                opacity: cameraAccess ? 1 : 0.5,
               }}
             >
               {cameraAccess ? 'Commencer l\'enregistrement' : 'Caméra non disponible'}
@@ -199,7 +238,7 @@ const RecordVideo = () => {
                 borderRadius: '8px',
                 border: 'none',
                 fontSize: '16px',
-                cursor: 'pointer'
+                cursor: 'pointer',
               }}
             >
               Arrêter l'enregistrement
@@ -208,7 +247,7 @@ const RecordVideo = () => {
         </div>
       ) : (
         <div>
-          <p>Vidéo enregistrée avec succès!</p>
+          <p style={{ color: '#38b2ac', marginBottom: '10px' }}>Vidéo enregistrée avec succès !</p>
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
             <button
               onClick={retryRecording}
@@ -218,7 +257,7 @@ const RecordVideo = () => {
                 padding: '10px 20px',
                 borderRadius: '8px',
                 border: 'none',
-                cursor: 'pointer'
+                cursor: 'pointer',
               }}
             >
               Réessayer
@@ -233,7 +272,7 @@ const RecordVideo = () => {
                 borderRadius: '8px',
                 border: 'none',
                 cursor: uploading ? 'not-allowed' : 'pointer',
-                opacity: uploading ? 0.7 : 1
+                opacity: uploading ? 0.7 : 1,
               }}
             >
               {uploading ? 'Envoi en cours...' : 'Valider et envoyer'}
