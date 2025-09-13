@@ -1,7 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import OpenAI from 'npm:openai@4.28.0'
 
-// Alignement avec les statuts définis dans constants/videoStatus.js
 const VIDEO_STATUS = {
   UPLOADED: 'uploaded',
   PROCESSING: 'processing',
@@ -19,16 +18,38 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Timeout pour l'analyse
-const ANALYSIS_TIMEOUT = 240000; // 4 minutes
+const ANALYSIS_TIMEOUT = 240000;
+
+// Fonction pour s'assurer que toutes les données sont sérialisables
+function ensureSerializable(obj: any): any {
+  if (obj === null || obj === undefined) return null;
+  if (typeof obj !== 'object') return obj;
+  
+  if (Array.isArray(obj)) {
+    return obj.map(item => ensureSerializable(item));
+  }
+  
+  const result: any = {};
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      const value = obj[key];
+      if (typeof value === 'object' && value !== null) {
+        result[key] = ensureSerializable(value);
+      } else {
+        result[key] = value;
+      }
+    }
+  }
+  return result;
+}
 
 Deno.serve(async (req) => {
-  // Gérer les requêtes OPTIONS (CORS preflight)
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  let videoId: string | null = null; // Déclarer videoId ici pour qu'il soit accessible dans le bloc catch
+  let videoId: string | null = null;
+  let serviceClient: any = null;
 
   try {
     console.log("Fonction analyze-transcription appelée");
@@ -55,8 +76,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Client Supabase avec timeout configuré
-    const serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
+    serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { persistSession: false },
       global: {
         fetch: (input, init) => {
@@ -71,7 +91,6 @@ Deno.serve(async (req) => {
       }
     });
 
-    // Tenter d'obtenir videoId du corps de la requête (pour les requêtes POST)
     try {
       const requestData = await req.json();
       if (requestData.videoId) {
@@ -82,7 +101,6 @@ Deno.serve(async (req) => {
       console.log('Pas de videoId dans le corps de la requête ou le corps n\'est pas JSON. Essai des paramètres d\'URL.');
     }
 
-    // Si non trouvé dans le corps, essayer les paramètres d'URL (pour les requêtes GET ou en dernier recours)
     if (!videoId) {
       const url = new URL(req.url);
       videoId = url.searchParams.get('videoId');
@@ -96,7 +114,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Vérifier que la vidéo existe et a le bon statut
     const { data: video, error: videoError } = await serviceClient
       .from('videos')
       .select('id, status, transcription_text, transcription_data')
@@ -119,7 +136,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Mettre à jour le statut de la vidéo à ANALYZING
     const { error: updateError } = await serviceClient
       .from('videos')
       .update({ 
@@ -137,16 +153,13 @@ Deno.serve(async (req) => {
     }
     console.log(`Statut de la vidéo ${videoId} mis à jour à '${VIDEO_STATUS.ANALYZING}'.`);
 
-    // Récupérer la transcription de la vidéo
     let fullText = '';
     
-    // Essayer d'abord transcription_data, puis transcription_text
     if (video.transcription_data && typeof video.transcription_data === 'object') {
       fullText = video.transcription_data.text || '';
     } else if (video.transcription_text) {
       fullText = video.transcription_text;
     } else {
-      // Fallback: récupérer depuis la table transcriptions
       const { data: transcriptionData, error: transcriptionError } = await serviceClient
         .from('transcriptions')
         .select('full_text, transcription_data')
@@ -196,7 +209,6 @@ Deno.serve(async (req) => {
 
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    // Logique d'analyse avancée
     const analysisPrompt = `Analysez la transcription vidéo suivante et fournissez une analyse complète et structurée au format JSON. L'analyse doit inclure :
 - Un 'summary' concis (max 3-4 phrases).
 - Une liste de 'key_topics' (3-5 thèmes/mots-clés principaux).
@@ -209,7 +221,7 @@ Deno.serve(async (req) => {
   - 'engagement_emotionnel': { 'type': string, 'niveau': number }
   - 'formats_visuels_suggeres': [string, string, ...]
 
-Transcription: ${fullText.substring(0, 12000)}  // Limiter la longueur pour éviter les dépassements de token
+Transcription: ${fullText.substring(0, 12000)}
 
 Assurez-vous que la sortie est un objet JSON valide.`;
 
@@ -250,10 +262,12 @@ Assurez-vous que la sortie est un objet JSON valide.`;
     try {
       analysisResult = JSON.parse(chatCompletion.choices[0].message.content || '{}');
       
-      // Validation basique du résultat
       if (!analysisResult.summary || !analysisResult.key_topics) {
         throw new Error('Réponse OpenAI incomplète ou mal formatée');
       }
+      
+      // S'assurer que le résultat est sérialisable
+      analysisResult = ensureSerializable(analysisResult);
     } catch (parseError) {
       console.error('Erreur lors de l\'analyse du JSON de la réponse OpenAI:', parseError);
       
@@ -277,14 +291,13 @@ Assurez-vous que la sortie est un objet JSON valide.`;
 
     console.log(`Analyse terminée pour la vidéo ${videoId}.`);
 
-    // Enregistrer les résultats de l'analyse dans la table 'videos' (colonne analysis)
     const { error: analysisSaveError } = await serviceClient
       .from('videos')
       .update({
-        analysis: analysisResult,  // Utiliser la colonne analysis existante
+        analysis: analysisResult,
         status: VIDEO_STATUS.ANALYZED,
         updated_at: new Date().toISOString(),
-        ai_score: calculateAIScore(analysisResult) // Calculer un score basé sur l'analyse
+        ai_score: calculateAIScore(analysisResult)
       })
       .eq('id', videoId);
 
@@ -307,22 +320,16 @@ Assurez-vous que la sortie est un objet JSON valide.`;
       );
     }
 
-    // Après l'analyse, mettre à jour aussi la table transcriptions
-    // IMPORTANT: Assurez-vous que la colonne 'analysis_result' dans la table 'transcriptions' est de type JSONB.
-    // Si elle est de type ARRAY ou TEXT, cela causera l'erreur 22P02.
-    // La correction la plus robuste est de modifier le schéma de la base de données.
     const { error: transcriptionUpdateError } = await serviceClient
       .from('transcriptions')
       .update({
-        analysis_result: analysisResult, // Ceci doit être un JSONB dans la DB
+        analysis_result: analysisResult,
         updated_at: new Date().toISOString()
       })
       .eq('video_id', videoId);
 
     if (transcriptionUpdateError) {
       console.error('Erreur lors de la mise à jour de la transcription avec les résultats d\'analyse:', transcriptionUpdateError);
-      // Ne pas échouer complètement, juste logger l'erreur
-      // Si cette erreur est critique, vous pourriez vouloir mettre à jour le statut de la vidéo à FAILED ici aussi.
     }
 
     console.log(`Vidéo ${videoId} analysée et statut mis à jour à '${VIDEO_STATUS.ANALYZED}'.`);
@@ -342,9 +349,8 @@ Assurez-vous que la sortie est un objet JSON valide.`;
   } catch (error: any) {
     console.error("Erreur générale non gérée dans analyze-transcription:", error);
     
-    // Tentative de mise à jour du statut d'erreur si videoId est disponible
     try {
-      if (videoId && serviceClient) { // Ajouter serviceClient pour s'assurer qu'il est initialisé
+      if (videoId && serviceClient) {
         await serviceClient
           .from('videos')
           .update({ 
@@ -368,17 +374,14 @@ Assurez-vous que la sortie est un objet JSON valide.`;
   }
 });
 
-// Fonction helper pour calculer un score IA basé sur l'analyse
 function calculateAIScore(analysisResult: any): number {
-  let score = 7.0; // Score de base
+  let score = 7.0;
   
-  // Augmenter le score en fonction de la qualité de l'analyse
   if (analysisResult.summary && analysisResult.summary.length > 50) score += 0.5;
   if (analysisResult.key_topics && analysisResult.key_topics.length >= 3) score += 0.5;
   if (analysisResult.important_entities && analysisResult.important_entities.length > 0) score += 0.5;
   if (analysisResult.action_items && analysisResult.action_items.length > 0) score += 0.5;
   if (analysisResult.insights_supplementaires) score += 0.5;
   
-  // Limiter à 10.0
   return Math.min(score, 10.0);
 }
