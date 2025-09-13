@@ -204,6 +204,7 @@ Deno.serve(async (req) => {
 
     console.log('Transcription terminée');
 
+    // Extraction MANUELLE des données pour éviter tout objet non sérialisable
     const transcriptionText = String(rawTranscription.text || '');
     const transcriptionLanguage = String(rawTranscription.language || 'fr');
     const transcriptionDuration = Number(rawTranscription.duration || 0);
@@ -223,15 +224,16 @@ Deno.serve(async (req) => {
       ? cleanSegments.reduce((sum, s) => sum + (s.confidence || 0), 0) / cleanSegments.length
       : null;
 
-    const transcriptionData = ensureSerializable({
+    // Création d'un objet DATA propre et sérialisable
+    const transcriptionData = {
       text: transcriptionText,
       segments: cleanSegments,
       language: transcriptionLanguage,
       duration: transcriptionDuration,
       confidence_score: confidenceScore
-    });
+    };
 
-    // CORRECTION: Ajout de full_text qui est requis dans la table transcriptions
+    // Mise à jour table transcriptions
     const { error: transcriptionTableError } = await serviceClient
       .from('transcriptions')
       .upsert({
@@ -248,6 +250,7 @@ Deno.serve(async (req) => {
 
     if (transcriptionTableError) throw transcriptionTableError;
 
+    // Mise à jour table videos
     const { error: videoUpdateError } = await serviceClient
       .from('videos')
       .update({
