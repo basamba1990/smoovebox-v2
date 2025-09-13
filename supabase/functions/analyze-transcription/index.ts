@@ -195,184 +195,185 @@ Deno.serve(async (req) => {
         .from('videos')
         .update({ 
           status: VIDEO_STATUS.FAILED, 
-          error_message: 'Texte de transcription vide',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId);
-      return new Response(
-        JSON.stringify({ error: 'Texte de transcription vide' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      );
-    }
-
-    console.log(`Transcription récupérée pour la vidéo ${videoId} (${fullText.length} caractères). Début de l'analyse...`);
-
-    const openai = new OpenAI({ apiKey: openaiApiKey });
-
-    const analysisPrompt = `Analysez la transcription vidéo suivante et fournissez une analyse complète et structurée au format JSON. L'analyse doit inclure :
-- Un 'summary' concis (max 3-4 phrases).
-- Une liste de 'key_topics' (3-5 thèmes/mots-clés principaux).
-- Une liste de 'important_entities' (personnes, organisations, lieux mentionnés).
-- Un 'sentiment' général (positif, neutre, négatif).
-- Une liste de 'action_items' ou prochaines étapes suggérées par le contenu (le cas échéant, max 3).
-- Des 'insights_supplementaires' incluant:
-  - 'public_cible': [string, string, ...]
-  - 'niveau_expertise': 'débutant'|'intermédiaire'|'avancé'
-  - 'engagement_emotionnel': { 'type': string, 'niveau': number }
-  - 'formats_visuels_suggeres': [string, string, ...]
-
-Transcription: ${fullText.substring(0, 12000)}
-
-Assurez-vous que la sortie est un objet JSON valide.`;
-
-    let chatCompletion;
-    try {
-      chatCompletion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { 
-            role: "system", 
-            content: "Vous êtes un assistant IA expert spécialisé dans l'analyse des transcriptions vidéo et l'extraction d'informations structurées. Votre sortie doit toujours être un objet JSON valide." 
-          },
-          { role: "user", content: analysisPrompt }
-        ],
-        response_format: { type: "json_object" },
-        max_tokens: 2000
-      });
-    } catch (openaiError) {
-      console.error('Erreur OpenAI lors de l\'analyse:', openaiError);
-      await serviceClient
-        .from('videos')
-        .update({ 
-          status: VIDEO_STATUS.FAILED, 
-          error_message: `Erreur OpenAI: ${openaiError.message}`,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Erreur lors de l\'analyse OpenAI', 
-          details: openaiError.message 
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      );
-    }
-
-    let analysisResult;
-    try {
-      analysisResult = JSON.parse(chatCompletion.choices[0].message.content || '{}');
-      
-      if (!analysisResult.summary || !analysisResult.key_topics) {
-        throw new Error('Réponse OpenAI incomplète ou mal formatée');
+            error_message: 'Texte de transcription vide',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId);
+        return new Response(
+          JSON.stringify({ error: 'Texte de transcription vide' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
       }
-      
-      // S'assurer que le résultat est sérialisable
-      analysisResult = ensureSerializable(analysisResult);
-    } catch (parseError) {
-      console.error('Erreur lors de l\'analyse du JSON de la réponse OpenAI:', parseError);
-      
-      await serviceClient
-        .from('videos')
-        .update({ 
-          status: VIDEO_STATUS.FAILED, 
-          error_message: `Échec de l'analyse de la réponse OpenAI: ${parseError.message}`,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId);
-      
-      return new Response(
-        JSON.stringify({ 
-          error: 'Erreur de format de réponse', 
-          details: 'La réponse de l\'IA n\'est pas un JSON valide'
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      );
-    }
 
-    console.log(`Analyse terminée pour la vidéo ${videoId}.`);
+      console.log(`Transcription récupérée pour la vidéo ${videoId} (${fullText.length} caractères). Début de l'analyse...`);
 
-    const { error: analysisSaveError } = await serviceClient
-      .from('videos')
-      .update({
-        analysis: analysisResult,
-        status: VIDEO_STATUS.ANALYZED,
-        updated_at: new Date().toISOString(),
-        ai_score: calculateAIScore(analysisResult)
-      })
-      .eq('id', videoId);
+      const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    if (analysisSaveError) {
-      console.error(`Erreur lors de l'enregistrement des résultats d'analyse pour la vidéo ${videoId}:`, analysisSaveError);
-      await serviceClient
-        .from('videos')
-        .update({ 
-          status: VIDEO_STATUS.FAILED, 
-          error_message: `Échec de l'enregistrement de l'analyse: ${analysisSaveError.message}`,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Erreur lors de l\'enregistrement des résultats d\'analyse', 
-          details: analysisSaveError.message 
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      );
-    }
+      const analysisPrompt = `Analysez la transcription vidéo suivante et fournissez une analyse complète et structurée au format JSON. L'analyse doit inclure :
+  - Un 'summary' concis (max 3-4 phrases).
+  - Une liste de 'key_topics' (3-5 thèmes/mots-clés principaux).
+  - Une liste de 'important_entities' (personnes, organisations, lieux mentionnés).
+  - Un 'sentiment' général (positif, neutre, négatif).
+  - Une liste de 'action_items' ou prochaines étapes suggérées par le contenu (le cas échéant, max 3).
+  - Des 'insights_supplementaires' incluant:
+    - 'public_cible': [string, string, ...]
+    - 'niveau_expertise': 'débutant'|'intermédiaire'|'avancé'
+    - 'engagement_emotionnel': { 'type': string, 'niveau': number }
+    - 'formats_visuels_suggeres': [string, string, ...]
 
-    const { error: transcriptionUpdateError } = await serviceClient
-      .from('transcriptions')
-      .update({
-        analysis_result: analysisResult,
-        updated_at: new Date().toISOString()
-      })
-      .eq('video_id', videoId);
+  Transcription: ${fullText.substring(0, 12000)}
 
-    if (transcriptionUpdateError) {
-      console.error('Erreur lors de la mise à jour de la transcription avec les résultats d\'analyse:', transcriptionUpdateError);
-    }
+  Assurez-vous que la sortie est un objet JSON valide.`;
 
-    console.log(`Vidéo ${videoId} analysée et statut mis à jour à '${VIDEO_STATUS.ANALYZED}'.`);
-
-    return new Response(
-      JSON.stringify({ 
-        message: 'Analyse terminée avec succès', 
-        videoId, 
-        analysisResult 
-      }), 
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200
-      }
-    );
-
-  } catch (error: any) {
-    console.error("Erreur générale non gérée dans analyze-transcription:", error);
-    
-    try {
-      if (videoId && serviceClient) {
+      let chatCompletion;
+      try {
+        chatCompletion = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            { 
+              role: "system", 
+              content: "Vous êtes un assistant IA expert spécialisé dans l'analyse des transcriptions vidéo et l'extraction d'informations structurées. Votre sortie doit toujours être un objet JSON valide." 
+            },
+            { role: "user", content: analysisPrompt }
+          ],
+          response_format: { type: "json_object" },
+          max_tokens: 2000
+        });
+      } catch (openaiError) {
+        console.error('Erreur OpenAI lors de l\'analyse:', openaiError);
         await serviceClient
           .from('videos')
           .update({ 
             status: VIDEO_STATUS.FAILED, 
-            error_message: `Erreur interne lors de l'analyse: ${error.message}`,
+            error_message: `Erreur OpenAI: ${openaiError.message}`,
             updated_at: new Date().toISOString()
           })
           .eq('id', videoId);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Erreur lors de l\'analyse OpenAI', 
+            details: openaiError.message 
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+        );
       }
-    } catch (updateError) {
-      console.error('Erreur lors de la mise à jour du statut d\'erreur:', updateError);
-    }
 
-    return new Response(
-      JSON.stringify({
-        error: 'Erreur interne du serveur',
-        details: error.message || 'Une erreur inattendue est survenue.'
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-    );
-  }
-});
+      let analysisResult;
+      try {
+        analysisResult = JSON.parse(chatCompletion.choices[0].message.content || '{}');
+        
+        if (!analysisResult.summary || !analysisResult.key_topics) {
+          throw new Error('Réponse OpenAI incomplète ou mal formatée');
+        }
+        
+        // S'assurer que le résultat est sérialisable
+        analysisResult = ensureSerializable(analysisResult);
+      } catch (parseError) {
+        console.error('Erreur lors de l\'analyse du JSON de la réponse OpenAI:', parseError);
+        
+        await serviceClient
+          .from('videos')
+          .update({ 
+            status: VIDEO_STATUS.FAILED, 
+            error_message: `Échec de l'analyse de la réponse OpenAI: ${parseError.message}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId);
+        
+        return new Response(
+          JSON.stringify({ 
+            error: 'Erreur de format de réponse', 
+            details: 'La réponse de l\'IA n\'est pas un JSON valide'
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+        );
+      }
+
+      console.log(`Analyse terminée pour la vidéo ${videoId}.`);
+
+      // CORRECTION: Utiliser performance_score au lieu de ai_score
+      const { error: analysisSaveError } = await serviceClient
+        .from('videos')
+        .update({
+          analysis: analysisResult,
+          status: VIDEO_STATUS.ANALYZED,
+          updated_at: new Date().toISOString(),
+          performance_score: calculateAIScore(analysisResult) // Utiliser performance_score qui existe dans le schéma
+        })
+        .eq('id', videoId);
+
+      if (analysisSaveError) {
+        console.error(`Erreur lors de l'enregistrement des résultats d'analyse pour la vidéo ${videoId}:`, analysisSaveError);
+        await serviceClient
+          .from('videos')
+          .update({ 
+            status: VIDEO_STATUS.FAILED, 
+            error_message: `Échec de l'enregistrement de l'analyse: ${analysisSaveError.message}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Erreur lors de l\'enregistrement des résultats d\'analyse', 
+            details: analysisSaveError.message 
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+        );
+      }
+
+      const { error: transcriptionUpdateError } = await serviceClient
+        .from('transcriptions')
+        .update({
+          analysis_result: analysisResult,
+          updated_at: new Date().toISOString()
+        })
+        .eq('video_id', videoId);
+
+      if (transcriptionUpdateError) {
+        console.error('Erreur lors de la mise à jour de la transcription avec les résultats d\'analyse:', transcriptionUpdateError);
+      }
+
+      console.log(`Vidéo ${videoId} analysée et statut mis à jour à '${VIDEO_STATUS.ANALYZED}'.`);
+
+      return new Response(
+        JSON.stringify({ 
+          message: 'Analyse terminée avec succès', 
+          videoId, 
+          analysisResult 
+        }), 
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200
+        }
+      );
+
+    } catch (error: any) {
+      console.error("Erreur générale non gérée dans analyze-transcription:", error);
+      
+      try {
+        if (videoId && serviceClient) {
+          await serviceClient
+            .from('videos')
+            .update({ 
+              status: VIDEO_STATUS.FAILED, 
+              error_message: `Erreur interne lors de l'analyse: ${error.message}`,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', videoId);
+        }
+      } catch (updateError) {
+        console.error('Erreur lors de la mise à jour du statut d\'erreur:', updateError);
+      }
+
+      return new Response(
+        JSON.stringify({
+          error: 'Erreur interne du serveur',
+          details: error.message || 'Une erreur inattendue est survenue.'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
+    }
+  });
 
 function calculateAIScore(analysisResult: any): number {
   let score = 7.0;
