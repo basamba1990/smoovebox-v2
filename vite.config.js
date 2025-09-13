@@ -49,7 +49,7 @@ export default defineConfig({
     host: '0.0.0.0',
     // Suppression de allowedHosts, car non pris en charge par Vite
     cors: {
-      origin: ['http://localhost:5173', 'https://smoovebox-v2.vercel.app'], // Autoriser les origines spécifiques pour le développement
+      origin: ['http://localhost:5173', 'https://spotbulle.vercel.app'], // Autoriser les origines spécifiques pour le développement
       credentials: true,
     },
   },
