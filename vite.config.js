@@ -1,56 +1,27 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import tailwindcss from '@tailwindcss/vite';
-import path from 'path';
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import './index.css';
+import App from './App.jsx';
+import AuthCallback from '@/pages/AuthCallback.jsx';
+import ResetPassword from '@/pages/ResetPassword.jsx';
+import RecordVideo from '@/pages/record-video.jsx';
+import VideoSuccess from '@/pages/video-success.jsx';
+import Directory from '@/pages/directory.jsx';
+import UserRegistration from '@components/UserRegistration.jsx';
 
-// https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [
-    react(),
-    tailwindcss(),
-  ],
-  optimizeDeps: {
-    include: ['uuid', '@supabase/supabase-js'], // Ajout de supabase-js pour optimisation
-  },
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-      '@components': path.resolve(__dirname, './src/components'),
-      '@context': path.resolve(__dirname, './src/context'),
-      '@lib': path.resolve(__dirname, './src/lib'),
-    },
-  },
-  envDir: './',
-  base: '/',
-  build: {
-    outDir: 'dist',
-    sourcemap: process.env.NODE_ENV !== 'production',
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: process.env.NODE_ENV === 'production',
-      },
-    },
-    rollupOptions: {
-      external: [/^react-icons\/fi/],
-      output: {
-        manualChunks: {
-          react: ['react', 'react-dom'],
-          supabase: ['@supabase/supabase-js'],
-          ui: ['@radix-ui/react-dialog', '@radix-ui/react-tabs'],
-        },
-      },
-    },
-  },
-  server: {
-    port: 5173,
-    strictPort: true,
-    open: true,
-    host: '0.0.0.0',
-    // Suppression de allowedHosts, car non pris en charge par Vite
-    cors: {
-      origin: ['http://localhost:5173', 'https://spotbulle.vercel.app'], // Autoriser les origines spécifiques pour le développement
-      credentials: true,
-    },
-  },
-});
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<App />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/record-video" element={<RecordVideo />} />
+        <Route path="/video-success" element={<VideoSuccess />} />
+        <Route path="/directory" element={<Directory />} />
+        <Route path="/register" element={<UserRegistration />} />
+      </Routes>
+    </BrowserRouter>
+  </StrictMode>
+);
