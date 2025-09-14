@@ -8,6 +8,7 @@ import ResetPassword from './pages/ResetPassword.jsx';
 import RecordVideo from './pages/RecordVideo.jsx';
 import VideoSuccess from './pages/VideoSuccess.jsx';
 import Directory from './pages/Directory.jsx';
+import UserRegistration from './components/UserRegistration.jsx';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -19,6 +20,7 @@ createRoot(document.getElementById('root')).render(
         <Route path="/record-video" element={<RecordVideo />} />
         <Route path="/video-success" element={<VideoSuccess />} />
         <Route path="/directory" element={<Directory />} />
+        <Route path="/register" element={<UserRegistration />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>
