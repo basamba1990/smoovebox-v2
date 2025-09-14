@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSupabaseClient } from '@supabase/auth-helpers-react';
+import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode.react';
 import { toast } from 'sonner';
@@ -10,6 +10,7 @@ const VideoSuccess = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const supabase = useSupabaseClient();
+  const user = useUser();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const videoId = searchParams.get('id');
@@ -44,10 +45,17 @@ const VideoSuccess = () => {
     toast.success('Lien copié dans le presse-papiers !');
   };
 
-  const shareByEmail = () => {
-    const shareText = `Regardez ma vidéo sur SpotBulle : ${videoUrl}`;
-    window.open(`mailto:?body=${encodeURIComponent(shareText)}`, '_blank');
-    toast.success('Lien prêt à être partagé par e-mail.');
+  const shareByEmail = async () => {
+    try {
+      const { error } = await supabase.functions.invoke('send-email', {
+        body: { user_id: user.id, video_id: videoData.id, video_url: videoUrl },
+      });
+      if (error) throw error;
+      toast.success('E-mail envoyé avec succès !');
+    } catch (error) {
+      console.error('Erreur envoi e-mail:', error);
+      toast.error('Erreur lors de l\'envoi de l\'e-mail.');
+    }
   };
 
   if (loading) {
