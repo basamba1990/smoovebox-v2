@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
-import { useRouter } from 'next/router';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import { Button } from '../components/ui/button-enhanced.jsx';
 
 const RecordVideo = () => {
   const [recording, setRecording] = useState(false);
@@ -9,22 +11,18 @@ const RecordVideo = () => {
   const [cameraAccess, setCameraAccess] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [error, setError] = useState(null);
+  const [tags, setTags] = useState('');
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
-  const streamRef = useRef(null); // Référence pour le flux média
+  const streamRef = useRef(null);
   const supabase = useSupabaseClient();
   const user = useUser();
-  const router = useRouter();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    // Demander l'accès à la caméra au chargement
     requestCameraAccess();
-
-    // Nettoyage du flux média lors du démontage
-    return () => {
-      stopStream();
-    };
+    return () => stopStream();
   }, []);
 
   const stopStream = () => {
@@ -47,18 +45,18 @@ const RecordVideo = () => {
       }
     } catch (error) {
       console.error('Erreur accès caméra:', error);
-      setError('Impossible d\'accéder à la caméra. Veuillez vérifier les permissions et activer la caméra/micro.');
+      setError('Impossible d\'accéder à la caméra. Veuillez vérifier les permissions.');
+      toast.error('Erreur d\'accès à la caméra.');
     }
   };
 
   const startRecording = async () => {
     if (!cameraAccess) {
-      setError('Veuillez autoriser l\'accès à la caméra pour enregistrer une vidéo');
+      setError('Veuillez autoriser l\'accès à la caméra.');
       return;
     }
 
     setError(null);
-    // Compte à rebours avant l'enregistrement
     setCountdown(3);
 
     for (let i = 3; i > 0; i--) {
@@ -94,7 +92,8 @@ const RecordVideo = () => {
       setRecording(true);
     } catch (error) {
       console.error('Erreur démarrage enregistrement:', error);
-      setError('Impossible de démarrer l\'enregistrement. Veuillez réessayer.');
+      setError('Impossible de démarrer l\'enregistrement.');
+      toast.error('Erreur lors de l\'enregistrement.');
     }
   };
 
@@ -108,6 +107,7 @@ const RecordVideo = () => {
   const uploadVideo = async () => {
     if (!recordedVideo || !user) {
       setError('Vous devez être connecté et avoir une vidéo enregistrée.');
+      toast.error('Connexion ou vidéo manquante.');
       return;
     }
 
@@ -125,18 +125,19 @@ const RecordVideo = () => {
       formData.append('video', file);
       formData.append('title', 'Ma vidéo SpotBulle');
       formData.append('description', 'Vidéo enregistrée via SpotBulle');
+      formData.append('tags', JSON.stringify(tags.split(',').map(t => t.trim())));
 
       const { data, error } = await supabase.functions.invoke('upload-video', {
         body: formData,
       });
 
       if (error) throw error;
-
-      // Rediriger vers la page de succès
-      router.push(`/video-success?id=${data.video.id}`);
+      toast.success('Vidéo envoyée avec succès !');
+      navigate(`/video-success?id=${data.video.id}`);
     } catch (error) {
       console.error('Erreur upload:', error);
-      setError(`Erreur lors de l'upload de la vidéo : ${error.message}`);
+      setError(`Erreur lors de l'upload : ${error.message}`);
+      toast.error('Erreur lors de l\'upload.');
     } finally {
       setUploading(false);
     }
@@ -153,58 +154,27 @@ const RecordVideo = () => {
 
   if (countdown > 0) {
     return (
-      <div style={{
-        padding: '20px',
-        maxWidth: '600px',
-        margin: '0 auto',
-        textAlign: 'center',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '100vh',
-      }}>
-        <h1 style={{ color: '#38b2ac', fontSize: '72px', fontWeight: 'bold' }}>{countdown}</h1>
-        <p style={{ color: '#4a5568', fontSize: '24px' }}>Préparez-vous à parler...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center p-4">
+        <h1 className="text-6xl font-bold text-blue-500">{countdown}</h1>
+        <p className="text-2xl text-gray-200 mt-2">Préparez-vous à parler...</p>
       </div>
     );
   }
 
   return (
-    <div style={{
-      padding: '20px',
-      maxWidth: '600px',
-      margin: '0 auto',
-      textAlign: 'center',
-    }}>
-      <h1 style={{ color: '#38b2ac', fontSize: '28px', marginBottom: '20px' }}>
-        Enregistrez votre vidéo
-      </h1>
+    <div className="max-w-md mx-auto p-4">
+      <h1 className="text-3xl font-bold text-blue-500 mb-6">Enregistrez votre vidéo</h1>
 
       {error && (
-        <div style={{
-          backgroundColor: '#fed7d7',
-          color: '#9b2c2c',
-          padding: '10px',
-          borderRadius: '4px',
-          marginBottom: '20px',
-        }}>
-          {error}
-        </div>
+        <div className="bg-red-100 text-red-700 p-2 rounded mb-4">{error}</div>
       )}
 
-      <div style={{ margin: '20px 0' }}>
+      <div className="mb-4">
         <video
           ref={videoRef}
           autoPlay
           muted={!recordedVideo}
-          style={{
-            width: '100%',
-            maxWidth: '500px',
-            border: '2px solid #38b2ac',
-            borderRadius: '8px',
-            backgroundColor: '#000',
-          }}
+          className="w-full max-w-md border-2 border-blue-500 rounded-lg bg-black"
           src={recordedVideo?.url}
         />
       </div>
@@ -212,71 +182,45 @@ const RecordVideo = () => {
       {!recordedVideo ? (
         <div>
           {!recording ? (
-            <button
+            <Button
               onClick={startRecording}
               disabled={!cameraAccess}
-              style={{
-                backgroundColor: cameraAccess ? '#38b2ac' : '#a0aec0',
-                color: 'white',
-                padding: '12px 24px',
-                borderRadius: '8px',
-                border: 'none',
-                fontSize: '16px',
-                cursor: cameraAccess ? 'pointer' : 'not-allowed',
-                opacity: cameraAccess ? 1 : 0.5,
-              }}
+              className={cameraAccess ? '' : 'opacity-50 cursor-not-allowed'}
             >
               {cameraAccess ? 'Commencer l\'enregistrement' : 'Caméra non disponible'}
-            </button>
+            </Button>
           ) : (
-            <button
-              onClick={stopRecording}
-              style={{
-                backgroundColor: '#e53e3e',
-                color: 'white',
-                padding: '12px 24px',
-                borderRadius: '8px',
-                border: 'none',
-                fontSize: '16px',
-                cursor: 'pointer',
-              }}
-            >
+            <Button onClick={stopRecording} className="bg-red-500 hover:bg-red-600">
               Arrêter l'enregistrement
-            </button>
+            </Button>
           )}
         </div>
       ) : (
         <div>
-          <p style={{ color: '#38b2ac', marginBottom: '10px' }}>Vidéo enregistrée avec succès !</p>
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-            <button
-              onClick={retryRecording}
-              style={{
-                backgroundColor: '#a0aec0',
-                color: 'white',
-                padding: '10px 20px',
-                borderRadius: '8px',
-                border: 'none',
-                cursor: 'pointer',
-              }}
-            >
+          <p className="text-blue-400 mb-2">Vidéo enregistrée avec succès !</p>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-white mb-1">
+              Ajouter des tags (séparés par des virgules) :
+            </label>
+            <input
+              type="text"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="Football, Sport, etc."
+              className="w-full p-2 border rounded bg-white/10 text-white"
+            />
+          </div>
+          <div className="flex gap-4 justify-center">
+            <Button onClick={retryRecording} className="bg-gray-500 hover:bg-gray-600">
               Réessayer
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={uploadVideo}
               disabled={uploading}
-              style={{
-                backgroundColor: '#38b2ac',
-                color: 'white',
-                padding: '10px 20px',
-                borderRadius: '8px',
-                border: 'none',
-                cursor: uploading ? 'not-allowed' : 'pointer',
-                opacity: uploading ? 0.7 : 1,
-              }}
+              className={uploading ? 'opacity-70 cursor-not-allowed' : ''}
             >
               {uploading ? 'Envoi en cours...' : 'Valider et envoyer'}
-            </button>
+            </Button>
           </div>
         </div>
       )}
