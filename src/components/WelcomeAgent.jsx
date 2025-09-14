@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button-enhanced.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 
 const WelcomeAgent = ({ onOpenAuthModal }) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -24,53 +25,54 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
       setIsLoading(true);
       setIsPlaying(true);
 
-      const response = await fetch('/api/tts', {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tts`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
         body: JSON.stringify({ text: welcomeMessage }),
       });
 
-      if (response.ok) {
-        const audioBlob = await response.blob();
-        const url = URL.createObjectURL(audioBlob);
-        setAudioUrl(url);
+      if (!response.ok) throw new Error('Erreur lors de la génération audio');
+      const audioBlob = await response.blob();
+      const url = URL.createObjectURL(audioBlob);
+      setAudioUrl(url);
 
-        if (audioRef.current) {
-          audioRef.current.src = url;
-          audioRef.current.play().catch(error => {
-            console.error('Erreur de lecture audio:', error);
-            setIsPlaying(false);
-          });
-        }
-      } else {
-        console.error('Erreur lors de la génération audio');
-        setIsPlaying(false);
+      if (audioRef.current) {
+        audioRef.current.src = url;
+        audioRef.current.play().catch(error => {
+          console.error('Erreur de lecture audio:', error);
+          toast.error('Erreur de lecture audio.');
+          setIsPlaying(false);
+        });
       }
     } catch (error) {
       console.error('Erreur TTS:', error);
+      toast.error('Erreur lors de la génération audio.');
       setIsPlaying(false);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleStartExperience = async () => {
-    if (loading) return;
-
-    if (!user) {
-      onOpenAuthModal();
-    } else {
-      navigate('/record-video');
-    }
-  };
-
   useEffect(() => {
+    generateSpeech(); // Jouer le TTS automatiquement au chargement
     return () => {
       if (audioUrl) {
         URL.revokeObjectURL(audioUrl);
       }
     };
   }, [audioUrl]);
+
+  const handleStartExperience = async () => {
+    if (loading) return;
+    if (!user) {
+      onOpenAuthModal();
+    } else {
+      navigate('/register'); // Rediriger vers l'enregistrement au lieu de record-video
+    }
+  };
 
   return (
     <div className="relative min-h-screen bg-gradient-to-b from-blue-900 to-red-700 overflow-hidden">
