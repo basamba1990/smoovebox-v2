@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
-import { createClient as createOpenAIClient } from 'npm:@openai/openai@0.0.5';
+import OpenAI from 'npm:openai@4.28.0';
+import { Buffer } from 'node:buffer'; // Ajout pour compatibilité Deno
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,81 +15,70 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+
+    if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
+      return new Response(
+        JSON.stringify({
+          error: 'Configuration incomplète',
+          details: 'Vérifiez SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, et OPENAI_API_KEY',
+        }),
+        { headers: corsHeaders, status: 500 }
+      );
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false },
+    });
+
+    // Vérifier l'authentification
     const authHeader = req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return new Response(
-        JSON.stringify({ error: 'Non autorisé' }),
-        { status: 401, headers: corsHeaders }
+        JSON.stringify({ error: 'Non autorisé', details: 'Token JWT requis' }),
+        { headers: corsHeaders, status: 401 }
       );
     }
 
     const token = authHeader.replace('Bearer ', '');
-    const { text, voice = 'alloy' } = await req.json();
-    if (!text) {
-      return new Response(
-        JSON.stringify({ error: 'Texte requis' }),
-        { status: 400, headers: corsHeaders }
-      );
-    }
-
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-      { auth: { persistSession: false } }
-    );
-
-    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     if (userError || !user) {
       console.error('Erreur de vérification du token:', userError);
       return new Response(
         JSON.stringify({ error: 'Token d\'authentification invalide' }),
-        { status: 401, headers: corsHeaders }
+        { headers: corsHeaders, status: 401 }
       );
     }
 
-    const openai = createOpenAIClient({
-      apiKey: Deno.env.get('OPENAI_API_KEY') ?? '',
-    });
+    const { text, voice } = await req.json();
+    if (!text || typeof text !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'Texte requis', details: 'Fournir un texte valide dans le body JSON' }),
+        { headers: corsHeaders, status: 400 }
+      );
+    }
 
+    const openai = new OpenAI({ apiKey: openaiApiKey });
     const mp3 = await openai.audio.speech.create({
       model: 'tts-1',
-      voice: voice,
+      voice: voice || 'alloy',
       input: text,
-      response_format: 'mp3',
     });
 
     const arrayBuffer = await mp3.arrayBuffer();
-    const buffer = new Uint8Array(arrayBuffer);
+    const buffer = Buffer.from(arrayBuffer); // Utilisation de Buffer
 
-    const audioId = crypto.randomUUID();
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from('audio')
-      .upload(`${user.id}/${audioId}.mp3`, buffer, {
-        contentType: 'audio/mp3',
-      });
-
-    if (uploadError) {
-      console.error('Erreur lors de l\'upload de l\'audio:', uploadError);
-      throw uploadError;
-    }
-
-    const { data: { publicUrl } } = supabaseAdmin.storage
-      .from('audio')
-      .getPublicUrl(`${user.id}/${audioId}.mp3`);
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: 'Synthèse vocale réussie',
-        audio_url: publicUrl,
-      }),
-      { status: 200, headers: corsHeaders }
-    );
+    return new Response(buffer, {
+      headers: { ...corsHeaders, 'Content-Type': 'audio/mpeg' },
+      status: 200,
+    });
   } catch (error) {
-    console.error('Exception inattendue:', error);
+    console.error('Erreur TTS:', error);
     return new Response(
-      JSON.stringify({ error: error.message || 'Erreur inattendue' }),
-      { status: 500, headers: corsHeaders }
+      JSON.stringify({ error: 'Erreur interne', details: error.message || 'Erreur inattendue' }),
+      { headers: corsHeaders, status: 500 }
     );
   }
 });
