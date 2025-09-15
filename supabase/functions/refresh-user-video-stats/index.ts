@@ -1,86 +1,81 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2.39.3";
+import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS'
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Content-Type': 'application/json',
 };
 
-serve(async (req) => {
-  // Gestion des requêtes OPTIONS pour CORS
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { 
-      headers: corsHeaders,
-      status: 200
-    });
+    return new Response(null, { headers: corsHeaders, status: 204 });
   }
 
   try {
-    // Vérification de l'authentification
     const authHeader = req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 401, headers: corsHeaders }
       );
     }
 
-    // Extraction du token JWT correct (pas une clé API)
     const token = authHeader.replace('Bearer ', '');
-    
-    // Initialisation du client Supabase avec la clé service role
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      { auth: { persistSession: false } }
     );
 
-    // Vérification que le token est un JWT utilisateur valide et non une clé API
-    try {
-      const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-      
-      if (userError || !user) {
-        console.error('Erreur de vérification du token:', userError);
-        return new Response(
-          JSON.stringify({ error: 'Token d\'authentification invalide' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      console.log(`Utilisateur authentifié: ${user.id}`);
-    } catch (authError) {
-      console.error('Exception lors de la vérification du token:', authError);
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+    if (userError || !user) {
+      console.error('Erreur de vérification du token:', userError);
       return new Response(
-        JSON.stringify({ error: 'Erreur d\'authentification' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Token d\'authentification invalide' }),
+        { status: 401, headers: corsHeaders }
       );
     }
 
-    // Mise à jour directe des statistiques sans utiliser RPC
-    const { error } = await supabaseAdmin
-      .from('user_video_stats')
-      .update({ 
-        last_updated: new Date().toISOString()
-      })
-      .eq('user_id', user.id);
+    console.log(`Utilisateur authentifié: ${user.id}`);
 
-    if (error) {
-      console.error('Erreur lors du rafraîchissement:', error);
-      return new Response(
-        JSON.stringify({ error: error.message }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    const { data: stats, error: statsError } = await supabaseAdmin
+      .rpc('get_user_video_stats', { user_id: user.id })
+      .single();
+    if (statsError) {
+      console.error('Erreur lors de la récupération des statistiques:', statsError);
+      throw statsError;
+    }
+
+    const { error: upsertError } = await supabaseAdmin
+      .from('user_video_stats')
+      .upsert(
+        {
+          user_id: user.id,
+          total_videos: stats.total_videos || 0,
+          total_duration: stats.total_duration || 0,
+          last_updated: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' }
       );
+    if (upsertError) {
+      console.error('Erreur lors de la mise à jour des statistiques:', upsertError);
+      throw upsertError;
     }
 
     return new Response(
-      JSON.stringify({ success: true, message: 'Statistiques utilisateur actualisées avec succès' }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        success: true,
+        message: 'Statistiques utilisateur actualisées avec succès',
+        stats,
+      }),
+      { status: 200, headers: corsHeaders }
     );
   } catch (error) {
     console.error('Exception inattendue:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ error: error.message || 'Erreur inattendue' }),
+      { status: 500, headers: corsHeaders }
     );
   }
 });
