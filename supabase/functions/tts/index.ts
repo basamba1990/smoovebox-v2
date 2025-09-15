@@ -1,6 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
 import OpenAI from 'npm:openai@4.28.0';
-import { Buffer } from 'node:buffer';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,6 +11,13 @@ const corsHeaders = {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders, status: 204 });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Méthode non autorisée', details: 'Seule la méthode POST est supportée' }),
+      { status: 405, headers: corsHeaders }
+    );
   }
 
   try {
@@ -33,7 +39,6 @@ Deno.serve(async (req) => {
       auth: { persistSession: false },
     });
 
-    // Vérifier l'authentification
     const authHeader = req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return new Response(
@@ -52,7 +57,25 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { text, voice } = await req.json();
+    const contentType = req.headers.get('Content-Type') || '';
+    if (!contentType.includes('application/json')) {
+      return new Response(
+        JSON.stringify({ error: 'Content-Type invalide', details: 'application/json requis' }),
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    let requestBody;
+    try {
+      requestBody = await req.json();
+    } catch (error) {
+      return new Response(
+        JSON.stringify({ error: 'JSON invalide', details: 'Le corps de la requête doit être un JSON valide' }),
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    const { text, voice } = requestBody;
     if (!text || typeof text !== 'string') {
       return new Response(
         JSON.stringify({ error: 'Texte requis', details: 'Fournir un texte valide dans le body JSON' }),
@@ -69,13 +92,15 @@ Deno.serve(async (req) => {
     });
 
     const arrayBuffer = await mp3.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const buffer = new Uint8Array(arrayBuffer);
 
     return new Response(buffer, {
       headers: {
-        ...corsHeaders,
         'Content-Type': 'audio/mpeg',
-        'Content-Length': buffer.length.toString(), // Ajout pour clients stricts
+        'Content-Length': buffer.length.toString(),
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
       },
       status: 200,
     });
