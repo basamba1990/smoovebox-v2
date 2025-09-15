@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
+        JSON.stringify({ error: 'Non autorisé' }),
         { status: 401, headers: corsHeaders }
       );
     }
@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
     console.log(`Utilisateur authentifié: ${user.id}`);
 
     const { data: stats, error: statsError } = await supabaseAdmin
-      .rpc('get_user_video_stats', { user_id: user.id })
+      .rpc('get_user_video_stats', { _user_id: user.id })
       .single();
     if (statsError) {
       console.error('Erreur lors de la récupération des statistiques:', statsError);
@@ -49,15 +49,16 @@ Deno.serve(async (req) => {
 
     const { error: upsertError } = await supabaseAdmin
       .from('user_video_stats')
-      .upsert(
-        {
-          user_id: user.id,
-          total_videos: stats.total_videos || 0,
-          total_duration: stats.total_duration || 0,
-          last_updated: new Date().toISOString(),
-        },
-        { onConflict: 'user_id' }
-      );
+      .upsert({
+        user_id: user.id,
+        total_videos: stats.total_videos,
+        total_duration: stats.total_duration,
+        last_upload: stats.last_upload,
+        total_views: stats.total_views,
+        total_likes: stats.total_likes,
+        transcribed_videos: stats.transcribed_videos,
+        last_updated: new Date().toISOString()
+      }, { onConflict: 'user_id' });
     if (upsertError) {
       console.error('Erreur lors de la mise à jour des statistiques:', upsertError);
       throw upsertError;
@@ -66,7 +67,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Statistiques utilisateur actualisées avec succès',
+        message: 'Statistiques utilisateur mises à jour avec succès',
         stats,
       }),
       { status: 200, headers: corsHeaders }
