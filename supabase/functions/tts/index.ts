@@ -1,6 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
 import OpenAI from 'npm:openai@4.28.0';
-import { Buffer } from 'node:buffer'; // Ajout pour compatibilité Deno
+import { Buffer } from 'node:buffer';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -45,9 +45,9 @@ Deno.serve(async (req) => {
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     if (userError || !user) {
-      console.error('Erreur de vérification du token:', userError);
+      console.error('Erreur de vérification du token:', userError?.message || userError);
       return new Response(
-        JSON.stringify({ error: 'Token d\'authentification invalide' }),
+        JSON.stringify({ error: 'Token d\'authentification invalide', details: userError?.message }),
         { headers: corsHeaders, status: 401 }
       );
     }
@@ -65,13 +65,18 @@ Deno.serve(async (req) => {
       model: 'tts-1',
       voice: voice || 'alloy',
       input: text,
+      speed: 1.0,
     });
 
     const arrayBuffer = await mp3.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer); // Utilisation de Buffer
+    const buffer = Buffer.from(arrayBuffer);
 
     return new Response(buffer, {
-      headers: { ...corsHeaders, 'Content-Type': 'audio/mpeg' },
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'audio/mpeg',
+        'Content-Length': buffer.length.toString(), // Ajout pour clients stricts
+      },
       status: 200,
     });
   } catch (error) {
