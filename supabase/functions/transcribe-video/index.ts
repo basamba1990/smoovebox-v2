@@ -1,15 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
-import OpenAI from 'npm:openai@4.68.1';
-
-const VIDEO_STATUS = {
-  UPLOADED: 'uploaded',
-  PROCESSING: 'processing',
-  TRANSCRIBING: 'transcribing',
-  TRANSCRIBED: 'transcribed',
-  ANALYZING: 'analyzing',
-  ANALYZED: 'analyzed',
-  FAILED: 'failed',
-} as const;
+import { createClient as createOpenAIClient } from 'npm:@openai/openai@0.0.5';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,240 +8,131 @@ const corsHeaders = {
   'Content-Type': 'application/json',
 };
 
-async function withRetry<T>(operation: () => Promise<T>, maxAttempts = 3, baseDelay = 1000): Promise<T> {
-  let attempt = 0;
-  let lastError: Error;
-  while (attempt < maxAttempts) {
-    try {
-      return await operation();
-    } catch (error) {
-      attempt++;
-      lastError = error as Error;
-      if (attempt >= maxAttempts) break;
-      const delay = baseDelay * Math.pow(2, attempt);
-      console.log(`Tentative ${attempt} échouée, nouvelle tentative dans ${delay}ms`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
-  throw lastError;
-}
-
-function ensureSerializable(obj: any): any {
-  if (obj === null || obj === undefined) return null;
-  if (typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map(item => ensureSerializable(item));
-  const result: any = {};
-  for (const key in obj) {
-    if (obj.hasOwnProperty(key)) {
-      const value = obj[key];
-      result[key] = typeof value === 'object' && value !== null ? ensureSerializable(value) : value;
-    }
-  }
-  return result;
-}
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders, status: 204 });
   }
 
-  let videoId: string | null = null;
-  let serviceClient: any = null;
-
   try {
-    console.log('Fonction transcribe-video appelée');
-
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-
-    if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
-      throw new Error('Variables d\'environnement manquantes');
-    }
-
-    serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { persistSession: false },
-      global: {
-        fetch: (input, init) => {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 60000);
-          return fetch(input, { ...init, signal: controller.signal }).finally(() =>
-            clearTimeout(timeoutId)
-          );
-        },
-      },
-    });
-
-    let userId: string | null = null;
     const authHeader = req.headers.get('Authorization');
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.replace('Bearer ', '');
-      try {
-        const { data } = await serviceClient.auth.getUser(token);
-        if (data?.user) userId = data.user.id;
-      } catch (authError) {
-        console.error('Erreur d\'authentification:', authError);
-      }
-    }
-
-    const requestData = await req.json();
-    videoId = requestData.videoId;
-    if (!videoId) throw new Error('videoId est requis');
-
-    console.log(`Traitement de la vidéo: ${videoId}`);
-
-    const video = await withRetry(async () => {
-      const { data, error } = await serviceClient.from('videos').select('*').eq('id', videoId).single();
-      if (error) throw error;
-      if (!data) throw new Error('Vidéo non trouvée');
-      return data;
-    });
-
-    const { error: updateError } = await serviceClient
-      .from('videos')
-      .update({
-        status: VIDEO_STATUS.TRANSCRIBING,
-        updated_at: new Date().toISOString(),
-        transcription_attempts: (video.transcription_attempts || 0) + 1,
-      })
-      .eq('id', videoId);
-    if (updateError) throw updateError;
-
-    if (!video.storage_path) throw new Error('Chemin de stockage manquant pour la vidéo');
-
-    let bucket = 'videos';
-    let filePath = video.storage_path;
-    if (filePath.includes('/')) {
-      const parts = filePath.split('/');
-      if (parts.length > 1) {
-        const possibleBucket = parts[0];
-        const { data: buckets } = await serviceClient.storage.listBuckets();
-        if (buckets?.some((b: any) => b.name === possibleBucket)) {
-          bucket = possibleBucket;
-          filePath = parts.slice(1).join('/');
-        }
-      }
-    }
-    if (filePath.startsWith(`${bucket}/`)) filePath = filePath.substring(bucket.length + 1);
-
-    const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
-      .from(bucket)
-      .createSignedUrl(filePath, 60 * 60);
-    if (signedUrlError) throw new Error(`Impossible de générer l'URL signée: ${signedUrlError.message}`);
-    const videoUrl = signedUrlData.signedUrl;
-
-    const response = await fetch(videoUrl);
-    if (!response.ok) throw new Error(`Échec téléchargement: ${response.status} ${response.statusText}`);
-    const videoBlob = await response.blob();
-
-    const openai = new OpenAI({ apiKey: openaiApiKey });
-
-    const rawTranscription = await withRetry(async () => {
-      return await openai.audio.transcriptions.create({
-        file: new File([videoBlob], `video.${videoBlob.type.split('/')[1] || 'mp4'}`, {
-          type: videoBlob.type,
-        }),
-        model: 'whisper-1',
-        language: 'fr',
-        response_format: 'verbose_json',
-      });
-    });
-
-    const transcriptionText = String(rawTranscription.text || '');
-    const transcriptionLanguage = String(rawTranscription.language || 'fr');
-    const transcriptionDuration = Number(rawTranscription.duration || 0);
-
-    const cleanSegments = Array.isArray(rawTranscription.segments)
-      ? rawTranscription.segments.map((segment: any) => ({
-          id: String(segment.id || ''),
-          start: Number(segment.start || 0),
-          end: Number(segment.end || 0),
-          text: String(segment.text || ''),
-          confidence: Number(segment.confidence || 0),
-          tokens: Array.isArray(segment.tokens) ? segment.tokens.map(String) : [],
-        }))
-      : [];
-
-    const confidenceScore = cleanSegments.length
-      ? cleanSegments.reduce((sum, s) => sum + (s.confidence || 0), 0) / cleanSegments.length
-      : null;
-
-    const transcriptionData = ensureSerializable({
-      text: transcriptionText,
-      segments: cleanSegments,
-      language: transcriptionLanguage,
-      duration: transcriptionDuration,
-      confidence_score: confidenceScore,
-    });
-
-    const { error: transcriptionTableError } = await serviceClient
-      .from('transcriptions')
-      .upsert(
-        {
-          video_id: videoId,
-          user_id: userId,
-          full_text: transcriptionText,
-          transcription_text: transcriptionText,
-          transcription_data: transcriptionData,
-          segments: cleanSegments,
-          confidence_score: confidenceScore,
-          status: 'transcribed',
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'video_id' }
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ error: 'Non autorisé' }),
+        { status: 401, headers: corsHeaders }
       );
-    if (transcriptionTableError) throw transcriptionTableError;
+    }
 
-    const { error: videoUpdateError } = await serviceClient
+    const token = authHeader.replace('Bearer ', '');
+    const { video_id } = await req.json();
+    if (!video_id) {
+      return new Response(
+        JSON.stringify({ error: 'video_id requis' }),
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      { auth: { persistSession: false } }
+    );
+
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+    if (userError || !user) {
+      console.error('Erreur de vérification du token:', userError);
+      return new Response(
+        JSON.stringify({ error: 'Token d\'authentification invalide' }),
+        { status: 401, headers: corsHeaders }
+      );
+    }
+
+    const { data: video, error: videoError } = await supabaseAdmin
       .from('videos')
-      .update({
-        transcription_text: transcriptionText,
-        transcription_data: transcriptionData,
-        status: VIDEO_STATUS.TRANSCRIBED,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', videoId);
-    if (videoUpdateError) throw videoUpdateError;
+      .select('id, user_id, status')
+      .eq('id', video_id)
+      .eq('user_id', user.id)
+      .single();
 
-    try {
-      const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
-      const response = await fetch(analyzeEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseServiceKey}`,
-        },
-        body: JSON.stringify({ videoId }),
+    if (videoError || !video) {
+      console.error('Erreur lors de la récupération de la vidéo:', videoError);
+      return new Response(
+        JSON.stringify({ error: 'Vidéo non trouvée ou non autorisée' }),
+        { status: 404, headers: corsHeaders }
+      );
+    }
+
+    if (video.status === 'transcribed') {
+      return new Response(
+        JSON.stringify({ message: 'Vidéo déjà transcrite' }),
+        { status: 200, headers: corsHeaders }
+      );
+    }
+
+    const { data: { publicUrl } } = supabaseAdmin.storage
+      .from('videos')
+      .getPublicUrl(`${user.id}/${video_id}.mp4`);
+
+    const openai = createOpenAIClient({
+      apiKey: Deno.env.get('OPENAI_API_KEY') ?? '',
+    });
+
+    const response = await fetch(publicUrl);
+    if (!response.ok) {
+      throw new Error('Impossible de récupérer la vidéo depuis le stockage');
+    }
+
+    const videoBlob = await response.blob();
+    const videoFile = new File([videoBlob], `${video_id}.mp4`, { type: 'video/mp4' });
+
+    const transcription = await openai.audio.transcriptions.create({
+      file: videoFile,
+      model: 'whisper-1',
+      response_format: 'verbose_json',
+    });
+
+    const { error: transcriptionError } = await supabaseAdmin
+      .from('transcriptions')
+      .upsert({
+        video_id: video_id,
+        user_id: user.id,
+        full_text: transcription.text,
+        transcription_text: transcription.text,
+        transcription_data: transcription,
+        segments: transcription.segments,
+        confidence_score: transcription.segments?.[0]?.avg_logprob || 0,
+        status: 'completed',
+        updated_at: new Date().toISOString(),
       });
-      if (!response.ok) console.error(`Erreur analyse: ${await response.text()}`);
-    } catch (invokeError) {
-      console.error("Erreur lors de l'invocation de la fonction d'analyse:", invokeError);
+
+    if (transcriptionError) {
+      console.error('Erreur lors de l\'enregistrement de la transcription:', transcriptionError);
+      throw transcriptionError;
+    }
+
+    const { error: videoUpdateError } = await supabaseAdmin
+      .from('videos')
+      .update({ status: 'transcribed' })
+      .eq('id', video_id)
+      .eq('user_id', user.id);
+
+    if (videoUpdateError) {
+      console.error('Erreur lors de la mise à jour du statut de la vidéo:', videoUpdateError);
+      throw videoUpdateError;
     }
 
     return new Response(
       JSON.stringify({
-        message: 'Transcription terminée avec succès',
-        videoId,
-        transcription_length: transcriptionText.length,
-        confidence_score: confidenceScore,
+        success: true,
+        message: 'Transcription réussie',
+        transcription: transcription.text,
       }),
-      { headers: corsHeaders, status: 200 }
+      { status: 200, headers: corsHeaders }
     );
-  } catch (error: any) {
-    console.error('Erreur générale dans transcribe-video:', error);
-    if (videoId && serviceClient) {
-      await serviceClient
-        .from('videos')
-        .update({
-          status: VIDEO_STATUS.FAILED,
-          error_message: `Erreur: ${error.message}`,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', videoId);
-    }
+  } catch (error) {
+    console.error('Exception inattendue:', error);
     return new Response(
-      JSON.stringify({ error: 'Erreur interne du serveur', details: error.message || 'Erreur inattendue' }),
-      { headers: corsHeaders, status: 500 }
+      JSON.stringify({ error: error.message || 'Erreur inattendue' }),
+      { status: 500, headers: corsHeaders }
     );
   }
 });
