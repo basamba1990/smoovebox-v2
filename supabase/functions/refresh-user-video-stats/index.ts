@@ -12,11 +12,18 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders, status: 204 });
   }
 
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Méthode non autorisée', details: 'Seule la méthode POST est supportée' }),
+      { status: 405, headers: corsHeaders }
+    );
+  }
+
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return new Response(
-        JSON.stringify({ error: 'Non autorisé' }),
+        JSON.stringify({ error: 'Non autorisé', details: 'Token JWT requis' }),
         { status: 401, headers: corsHeaders }
       );
     }
@@ -30,9 +37,9 @@ Deno.serve(async (req) => {
 
     const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
     if (userError || !user) {
-      console.error('Erreur de vérification du token:', userError);
+      console.error('Erreur de vérification du token:', userError?.message || userError);
       return new Response(
-        JSON.stringify({ error: 'Token d\'authentification invalide' }),
+        JSON.stringify({ error: 'Token d\'authentification invalide', details: userError?.message }),
         { status: 401, headers: corsHeaders }
       );
     }
@@ -44,7 +51,10 @@ Deno.serve(async (req) => {
       .single();
     if (statsError) {
       console.error('Erreur lors de la récupération des statistiques:', statsError);
-      throw statsError;
+      return new Response(
+        JSON.stringify({ error: 'Erreur lors de la récupération des statistiques', details: statsError.message }),
+        { status: 500, headers: corsHeaders }
+      );
     }
 
     const { error: upsertError } = await supabaseAdmin
@@ -61,7 +71,10 @@ Deno.serve(async (req) => {
       }, { onConflict: 'user_id' });
     if (upsertError) {
       console.error('Erreur lors de la mise à jour des statistiques:', upsertError);
-      throw upsertError;
+      return new Response(
+        JSON.stringify({ error: 'Erreur lors de la mise à jour des statistiques', details: upsertError.message }),
+        { status: 500, headers: corsHeaders }
+      );
     }
 
     return new Response(
@@ -75,7 +88,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Exception inattendue:', error);
     return new Response(
-      JSON.stringify({ error: error.message || 'Erreur inattendue' }),
+      JSON.stringify({ error: 'Erreur interne', details: error.message || 'Erreur inattendue' }),
       { status: 500, headers: corsHeaders }
     );
   }
