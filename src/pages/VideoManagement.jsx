@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../context/AuthContext'; // CORRECTION : Chemin mis à jour (context au lieu de contexts)
+import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import VideoPlayer from '../components/VideoPlayer';
 import VideoAnalysisResults from '../components/VideoAnalysisResults';
@@ -15,52 +15,22 @@ const VideoManagement = () => {
   const [error, setError] = useState(null);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [processingVideoId, setProcessingVideoId] = useState(null);
-  
-  // CORRECTION : Utiliser useRef pour éviter les re-créations inutiles
   const channelRef = useRef(null);
   const mountedRef = useRef(true);
 
-  // Récupérer les statistiques utilisateur
   const fetchStats = useCallback(async () => {
     if (!user || !mountedRef.current) return;
 
     try {
-      const { data, error } = await supabase
-        .rpc('get_user_video_stats', { _user_id: user.id })
-        .single();
-
-      if (error) {
-        console.error('Erreur lors de la récupération des statistiques:', error);
-        setError('Impossible de récupérer les statistiques.');
-        return;
-      }
-
-      if (mountedRef.current) {
-        setStats(data);
-      }
-    } catch (err) {
-      console.error('Exception inattendue:', err);
-      setError('Une erreur inattendue s\'est produite.');
-    }
-  }, [user]);
-
-  // Rafraîchir les statistiques
-  const refreshStats = async () => {
-    try {
-      const { data: authData, error: authError } = await supabase.auth.getSession();
-      if (authError) {
-        throw new Error('Erreur d\'authentification: ' + authError.message);
-      }
-
-      const token = authData?.session?.access_token;
-      if (!token) {
-        throw new Error('Session expirée, veuillez vous reconnecter');
+      const { data: session, error: authError } = await supabase.auth.getSession();
+      if (authError || !session?.session?.access_token) {
+        throw new Error('Session non valide, veuillez vous reconnecter');
       }
 
       const response = await fetch('https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/refresh-user-video-stats', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${session.session.access_token}`,
           'Content-Type': 'application/json',
         },
       });
@@ -70,6 +40,45 @@ const VideoManagement = () => {
       }
 
       const result = await response.json();
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      if (mountedRef.current) {
+        setStats(result.stats);
+      }
+    } catch (err) {
+      console.error('Erreur lors de la récupération des statistiques:', err);
+      if (mountedRef.current) {
+        setError('Impossible de récupérer les statistiques.');
+      }
+    }
+  }, [user]);
+
+  const refreshStats = async () => {
+    try {
+      const { data: session, error: authError } = await supabase.auth.getSession();
+      if (authError || !session?.session?.access_token) {
+        throw new Error('Session non valide, veuillez vous reconnecter');
+      }
+
+      const response = await fetch('https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/refresh-user-video-stats', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erreur HTTP: ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
       if (mountedRef.current) {
         setStats(result.stats);
         toast.success('Statistiques mises à jour avec succès');
@@ -105,8 +114,6 @@ const VideoManagement = () => {
     setError(null);
 
     try {
-      console.log('Récupération des vidéos pour user_id:', user.id);
-
       if (!supabase) {
         throw new Error('Supabase client non initialisé');
       }
@@ -137,22 +144,21 @@ const VideoManagement = () => {
         .order('created_at', { ascending: false });
 
       if (supabaseError) {
-        console.error('Erreur Supabase:', supabaseError);
         throw new Error(`Erreur Supabase: ${supabaseError.message}`);
       }
-
-      console.log('Videos data received:', data);
 
       const normalizedVideos = (data || []).map((video) => {
         const hasTranscription = !!(video.transcription_text || video.transcription_data);
         let analysisData = video.analysis || {};
 
-        if ((!analysisData || Object.keys(analysisData).length === 0) && video.ai_result) {
-          try {
-            analysisData = JSON.parse(video.ai_result);
-          } catch (e) {
-            console.error('Erreur lors du parsing de ai_result:', e);
-            analysisData = { summary: video.ai_result };
+        if (!analysisData || Object.keys(analysisData).length === 0) {
+          if (video.ai_result) {
+            try {
+              analysisData = JSON.parse(video.ai_result);
+            } catch (e) {
+              console.error('Erreur lors du parsing de ai_result:', e);
+              analysisData = { summary: video.ai_result };
+            }
           }
         }
 
@@ -196,14 +202,14 @@ const VideoManagement = () => {
         };
       });
 
-      if (!mountedRef.current) return;
-
-      setVideos(normalizedVideos);
-      setSelectedVideo((prevSelected) => {
-        if (!prevSelected) return null;
-        const updatedSelected = normalizedVideos.find((v) => v.id === prevSelected.id);
-        return updatedSelected || null;
-      });
+      if (mountedRef.current) {
+        setVideos(normalizedVideos);
+        setSelectedVideo((prevSelected) => {
+          if (!prevSelected) return null;
+          const updatedSelected = normalizedVideos.find((v) => v.id === prevSelected.id);
+          return updatedSelected || null;
+        });
+      }
     } catch (error) {
       console.error('Erreur lors du chargement des vidéos:', error);
       if (mountedRef.current) {
@@ -250,21 +256,16 @@ const VideoManagement = () => {
       setProcessingVideoId(video.id);
       toast.loading('Démarrage de la transcription...', { id: 'transcribe-toast' });
 
-      const { data: authData, error: authError } = await supabase.auth.getSession();
-      if (authError) {
-        throw new Error('Erreur d\'authentification: ' + authError.message);
-      }
-
-      const token = authData?.session?.access_token;
-      if (!token) {
-        throw new Error('Session expirée, veuillez vous reconnecter');
+      const { data: session, error: authError } = await supabase.auth.getSession();
+      if (authError || !session?.session?.access_token) {
+        throw new Error('Session non valide, veuillez vous reconnecter');
       }
 
       const response = await fetch('https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/transcribe-video', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${session.session.access_token}`,
         },
         body: JSON.stringify({ video_id: video.id }),
       });
@@ -273,18 +274,14 @@ const VideoManagement = () => {
         let errorMessage = 'Erreur lors de la transcription';
         try {
           const errorResult = await response.json();
-          console.error('Détails de l\'erreur:', errorResult);
           errorMessage = errorResult.error || errorResult.details || errorMessage;
         } catch (e) {
-          console.error('Erreur lors du parsing de la réponse d\'erreur:', e);
           errorMessage = `${response.status} ${response.statusText}`;
         }
         throw new Error(errorMessage);
       }
 
       const result = await response.json();
-      console.log('Résultat de la transcription:', result);
-
       if (result.error) {
         throw new Error(result.error);
       }
@@ -334,14 +331,9 @@ const VideoManagement = () => {
       setProcessingVideoId(video.id);
       toast.loading('Démarrage de l\'analyse IA...', { id: 'analyze-toast' });
 
-      const { data: authData, error: authError } = await supabase.auth.getSession();
-      if (authError) {
-        throw new Error('Erreur d\'authentification: ' + authError.message);
-      }
-
-      const token = authData?.session?.access_token;
-      if (!token) {
-        throw new Error('Session expirée, veuillez vous reconnecter');
+      const { data: session, error: authError } = await supabase.auth.getSession();
+      if (authError || !session?.session?.access_token) {
+        throw new Error('Session non valide, veuillez vous reconnecter');
       }
 
       const response = await fetch(
@@ -350,7 +342,7 @@ const VideoManagement = () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${session.session.access_token}`,
           },
           body: JSON.stringify({ video_id: video.id }),
         }
