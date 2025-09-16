@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
 
     // Appel de la fonction RPC corrigée
     const { data: stats, error: statsError } = await supabaseAdmin
-      .rpc('apt_user_video_stats', { _user_id: user.id })
+      .rpc('get_user_video_stats', { p_user_id: user.id })
       .single();
 
     if (statsError) {
@@ -72,14 +72,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        stats: {
-          total_videos: stats.total_videos || 0,
-          total_duration: stats.total_duration || 0,
-          last_upload: stats.last_upload || null,
-          total_views: stats.total_views || 0,
-          total_likes: stats.total_likes || 0,
-          transcribed_videos: stats.transcribed_videos || 0
-        }
+        stats
       }),
       { status: 200, headers: corsHeaders }
     );
