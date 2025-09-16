@@ -20,10 +20,12 @@ console.info("tts function started");
 Deno.serve(async (req: Request) => {
   // Preflight
   if (req.method === "OPTIONS") {
+    console.info("Préflight OPTIONS reçu");
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
   if (req.method !== "POST") {
+    console.warn(`Méthode non autorisée: ${req.method}`);
     return json(
       { error: "Méthode non autorisée", details: "Seule la méthode POST est supportée" },
       { status: 405 },
@@ -35,7 +37,10 @@ Deno.serve(async (req: Request) => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
     const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
 
+    console.info("Variables d'environnement lues");
+
     if (!supabaseUrl || !supabaseAnonKey || !openaiApiKey) {
+      console.error("Configuration incomplète");
       return json(
         {
           error: "Configuration incomplète",
@@ -45,14 +50,14 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Client pour vérifier le JWT utilisateur
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+    console.info("Client Supabase initialisé");
 
-    // Auth: exiger un access_token Supabase (pas un ID token d’un autre fournisseur)
     const authHeader = req.headers.get("Authorization") || req.headers.get("authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.warn("Header Authorization manquant ou invalide");
       return json(
         {
           error: "Non autorisé",
@@ -76,21 +81,23 @@ Deno.serve(async (req: Request) => {
         { status: 401 },
       );
     }
+    console.info(`Utilisateur authentifié: ${data.user.id}`);
 
-    // Validation Content-Type
     const contentType = req.headers.get("Content-Type") || req.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
+      console.warn("Content-Type invalide");
       return json(
         { error: "Content-Type invalide", details: "'application/json' requis" },
         { status: 400 },
       );
     }
 
-    // Lecture payload
     let body: any;
     try {
       body = await req.json();
+      console.info("Payload JSON reçu:", body);
     } catch {
+      console.error("Erreur parsing JSON");
       return json(
         { error: "JSON invalide", details: "Le corps de la requête doit être un JSON valide" },
         { status: 400 },
@@ -102,24 +109,17 @@ Deno.serve(async (req: Request) => {
     const speed: unknown = body?.speed;
 
     if (typeof text !== "string" || text.trim().length === 0) {
+      console.warn("Texte requis manquant ou vide");
       return json(
         { error: "Texte requis", details: "Fournir un 'text' non vide (string)" },
         { status: 400 },
       );
     }
 
-    // Garde-fous côté API
-    const maxChars = 4000; // Ajustez au besoin
+    const maxChars = 4000;
     const cleanText = text.trim().slice(0, maxChars);
 
-    const allowedVoices = new Set([
-      "alloy",
-      "verse",
-      "coral",
-      "sage",
-      "vivid",
-      "bright",
-    ]);
+    const allowedVoices = new Set(["alloy", "verse", "coral", "sage", "vivid", "bright"]);
     const selectedVoice = typeof voice === "string" && allowedVoices.has(voice) ? voice : "alloy";
 
     let selectedSpeed = 1.0;
@@ -127,9 +127,11 @@ Deno.serve(async (req: Request) => {
       selectedSpeed = Math.min(2.0, Math.max(0.25, speed));
     }
 
+    console.info(`Paramètres TTS: text="${cleanText}", voice="${selectedVoice}", speed=${selectedSpeed}`);
+
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    // Appel TTS
+    console.info("Appel OpenAI TTS...");
     const result = await openai.audio.speech.create({
       model: "tts-1",
       voice: selectedVoice,
@@ -137,22 +139,23 @@ Deno.serve(async (req: Request) => {
       speed: selectedSpeed,
       format: "mp3",
     });
+    console.info("Réponse OpenAI reçue");
 
     const arrayBuffer = await result.arrayBuffer();
     const buffer = new Uint8Array(arrayBuffer);
+    console.info(`TTS généré, taille du buffer: ${buffer.length} bytes`);
 
     const headers = new Headers(corsHeaders);
     headers.set("Content-Type", "audio/mpeg");
     headers.set("Content-Length", buffer.length.toString());
 
+    console.info("Réponse TTS envoyée avec succès");
     return new Response(buffer, { status: 200, headers });
+
   } catch (err: any) {
-    console.error("Erreur TTS:", err);
+    console.error("Erreur TTS capturée:", err);
     return json(
-      {
-        error: "Erreur interne",
-        details: err?.message || "Erreur inattendue",
-      },
+      { error: "Erreur interne", details: err?.message || "Erreur inattendue" },
       { status: 500 },
     );
   }
