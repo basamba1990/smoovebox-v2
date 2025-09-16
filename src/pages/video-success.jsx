@@ -16,9 +16,7 @@ const VideoSuccess = () => {
   const videoId = searchParams.get('id');
 
   useEffect(() => {
-    if (videoId) {
-      fetchVideoData();
-    }
+    if (videoId) fetchVideoData();
   }, [videoId]);
 
   const fetchVideoData = async () => {
@@ -40,6 +38,8 @@ const VideoSuccess = () => {
     }
   };
 
+  const videoUrl = `${window.location.origin}/video/${videoData?.id}`;
+
   const copyToClipboard = () => {
     navigator.clipboard.writeText(videoUrl);
     toast.success('Lien copié dans le presse-papiers !');
@@ -58,31 +58,14 @@ const VideoSuccess = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <p className="text-blue-500 text-lg">Chargement...</p>
-      </div>
-    );
-  }
-
-  if (error || !videoData) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="bg-red-100 text-red-700 p-4 rounded-lg">
-          {error || 'Vidéo non trouvée. Veuillez réessayer.'}
-        </div>
-      </div>
-    );
-  }
-
-  const videoUrl = `${window.location.origin}/video/${videoData.id}`;
+  if (loading) return <div className="text-white text-center mt-10">Chargement...</div>;
+  if (error || !videoData) return <div className="text-red-500 text-center mt-10">{error || 'Vidéo non trouvée.'}</div>;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4">
-      <h1 className="text-3xl font-bold text-blue-500 mb-6">Votre vidéo est en ligne !</h1>
+    <div className="p-8 min-h-screen text-white bg-black flex flex-col items-center">
+      <h1 className="text-3xl font-bold mb-6">Votre vidéo est en ligne !</h1>
 
-      <div className="mb-8 p-6 border-2 border-blue-500 rounded-lg bg-white/10 backdrop-blur-md">
+      <div className="mb-8 p-6 border-2 border-blue-500 rounded-lg bg-white/10 backdrop-blur-md text-center">
         <h3 className="text-xl text-white mb-4">Partagez votre vidéo avec ce QR code</h3>
         <div className="flex justify-center mb-4">
           <QRCode value={videoUrl} size={200} fgColor="#38b2ac" />
@@ -96,7 +79,7 @@ const VideoSuccess = () => {
           type="text"
           value={videoUrl}
           readOnly
-          className="w-full p-2 border rounded bg-white/10 text-white"
+          className="w-full p-2 border rounded bg-white/10 text-white mb-4"
         />
         <div className="flex gap-4 mt-4 justify-center">
           <Button onClick={copyToClipboard}>Copier le lien</Button>
