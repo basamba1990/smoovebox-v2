@@ -1,3 +1,4 @@
+// analyze-transcription (déjà présent — version ajustée)
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
 import OpenAI from 'npm:openai@4.28.0';
 
@@ -15,7 +16,9 @@ const VIDEO_STATUS = {
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Content-Type': 'application/json',
 };
 
 function ensureSerializable(obj: any): any {
@@ -24,23 +27,28 @@ function ensureSerializable(obj: any): any {
   if (Array.isArray(obj)) return obj.map(item => ensureSerializable(item));
   const result: any = {};
   for (const key in obj) {
-    if (obj.hasOwnProperty(key)) result[key] = (typeof obj[key] === 'object' && obj[key] !== null) ? ensureSerializable(obj[key]) : obj[key];
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      const value = obj[key];
+      result[key] = (typeof value === 'object' && value !== null) ? ensureSerializable(value) : value;
+    }
   }
   return result;
 }
 
 function calculateAIScore(analysisResult: any): number {
   let score = 7.0;
-  if (analysisResult.summary?.length > 50) score += 0.5;
-  if (analysisResult.key_topics?.length >= 3) score += 0.5;
-  if (analysisResult.important_entities?.length > 0) score += 0.5;
-  if (analysisResult.action_items?.length > 0) score += 0.5;
-  if (analysisResult.insights_supplementaires) score += 0.5;
+  if (analysisResult?.summary && String(analysisResult.summary).length > 50) score += 0.5;
+  if (Array.isArray(analysisResult?.key_topics) && analysisResult.key_topics.length >= 3) score += 0.5;
+  if (Array.isArray(analysisResult?.important_entities) && analysisResult.important_entities.length > 0) score += 0.5;
+  if (Array.isArray(analysisResult?.action_items) && analysisResult.action_items.length > 0) score += 0.5;
+  if (analysisResult?.insights_supplementaires) score += 0.5;
   return Math.min(score, 10.0);
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders, status: 204 });
+  }
 
   let videoId: string | null = null;
   let serviceClient: any = null;
@@ -56,7 +64,15 @@ Deno.serve(async (req) => {
 
     serviceClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    try { videoId = (await req.json()).videoId; } catch { videoId = new URL(req.url).searchParams.get('videoId'); }
+    // accept videoId in body as videoId or video_id, or querystring
+    try {
+      const body = await req.json().catch(() => ({}));
+      videoId = body?.videoId || body?.video_id;
+    } catch {
+      // fallback to query param
+      videoId = new URL(req.url).searchParams.get('videoId') || new URL(req.url).searchParams.get('video_id');
+    }
+
     if (!videoId) return new Response(JSON.stringify({ error: 'videoId requis' }), { headers: corsHeaders, status: 400 });
 
     const { data: video, error: videoError } = await serviceClient.from('videos')
@@ -68,20 +84,28 @@ Deno.serve(async (req) => {
     await serviceClient.from('videos').update({ status: VIDEO_STATUS.ANALYZING, updated_at: new Date().toISOString() }).eq('id', videoId);
 
     let fullText = video.transcription_data?.text || video.transcription_text || '';
-    if (!fullText.trim()) return new Response(JSON.stringify({ error: 'Texte de transcription vide' }), { headers: corsHeaders, status: 400 });
+    if (!String(fullText).trim()) return new Response(JSON.stringify({ error: 'Texte de transcription vide' }), { headers: corsHeaders, status: 400 });
 
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    const analysisPrompt = `Analysez la transcription suivante et renvoyez un JSON complet ... Transcription: ${fullText.substring(0, 12000)}`;
+    const analysisPrompt = `Analysez la transcription suivante et renvoyez un JSON complet: ${String(fullText).substring(0, 12000)}`;
 
-    let chatCompletion = await openai.chat.completions.create({
+    // Create chat completion - guard for response format
+    const chatCompletion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [{ role: "system", content: "Assistant IA expert en analyse vidéo" }, { role: "user", content: analysisPrompt }],
       response_format: { type: "json_object" },
       max_tokens: 2000
     });
 
-    let analysisResult = ensureSerializable(JSON.parse(chatCompletion.choices[0].message.content || '{}'));
+    const rawContent = chatCompletion?.choices?.[0]?.message?.content || '{}';
+    let analysisResult: any = {};
+    try {
+      analysisResult = ensureSerializable(JSON.parse(rawContent));
+    } catch (parseErr) {
+      console.warn('Impossible de parser la réponse JSON de l\'IA, tentative d\'utiliser la chaîne brute.');
+      analysisResult = ensureSerializable({ raw: rawContent });
+    }
 
     const { error: analysisSaveError } = await serviceClient.from('videos').update({
       analysis: analysisResult,
@@ -97,8 +121,13 @@ Deno.serve(async (req) => {
 
   } catch (error: any) {
     console.error('Erreur analyze-transcription:', error);
-    if (videoId && serviceClient) {
-      await serviceClient.from('videos').update({ status: VIDEO_STATUS.FAILED, error_message: error.message, updated_at: new Date().toISOString() }).eq('id', videoId);
+    // mark failed if possible
+    try {
+      if (videoId && serviceClient) {
+        await serviceClient.from('videos').update({ status: VIDEO_STATUS.FAILED, error_message: error.message, updated_at: new Date().toISOString() }).eq('id', videoId);
+      }
+    } catch (e) {
+      console.error('Erreur lors du marquage FAILED:', e);
     }
     return new Response(JSON.stringify({ error: 'Erreur interne du serveur', details: error.message || 'Erreur inattendue' }), { headers: corsHeaders, status: 500 });
   }
