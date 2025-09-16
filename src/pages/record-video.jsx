@@ -27,7 +27,7 @@ const RecordVideo = () => {
 
   const stopStream = () => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
   };
@@ -39,12 +39,10 @@ const RecordVideo = () => {
         audio: true,
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setCameraAccess(true);
-      }
-    } catch (error) {
-      console.error('Erreur accès caméra:', error);
+      if (videoRef.current) videoRef.current.srcObject = stream;
+      setCameraAccess(true);
+    } catch (err) {
+      console.error('Erreur accès caméra:', err);
       setError('Impossible d\'accéder à la caméra. Veuillez vérifier les permissions.');
       toast.error('Erreur d\'accès à la caméra.');
     }
@@ -60,7 +58,7 @@ const RecordVideo = () => {
     setCountdown(3);
 
     for (let i = 3; i > 0; i--) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise(res => setTimeout(res, 1000));
       setCountdown(i - 1);
     }
 
@@ -73,10 +71,9 @@ const RecordVideo = () => {
       videoRef.current.srcObject = stream;
       recordedChunksRef.current = [];
 
-      const options = { mimeType: 'video/webm; codecs=vp9,opus' };
-      mediaRecorderRef.current = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9,opus' });
 
-      mediaRecorderRef.current.ondataavailable = (event) => {
+      mediaRecorderRef.current.ondataavailable = event => {
         if (event.data.size > 0) recordedChunksRef.current.push(event.data);
       };
 
@@ -88,8 +85,8 @@ const RecordVideo = () => {
 
       mediaRecorderRef.current.start();
       setRecording(true);
-    } catch (error) {
-      console.error('Erreur démarrage enregistrement:', error);
+    } catch (err) {
+      console.error('Erreur démarrage enregistrement:', err);
       setError('Impossible de démarrer l\'enregistrement.');
       toast.error('Erreur lors de l\'enregistrement.');
     }
@@ -119,18 +116,18 @@ const RecordVideo = () => {
         title: 'Ma vidéo SpotBulle',
         description: 'Vidéo enregistrée via SpotBulle',
         tags: tags.split(',').map(t => t.trim()),
+        fileName: file.name,
       };
 
-      const { data, error } = await supabase.functions.invoke('upload-video', {
-        body: { ...body, video: file },
-      });
+      const response = await supabase.functions.invoke('upload-video', { body });
 
-      if (error) throw error;
+      if (response.error) throw response.error;
+
       toast.success('Vidéo envoyée avec succès !');
-      navigate(`/video-success?id=${data.video.id}`);
-    } catch (error) {
-      console.error('Erreur upload:', error);
-      setError(`Erreur lors de l'upload : ${error.message}`);
+      navigate(`/video-success?id=${response.data.video.id}`);
+    } catch (err) {
+      console.error('Erreur upload:', err);
+      setError(`Erreur lors de l'upload : ${err.message}`);
       toast.error('Erreur lors de l\'upload.');
     } finally {
       setUploading(false);
@@ -146,16 +143,16 @@ const RecordVideo = () => {
 
   if (countdown > 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen text-white text-2xl">
-        <h1>Prêt dans {countdown}...</h1>
+      <div className="text-white text-center mt-20">
+        <h1 className="text-6xl font-bold">{countdown}</h1>
         <p>Préparez-vous à parler...</p>
       </div>
     );
   }
 
   return (
-    <div className="p-8 min-h-screen text-white bg-black flex flex-col items-center">
-      <h1 className="text-3xl font-bold mb-4">Enregistrez votre vidéo</h1>
+    <div className="p-8 min-h-screen bg-black text-white flex flex-col items-center">
+      <h1 className="text-3xl font-bold mb-6">Enregistrez votre vidéo</h1>
 
       {error && <div className="bg-red-100 text-red-700 p-2 rounded mb-4">{error}</div>}
 
@@ -170,33 +167,45 @@ const RecordVideo = () => {
       </div>
 
       {!recordedVideo ? (
-        !recording ? (
-          <Button onClick={startRecording} disabled={!cameraAccess}>
-            {cameraAccess ? 'Commencer l\'enregistrement' : 'Caméra non disponible'}
-          </Button>
-        ) : (
-          <Button onClick={stopRecording} className="bg-red-500 hover:bg-red-600">
-            Arrêter l'enregistrement
-          </Button>
-        )
+        <div>
+          {!recording ? (
+            <Button
+              onClick={startRecording}
+              disabled={!cameraAccess}
+              className={cameraAccess ? '' : 'opacity-50 cursor-not-allowed'}
+            >
+              {cameraAccess ? 'Commencer l\'enregistrement' : 'Caméra non disponible'}
+            </Button>
+          ) : (
+            <Button onClick={stopRecording} className="bg-red-500 hover:bg-red-600">
+              Arrêter l'enregistrement
+            </Button>
+          )}
+        </div>
       ) : (
         <div className="w-full max-w-md">
           <p className="text-blue-400 mb-2">Vidéo enregistrée avec succès !</p>
-          <label className="block text-sm font-medium text-white mb-1">
-            Ajouter des tags (séparés par des virgules) :
-          </label>
-          <input
-            type="text"
-            value={tags}
-            onChange={(e) => setTags(e.target.value)}
-            placeholder="Football, Sport, etc."
-            className="w-full p-2 border rounded bg-white/10 text-white mb-4"
-          />
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-white mb-1">
+              Ajouter des tags (séparés par des virgules) :
+            </label>
+            <input
+              type="text"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="Football, Sport, etc."
+              className="w-full p-2 border rounded bg-white/10 text-white"
+            />
+          </div>
           <div className="flex gap-4 justify-center">
             <Button onClick={retryRecording} className="bg-gray-500 hover:bg-gray-600">
               Réessayer
             </Button>
-            <Button onClick={uploadVideo} disabled={uploading}>
+            <Button
+              onClick={uploadVideo}
+              disabled={uploading}
+              className={uploading ? 'opacity-70 cursor-not-allowed' : ''}
+            >
               {uploading ? 'Envoi en cours...' : 'Valider et envoyer'}
             </Button>
           </div>
