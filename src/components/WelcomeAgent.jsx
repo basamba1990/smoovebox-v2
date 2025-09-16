@@ -3,6 +3,7 @@ import { Button } from './ui/button-enhanced.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { supabase } from '../lib/supabase';
 
 const WelcomeAgent = ({ onOpenAuthModal }) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -25,11 +26,20 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
       setIsLoading(true);
       setIsPlaying(true);
 
+      // Récupérer la session courante
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        toast.error('Vous devez être connecté pour générer le message audio.');
+        setIsPlaying(false);
+        return;
+      }
+
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          Authorization: `Bearer ${session.access_token}`, // ✅ JWT utilisateur avec sub
         },
         body: JSON.stringify({ text: welcomeMessage }),
       });
@@ -63,14 +73,15 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
         URL.revokeObjectURL(audioUrl);
       }
     };
-  }, [audioUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleStartExperience = async () => {
     if (loading) return;
     if (!user) {
       onOpenAuthModal();
     } else {
-      navigate('/register'); // Rediriger vers l'enregistrement au lieu de record-video
+      navigate('/register'); // Rediriger vers l’enregistrement au lieu de record-video
     }
   };
 
