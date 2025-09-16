@@ -51,7 +51,6 @@ const Directory = () => {
       const { error } = await supabase.functions.invoke('match-profiles', {
         body: { user_id: user.id, target_user_id: targetUserId },
       });
-
       if (error) throw error;
       toast.success('Mise en relation initiée avec succès !');
     } catch (error) {
@@ -60,25 +59,12 @@ const Directory = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen p-4 text-center">
-        <p className="text-blue-500">Chargement de l'annuaire...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen p-4 text-center">
-        <div className="bg-red-100 text-red-700 p-4 rounded-lg">{error}</div>
-      </div>
-    );
-  }
+  if (loading) return <div className="text-white text-center mt-10">Chargement de l'annuaire...</div>;
+  if (error) return <div className="text-red-500 text-center mt-10">{error}</div>;
 
   return (
-    <div className="max-w-7xl mx-auto p-4 min-h-screen">
-      <h1 className="text-3xl font-bold text-blue-500 mb-6">Annuaire des Participants</h1>
+    <div className="p-8 min-h-screen bg-black text-white">
+      <h1 className="text-3xl font-bold mb-6">Annuaire des Participants</h1>
 
       <div className="mb-6">
         <h3 className="text-lg text-white mb-2">Filtrer par :</h3>
@@ -105,7 +91,7 @@ const Directory = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {users.map(u => (
+        {users.map((u) => (
           <div key={u.id} className="bg-white/10 backdrop-blur-md p-4 rounded-lg border border-gray-200">
             <h3 className="text-white font-medium">Utilisateur {u.id.slice(0, 8)}</h3>
             <p className="text-gray-200">Passions : {u.passions?.join(', ') || 'Aucune'}</p>
