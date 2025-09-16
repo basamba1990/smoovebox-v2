@@ -111,21 +111,21 @@ Deno.serve(async (req) => {
 
     console.log(`Utilisateur authentifié: ${user.id}`);
 
-    // Extraire video_id du corps JSON
+    // Extraire videoId du corps JSON (support videoId et video_id)
     let requestData: any = {};
     try {
       requestData = await req.json();
-      videoId = requestData.video_id;
+      videoId = requestData.videoId || requestData.video_id;
     } catch {
       return new Response(
-        JSON.stringify({ error: 'video_id est requis', details: 'Fournir video_id dans le body JSON' }),
+        JSON.stringify({ error: 'videoId est requis', details: 'Fournir videoId dans le body JSON' }),
         { headers: corsHeaders, status: 400 }
       );
     }
 
     if (!videoId || typeof videoId !== 'string' || !videoId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
       return new Response(
-        JSON.stringify({ error: 'video_id invalide', details: 'video_id doit être un UUID valide' }),
+        JSON.stringify({ error: 'videoId invalide', details: 'videoId doit être un UUID valide' }),
         { headers: corsHeaders, status: 400 }
       );
     }
