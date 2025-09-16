@@ -328,4 +328,3 @@ export const watchVideoStatus = (videoId, onStatusChange) => {
 };
 
 export default supabase;
-
