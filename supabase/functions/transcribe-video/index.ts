@@ -1,4 +1,4 @@
-// transcribe-video (corrigé, prêt pour Supabase Edge Functions)
+// transcribe-video (corrigé et prêt pour Supabase Edge Functions)
 // Fichier : index.ts (ou main.ts) - Deno
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
 import OpenAI from 'npm:openai@4.28.0';
@@ -15,12 +15,17 @@ const VIDEO_STATUS = {
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Content-Type': 'application/json',
 };
 
-async function withRetry<T>(operation: () => Promise<T>, maxAttempts = 3, baseDelay = 1000): Promise<T> {
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  maxAttempts = 3,
+  baseDelay = 1000
+): Promise<T> {
   let attempt = 0;
   let lastError: Error | undefined;
   while (attempt < maxAttempts) {
@@ -31,7 +36,9 @@ async function withRetry<T>(operation: () => Promise<T>, maxAttempts = 3, baseDe
       lastError = error as Error;
       if (attempt >= maxAttempts) break;
       const delay = baseDelay * Math.pow(2, attempt);
-      console.log(`Tentative ${attempt} échouée, nouvelle tentative dans ${delay}ms`);
+      console.log(
+        `Tentative ${attempt} échouée, nouvelle tentative dans ${delay}ms`
+      );
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
@@ -46,7 +53,10 @@ function ensureSerializable(obj: any): any {
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
       const value = obj[key];
-      result[key] = typeof value === 'object' && value !== null ? ensureSerializable(value) : value;
+      result[key] =
+        typeof value === 'object' && value !== null
+          ? ensureSerializable(value)
+          : value;
     }
   }
   return result;
@@ -72,7 +82,8 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({
           error: 'Configuration incomplète',
-          details: 'Vérifiez SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, et OPENAI_API_KEY',
+          details:
+            'Vérifiez SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, et OPENAI_API_KEY',
         }),
         { headers: corsHeaders, status: 500 }
       );
@@ -82,18 +93,18 @@ Deno.serve(async (req) => {
     serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { persistSession: false },
       global: {
-        // wrapper fetch avec timeout pour éviter blocages
         fetch: (input: any, init: any) => {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s
-          return fetch(input, { ...init, signal: controller.signal }).finally(() =>
-            clearTimeout(timeoutId)
-          ) as unknown as Promise<Response>;
+          const timeoutId = setTimeout(() => controller.abort(), 120000);
+          return fetch(input, {
+            ...init,
+            signal: controller.signal,
+          }).finally(() => clearTimeout(timeoutId)) as unknown as Promise<Response>;
         },
       },
     });
 
-    // Vérifier l'authentification utilisateur (JWT envoyée par le client)
+    // Vérifier l'authentification utilisateur
     const authHeader = req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return new Response(
@@ -103,46 +114,58 @@ Deno.serve(async (req) => {
     }
 
     const token = authHeader.replace('Bearer ', '');
-    // getUser avec token (token du client)
-    const { data: getUserData, error: userError } = await serviceClient.auth.getUser(token);
+    const { data: getUserData, error: userError } =
+      await serviceClient.auth.getUser(token);
     const user = getUserData?.user;
     if (userError || !user) {
       console.error('Erreur de vérification du token:', userError);
       return new Response(
-        JSON.stringify({ error: 'Token d\'authentification invalide' }),
+        JSON.stringify({ error: "Token d'authentification invalide" }),
         { headers: corsHeaders, status: 401 }
       );
     }
 
     console.log(`Utilisateur authentifié: ${user.id}`);
 
-    // Extraire videoId du corps JSON (support videoId et video_id)
+    // Extraire videoId
     let requestData: any = {};
     try {
       requestData = await req.json();
       videoId = requestData.videoId || requestData.video_id;
     } catch {
       return new Response(
-        JSON.stringify({ error: 'videoId est requis', details: 'Fournir videoId dans le body JSON' }),
+        JSON.stringify({
+          error: 'videoId est requis',
+          details: 'Fournir videoId dans le body JSON',
+        }),
         { headers: corsHeaders, status: 400 }
       );
     }
 
-    if (!videoId || typeof videoId !== 'string' || !videoId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+    if (
+      !videoId ||
+      typeof videoId !== 'string' ||
+      !videoId.match(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      )
+    ) {
       return new Response(
-        JSON.stringify({ error: 'videoId invalide', details: 'videoId doit être un UUID valide' }),
+        JSON.stringify({
+          error: 'videoId invalide',
+          details: 'videoId doit être un UUID valide',
+        }),
         { headers: corsHeaders, status: 400 }
       );
     }
 
     console.log(`Traitement de la vidéo: ${videoId}`);
 
-    // IMPORTANT FIX : withRetry renvoie les données directement (pas {data,error})
-    // On récupère la row vidéo directement, et on vérifie son existence.
     const video = await withRetry(async () => {
       const { data, error } = await serviceClient
         .from('videos')
-        .select('id, storage_path, file_path, user_id, transcription_attempts, public_url')
+        .select(
+          'id, storage_path, file_path, user_id, transcription_attempts, public_url'
+        )
         .eq('id', videoId)
         .eq('user_id', user.id)
         .single();
@@ -152,10 +175,13 @@ Deno.serve(async (req) => {
     });
 
     if (!video) {
-      return new Response(JSON.stringify({ error: 'Vidéo non trouvée' }), { headers: corsHeaders, status: 404 });
+      return new Response(
+        JSON.stringify({ error: 'Vidéo non trouvée' }),
+        { headers: corsHeaders, status: 404 }
+      );
     }
 
-    // Mise à jour du statut à TRANSCRIBING et incrément transcription_attempts
+    // Mise à jour du statut
     const { error: updateError } = await serviceClient
       .from('videos')
       .update({
@@ -165,19 +191,20 @@ Deno.serve(async (req) => {
       })
       .eq('id', videoId)
       .eq('user_id', user.id);
-    if (updateError) throw new Error(`Échec de la mise à jour du statut: ${updateError.message}`);
+    if (updateError)
+      throw new Error(
+        `Échec de la mise à jour du statut: ${updateError.message}`
+      );
 
     if (!video.storage_path && !video.file_path && !video.public_url) {
       throw new Error('Chemin de stockage manquant pour la vidéo');
     }
 
-    // Extraire bucket et filePath — tolère storage_path ou file_path ou public_url
+    // Extraire bucket et filePath
     let path = video.storage_path || video.file_path || '';
     let bucket = 'videos';
     let filePath = path;
     if (!filePath && video.public_url) {
-      // si public_url est present, on peut l'utiliser directement (skip signed url)
-      // on laissera fetch(public_url) plus bas
     } else {
       if (path.includes('/')) {
         const parts = path.split('/');
@@ -193,17 +220,21 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Générer une URL signée si on a filePath / bucket
+    // Générer une URL signée
     let videoUrl: string | null = null;
     if (filePath) {
-      const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
-        .from(bucket)
-        .createSignedUrl(filePath, 3600); // 1 heure
+      const { data: signedUrlData, error: signedUrlError } =
+        await serviceClient.storage.from(bucket).createSignedUrl(filePath, 3600);
       if (signedUrlError) {
-        console.warn('signedUrlError, tentative d\'utiliser public_url si disponible', signedUrlError);
-        // fallback: try public_url if exists
+        console.warn(
+          "signedUrlError, tentative d'utiliser public_url si disponible",
+          signedUrlError
+        );
         if (video.public_url) videoUrl = video.public_url;
-        else throw new Error(`Impossible de générer l'URL signée: ${signedUrlError.message}`);
+        else
+          throw new Error(
+            `Impossible de générer l'URL signée: ${signedUrlError.message}`
+          );
       } else {
         videoUrl = signedUrlData?.signedUrl || null;
       }
@@ -212,31 +243,33 @@ Deno.serve(async (req) => {
     }
 
     if (!videoUrl) {
-      throw new Error('Impossible de déterminer une URL valide pour télécharger la vidéo');
+      throw new Error('Impossible de déterminer une URL valide');
     }
 
-    // Télécharger la vidéo
     const fetchResp = await fetch(videoUrl);
     if (!fetchResp.ok) {
-      throw new Error(`Échec du téléchargement: ${fetchResp.status} ${fetchResp.statusText}`);
+      throw new Error(
+        `Échec du téléchargement: ${fetchResp.status} ${fetchResp.statusText}`
+      );
     }
     const videoBlob = await fetchResp.blob();
 
-    // Transcription OpenAI Whisper
+    // Transcription
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
     const rawTranscription = await withRetry(async () => {
       return await openai.audio.transcriptions.create({
-        file: new File([videoBlob], `video.${(videoBlob.type || 'video/mp4').split('/')[1] || 'mp4'}`, {
-          type: videoBlob.type || 'video/mp4',
-        }),
+        file: new File(
+          [videoBlob],
+          `video.${(videoBlob.type || 'video/mp4').split('/')[1] || 'mp4'}`,
+          { type: videoBlob.type || 'video/mp4' }
+        ),
         model: 'whisper-1',
         language: 'fr',
         response_format: 'verbose_json',
       });
     });
 
-    // Traiter transcription
     const transcriptionText = String(rawTranscription?.text || '');
     const transcriptionLanguage = String(rawTranscription?.language || 'fr');
     const transcriptionDuration = Number(rawTranscription?.duration || 0);
@@ -248,12 +281,17 @@ Deno.serve(async (req) => {
           end: Number(segment.end || 0),
           text: String(segment.text || ''),
           confidence: Number(segment.confidence || 0),
-          tokens: Array.isArray(segment.tokens) ? segment.tokens.map(String) : [],
+          tokens: Array.isArray(segment.tokens)
+            ? segment.tokens.map(String)
+            : [],
         }))
       : [];
 
     const confidenceScore = cleanSegments.length
-      ? cleanSegments.reduce((sum: number, s: any) => sum + (s.confidence || 0), 0) / cleanSegments.length
+      ? cleanSegments.reduce(
+          (sum: number, s: any) => sum + (s.confidence || 0),
+          0
+        ) / cleanSegments.length
       : null;
 
     const transcriptionData = ensureSerializable({
@@ -264,7 +302,7 @@ Deno.serve(async (req) => {
       confidence_score: confidenceScore,
     });
 
-    // Upsert dans transcriptions
+    // Upsert dans transcriptions ✅ JSON.stringify pour éviter 22P02
     const { error: transcriptionTableError } = await serviceClient
       .from('transcriptions')
       .upsert(
@@ -273,8 +311,8 @@ Deno.serve(async (req) => {
           user_id: user.id,
           full_text: transcriptionText,
           transcription_text: transcriptionText,
-          transcription_data: transcriptionData,
-          segments: cleanSegments,
+          transcription_data: JSON.stringify(transcriptionData),
+          segments: JSON.stringify(cleanSegments),
           confidence_score: confidenceScore,
           status: 'transcribed',
           updated_at: new Date().toISOString(),
@@ -282,61 +320,65 @@ Deno.serve(async (req) => {
         { onConflict: 'video_id' }
       );
     if (transcriptionTableError) {
-      throw new Error(`Échec de l'upsert de la transcription: ${transcriptionTableError.message}`);
+      throw new Error(
+        `Échec de l'upsert de la transcription: ${transcriptionTableError.message}`
+      );
     }
 
-    // Update videos row
+    // Update vidéos ✅ JSON.stringify pour éviter 22P02
     const { error: videoUpdateError } = await serviceClient
       .from('videos')
       .update({
         transcription_text: transcriptionText,
-        transcription_data: transcriptionData,
+        transcription_data: JSON.stringify(transcriptionData),
         status: VIDEO_STATUS.TRANSCRIBED,
         updated_at: new Date().toISOString(),
       })
       .eq('id', videoId)
       .eq('user_id', user.id);
     if (videoUpdateError) {
-      throw new Error(`Échec de la mise à jour de la vidéo: ${videoUpdateError.message}`);
+      throw new Error(
+        `Échec de la mise à jour de la vidéo: ${videoUpdateError.message}`
+      );
     }
 
-    // Déclencher analyze-transcription (envoi videoId **et** video_id pour compatibilité)
+    // Trigger analyze-transcription
     try {
       const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
       const resp = await fetch(analyzeEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseServiceKey}`, // service role pour autoriser l'action
+          Authorization: `Bearer ${supabaseServiceKey}`,
         },
         body: JSON.stringify({ videoId, video_id: videoId }),
       });
       if (!resp.ok) {
-        console.error(`Erreur lors de l'analyse (trigger): ${await resp.text()}`);
+        console.error(`Erreur analyse: ${await resp.text()}`);
       } else {
         console.log('Analyse déclenchée avec succès');
       }
     } catch (invokeError) {
-      console.error("Erreur lors de l'invocation de analyze-transcription:", invokeError);
+      console.error('Erreur invoke analyze-transcription:', invokeError);
     }
 
-    // Déclencher refresh-user-video-stats (utilise token JWT utilisateur — endpoint vérifie token)
+    // Trigger refresh-user-video-stats
     try {
       const statsEndpoint = `${supabaseUrl}/functions/v1/refresh-user-video-stats`;
       const resp = await fetch(statsEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`, // token utilisateur
+          Authorization: `Bearer ${token}`,
         },
       });
       if (!resp.ok) {
-        console.warn(`Erreur lors du rafraîchissement des stats (trigger): ${await resp.text()}`);
+        console.warn(`Erreur refresh stats: ${await resp.text()}`);
       } else {
-        console.log('Statistiques utilisateur mises à jour (trigger)');
+        console.log('Statistiques utilisateur mises à jour');
       }
     } catch (statsError) {
-      console.error("Erreur lors de l'invocation de refresh-user-video-stats:", statsError);
+      console.error('Erreur invoke refresh-user-video-stats:', statsError);
     }
 
     return new Response(
@@ -352,19 +394,15 @@ Deno.serve(async (req) => {
   } catch (error: any) {
     console.error('Erreur générale dans transcribe-video:', error);
     try {
-      // tentative prudente de marquer la vidéo en FAILED si possible
       if (videoId && serviceClient) {
-        await serviceClient
-          .from('videos')
-          .update({
-            status: VIDEO_STATUS.FAILED,
-            error_message: `Erreur de transcription: ${error.message}`,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', videoId);
+        await serviceClient.from('videos').update({
+          status: VIDEO_STATUS.FAILED,
+          error_message: `Erreur de transcription: ${error.message}`,
+          updated_at: new Date().toISOString(),
+        }).eq('id', videoId);
       }
     } catch (updateError) {
-      console.error('Erreur lors de la mise à jour du statut FAILED:', updateError);
+      console.error('Erreur update FAILED:', updateError);
     }
     return new Response(
       JSON.stringify({
