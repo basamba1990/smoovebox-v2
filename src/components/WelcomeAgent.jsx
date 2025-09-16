@@ -13,11 +13,13 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
-  const welcomeMessage = `Bonjour et bienvenue sous le dôme SpotBulle !
-Ici, vous allez vivre une expérience unique autour de la passion du sport et des valeurs de la Coupe d'Afrique des Nations.
-Installez-vous confortablement, exprimez votre passion ou votre besoin devant la caméra,
-et votre vidéo sera analysée par notre intelligence artificielle pour vous offrir une expérience personnalisée.
-Prêt à commencer ? L'aventure vous attend !`;
+  const welcomeMessage = `
+    Bonjour et bienvenue sous le dôme SpotBulle !
+    Ici, vous allez vivre une expérience unique autour de la passion du sport et des valeurs de la Coupe d'Afrique des Nations.
+    Installez-vous confortablement, exprimez votre passion ou votre besoin devant la caméra,
+    et votre vidéo sera analysée par notre intelligence artificielle pour vous offrir une expérience personnalisée.
+    Prêt à commencer ? L'aventure vous attend !
+  `;
 
   const generateSpeech = async () => {
     try {
@@ -34,17 +36,14 @@ Prêt à commencer ? L'aventure vous attend !`;
         return;
       }
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tts`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ text: welcomeMessage }),
-        }
-      );
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ text: welcomeMessage }),
+      });
 
       if (!response.ok) throw new Error('Erreur lors de la génération audio');
 
@@ -54,14 +53,14 @@ Prêt à commencer ? L'aventure vous attend !`;
 
       if (audioRef.current) {
         audioRef.current.src = url;
-        audioRef.current.play().catch((error) => {
-          console.error('Erreur de lecture audio:', error);
+        audioRef.current.play().catch((err) => {
+          console.error('Erreur de lecture audio:', err);
           toast.error('Erreur de lecture audio.');
           setIsPlaying(false);
         });
       }
-    } catch (error) {
-      console.error('Erreur TTS:', error);
+    } catch (err) {
+      console.error('Erreur TTS:', err);
       toast.error('Erreur lors de la génération audio.');
       setIsPlaying(false);
     } finally {
@@ -70,30 +69,23 @@ Prêt à commencer ? L'aventure vous attend !`;
   };
 
   useEffect(() => {
-    generateSpeech();
+    generateSpeech(); // auto-play TTS
     return () => {
       if (audioUrl) URL.revokeObjectURL(audioUrl);
     };
   }, []);
 
-  const handleStartExperience = async () => {
+  const handleStartExperience = () => {
     if (loading) return;
-    if (!user) {
-      onOpenAuthModal();
-    } else {
-      navigate('/register');
-    }
+    if (!user) onOpenAuthModal();
+    else navigate('/record-video'); // Rediriger vers RecordVideo
   };
 
   return (
-    <div className="relative min-h-screen bg-black text-white flex items-center justify-center">
+    <div className="relative min-h-screen flex flex-col items-center justify-center text-white bg-black p-8">
       <div className="max-w-4xl bg-black/50 backdrop-blur-md rounded-3xl p-8 md:p-12 border-2 border-gold shadow-2xl text-center">
-        <h1 className="text-4xl md:text-5xl font-bold mb-6 text-gold animate-bounce">
-          🌟 Bienvenue à SpotBulle 🌟
-        </h1>
-        <div className="text-lg md:text-xl mb-8 leading-relaxed bg-white/10 p-6 rounded-xl">
-          {welcomeMessage}
-        </div>
+        <h1 className="text-4xl md:text-5xl font-bold mb-6 text-gold animate-bounce">🌟 Bienvenue à SpotBulle 🌟</h1>
+        <div className="text-lg md:text-xl mb-8 leading-relaxed bg-white/10 p-6 rounded-xl">{welcomeMessage}</div>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Button
             onClick={handleStartExperience}
@@ -109,14 +101,7 @@ Prêt à commencer ? L'aventure vous attend !`;
                     fill="none"
                     viewBox="0 0 24 24"
                   >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path
                       className="opacity-75"
                       fill="currentColor"
@@ -141,12 +126,7 @@ Prêt à commencer ? L'aventure vous attend !`;
             Se connecter
           </Button>
         </div>
-
-        <audio
-          ref={audioRef}
-          onEnded={() => setIsPlaying(false)}
-          onError={() => setIsPlaying(false)}
-        />
+        <audio ref={audioRef} onEnded={() => setIsPlaying(false)} onError={() => setIsPlaying(false)} />
       </div>
     </div>
   );
