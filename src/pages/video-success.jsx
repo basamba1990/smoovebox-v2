@@ -29,8 +29,8 @@ const VideoSuccess = () => {
 
       if (error) throw error;
       setVideoData(data);
-    } catch (error) {
-      console.error('Erreur récupération vidéo:', error);
+    } catch (err) {
+      console.error('Erreur récupération vidéo:', err);
       setError('Impossible de charger les données de la vidéo.');
       toast.error('Erreur lors du chargement de la vidéo.');
     } finally {
@@ -46,14 +46,21 @@ const VideoSuccess = () => {
   };
 
   const shareByEmail = async () => {
+    if (!user || !videoData) return;
+
     try {
-      const { error } = await supabase.functions.invoke('send-email', {
-        body: { user_id: user.id, video_id: videoData.id, video_url: videoUrl },
+      const response = await supabase.functions.invoke('send-email', {
+        body: JSON.stringify({
+          user_id: user.id,
+          video_id: videoData.id,
+          video_url: videoUrl
+        })
       });
-      if (error) throw error;
+
+      if (response.error) throw response.error;
       toast.success('E-mail envoyé avec succès !');
-    } catch (error) {
-      console.error('Erreur envoi e-mail:', error);
+    } catch (err) {
+      console.error('Erreur envoi e-mail:', err);
       toast.error('Erreur lors de l\'envoi de l\'e-mail.');
     }
   };
