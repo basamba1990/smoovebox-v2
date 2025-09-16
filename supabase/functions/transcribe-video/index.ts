@@ -1,3 +1,5 @@
+// transcribe-video (corrigé, prêt pour Supabase Edge Functions)
+// Fichier : index.ts (ou main.ts) - Deno
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
 import OpenAI from 'npm:openai@4.28.0';
 
@@ -80,17 +82,18 @@ Deno.serve(async (req) => {
     serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { persistSession: false },
       global: {
-        fetch: (input, init) => {
+        // wrapper fetch avec timeout pour éviter blocages
+        fetch: (input: any, init: any) => {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 120000); // Augmenté à 120s
+          const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s
           return fetch(input, { ...init, signal: controller.signal }).finally(() =>
             clearTimeout(timeoutId)
-          );
+          ) as unknown as Promise<Response>;
         },
       },
     });
 
-    // Vérifier l'authentification utilisateur
+    // Vérifier l'authentification utilisateur (JWT envoyée par le client)
     const authHeader = req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return new Response(
@@ -100,7 +103,9 @@ Deno.serve(async (req) => {
     }
 
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: userError } = await serviceClient.auth.getUser(token);
+    // getUser avec token (token du client)
+    const { data: getUserData, error: userError } = await serviceClient.auth.getUser(token);
+    const user = getUserData?.user;
     if (userError || !user) {
       console.error('Erreur de vérification du token:', userError);
       return new Response(
@@ -132,11 +137,12 @@ Deno.serve(async (req) => {
 
     console.log(`Traitement de la vidéo: ${videoId}`);
 
-    // Vérifier que la vidéo existe et appartient à l'utilisateur
-    const { data: video, error: videoError } = await withRetry(async () => {
+    // IMPORTANT FIX : withRetry renvoie les données directement (pas {data,error})
+    // On récupère la row vidéo directement, et on vérifie son existence.
+    const video = await withRetry(async () => {
       const { data, error } = await serviceClient
         .from('videos')
-        .select('id, storage_path, file_path, user_id, transcription_attempts')
+        .select('id, storage_path, file_path, user_id, transcription_attempts, public_url')
         .eq('id', videoId)
         .eq('user_id', user.id)
         .single();
@@ -145,11 +151,11 @@ Deno.serve(async (req) => {
       return data;
     });
 
-    if (videoError) {
-      throw videoError;
+    if (!video) {
+      return new Response(JSON.stringify({ error: 'Vidéo non trouvée' }), { headers: corsHeaders, status: 404 });
     }
 
-    // Mise à jour du statut à TRANSCRIBING
+    // Mise à jour du statut à TRANSCRIBING et incrément transcription_attempts
     const { error: updateError } = await serviceClient
       .from('videos')
       .update({
@@ -161,49 +167,68 @@ Deno.serve(async (req) => {
       .eq('user_id', user.id);
     if (updateError) throw new Error(`Échec de la mise à jour du statut: ${updateError.message}`);
 
-    if (!video.storage_path && !video.file_path) {
+    if (!video.storage_path && !video.file_path && !video.public_url) {
       throw new Error('Chemin de stockage manquant pour la vidéo');
     }
 
-    // Extraire le bucket et le chemin du fichier
-    const path = video.storage_path || video.file_path;
+    // Extraire bucket et filePath — tolère storage_path ou file_path ou public_url
+    let path = video.storage_path || video.file_path || '';
     let bucket = 'videos';
     let filePath = path;
-    if (path.includes('/')) {
-      const parts = path.split('/');
-      const possibleBucket = parts[0];
-      const { data: buckets } = await serviceClient.storage.listBuckets();
-      if (buckets?.some((b: any) => b.name === possibleBucket)) {
-        bucket = possibleBucket;
-        filePath = parts.slice(1).join('/');
+    if (!filePath && video.public_url) {
+      // si public_url est present, on peut l'utiliser directement (skip signed url)
+      // on laissera fetch(public_url) plus bas
+    } else {
+      if (path.includes('/')) {
+        const parts = path.split('/');
+        const possibleBucket = parts[0];
+        const { data: buckets } = await serviceClient.storage.listBuckets();
+        if (buckets?.some((b: any) => b.name === possibleBucket)) {
+          bucket = possibleBucket;
+          filePath = parts.slice(1).join('/');
+        }
+      }
+      if (filePath.startsWith(`${bucket}/`)) {
+        filePath = filePath.substring(bucket.length + 1);
       }
     }
-    if (filePath.startsWith(`${bucket}/`)) {
-      filePath = filePath.substring(bucket.length + 1);
+
+    // Générer une URL signée si on a filePath / bucket
+    let videoUrl: string | null = null;
+    if (filePath) {
+      const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
+        .from(bucket)
+        .createSignedUrl(filePath, 3600); // 1 heure
+      if (signedUrlError) {
+        console.warn('signedUrlError, tentative d\'utiliser public_url si disponible', signedUrlError);
+        // fallback: try public_url if exists
+        if (video.public_url) videoUrl = video.public_url;
+        else throw new Error(`Impossible de générer l'URL signée: ${signedUrlError.message}`);
+      } else {
+        videoUrl = signedUrlData?.signedUrl || null;
+      }
+    } else if (video.public_url) {
+      videoUrl = video.public_url;
     }
 
-    // Générer une URL signée
-    const { data: signedUrlData, error: signedUrlError } = await serviceClient.storage
-      .from(bucket)
-      .createSignedUrl(filePath, 3600); // 1 heure
-    if (signedUrlError) {
-      throw new Error(`Impossible de générer l'URL signée: ${signedUrlError.message}`);
+    if (!videoUrl) {
+      throw new Error('Impossible de déterminer une URL valide pour télécharger la vidéo');
     }
-    const videoUrl = signedUrlData.signedUrl;
 
     // Télécharger la vidéo
-    const response = await fetch(videoUrl);
-    if (!response.ok) {
-      throw new Error(`Échec du téléchargement: ${response.status} ${response.statusText}`);
+    const fetchResp = await fetch(videoUrl);
+    if (!fetchResp.ok) {
+      throw new Error(`Échec du téléchargement: ${fetchResp.status} ${fetchResp.statusText}`);
     }
-    const videoBlob = await response.blob();
+    const videoBlob = await fetchResp.blob();
 
-    // Transcription avec OpenAI Whisper
+    // Transcription OpenAI Whisper
     const openai = new OpenAI({ apiKey: openaiApiKey });
+
     const rawTranscription = await withRetry(async () => {
       return await openai.audio.transcriptions.create({
-        file: new File([videoBlob], `video.${videoBlob.type.split('/')[1] || 'mp4'}`, {
-          type: videoBlob.type,
+        file: new File([videoBlob], `video.${(videoBlob.type || 'video/mp4').split('/')[1] || 'mp4'}`, {
+          type: videoBlob.type || 'video/mp4',
         }),
         model: 'whisper-1',
         language: 'fr',
@@ -211,14 +236,14 @@ Deno.serve(async (req) => {
       });
     });
 
-    // Traiter les données de transcription
-    const transcriptionText = String(rawTranscription.text || '');
-    const transcriptionLanguage = String(rawTranscription.language || 'fr');
-    const transcriptionDuration = Number(rawTranscription.duration || 0);
+    // Traiter transcription
+    const transcriptionText = String(rawTranscription?.text || '');
+    const transcriptionLanguage = String(rawTranscription?.language || 'fr');
+    const transcriptionDuration = Number(rawTranscription?.duration || 0);
 
-    const cleanSegments = Array.isArray(rawTranscription.segments)
+    const cleanSegments = Array.isArray(rawTranscription?.segments)
       ? rawTranscription.segments.map((segment: any) => ({
-          id: segment.id ? String(segment.id) : null,
+          id: segment.id != null ? String(segment.id) : null,
           start: Number(segment.start || 0),
           end: Number(segment.end || 0),
           text: String(segment.text || ''),
@@ -239,7 +264,7 @@ Deno.serve(async (req) => {
       confidence_score: confidenceScore,
     });
 
-    // Mettre à jour la table transcriptions
+    // Upsert dans transcriptions
     const { error: transcriptionTableError } = await serviceClient
       .from('transcriptions')
       .upsert(
@@ -260,7 +285,7 @@ Deno.serve(async (req) => {
       throw new Error(`Échec de l'upsert de la transcription: ${transcriptionTableError.message}`);
     }
 
-    // Mettre à jour la table videos
+    // Update videos row
     const { error: videoUpdateError } = await serviceClient
       .from('videos')
       .update({
@@ -275,19 +300,19 @@ Deno.serve(async (req) => {
       throw new Error(`Échec de la mise à jour de la vidéo: ${videoUpdateError.message}`);
     }
 
-    // Déclencher analyze-transcription
+    // Déclencher analyze-transcription (envoi videoId **et** video_id pour compatibilité)
     try {
       const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
-      const response = await fetch(analyzeEndpoint, {
+      const resp = await fetch(analyzeEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'Authorization': `Bearer ${supabaseServiceKey}`, // service role pour autoriser l'action
         },
-        body: JSON.stringify({ video_id: videoId }),
+        body: JSON.stringify({ videoId, video_id: videoId }),
       });
-      if (!response.ok) {
-        console.error(`Erreur lors de l'analyse: ${await response.text()}`);
+      if (!resp.ok) {
+        console.error(`Erreur lors de l'analyse (trigger): ${await resp.text()}`);
       } else {
         console.log('Analyse déclenchée avec succès');
       }
@@ -295,20 +320,20 @@ Deno.serve(async (req) => {
       console.error("Erreur lors de l'invocation de analyze-transcription:", invokeError);
     }
 
-    // Déclencher refresh-user-video-stats
+    // Déclencher refresh-user-video-stats (utilise token JWT utilisateur — endpoint vérifie token)
     try {
       const statsEndpoint = `${supabaseUrl}/functions/v1/refresh-user-video-stats`;
-      const response = await fetch(statsEndpoint, {
+      const resp = await fetch(statsEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${token}`, // token utilisateur
         },
       });
-      if (!response.ok) {
-        console.error(`Erreur lors du rafraîchissement des stats: ${await response.text()}`);
+      if (!resp.ok) {
+        console.warn(`Erreur lors du rafraîchissement des stats (trigger): ${await resp.text()}`);
       } else {
-        console.log('Statistiques utilisateur mises à jour avec succès');
+        console.log('Statistiques utilisateur mises à jour (trigger)');
       }
     } catch (statsError) {
       console.error("Erreur lors de l'invocation de refresh-user-video-stats:", statsError);
@@ -327,6 +352,7 @@ Deno.serve(async (req) => {
   } catch (error: any) {
     console.error('Erreur générale dans transcribe-video:', error);
     try {
+      // tentative prudente de marquer la vidéo en FAILED si possible
       if (videoId && serviceClient) {
         await serviceClient
           .from('videos')
