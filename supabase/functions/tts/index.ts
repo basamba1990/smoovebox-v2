@@ -15,10 +15,10 @@ function json(body: unknown, init?: ResponseInit) {
   return new Response(JSON.stringify(body), { ...init, headers });
 }
 
-console.info("tts function started");
+console.info("tts function started (public, no auth)");
 
 Deno.serve(async (req: Request) => {
-  // Preflight
+  // Préflight
   if (req.method === "OPTIONS") {
     console.info("Préflight OPTIONS reçu");
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -28,7 +28,7 @@ Deno.serve(async (req: Request) => {
     console.warn(`Méthode non autorisée: ${req.method}`);
     return json(
       { error: "Méthode non autorisée", details: "Seule la méthode POST est supportée" },
-      { status: 405 },
+      { status: 405 }
     );
   }
 
@@ -46,49 +46,22 @@ Deno.serve(async (req: Request) => {
           error: "Configuration incomplète",
           details: "Vérifiez SUPABASE_URL, SUPABASE_ANON_KEY et OPENAI_API_KEY",
         },
-        { status: 500 },
+        { status: 500 }
       );
     }
 
+    // Initialisation du client Supabase (juste pour configuration, pas d'authentification)
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
     console.info("Client Supabase initialisé");
-
-    const authHeader = req.headers.get("Authorization") || req.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      console.warn("Header Authorization manquant ou invalide");
-      return json(
-        {
-          error: "Non autorisé",
-          details:
-            "Header Authorization manquant. Envoyez 'Authorization: Bearer <access_token>' issu de supabase.auth.getSession().",
-        },
-        { status: 401 },
-      );
-    }
-
-    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-    const { data, error: userError } = await supabase.auth.getUser(token);
-    if (userError || !data?.user) {
-      console.error("Erreur de vérification du token:", userError?.message || userError);
-      return json(
-        {
-          error: "Token d'authentification invalide",
-          details:
-            "Le token doit être un access_token Supabase valide (avec la claim 'sub').",
-        },
-        { status: 401 },
-      );
-    }
-    console.info(`Utilisateur authentifié: ${data.user.id}`);
 
     const contentType = req.headers.get("Content-Type") || req.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
       console.warn("Content-Type invalide");
       return json(
         { error: "Content-Type invalide", details: "'application/json' requis" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -100,7 +73,7 @@ Deno.serve(async (req: Request) => {
       console.error("Erreur parsing JSON");
       return json(
         { error: "JSON invalide", details: "Le corps de la requête doit être un JSON valide" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -112,7 +85,7 @@ Deno.serve(async (req: Request) => {
       console.warn("Texte requis manquant ou vide");
       return json(
         { error: "Texte requis", details: "Fournir un 'text' non vide (string)" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -156,7 +129,7 @@ Deno.serve(async (req: Request) => {
     console.error("Erreur TTS capturée:", err);
     return json(
       { error: "Erreur interne", details: err?.message || "Erreur inattendue" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 });
