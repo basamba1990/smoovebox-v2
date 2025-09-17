@@ -1,3 +1,4 @@
+// src/components/WelcomeAgent.jsx
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button-enhanced.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -26,12 +27,9 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
       setIsLoading(true);
       setIsPlaying(true);
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        toast.error('Vous devez être connecté pour générer le message audio.');
-        setIsPlaying(false);
-        setIsLoading(false);
-        return;
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.access_token) {
+        throw new Error('Session non valide, veuillez vous reconnecter');
       }
 
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tts`, {
