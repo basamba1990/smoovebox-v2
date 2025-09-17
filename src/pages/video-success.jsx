@@ -1,3 +1,4 @@
+// src/pages/video-success.jsx
 import { useEffect, useState } from 'react';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -38,7 +39,9 @@ const VideoSuccess = () => {
     }
   };
 
-  const videoUrl = `${window.location.origin}/video/${videoData?.id}`;
+  const videoUrl = videoData
+    ? `${window.location.origin}/video/${videoData.id}`
+    : '';
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(videoUrl);
@@ -48,33 +51,40 @@ const VideoSuccess = () => {
   const shareByEmail = async () => {
     try {
       const { error } = await supabase.functions.invoke('send-email', {
-        body: { user_id: user.id, video_id: videoData.id, video_url: videoUrl },
+        body: {
+          user_id: user?.id || null,
+          video_id: videoData.id,
+          video_url: videoUrl,
+        },
       });
       if (error) throw error;
       toast.success('E-mail envoyé avec succès !');
     } catch (error) {
       console.error('Erreur envoi e-mail:', error);
-      toast.error('Erreur lors de l\'envoi de l\'e-mail.');
+      toast.error("Erreur lors de l'envoi de l'e-mail.");
     }
   };
 
-  if (loading) return <div className="text-white text-center mt-10">Chargement...</div>;
-  if (error || !videoData) return <div className="text-red-500 text-center mt-10">{error || 'Vidéo non trouvée.'}</div>;
+  if (loading) return <p className="text-white">Chargement...</p>;
+  if (error || !videoData)
+    return <p className="text-red-500">{error || 'Vidéo non trouvée.'}</p>;
 
   return (
-    <div className="p-8 min-h-screen text-white bg-black flex flex-col items-center">
-      <h1 className="text-3xl font-bold mb-6">Votre vidéo est en ligne !</h1>
+    <div className="flex flex-col items-center text-center text-white p-6">
+      <h1 className="text-2xl font-bold mb-6">Votre vidéo est en ligne !</h1>
 
-      <div className="mb-8 p-6 border-2 border-blue-500 rounded-lg bg-white/10 backdrop-blur-md text-center">
-        <h3 className="text-xl text-white mb-4">Partagez votre vidéo avec ce QR code</h3>
+      <div className="mb-8 p-6 border-2 border-blue-500 rounded-lg bg-white/10 backdrop-blur-md">
+        <h3 className="text-xl mb-4">Partagez votre vidéo avec ce QR code</h3>
         <div className="flex justify-center mb-4">
           <QRCode value={videoUrl} size={200} fgColor="#38b2ac" />
         </div>
-        <p className="text-sm text-gray-200">Scannez ce QR code pour accéder à votre vidéo</p>
+        <p className="text-sm text-gray-200">
+          Scannez ce QR code pour accéder à votre vidéo
+        </p>
       </div>
 
       <div className="mb-6 w-full max-w-md">
-        <p className="text-white mb-2">Lien direct vers votre vidéo :</p>
+        <p className="mb-2">Lien direct vers votre vidéo :</p>
         <input
           type="text"
           value={videoUrl}
