@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button-enhanced.jsx';
-import { supabase } from '../lib/supabase';
+import { supabase, refreshSession } from '../lib/supabase';
 
 const RecordVideo = () => {
   const [recording, setRecording] = useState(false);
@@ -22,8 +22,17 @@ const RecordVideo = () => {
   useEffect(() => {
     let mounted = true;
 
-    const initCamera = async () => {
+    const checkAuthAndInitCamera = async () => {
       if (!mounted) return;
+
+      // Vérifier l'authentification
+      const isSessionValid = await refreshSession();
+      if (!isSessionValid) {
+        toast.error('Veuillez vous connecter pour enregistrer une vidéo.');
+        navigate('/login');
+        return;
+      }
+
       const waitForVideoElement = () =>
         new Promise((resolve, reject) => {
           const check = () => {
@@ -40,19 +49,19 @@ const RecordVideo = () => {
       } catch (err) {
         console.error('Erreur initialisation caméra:', err);
         if (mounted) {
-          setError("Impossible d'initialiser la caméra. Veuillez recharger la page.");
-          toast.error("Erreur d'initialisation de la caméra.");
+          setError('Impossible d\'initialiser la caméra. Veuillez recharger la page.');
+          toast.error('Erreur d\'initialisation de la caméra.');
         }
       }
     };
 
-    initCamera();
+    checkAuthAndInitCamera();
 
     return () => {
       mounted = false;
       stopStream();
     };
-  }, []);
+  }, [navigate]);
 
   const stopStream = () => {
     if (streamRef.current) {
@@ -63,11 +72,24 @@ const RecordVideo = () => {
 
   const requestCameraAccess = async () => {
     try {
+      // Vérifier les permissions du microphone
+      const micPermission = await navigator.permissions.query({ name: 'microphone' });
+      if (micPermission.state === 'denied') {
+        throw new Error('Accès au microphone refusé.');
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 1280, height: 720 },
         audio: true,
       });
       streamRef.current = stream;
+
+      // Vérifier la présence de pistes audio
+      const audioTracks = stream.getAudioTracks();
+      if (audioTracks.length === 0) {
+        throw new Error('Aucune piste audio détectée. Vérifiez votre microphone.');
+      }
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         setCameraAccess(true);
@@ -75,15 +97,15 @@ const RecordVideo = () => {
         throw new Error('Élément vidéo non disponible dans le DOM');
       }
     } catch (err) {
-      console.error('Erreur accès caméra:', err);
-      setError("Impossible d'accéder à la caméra. Veuillez vérifier les permissions ou recharger la page.");
-      toast.error("Erreur d'accès à la caméra.");
+      console.error('Erreur accès caméra/micro:', err);
+      setError('Impossible d\'accéder à la caméra ou au microphone. Veuillez vérifier les permissions.');
+      toast.error('Erreur d\'accès à la caméra ou au microphone.');
     }
   };
 
   const startRecording = async () => {
     if (!cameraAccess) {
-      setError("Veuillez autoriser l'accès à la caméra.");
+      setError('Veuillez autoriser l\'accès à la caméra.');
       return;
     }
     if (!videoRef.current) {
@@ -103,8 +125,18 @@ const RecordVideo = () => {
     try {
       const stream =
         streamRef.current ||
-        (await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: true }));
+        (await navigator.mediaDevices.getUserMedia({
+          video: { width: 1280, height: 720 },
+          audio: true,
+        }));
       streamRef.current = stream;
+
+      // Vérifier la présence de pistes audio
+      const audioTracks = stream.getAudioTracks();
+      if (audioTracks.length === 0) {
+        throw new Error('Aucune piste audio détectée. Vérifiez votre microphone.');
+      }
+
       if (videoRef.current) videoRef.current.srcObject = stream;
 
       recordedChunksRef.current = [];
@@ -113,6 +145,7 @@ const RecordVideo = () => {
         : MediaRecorder.isTypeSupported('video/webm')
         ? 'video/webm'
         : 'video/mp4';
+      console.log('MimeType utilisé pour MediaRecorder:', mimeType);
 
       mediaRecorderRef.current = new MediaRecorder(stream, { mimeType });
 
@@ -131,7 +164,7 @@ const RecordVideo = () => {
     } catch (err) {
       console.error('Erreur démarrage enregistrement:', err);
       setError(`Impossible de démarrer l'enregistrement: ${err.message}`);
-      toast.error("Erreur lors de l'enregistrement.");
+      toast.error('Erreur lors de l\'enregistrement.');
     }
   };
 
@@ -153,6 +186,12 @@ const RecordVideo = () => {
     setError(null);
 
     try {
+      // Vérifier et rafraîchir la session
+      const isSessionValid = await refreshSession();
+      if (!isSessionValid) {
+        throw new Error('Utilisateur non authentifié');
+      }
+
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError || !user) throw new Error('Utilisateur non authentifié');
 
@@ -160,7 +199,7 @@ const RecordVideo = () => {
       const pathInBucket = `${user.id}/${fileName}`;
       const fullStoragePath = `videos/${pathInBucket}`;
 
-      // 1) Générer une URL signée pour l'upload
+      // Générer une URL signée pour l'upload
       const { data: signed, error: signedErr } = await supabase
         .storage
         .from('videos')
@@ -168,7 +207,7 @@ const RecordVideo = () => {
 
       if (signedErr) throw signedErr;
 
-      // 2) Upload via fetch PUT (robuste pour gros fichiers)
+      // Upload via fetch PUT
       const putResp = await fetch(signed.signedUrl, {
         method: 'PUT',
         headers: {
@@ -183,19 +222,21 @@ const RecordVideo = () => {
         throw new Error(`Upload Storage échoué: ${putResp.status} ${text}`);
       }
 
-      // 3) Insérer la row dans la table videos avec user_id et storage_path
+      // Insérer dans la table videos
       const { data: videoData, error: insertError } = await supabase
         .from('videos')
-        .insert([{
-          title: 'Ma vidéo SpotBulle',
-          description: 'Vidéo enregistrée via SpotBulle',
-          user_id: user.id, // CRITIQUE: requis par RLS/schéma
-          storage_path: fullStoragePath, // Inclut le bucket pour Edge Functions
-          original_file_name: fileName,
-          format: 'webm',
-          tags: tags ? tags.split(',').map(t => t.trim()) : null,
-          status: 'uploaded',
-        }])
+        .insert([
+          {
+            title: 'Ma vidéo SpotBulle',
+            description: 'Vidéo enregistrée via SpotBulle',
+            user_id: user.id,
+            storage_path: fullStoragePath,
+            original_file_name: fileName,
+            format: 'webm',
+            tags: tags ? tags.split(',').map(t => t.trim()) : null,
+            status: 'uploaded',
+          },
+        ])
         .select()
         .single();
 
@@ -206,7 +247,7 @@ const RecordVideo = () => {
     } catch (err) {
       console.error('Erreur upload:', err);
       setError(`Erreur lors de l'upload: ${err.message}`);
-      toast.error("Erreur lors de l'upload.");
+      toast.error('Erreur lors de l\'upload.');
     } finally {
       setUploading(false);
     }
@@ -250,7 +291,7 @@ const RecordVideo = () => {
               disabled={!cameraAccess}
               className={cameraAccess ? '' : 'opacity-50 cursor-not-allowed'}
             >
-              {cameraAccess ? "Commencer l'enregistrement" : 'Caméra non disponible'}
+              {cameraAccess ? 'Commencer l\'enregistrement' : 'Caméra non disponible'}
             </Button>
           ) : (
             <Button onClick={stopRecording} className="bg-red-500 hover:bg-red-600">
