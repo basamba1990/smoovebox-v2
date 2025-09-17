@@ -4,7 +4,6 @@ import { Button } from './ui/button-enhanced.jsx';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { retryOperation } from '../lib/supabase';
-import { useAuth } from '../context/AuthContext.jsx'; // Ajout de useAuth
 
 const WelcomeAgent = ({ onOpenAuthModal }) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -12,7 +11,6 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   const [isLoading, setIsLoading] = useState(false);
   const audioRef = useRef(null);
   const navigate = useNavigate();
-  const { user, loading } = useAuth(); // Utiliser useAuth pour vérifier l'utilisateur
 
   const welcomeMessage = `
     Bonjour et bienvenue sous le dôme SpotBulle !
@@ -68,11 +66,6 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   };
 
   const handleStartExperience = async () => {
-    if (!user && !loading) {
-      toast.error('Veuillez vous connecter pour commencer l\'expérience.');
-      onOpenAuthModal(); // Ouvre le modal de connexion
-      return;
-    }
     await generateSpeech();
     navigate('/record-video');
   };
@@ -95,7 +88,7 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Button
             onClick={handleStartExperience}
-            disabled={isLoading || loading}
+            disabled={isLoading}
             className="relative bg-gradient-to-r from-blue-600 to-red-600 hover:from-blue-700 hover:to-red-700 text-white text-xl font-bold py-4 px-8 rounded-full transition-all duration-300 transform hover:scale-105 disabled:opacity-50 shadow-lg hover:shadow-xl overflow-hidden group"
           >
             <span className="relative z-10 flex items-center justify-center">
@@ -131,15 +124,11 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
             Se connecter
           </Button>
         </div>
-        <audio
-          ref={audioRef}
-          onEnded={() => setIsPlaying(false)}
-          onError={(e) => {
-            console.error('Erreur lecture audio:', e);
-            setIsPlaying(false);
-            toast.error('Erreur de lecture audio.');
-          }}
-        />
+        <audio ref={audioRef} onEnded={() => setIsPlaying(false)} onError={(e) => {
+          console.error('Erreur lecture audio:', e);
+          setIsPlaying(false);
+          toast.error('Erreur de lecture audio.');
+        }} />
       </div>
     </div>
   );
