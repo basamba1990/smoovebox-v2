@@ -3,7 +3,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button-enhanced.jsx';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { retryOperation } from '../lib/supabase';
+import { retryOperation, refreshSession } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext.jsx';
 
 const WelcomeAgent = ({ onOpenAuthModal }) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -11,6 +12,7 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   const [isLoading, setIsLoading] = useState(false);
   const audioRef = useRef(null);
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const welcomeMessage = `
     Bonjour et bienvenue sous le dôme SpotBulle !
@@ -70,11 +72,21 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   const handleStartExperience = async () => {
     try {
       await generateSpeech();
+      const isSessionValid = await refreshSession();
+      if (!isSessionValid) {
+        toast.error('Veuillez vous connecter pour continuer.');
+        onOpenAuthModal();
+        return;
+      }
       navigate('/record-video');
     } catch (err) {
       console.error('Erreur dans handleStartExperience:', err);
       toast.error('Erreur lors du démarrage de l\'expérience. Redirection en cours...');
-      navigate('/record-video'); // Naviguer même en cas d'erreur TTS
+      if (user) {
+        navigate('/record-video');
+      } else {
+        onOpenAuthModal();
+      }
     }
   };
 
