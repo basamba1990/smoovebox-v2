@@ -26,7 +26,6 @@ const VideoSuccess = () => {
         .select('id, title, description, storage_path, user_id, created_at')
         .eq('id', videoId)
         .single();
-
       if (error) throw error;
       setVideoData(data);
     } catch (err) {
@@ -38,7 +37,7 @@ const VideoSuccess = () => {
     }
   };
 
-  const videoUrl = `${window.location.origin}/video/${videoData?.id}`;
+  const videoUrl = videoData ? `${window.location.origin}/video/${videoData.id}` : '';
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(videoUrl);
@@ -46,18 +45,16 @@ const VideoSuccess = () => {
   };
 
   const shareByEmail = async () => {
-    if (!user || !videoData) return;
-
+    if (!videoData || !user) return;
     try {
-      const response = await supabase.functions.invoke('send-email', {
-        body: JSON.stringify({
+      const { error } = await supabase.functions.invoke('send-email', {
+        body: {
           user_id: user.id,
           video_id: videoData.id,
-          video_url: videoUrl
-        })
+          video_url: videoUrl,
+        },
       });
-
-      if (response.error) throw response.error;
+      if (error) throw error;
       toast.success('E-mail envoyé avec succès !');
     } catch (err) {
       console.error('Erreur envoi e-mail:', err);
@@ -65,14 +62,14 @@ const VideoSuccess = () => {
     }
   };
 
-  if (loading) return <div className="text-white text-center mt-10">Chargement...</div>;
-  if (error || !videoData) return <div className="text-red-500 text-center mt-10">{error || 'Vidéo non trouvée.'}</div>;
+  if (loading) return <div>Chargement...</div>;
+  if (error || !videoData) return <div>{error || 'Vidéo non trouvée. Veuillez réessayer.'}</div>;
 
   return (
-    <div className="p-8 min-h-screen text-white bg-black flex flex-col items-center">
-      <h1 className="text-3xl font-bold mb-6">Votre vidéo est en ligne !</h1>
+    <div className="flex flex-col items-center justify-center p-6">
+      <h2 className="text-2xl text-white mb-4">Votre vidéo est en ligne !</h2>
 
-      <div className="mb-8 p-6 border-2 border-blue-500 rounded-lg bg-white/10 backdrop-blur-md text-center">
+      <div className="mb-8 p-6 border-2 border-blue-500 rounded-lg bg-white/10 backdrop-blur-md">
         <h3 className="text-xl text-white mb-4">Partagez votre vidéo avec ce QR code</h3>
         <div className="flex justify-center mb-4">
           <QRCode value={videoUrl} size={200} fgColor="#38b2ac" />
@@ -86,7 +83,7 @@ const VideoSuccess = () => {
           type="text"
           value={videoUrl}
           readOnly
-          className="w-full p-2 border rounded bg-white/10 text-white mb-4"
+          className="w-full p-2 border rounded bg-white/10 text-white"
         />
         <div className="flex gap-4 mt-4 justify-center">
           <Button onClick={copyToClipboard}>Copier le lien</Button>
