@@ -10,6 +10,7 @@ import RecordVideo from '@/pages/record-video.jsx';
 import VideoSuccess from '@/pages/video-success.jsx';
 import Directory from '@/pages/directory.jsx';
 import UserRegistration from '@components/UserRegistration.jsx';
+import VideoManagement from '@/pages/VideoManagement.jsx';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -22,6 +23,7 @@ createRoot(document.getElementById('root')).render(
         <Route path="/video-success" element={<VideoSuccess />} />
         <Route path="/directory" element={<Directory />} />
         <Route path="/register" element={<UserRegistration />} />
+        <Route path="/videos" element={<VideoManagement />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>
