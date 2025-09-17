@@ -1,5 +1,6 @@
+// src/App.jsx
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext.jsx';
 import AuthModal from './AuthModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
@@ -11,14 +12,11 @@ import EmptyState from './components/EmptyState.jsx';
 import ProfessionalHeader from './components/ProfessionalHeader.jsx';
 import ModernTabs from './components/ModernTabs.jsx';
 import WelcomeAgent from './components/WelcomeAgent.jsx';
-import RecordVideo from './components/RecordVideo.jsx'; // Importez RecordVideo
-import VideoSuccess from './components/VideoSuccess.jsx'; // Importez VideoSuccess
-import Directory from './components/Directory.jsx'; // Importez Directory
 import { useAuth } from './context/AuthContext.jsx';
 import { Button } from './components/ui/button-enhanced.jsx';
 import { Tabs, TabsContent } from './components/ui/tabs.jsx';
-import { supabase, fetchDashboardData, checkSupabaseConnection, retryOperation } from './lib/supabase.js';
-import { RefreshCw, AlertTriangle, Video, Upload, BarChart3, FileText } from 'lucide-react';
+import { supabase, checkSupabaseConnection } from './lib/supabase.js';
+import { Upload, BarChart3, FileText } from 'lucide-react';
 import LoadingScreen from './components/LoadingScreen.jsx';
 import SupabaseDiagnostic from './components/SupabaseDiagnostic.jsx';
 import './App.css';
@@ -37,66 +35,6 @@ function AppContent() {
   const { user, loading, signOut, profile, error: authError, connectionStatus: authConnectionStatus } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (!loading) {
-      if (user && profile) {
-        setIsAuthenticated(true);
-        setShowWelcome(false);
-        console.log('Utilisateur authentifié avec profil:', user.id, profile);
-        if (isAuthModalOpen) {
-          setIsAuthModalOpen(false);
-        }
-        if (activeTab === 'dashboard') {
-          setTimeout(() => {
-            loadDashboardData().catch(err => {
-              console.error('Erreur lors du chargement initial des données:', err);
-            });
-          }, 500);
-        }
-      } else {
-        setIsAuthenticated(false);
-        setDashboardData(null);
-        setShowWelcome(true);
-      }
-    }
-  }, [user, profile, loading, activeTab, isAuthModalOpen]);
-
-  useEffect(() => {
-    if (!loading) {
-      const checkConnection = async () => {
-        try {
-          console.log('Vérification de la connexion Supabase...');
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout de connexion')), 5000)
-          );
-          
-          const connectionResult = await Promise.race([
-            checkSupabaseConnection(),
-            timeoutPromise
-          ]);
-          
-          if (connectionResult.connected) {
-            setConnectionStatus('connected');
-            setSupabaseError(null);
-          } else {
-            console.warn('Connexion Supabase échouée:', connectionResult.error);
-            setConnectionStatus('disconnected');
-            setSupabaseError(connectionResult.error);
-          }
-        } catch (error) {
-          console.error('Erreur lors de la vérification de connexion:', error);
-          setConnectionStatus('disconnected');
-          setSupabaseError(`Erreur de vérification: ${error.message}`);
-        }
-      };
-      
-      const connectionTimer = setTimeout(checkConnection, 100);
-      return () => {
-        clearTimeout(connectionTimer);
-      };
-    }
-  }, [loading]);
-
   const loadDashboardData = async () => {
     if (!user || !isAuthenticated) {
       console.log('Aucun utilisateur connecté ou non authentifié, aucune donnée à charger');
@@ -108,7 +46,7 @@ function AppContent() {
       setDashboardLoading(true);
       setDashboardError(null);
       console.log('Chargement des données dashboard pour:', user.id);
-      
+
       let videos = [];
       try {
         const { data: videosData, error: vError } = await supabase
@@ -120,10 +58,7 @@ function AppContent() {
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });
           
-        if (vError) {
-          console.warn('Erreur avec la table videos:', vError);
-          throw vError;
-        }
+        if (vError) throw vError;
         videos = videosData;
       } catch (viewError) {
         console.warn('Utilisation du fallback vers une requête simple');
@@ -184,7 +119,6 @@ function AppContent() {
 
       setDashboardData(dashboardData);
       console.log('Données dashboard chargées avec succès:', dashboardData);
-      
     } catch (err) {
       console.error('Erreur lors du chargement des données dashboard:', err);
       setDashboardData(null);
@@ -193,6 +127,66 @@ function AppContent() {
       setDashboardLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!loading) {
+      if (user && profile) {
+        setIsAuthenticated(true);
+        setShowWelcome(false);
+        console.log('Utilisateur authentifié avec profil:', user.id, profile);
+        if (isAuthModalOpen) {
+          setIsAuthModalOpen(false);
+        }
+        if (activeTab === 'dashboard') {
+          setTimeout(() => {
+            loadDashboardData().catch(err => {
+              console.error('Erreur lors du chargement initial des données:', err);
+            });
+          }, 500);
+        }
+      } else {
+        setIsAuthenticated(false);
+        setDashboardData(null);
+        setShowWelcome(true);
+      }
+    }
+  }, [user, profile, loading, activeTab, isAuthModalOpen]);
+
+  useEffect(() => {
+    if (!loading) {
+      const checkConnection = async () => {
+        try {
+          console.log('Vérification de la connexion Supabase...');
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout de connexion')), 5000)
+          );
+          
+          const connectionResult = await Promise.race([
+            checkSupabaseConnection(),
+            timeoutPromise
+          ]);
+          
+          if (connectionResult.connected) {
+            setConnectionStatus('connected');
+            setSupabaseError(null);
+          } else {
+            console.warn('Connexion Supabase échouée:', connectionResult.error);
+            setConnectionStatus('disconnected');
+            setSupabaseError(connectionResult.error);
+          }
+        } catch (error) {
+          console.error('Erreur lors de la vérification de connexion:', error);
+          setConnectionStatus('disconnected');
+          setSupabaseError(`Erreur de vérification: ${error.message}`);
+        }
+      };
+      
+      const connectionTimer = setTimeout(checkConnection, 100);
+      return () => {
+        clearTimeout(connectionTimer);
+      };
+    }
+  }, [loading]);
 
   useEffect(() => {
     let mounted = true;
@@ -349,122 +343,91 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
-      <ProfessionalHeader 
-        user={user} 
-        profile={profile} 
-        connectionStatus={connectionStatus}
-        onSignOut={handleSignOut}
-        onAuthModalOpen={() => setIsAuthModalOpen(true)}
-      />
-
-      <Routes>
-        <Route path="/" element={
-          showWelcome && !isAuthenticated ? (
-            <div>
-              <WelcomeAgent onOpenAuthModal={() => setIsAuthModalOpen(true)} />
-              <AuthModal 
-                isOpen={isAuthModalOpen} 
-                onClose={() => setIsAuthModalOpen(false)}
-                onSuccess={handleAuthSuccess}
-              />
-            </div>
-          ) : (
+    <Routes>
+      <Route path="/" element={
+        showWelcome && !isAuthenticated ? (
+          <div>
+            <WelcomeAgent onOpenAuthModal={() => setIsAuthModalOpen(true)} />
+            <AuthModal 
+              isOpen={isAuthModalOpen} 
+              onClose={() => setIsAuthModalOpen(false)}
+              onSuccess={handleAuthSuccess}
+            />
+          </div>
+        ) : (
+          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
+            <ProfessionalHeader 
+              user={user} 
+              profile={profile} 
+              connectionStatus={connectionStatus}
+              onSignOut={handleSignOut}
+              onAuthModalOpen={() => setIsAuthModalOpen(true)}
+            />
             <main className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
               <div className="space-y-6 sm:space-y-8">
                 <ModernTabs activeTab={activeTab} onTabChange={setActiveTab} user={user} />
-                {isAuthenticated ? (
-                  <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                    <TabsContent value="dashboard" className="space-y-6">
-                      {dashboardLoading ? (
-                        <LoadingScreen 
-                          message="Chargement des données du dashboard..." 
-                          showReloadButton={false}
-                          onCancel={() => {
-                            setDashboardLoading(false);
-                            loadDashboardData();
-                          }}
-                        />
-                      ) : dashboardError ? (
-                        <EmptyState 
-                          type="error" 
-                          onAction={() => loadDashboardData()} 
-                          loading={dashboardLoading}
-                        />
-                      ) : !dashboardData || (dashboardData.totalVideos === 0) ? (
-                        <EmptyState 
-                          type="dashboard" 
-                          onAction={() => setActiveTab('upload')}
-                        />
-                      ) : (
-                        <div className="space-y-6">
-                          <Dashboard data={dashboardData} />
-                        </div>
-                      )}
-                    </TabsContent>
-                    <TabsContent value="videos" className="space-y-6">
-                      <VideoManagement />
-                    </TabsContent>
-                    <TabsContent value="upload" className="space-y-6">
-                      <EnhancedVideoUploader />
-                    </TabsContent>
-                    <TabsContent value="progress" className="space-y-6">
-                      <ProgressTracking 
-                        userId={user.id} 
-                        userProfile={profile} 
-                        isVisible={true}
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                  <TabsContent value="dashboard" className="space-y-6">
+                    {dashboardLoading ? (
+                      <LoadingScreen 
+                        message="Chargement des données du dashboard..." 
+                        showReloadButton={false}
+                        onCancel={() => {
+                          setDashboardLoading(false);
+                          loadDashboardData();
+                        }}
                       />
-                    </TabsContent>
-                  </Tabs>
-                ) : (
-                  <div className="text-center py-8 sm:py-12 lg:py-16">
-                    <div className="max-w-md mx-auto px-4">
-                      <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
-                        <img src="/logo-spotbulle-final.png" alt="SpotBulle AI Logo" className="h-12 w-12 sm:h-16 sm:w-16" />
+                    ) : dashboardError ? (
+                      <EmptyState 
+                        type="error" 
+                        onAction={() => loadDashboardData()} 
+                        loading={dashboardLoading}
+                      />
+                    ) : !dashboardData || (dashboardData.totalVideos === 0) ? (
+                      <EmptyState 
+                        type="dashboard" 
+                        onAction={() => setActiveTab('upload')}
+                      />
+                    ) : (
+                      <div className="space-y-6">
+                        <Dashboard data={dashboardData} />
                       </div>
-                      <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-3 sm:mb-4">
-                        Bienvenue sur SpotBulle
-                      </h2>
-                      <p className="text-gray-600 mb-6 sm:mb-8 text-sm sm:text-base">
-                        Plateforme d'analyse IA pour vos pitchs vidéo
-                      </p>
-                      <div className="space-y-4 sm:space-y-6">
-                        <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-6 sm:mb-8">
-                          <div className="bg-white/60 backdrop-blur-sm rounded-lg p-3 sm:p-4 border border-white/20">
-                            <Upload className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600 mx-auto mb-2" />
-                            <h3 className="font-semibold text-gray-900 text-xs sm:text-sm">Upload facile</h3>
-                            <p className="text-xs text-gray-600 mt-1">Téléchargez vos vidéos en quelques clics</p>
-                          </div>
-                          <div className="bg-white/60 backdrop-blur-sm rounded-lg p-3 sm:p-4 border border-white/20">
-                            <BarChart3 className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600 mx-auto mb-2" />
-                            <h3 className="font-semibold text-gray-900 text-xs sm:text-sm">Analyse IA</h3>
-                            <p className="text-xs text-gray-600 mt-1">Obtenez des insights détaillés sur vos pitchs</p>
-                          </div>
-                          <div className="bg-white/60 backdrop-blur-sm rounded-lg p-3 sm:p-4 border border-white/20">
-                            <FileText className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600 mx-auto mb-2" />
-                            <h3 className="font-semibold text-gray-900 text-xs sm:text-sm">Transcription</h3>
-                            <p className="text-xs text-gray-600 mt-1">Transcription automatique de vos vidéos</p>
-                          </div>
-                        </div>
-                        <Button 
-                          onClick={() => setIsAuthModalOpen(true)}
-                          className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
-                        >
-                          Commencer maintenant
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                    )}
+                  </TabsContent>
+                  <TabsContent value="videos" className="space-y-6">
+                    <VideoManagement />
+                  </TabsContent>
+                  <TabsContent value="upload" className="space-y-6">
+                    <EnhancedVideoUploader />
+                  </TabsContent>
+                  <TabsContent value="progress" className="space-y-6">
+                    <ProgressTracking 
+                      userId={user.id} 
+                      userProfile={profile} 
+                      isVisible={true}
+                    />
+                  </TabsContent>
+                </Tabs>
               </div>
             </main>
-          )
-        } />
-        <Route path="/record-video" element={<RecordVideo />} />
-        <Route path="/video-success" element={<VideoSuccess />} />
-        <Route path="/directory" element={<Directory />} />
-        <Route path="/dashboard" element={
-          isAuthenticated ? (
+            <AuthModal 
+              isOpen={isAuthModalOpen} 
+              onClose={() => setIsAuthModalOpen(false)}
+              onSuccess={handleAuthSuccess}
+            />
+          </div>
+        )
+      } />
+      <Route path="/dashboard" element={
+        isAuthenticated ? (
+          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
+            <ProfessionalHeader 
+              user={user} 
+              profile={profile} 
+              connectionStatus={connectionStatus}
+              onSignOut={handleSignOut}
+              onAuthModalOpen={() => setIsAuthModalOpen(true)}
+            />
             <main className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
               <div className="space-y-6 sm:space-y-8">
                 <ModernTabs activeTab={activeTab} onTabChange={setActiveTab} user={user} />
@@ -499,18 +462,17 @@ function AppContent() {
                 </Tabs>
               </div>
             </main>
-          ) : (
-            <Navigate to="/" replace />
-          )
-        } />
-      </Routes>
-
-      <AuthModal 
-        isOpen={isAuthModalOpen} 
-        onClose={() => setIsAuthModalOpen(false)}
-        onSuccess={handleAuthSuccess}
-      />
-    </div>
+            <AuthModal 
+              isOpen={isAuthModalOpen} 
+              onClose={() => setIsAuthModalOpen(false)}
+              onSuccess={handleAuthSuccess}
+            />
+          </div>
+        ) : (
+          <Navigate to="/" replace />
+        )
+      } />
+    </Routes>
   );
 }
 
