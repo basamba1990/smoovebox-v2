@@ -26,7 +26,32 @@ const RecordVideo = () => {
 
     const initCamera = async () => {
       if (!mounted) return;
-      await requestCameraAccess();
+      // Attendre que videoRef soit disponible
+      const waitForVideoElement = () => {
+        return new Promise((resolve, reject) => {
+          const check = () => {
+            if (videoRef.current) {
+              resolve();
+            } else if (!mounted) {
+              reject(new Error('Composant démonté'));
+            } else {
+              setTimeout(check, 100);
+            }
+          };
+          check();
+        });
+      };
+
+      try {
+        await waitForVideoElement();
+        await requestCameraAccess();
+      } catch (err) {
+        console.error('Erreur initialisation caméra:', err);
+        if (mounted) {
+          setError('Impossible d\'initialiser la caméra. Veuillez recharger la page.');
+          toast.error('Erreur d\'initialisation de la caméra.');
+        }
+      }
     };
 
     initCamera();
@@ -51,7 +76,6 @@ const RecordVideo = () => {
         audio: true,
       });
       streamRef.current = stream;
-      // Vérifiez que videoRef.current existe avant de définir srcObject
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         setCameraAccess(true);
@@ -70,7 +94,6 @@ const RecordVideo = () => {
       setError('Veuillez autoriser l\'accès à la caméra.');
       return;
     }
-
     if (!videoRef.current) {
       setError('Erreur : élément vidéo non disponible. Veuillez recharger la page.');
       toast.error('Erreur : élément vidéo non disponible.');
@@ -195,20 +218,18 @@ const RecordVideo = () => {
     requestCameraAccess();
   };
 
-  if (countdown > 0) {
-    return (
-      <div className="text-white text-center mt-20">
-        <h1 className="text-6xl font-bold">{countdown}</h1>
-        <p>Préparez-vous à parler...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="p-8 min-h-screen bg-black text-white flex flex-col items-center">
       <h1 className="text-3xl font-bold mb-6">Enregistrez votre vidéo</h1>
 
       {error && <div className="bg-red-100 text-red-700 p-2 rounded mb-4">{error}</div>}
+
+      {countdown > 0 && (
+        <div className="text-white text-center mb-4">
+          <h1 className="text-6xl font-bold">{countdown}</h1>
+          <p>Préparez-vous à parler...</p>
+        </div>
+      )}
 
       <div className="mb-4">
         <video
@@ -216,7 +237,7 @@ const RecordVideo = () => {
           autoPlay
           muted={!recordedVideo}
           className="w-full max-w-md border-2 border-blue-500 rounded-lg bg-black"
-          playsInline // Ajouté pour compatibilité mobile
+          playsInline
         />
       </div>
 
