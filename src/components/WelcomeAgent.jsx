@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button-enhanced.jsx';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { supabase } from '../lib/supabase';
+import { retryOperation } from '../lib/supabase';
 
 const WelcomeAgent = ({ onOpenAuthModal }) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -25,23 +25,30 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
       setIsLoading(true);
       setIsPlaying(true);
 
-      // Utiliser supabase.functions.invoke pour gérer l'authentification automatiquement
-      const { data, error } = await supabase.functions.invoke('tts', {
-        body: { text: welcomeMessage.trim(), voice: 'alloy', speed: 1.0 },
-      });
+      const response = await retryOperation(() =>
+        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tts`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Client-Info': 'spotbulle',
+          },
+          body: JSON.stringify({ text: welcomeMessage.trim(), voice: 'alloy', speed: 1.0 }),
+        })
+      );
 
-      if (error) {
-        throw new Error(`Erreur lors de l'appel TTS: ${error.message}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Erreur HTTP ${response.status}: ${errorText}`);
       }
 
-      const contentType = data.type || 'audio/mpeg';
+      const contentType = response.headers.get('content-type');
       console.log('Content-Type de l\'audio:', contentType);
-      console.log('Taille du blob audio:', data.size);
-      if (!contentType.includes('audio')) {
+      if (!contentType?.includes('audio')) {
         throw new Error('Réponse non audio reçue');
       }
 
-      const audioBlob = new Blob([data], { type: contentType });
+      const audioBlob = new Blob([await response.arrayBuffer()], { type: contentType || 'audio/mpeg' });
+      console.log('Taille du blob audio:', audioBlob.size);
       const url = URL.createObjectURL(audioBlob);
       setAudioUrl(url);
 
