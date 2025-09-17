@@ -33,7 +33,9 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
             'X-Client-Info': 'spotbulle',
           },
           body: JSON.stringify({ text: welcomeMessage.trim(), voice: 'alloy', speed: 1.0 }),
-        })
+        }),
+        3,
+        1000
       );
 
       if (!response.ok) {
@@ -66,8 +68,14 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   };
 
   const handleStartExperience = async () => {
-    await generateSpeech();
-    navigate('/record-video');
+    try {
+      await generateSpeech();
+      navigate('/record-video');
+    } catch (err) {
+      console.error('Erreur dans handleStartExperience:', err);
+      toast.error('Erreur lors du démarrage de l\'expérience. Redirection en cours...');
+      navigate('/record-video'); // Naviguer même en cas d'erreur TTS
+    }
   };
 
   useEffect(() => {
