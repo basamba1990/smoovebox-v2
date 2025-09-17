@@ -254,9 +254,9 @@ function AppContent() {
     console.log('Utilisateur authentifié avec succès:', userData.id);
     setIsAuthModalOpen(false);
     setShowWelcome(false);
+    setIsAuthenticated(true);
     setTimeout(() => {
-      setActiveTab('dashboard');
-      navigate('/dashboard');
+      navigate('/record-video'); // Navigation explicite vers /record-video
       loadDashboardData().catch(err => {
         console.error('Erreur après authentification:', err);
       });
@@ -351,10 +351,15 @@ function AppContent() {
             <AuthModal 
               isOpen={isAuthModalOpen} 
               onClose={() => setIsAuthModalOpen(false)}
-              onSuccess={handleAuthSuccess}
+              onAuthSuccess={handleAuthSuccess}
             />
           </div>
         ) : (
+          <Navigate to="/record-video" replace /> // Redirection vers /record-video pour utilisateurs authentifiés
+        )
+      } />
+      <Route path="/dashboard" element={
+        isAuthenticated ? (
           <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
             <ProfessionalHeader 
               user={user} 
@@ -413,59 +418,7 @@ function AppContent() {
             <AuthModal 
               isOpen={isAuthModalOpen} 
               onClose={() => setIsAuthModalOpen(false)}
-              onSuccess={handleAuthSuccess}
-            />
-          </div>
-        )
-      } />
-      <Route path="/dashboard" element={
-        isAuthenticated ? (
-          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
-            <ProfessionalHeader 
-              user={user} 
-              profile={profile} 
-              connectionStatus={connectionStatus}
-              onSignOut={handleSignOut}
-              onAuthModalOpen={() => setIsAuthModalOpen(true)}
-            />
-            <main className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
-              <div className="space-y-6 sm:space-y-8">
-                <ModernTabs activeTab={activeTab} onTabChange={setActiveTab} user={user} />
-                <Tabs value="dashboard" className="w-full">
-                  <TabsContent value="dashboard" className="space-y-6">
-                    {dashboardLoading ? (
-                      <LoadingScreen 
-                        message="Chargement des données du dashboard..." 
-                        showReloadButton={false}
-                        onCancel={() => {
-                          setDashboardLoading(false);
-                          loadDashboardData();
-                        }}
-                      />
-                    ) : dashboardError ? (
-                      <EmptyState 
-                        type="error" 
-                        onAction={() => loadDashboardData()} 
-                        loading={dashboardLoading}
-                      />
-                    ) : !dashboardData || (dashboardData.totalVideos === 0) ? (
-                      <EmptyState 
-                        type="dashboard" 
-                        onAction={() => setActiveTab('upload')}
-                      />
-                    ) : (
-                      <div className="space-y-6">
-                        <Dashboard data={dashboardData} />
-                      </div>
-                    )}
-                  </TabsContent>
-                </Tabs>
-              </div>
-            </main>
-            <AuthModal 
-              isOpen={isAuthModalOpen} 
-              onClose={() => setIsAuthModalOpen(false)}
-              onSuccess={handleAuthSuccess}
+              onAuthSuccess={handleAuthSuccess}
             />
           </div>
         ) : (
