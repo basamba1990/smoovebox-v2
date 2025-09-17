@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button-enhanced.jsx';
-import { supabase } from '../lib/supabase';
+import { supabase, retryOperation } from '../lib/supabase';
 
 const RecordVideo = () => {
   const [recording, setRecording] = useState(false);
@@ -22,8 +22,19 @@ const RecordVideo = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    requestCameraAccess();
-    return () => stopStream();
+    let mounted = true;
+
+    const initCamera = async () => {
+      if (!mounted) return;
+      await requestCameraAccess();
+    };
+
+    initCamera();
+
+    return () => {
+      mounted = false;
+      stopStream();
+    };
   }, []);
 
   const stopStream = () => {
@@ -40,11 +51,16 @@ const RecordVideo = () => {
         audio: true,
       });
       streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
-      setCameraAccess(true);
+      // Vérifiez que videoRef.current existe avant de définir srcObject
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        setCameraAccess(true);
+      } else {
+        throw new Error('Élément vidéo non disponible dans le DOM');
+      }
     } catch (err) {
       console.error('Erreur accès caméra:', err);
-      setError('Impossible d\'accéder à la caméra. Veuillez vérifier les permissions.');
+      setError('Impossible d\'accéder à la caméra. Veuillez vérifier les permissions ou recharger la page.');
       toast.error('Erreur d\'accès à la caméra.');
     }
   };
@@ -52,6 +68,12 @@ const RecordVideo = () => {
   const startRecording = async () => {
     if (!cameraAccess) {
       setError('Veuillez autoriser l\'accès à la caméra.');
+      return;
+    }
+
+    if (!videoRef.current) {
+      setError('Erreur : élément vidéo non disponible. Veuillez recharger la page.');
+      toast.error('Erreur : élément vidéo non disponible.');
       return;
     }
 
@@ -69,7 +91,11 @@ const RecordVideo = () => {
         audio: true,
       });
       streamRef.current = stream;
-      videoRef.current.srcObject = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      } else {
+        throw new Error('Élément vidéo non disponible dans le DOM');
+      }
       recordedChunksRef.current = [];
 
       const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9,opus') 
@@ -118,7 +144,9 @@ const RecordVideo = () => {
     setError(null);
 
     try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await retryOperation(() => 
+        supabase.auth.getSession()
+      );
       if (sessionError || !session?.access_token) {
         throw new Error('Session non valide, veuillez vous reconnecter');
       }
@@ -131,13 +159,16 @@ const RecordVideo = () => {
       formData.append('description', 'Vidéo enregistrée via SpotBulle');
       formData.append('tags', JSON.stringify(tags.split(',').map(t => t.trim())));
 
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-video`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: formData,
-      });
+      const response = await retryOperation(() =>
+        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-video`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            'X-Client-Info': 'spotbulle',
+          },
+          body: formData,
+        })
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -150,7 +181,7 @@ const RecordVideo = () => {
       navigate(`/video-success?id=${data.video.id}`);
     } catch (err) {
       console.error('Erreur upload:', err);
-      setError(`Erreur lors de l'upload : ${err.message}`);
+      setError(`Erreur lors de l'upload: ${err.message}`);
       toast.error('Erreur lors de l\'upload.');
     } finally {
       setUploading(false);
@@ -185,7 +216,7 @@ const RecordVideo = () => {
           autoPlay
           muted={!recordedVideo}
           className="w-full max-w-md border-2 border-blue-500 rounded-lg bg-black"
-          src={recordedVideo?.url}
+          playsInline // Ajouté pour compatibilité mobile
         />
       </div>
 
