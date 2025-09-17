@@ -1,6 +1,6 @@
 // src/pages/video-success.jsx
 import { useEffect, useState } from 'react';
-import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
+import { useSupabaseClient } from '@supabase/auth-helpers-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode.react';
 import { toast } from 'sonner';
@@ -11,7 +11,6 @@ const VideoSuccess = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const supabase = useSupabaseClient();
-  const user = useUser();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const videoId = searchParams.get('id');
@@ -24,14 +23,14 @@ const VideoSuccess = () => {
     try {
       const { data, error } = await supabase
         .from('videos')
-        .select('id, title, description, storage_path, user_id, created_at')
+        .select('id, title, description, storage_path, created_at')
         .eq('id', videoId)
         .single();
 
       if (error) throw error;
       setVideoData(data);
-    } catch (error) {
-      console.error('Erreur récupération vidéo:', error);
+    } catch (err) {
+      console.error('Erreur récupération vidéo:', err);
       setError('Impossible de charger les données de la vidéo.');
       toast.error('Erreur lors du chargement de la vidéo.');
     } finally {
@@ -39,29 +38,18 @@ const VideoSuccess = () => {
     }
   };
 
+  // Générer URL publique via Supabase Storage
   const videoUrl = videoData
-    ? `${window.location.origin}/video/${videoData.id}`
+    ? supabase
+        .storage
+        .from('videos')
+        .getPublicUrl(videoData.storage_path).data.publicUrl
     : '';
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(videoUrl);
-    toast.success('Lien copié dans le presse-papiers !');
-  };
-
-  const shareByEmail = async () => {
-    try {
-      const { error } = await supabase.functions.invoke('send-email', {
-        body: {
-          user_id: user?.id || null,
-          video_id: videoData.id,
-          video_url: videoUrl,
-        },
-      });
-      if (error) throw error;
-      toast.success('E-mail envoyé avec succès !');
-    } catch (error) {
-      console.error('Erreur envoi e-mail:', error);
-      toast.error("Erreur lors de l'envoi de l'e-mail.");
+    if (videoUrl) {
+      navigator.clipboard.writeText(videoUrl);
+      toast.success('Lien copié dans le presse-papiers !');
     }
   };
 
@@ -93,7 +81,6 @@ const VideoSuccess = () => {
         />
         <div className="flex gap-4 mt-4 justify-center">
           <Button onClick={copyToClipboard}>Copier le lien</Button>
-          <Button onClick={shareByEmail}>Partager par e-mail</Button>
         </div>
       </div>
 
