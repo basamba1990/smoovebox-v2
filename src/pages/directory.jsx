@@ -1,3 +1,4 @@
+// src/pages/directory.jsx
 import { useState, useEffect } from 'react';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { useNavigate } from 'react-router-dom';
@@ -15,26 +16,33 @@ const Directory = () => {
 
   useEffect(() => {
     fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      let query = supabase.from('users').select('id, sex, passions, clubs, football_interest, created_at');
+
+      let query = supabase
+        .from('users')
+        .select('id, sex, passions, clubs, football_interest, created_at');
 
       if (filter === 'football') {
-        query = query.or('football_interest.eq.true, passions.cs.{football}');
+        query = query.or('football_interest.eq.true,passions.cs.{football}');
       } else if (filter === 'passions') {
         query = query.neq('passions', '{}');
       }
 
-      const { data, error } = await query.order('created_at', { ascending: false });
+      const { data, error } = await query.order('created_at', {
+        ascending: false,
+      });
+
       if (error) throw error;
       setUsers(data || []);
-    } catch (error) {
-      console.error('Erreur récupération utilisateurs:', error);
-      setError('Impossible de charger l\'annuaire.');
-      toast.error('Erreur lors du chargement de l\'annuaire.');
+    } catch (err) {
+      console.error('Erreur récupération utilisateurs:', err);
+      setError("Impossible de charger l'annuaire.");
+      toast.error("Erreur lors du chargement de l'annuaire.");
     } finally {
       setLoading(false);
     }
@@ -53,14 +61,21 @@ const Directory = () => {
       });
       if (error) throw error;
       toast.success('Mise en relation initiée avec succès !');
-    } catch (error) {
-      console.error('Erreur mise en relation:', error);
+    } catch (err) {
+      console.error('Erreur mise en relation:', err);
       toast.error('Erreur lors de la mise en relation.');
     }
   };
 
-  if (loading) return <div className="text-white text-center mt-10">Chargement de l'annuaire...</div>;
-  if (error) return <div className="text-red-500 text-center mt-10">{error}</div>;
+  if (loading)
+    return (
+      <div className="text-white text-center mt-10">
+        Chargement de l&apos;annuaire...
+      </div>
+    );
+
+  if (error)
+    return <div className="text-red-500 text-center mt-10">{error}</div>;
 
   return (
     <div className="p-8 min-h-screen bg-black text-white">
@@ -71,19 +86,31 @@ const Directory = () => {
         <div className="flex gap-2 flex-wrap">
           <Button
             onClick={() => setFilter('all')}
-            className={filter === 'all' ? 'bg-blue-500' : 'bg-gray-200 text-gray-800'}
+            className={
+              filter === 'all'
+                ? 'bg-blue-500'
+                : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+            }
           >
             Tous
           </Button>
           <Button
             onClick={() => setFilter('football')}
-            className={filter === 'football' ? 'bg-blue-500' : 'bg-gray-200 text-gray-800'}
+            className={
+              filter === 'football'
+                ? 'bg-blue-500'
+                : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+            }
           >
             Football
           </Button>
           <Button
             onClick={() => setFilter('passions')}
-            className={filter === 'passions' ? 'bg-blue-500' : 'bg-gray-200 text-gray-800'}
+            className={
+              filter === 'passions'
+                ? 'bg-blue-500'
+                : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+            }
           >
             Par passions
           </Button>
@@ -92,11 +119,28 @@ const Directory = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {users.map((u) => (
-          <div key={u.id} className="bg-white/10 backdrop-blur-md p-4 rounded-lg border border-gray-200">
-            <h3 className="text-white font-medium">Utilisateur {u.id.slice(0, 8)}</h3>
-            <p className="text-gray-200">Passions : {u.passions?.join(', ') || 'Aucune'}</p>
-            <p className="text-gray-200">Clubs : {u.clubs?.join(', ') || 'Aucun'}</p>
-            {u.football_interest && <p className="text-blue-400">🎯 Passionné de football</p>}
+          <div
+            key={u.id}
+            className="bg-white/10 backdrop-blur-md p-4 rounded-lg border border-gray-200"
+          >
+            <h3 className="text-white font-medium">
+              Utilisateur {u.id.slice(0, 8)}
+            </h3>
+            <p className="text-gray-200">
+              Passions :{' '}
+              {Array.isArray(u.passions) && u.passions.length > 0
+                ? u.passions.join(', ')
+                : 'Aucune'}
+            </p>
+            <p className="text-gray-200">
+              Clubs :{' '}
+              {Array.isArray(u.clubs) && u.clubs.length > 0
+                ? u.clubs.join(', ')
+                : 'Aucun'}
+            </p>
+            {u.football_interest && (
+              <p className="text-blue-400">🎯 Passionné de football</p>
+            )}
             <Button
               onClick={() => handleConnect(u.id)}
               className="mt-2 bg-orange-500 hover:bg-orange-600"
