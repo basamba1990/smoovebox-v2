@@ -1,11 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
-import { VIDEO_STATUS } from '../constants/videoStatus.js';
 
-// Configuration avec gestion d'erreurs améliorée et fallbacks robustes
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Constante pour la gestion des sessions
 export const AUTH_STORAGE_KEY = 'spotbulle-auth-token';
 
 console.log('Configuration Supabase:', {
@@ -13,7 +10,6 @@ console.log('Configuration Supabase:', {
   key: supabaseAnonKey ? 'Définie' : 'Manquante',
 });
 
-// Initialisation du client Supabase
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
@@ -27,24 +23,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       'X-Client-Info': 'spotbulle',
     },
   },
-  realtime: {
-    params: {
-      eventsPerSecond: 10,
-    },
-    timeout: 30000,
-  },
-  db: {
-    schema: 'public',
-  },
 });
 
-/**
- * Fonction utilitaire pour réessayer une opération en cas d'échec
- * @param {Function} operation - La fonction à exécuter
- * @param {number} maxRetries - Nombre maximum de tentatives
- * @param {number} delay - Délai entre les tentatives en ms
- * @returns {Promise} - Le résultat de l'opération
- */
 export const retryOperation = async (operation, maxRetries = 3, baseDelay = 1000) => {
   let lastError;
 
@@ -70,10 +50,6 @@ export const retryOperation = async (operation, maxRetries = 3, baseDelay = 1000
   throw lastError;
 };
 
-/**
- * Rafraîchit la session utilisateur si nécessaire
- * @returns {Promise<boolean>} - True si la session est valide, false sinon
- */
 export const refreshSession = async () => {
   try {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -83,14 +59,12 @@ export const refreshSession = async () => {
       return false;
     }
     
-    // Si nous avons une session, vérifions si elle est encore valide
     if (session) {
       const now = Math.floor(Date.now() / 1000);
       if (session.expires_at && now < session.expires_at) {
-        return true; // Session valide
+        return true;
       }
       
-      // Session expirée, essayons de la rafraîchir
       console.log('Session expirée, tentative de rafraîchissement...');
       const { data: { session: newSession }, error: refreshError } = await supabase.auth.refreshSession();
       
@@ -102,7 +76,6 @@ export const refreshSession = async () => {
       return !!newSession;
     }
     
-    // Pas de session, vérifions si nous pouvons en récupérer une depuis le stockage
     console.log('Aucune session active, vérification du stockage...');
     const { data: { session: storedSession }, error: storedError } = await supabase.auth.getSession();
     
@@ -113,10 +86,6 @@ export const refreshSession = async () => {
   }
 };
 
-/**
- * Vérifie la connexion à Supabase
- * @returns {Promise<{connected: boolean, error?: string}>}
- */
 export const checkSupabaseConnection = async () => {
   try {
     const { data, error } = await supabase.auth.getSession();
@@ -160,11 +129,6 @@ export const checkSupabaseConnection = async () => {
   }
 };
 
-/**
- * Récupère l'ID du profil associé à un user_id
- * @param {string} userId
- * @returns {Promise<string>} profile_id
- */
 export const getProfileId = async (userId) => {
   try {
     const { data, error } = await retryOperation(async () => {
@@ -199,11 +163,6 @@ export const getProfileId = async (userId) => {
   }
 };
 
-/**
- * Récupère les données du dashboard
- * @param {string} userId
- * @returns {Promise<Object>}
- */
 export const fetchDashboardData = async (userId) => {
   if (!userId) {
     throw new Error('ID utilisateur requis pour récupérer les données du dashboard');
@@ -273,11 +232,6 @@ export const fetchDashboardData = async (userId) => {
   }
 };
 
-/**
- * Déclenche la transcription d'une vidéo
- * @param {string} videoId
- * @returns {Promise<Object>}
- */
 export const transcribeVideo = async (videoId) => {
   try {
     if (!videoId) {
@@ -316,12 +270,6 @@ export const transcribeVideo = async (videoId) => {
   }
 };
 
-/**
- * Surveille le statut d'une vidéo
- * @param {string} videoId
- * @param {Function} onStatusChange
- * @returns {Function}
- */
 export const watchVideoStatus = (videoId, onStatusChange) => {
   if (!videoId || typeof onStatusChange !== 'function') {
     console.error('ID de vidéo et callback requis pour watchVideoStatus');
@@ -349,9 +297,6 @@ export const watchVideoStatus = (videoId, onStatusChange) => {
   };
 };
 
-/**
- * Gestionnaire d'erreurs Supabase avec réessai automatique
- */
 export const handleSupabaseError = (error, operation = 'operation') => {
   console.error(`Erreur lors de ${operation}:`, error);
   
