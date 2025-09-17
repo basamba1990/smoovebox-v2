@@ -1,20 +1,36 @@
+// src/components/UserRegistration.jsx
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { toast } from 'sonner';
 import { Button } from './ui/button-enhanced.jsx';
-import { Input } from './ui/input.jsx'; // Corrigé : minuscule 'input.jsx'
-import { Label } from './ui/label.jsx'; // Corrigé : minuscule 'label.jsx'
+import { Input } from './ui/input.jsx';
+import { Label } from './ui/label.jsx';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { useAuth } from '../context/AuthContext.jsx'; // Remplacer useSupabaseClient/useUser
 
 const UserRegistration = () => {
-  const supabase = useSupabaseClient();
-  const user = useUser();
+  const { user, loading, signUp, updateUserProfile } = useAuth();
   const navigate = useNavigate();
-  const [step, setStep] = useState(1); // 1: Sexe, 2: Majeur/Mineur, 3: Détails
+  const [step, setStep] = useState(1); // 1: Sexe, 2: Majeur/Mineur, 3: Détails, 4: Inscription
   const [isMajor, setIsMajor] = useState(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const { register, handleSubmit, formState: { errors }, reset } = useForm();
+
+  const onSubmitSignUp = async (data) => {
+    try {
+      console.log('UserRegistration: Tentative d\'inscription:', data.email);
+      await signUp(data.email, data.password, data.firstName, data.lastName);
+      toast.success('Inscription réussie ! Veuillez vérifier votre email.');
+      setEmail(data.email);
+      setPassword(data.password);
+      setStep(1); // Passer à l'étape du sexe après inscription
+    } catch (error) {
+      console.error('UserRegistration: Erreur inscription:', error);
+      toast.error(`Erreur lors de l'inscription : ${error.message}`);
+    }
+  };
 
   const onSubmitSex = (data) => {
     setStep(2);
@@ -34,29 +50,26 @@ const UserRegistration = () => {
 
   const onSubmitDetails = async (data) => {
     if (!user) {
+      console.log('UserRegistration: Utilisateur non connecté');
       toast.error('Veuillez vous connecter d\'abord.');
-      navigate('/auth');
+      navigate('/'); // Rediriger vers la page d'accueil
       return;
     }
 
     try {
-      const { error } = await supabase
-        .from('users')
-        .upsert({
-          id: user.id,
-          sex: data.sex,
-          is_major: true,
-          passions: data.passions ? data.passions.split(',').map(p => p.trim()) : [],
-          clubs: data.clubs ? data.clubs.split(',').map(c => c.trim()) : [],
-          football_interest: data.football_interest || false,
-          updated_at: new Date().toISOString(),
-        });
-
-      if (error) throw error;
+      console.log('UserRegistration: Mise à jour profil pour user:', user.id);
+      await updateUserProfile({
+        sex: data.sex,
+        is_major: true,
+        passions: data.passions ? data.passions.split(',').map(p => p.trim()) : [],
+        clubs: data.clubs ? data.clubs.split(',').map(c => c.trim()) : [],
+        football_interest: data.football_interest || false,
+        updated_at: new Date().toISOString(),
+      });
       toast.success('Enregistrement réussi ! Vous apparaissez maintenant dans l\'annuaire.');
       navigate('/directory');
     } catch (error) {
-      console.error('Erreur enregistrement:', error);
+      console.error('UserRegistration: Erreur mise à jour profil:', error);
       toast.error('Erreur lors de l\'enregistrement.');
     }
   };
@@ -66,7 +79,56 @@ const UserRegistration = () => {
       <div className="max-w-md w-full bg-black/50 backdrop-blur-md rounded-3xl p-8 border-2 border-gold shadow-2xl">
         <h2 className="text-2xl font-bold text-gold mb-6 text-center">Enregistrement</h2>
 
-        {step === 1 && (
+        {step === 1 && !user && !loading && (
+          <form onSubmit={handleSubmit(onSubmitSignUp)} className="space-y-4">
+            <div>
+              <Label htmlFor="email">Email :</Label>
+              <Input
+                id="email"
+                type="email"
+                {...register('email', { required: 'Email obligatoire' })}
+                placeholder="votre@email.com"
+                className="dark:bg-white/10 text-white"
+              />
+              {errors.email && <p className="text-red-400 text-sm">{errors.email.message}</p>}
+            </div>
+            <div>
+              <Label htmlFor="password">Mot de passe :</Label>
+              <Input
+                id="password"
+                type="password"
+                {...register('password', { required: 'Mot de passe obligatoire', minLength: { value: 6, message: 'Minimum 6 caractères' } })}
+                className="dark:bg-white/10 text-white"
+              />
+              {errors.password && <p className="text-red-400 text-sm">{errors.password.message}</p>}
+            </div>
+            <div>
+              <Label htmlFor="firstName">Prénom :</Label>
+              <Input
+                id="firstName"
+                {...register('firstName', { required: 'Prénom obligatoire' })}
+                placeholder="Votre prénom"
+                className="dark:bg-white/10 text-white"
+              />
+              {errors.firstName && <p className="text-red-400 text-sm">{errors.firstName.message}</p>}
+            </div>
+            <div>
+              <Label htmlFor="lastName">Nom :</Label>
+              <Input
+                id="lastName"
+                {...register('lastName', { required: 'Nom obligatoire' })}
+                placeholder="Votre nom"
+                className="dark:bg-white/10 text-white"
+              />
+              {errors.lastName && <p className="text-red-400 text-sm">{errors.lastName.message}</p>}
+            </div>
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Chargement...' : 'S\'inscrire'}
+            </Button>
+          </form>
+        )}
+
+        {step === 1 && user && (
           <form onSubmit={handleSubmit(onSubmitSex)} className="space-y-4">
             <div>
               <Label htmlFor="sex">Votre sexe :</Label>
