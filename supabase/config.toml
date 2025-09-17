@@ -1,9 +1,3 @@
-Fournir à nouveau version mettez à jour le fichier supabase/functions/tts/config.toml pour confirmer que la fonction TTS est publique :
-# supabase/functions/tts/config.toml
-verify_jwt = false
-
-
-
 # For detailed configuration reference documentation, visit:
 # https://supabase.com/docs/guides/local-development/cli/config
 project_id = "nyxtckjfaajhacboxojd"
