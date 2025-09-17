@@ -24,9 +24,16 @@ const RecordVideo = () => {
   useEffect(() => {
     let mounted = true;
 
+    // Vérifier si l'utilisateur est connecté
+    if (!loading && !user) {
+      setError('Vous devez être connecté pour enregistrer une vidéo.');
+      toast.error('Veuillez vous connecter pour continuer.');
+      navigate('/'); // Rediriger vers la page d'accueil ou de connexion
+      return;
+    }
+
     const initCamera = async () => {
       if (!mounted) return;
-      // Attendre que videoRef soit disponible
       const waitForVideoElement = () => {
         return new Promise((resolve, reject) => {
           const check = () => {
@@ -60,7 +67,7 @@ const RecordVideo = () => {
       mounted = false;
       stopStream();
     };
-  }, []);
+  }, [loading, user, navigate]);
 
   const stopStream = () => {
     if (streamRef.current) {
@@ -157,9 +164,15 @@ const RecordVideo = () => {
   };
 
   const uploadVideo = async () => {
-    if (!recordedVideo || !user) {
-      setError('Vous devez être connecté et avoir une vidéo enregistrée.');
-      toast.error('Connexion ou vidéo manquante.');
+    if (!recordedVideo) {
+      setError('Aucune vidéo enregistrée.');
+      toast.error('Veuillez enregistrer une vidéo avant de l\'envoyer.');
+      return;
+    }
+    if (!user) {
+      setError('Vous devez être connecté pour envoyer une vidéo.');
+      toast.error('Veuillez vous connecter pour continuer.');
+      navigate('/'); // Rediriger vers la page d'accueil ou de connexion
       return;
     }
 
