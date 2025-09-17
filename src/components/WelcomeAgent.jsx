@@ -13,20 +13,20 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
-  const welcomeMessage = `
-Bonjour et bienvenue sous le dôme SpotBulle !
+  const welcomeMessage = `Bonjour et bienvenue sous le dôme SpotBulle !
 Ici, vous allez vivre une expérience unique autour de la passion du sport et des valeurs de la Coupe d'Afrique des Nations.
 Installez-vous confortablement, exprimez votre passion ou votre besoin devant la caméra,
 et votre vidéo sera analysée par notre intelligence artificielle pour vous offrir une expérience personnalisée.
-Prêt à commencer ? L'aventure vous attend !
-`;
+Prêt à commencer ? L'aventure vous attend !`;
 
   const generateSpeech = async () => {
     try {
       setIsLoading(true);
       setIsPlaying(true);
 
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
       if (!session?.access_token) {
         toast.error('Vous devez être connecté pour générer le message audio.');
@@ -34,14 +34,17 @@ Prêt à commencer ? L'aventure vous attend !
         return;
       }
 
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ text: welcomeMessage }),
-      });
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tts`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ text: welcomeMessage }),
+        }
+      );
 
       if (!response.ok) throw new Error('Erreur lors de la génération audio');
 
@@ -51,9 +54,10 @@ Prêt à commencer ? L'aventure vous attend !
 
       if (audioRef.current) {
         audioRef.current.src = url;
-        audioRef.current.play().catch(err => {
-          console.warn("Auto-play bloqué :", err);
-          toast.info("Cliquez sur le bouton pour écouter l'accueil.");
+        audioRef.current.play().catch((error) => {
+          console.error('Erreur de lecture audio:', error);
+          toast.error('Erreur de lecture audio.');
+          setIsPlaying(false);
         });
       }
     } catch (error) {
@@ -66,38 +70,30 @@ Prêt à commencer ? L'aventure vous attend !
   };
 
   useEffect(() => {
-    // TTS peut être déclenché après interaction utilisateur si auto-play bloqué
+    generateSpeech();
     return () => {
       if (audioUrl) URL.revokeObjectURL(audioUrl);
     };
-  }, [audioUrl]);
+  }, []);
 
   const handleStartExperience = async () => {
     if (loading) return;
     if (!user) {
       onOpenAuthModal();
     } else {
-      navigate('/record-video'); // ✅ correction de la navigation
+      navigate('/register');
     }
   };
 
   return (
-    <div className="relative z-10 flex flex-col items-center justify-center min-h-screen text-center text-white p-8">
-      <div className="max-w-4xl bg-black/50 backdrop-blur-md rounded-3xl p-8 md:p-12 border-2 border-gold shadow-2xl">
-        <div className="mb-6 flex justify-center">
-          <div className="w-24 h-24 bg-white/10 rounded-full flex items-center justify-center p-4">
-            <span className="text-4xl">⚽</span>
-          </div>
-        </div>
-
+    <div className="relative min-h-screen bg-black text-white flex items-center justify-center">
+      <div className="max-w-4xl bg-black/50 backdrop-blur-md rounded-3xl p-8 md:p-12 border-2 border-gold shadow-2xl text-center">
         <h1 className="text-4xl md:text-5xl font-bold mb-6 text-gold animate-bounce">
           🌟 Bienvenue à SpotBulle 🌟
         </h1>
-
         <div className="text-lg md:text-xl mb-8 leading-relaxed bg-white/10 p-6 rounded-xl">
           {welcomeMessage}
         </div>
-
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Button
             onClick={handleStartExperience}
@@ -113,7 +109,14 @@ Prêt à commencer ? L'aventure vous attend !
                     fill="none"
                     viewBox="0 0 24 24"
                   >
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
                     <path
                       className="opacity-75"
                       fill="currentColor"
@@ -139,25 +142,12 @@ Prêt à commencer ? L'aventure vous attend !
           </Button>
         </div>
 
-        {(isLoading || isPlaying) && (
-          <div className="mt-8 flex flex-col items-center space-y-4">
-            <div className="flex space-x-2">
-              <div className="w-3 h-3 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-              <div className="w-3 h-3 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-              <div className="w-3 h-3 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }} />
-            </div>
-            <p className="text-sm text-blue-200">
-              {isPlaying ? 'Expérience d’accueil en cours...' : 'Préparation de votre accueil...'}
-            </p>
-          </div>
-        )}
+        <audio
+          ref={audioRef}
+          onEnded={() => setIsPlaying(false)}
+          onError={() => setIsPlaying(false)}
+        />
       </div>
-
-      <audio
-        ref={audioRef}
-        onEnded={() => setIsPlaying(false)}
-        onError={() => setIsPlaying(false)}
-      />
     </div>
   );
 };
