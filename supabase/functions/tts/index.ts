@@ -2,7 +2,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.46.2";
 import OpenAI from "npm:openai@4.56.0";
 
-// CORS communs
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -19,7 +18,6 @@ function json(body: unknown, init?: ResponseInit) {
 console.info("tts function started (public, no auth)");
 
 Deno.serve(async (req: Request) => {
-  // Préflight
   if (req.method === "OPTIONS") {
     console.info("Préflight OPTIONS reçu");
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -51,11 +49,21 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Initialisation du client Supabase (juste pour configuration, pas d'authentification)
+    // Initialisation du client Supabase
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
     console.info("Client Supabase initialisé");
+
+    // Vérifier le jeton d'authentification (optionnel)
+    const authHeader = req.headers.get("Authorization");
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      const token = authHeader.replace("Bearer ", "");
+      await supabase.auth.setSession({ access_token: token, refresh_token: "" });
+      console.info("Session authentifiée avec jeton");
+    } else {
+      console.info("Aucun jeton d'authentification fourni, mode anonyme");
+    }
 
     const contentType = req.headers.get("Content-Type") || req.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
