@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { retryOperation, refreshSession } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useSupabaseClient } from '@supabase/auth-helpers-react';
 
 const WelcomeAgent = ({ onOpenAuthModal }) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -13,6 +14,7 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   const audioRef = useRef(null);
   const navigate = useNavigate();
   const { user } = useAuth();
+  const supabase = useSupabaseClient();
 
   const welcomeMessage = `
     Bonjour et bienvenue sous le dôme SpotBulle !
@@ -27,13 +29,25 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
       setIsLoading(true);
       setIsPlaying(true);
 
+      // Vérifier et rafraîchir la session
+      const isSessionValid = await refreshSession();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!isSessionValid || !session) {
+        throw new Error('Session invalide, authentification requise');
+      }
+
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-Client-Info': 'spotbulle',
+        'Authorization': `Bearer ${session.access_token}`,
+      };
+
+      console.log('Envoi requête TTS avec headers:', headers);
+
       const response = await retryOperation(() =>
         fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tts`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Client-Info': 'spotbulle',
-          },
+          headers,
           body: JSON.stringify({ text: welcomeMessage.trim(), voice: 'alloy', speed: 1.0 }),
         }),
         3,
