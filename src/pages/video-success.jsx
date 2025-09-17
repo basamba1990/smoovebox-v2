@@ -5,7 +5,8 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode.react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button-enhanced.jsx';
-import { refreshSession } from '../lib/supabase';
+// Importez directement le client Supabase personnalisé si nécessaire
+// import { supabase } from '../lib/supabase';
 
 const VideoSuccess = () => {
   const [videoData, setVideoData] = useState(null);
@@ -18,12 +19,13 @@ const VideoSuccess = () => {
 
   useEffect(() => {
     if (videoId) fetchVideoData();
-  }, [videoId]);
+  }, [videoId, supabase]);
 
   const fetchVideoData = async () => {
     try {
-      const isSessionValid = await refreshSession();
-      if (!isSessionValid) {
+      // Vérifier la session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
         console.log('Session invalide, redirection vers /login');
         setError('Veuillez vous reconnecter.');
         toast.error('Session invalide, veuillez vous reconnecter.');
@@ -31,15 +33,7 @@ const VideoSuccess = () => {
         return;
       }
 
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError || !user) {
-        console.log('Utilisateur non authentifié, redirection vers /login');
-        setError('Veuillez vous reconnecter.');
-        toast.error('Utilisateur non authentifié.');
-        navigate('/login');
-        return;
-      }
-      console.log('Utilisateur authentifié:', user.id);
+      console.log('Utilisateur authentifié:', session.user.id);
 
       console.log('Chargement vidéo ID:', videoId);
       const { data, error } = await supabase
