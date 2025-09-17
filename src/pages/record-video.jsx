@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button-enhanced.jsx';
-import { supabase, retryOperation } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 
 const RecordVideo = () => {
   const [recording, setRecording] = useState(false);
@@ -87,7 +87,7 @@ const RecordVideo = () => {
       return;
     }
     if (!videoRef.current) {
-      setError('Erreur : élément vidéo non disponible. Veuillez recharger la page.');
+      setError('Erreur : élément vidéo non disponible.');
       toast.error('Erreur : élément vidéo non disponible.');
       return;
     }
@@ -103,24 +103,16 @@ const RecordVideo = () => {
     try {
       const stream =
         streamRef.current ||
-        (await navigator.mediaDevices.getUserMedia({
-          video: { width: 1280, height: 720 },
-          audio: true,
-        }));
+        (await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: true }));
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      } else {
-        throw new Error('Élément vidéo non disponible dans le DOM');
-      }
-      recordedChunksRef.current = [];
+      if (videoRef.current) videoRef.current.srcObject = stream;
 
+      recordedChunksRef.current = [];
       const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9,opus')
         ? 'video/webm; codecs=vp9,opus'
         : MediaRecorder.isTypeSupported('video/webm')
         ? 'video/webm'
         : 'video/mp4';
-      console.log('Format vidéo utilisé:', mimeType);
 
       mediaRecorderRef.current = new MediaRecorder(stream, { mimeType });
 
@@ -161,43 +153,34 @@ const RecordVideo = () => {
     setError(null);
 
     try {
-      // Créer une session anonyme si pas de session existante
-      let { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      if (!sessionData?.session) {
-        const { data, error } = await supabase.auth.signInAnonymously();
-        if (error) throw error;
-        sessionData = data;
-      }
+      const fileName = `video-${Date.now()}.webm`;
+      const file = new File([recordedVideo.blob], fileName, { type: 'video/webm' });
 
-      const file = new File([recordedVideo.blob], `video-${Date.now()}.webm`, {
-        type: 'video/webm',
-      });
+      // Upload direct Storage
+      const { data: uploadData, error: uploadError } = await supabase
+        .storage
+        .from('videos')
+        .upload(fileName, file, { cacheControl: '3600', upsert: true });
 
-      const formData = new FormData();
-      formData.append('video', file);
-      formData.append('title', 'Ma vidéo SpotBulle');
-      formData.append('description', 'Vidéo enregistrée via SpotBulle');
-      formData.append('tags', JSON.stringify(tags.split(',').map(t => t.trim())));
+      if (uploadError) throw uploadError;
 
-      const response = await retryOperation(() =>
-        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-video`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${sessionData.session.access_token}`,
-          },
-          body: formData,
-        })
-      );
+      // Stocker métadonnées dans table videos
+      const { data: videoData, error: insertError } = await supabase
+        .from('videos')
+        .insert([{
+          title: 'Ma vidéo SpotBulle',
+          description: 'Vidéo enregistrée via SpotBulle',
+          storage_path: uploadData.path,
+          tags: tags.split(',').map(t => t.trim()),
+          status: 'uploaded'
+        }])
+        .select()
+        .single();
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Erreur HTTP ${response.status}: ${errorText}`);
-      }
+      if (insertError) throw insertError;
 
-      const data = await response.json();
-      console.log('Réponse upload-video:', data);
       toast.success('Vidéo envoyée avec succès !');
-      navigate(`/video-success?id=${data.video.id}`);
+      navigate(`/video-success?id=${videoData.id}`);
     } catch (err) {
       console.error('Erreur upload:', err);
       setError(`Erreur lors de l'upload: ${err.message}`);
