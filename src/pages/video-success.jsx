@@ -1,119 +1,229 @@
-// src/pages/video-success.jsx
 import { useEffect, useState } from 'react';
-import { useSupabaseClient } from '@supabase/auth-helpers-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode.react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button-enhanced.jsx';
-// Importez directement le client Supabase personnalisé si nécessaire
-// import { supabase } from '../lib/supabase';
+import { supabase, refreshSession, getVideoUrl } from '../lib/supabase';
 
 const VideoSuccess = () => {
   const [videoData, setVideoData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const supabase = useSupabaseClient();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const videoId = searchParams.get('id');
 
   useEffect(() => {
-    if (videoId) fetchVideoData();
-  }, [videoId, supabase]);
+    if (videoId) {
+      fetchVideoData();
+    } else {
+      setError('ID de vidéo manquant dans l\'URL');
+      setLoading(false);
+    }
+  }, [videoId]);
 
   const fetchVideoData = async () => {
     try {
-      // Vérifier la session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session) {
-        console.log('Session invalide, redirection vers /login');
-        setError('Veuillez vous reconnecter.');
-        toast.error('Session invalide, veuillez vous reconnecter.');
+      setLoading(true);
+      setError(null);
+
+      // Vérification robuste de la session
+      const isSessionValid = await refreshSession();
+      if (!isSessionValid) {
+        setError('Session expirée. Veuillez vous reconnecter.');
+        toast.error('Session expirée. Veuillez vous reconnecter.');
         navigate('/login');
         return;
       }
 
-      console.log('Utilisateur authentifié:', session.user.id);
+      // Récupération de l'utilisateur
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        setError('Utilisateur non authentifié.');
+        toast.error('Utilisateur non authentifié.');
+        navigate('/login');
+        return;
+      }
 
-      console.log('Chargement vidéo ID:', videoId);
-      const { data, error } = await supabase
+      console.log('Tentative de récupération de la vidéo:', videoId);
+      
+      // Requête avec toutes les colonnes nécessaires
+      const { data, error: videoError } = await supabase
         .from('videos')
-        .select('id, title, description, storage_path, created_at')
+        .select(`
+          id, 
+          title, 
+          description, 
+          storage_path,
+          file_path,
+          public_url,
+          created_at, 
+          status, 
+          user_id,
+          original_file_name,
+          file_size,
+          format,
+          duration
+        `)
         .eq('id', videoId)
         .single();
 
-      if (error) {
-        console.error('Erreur Supabase:', error);
-        throw error;
+      if (videoError) {
+        console.error('Erreur détaillée Supabase:', videoError);
+        
+        if (videoError.code === 'PGRST116') {
+          throw new Error('Vidéo non trouvée. Elle a peut-être été supprimée.');
+        } else if (videoError.code === '42501') {
+          throw new Error('Permissions insuffisantes pour accéder à cette vidéo.');
+        } else {
+          throw videoError;
+        }
       }
-      console.log('Données vidéo:', data);
+
+      if (!data) {
+        throw new Error('Aucune donnée de vidéo retournée');
+      }
+
+      // Vérification que l'utilisateur accède à sa propre vidéo
+      if (data.user_id !== user.id) {
+        setError('Vous ne pouvez pas accéder à cette vidéo.');
+        toast.error('Accès non autorisé.');
+        navigate('/videos');
+        return;
+      }
+
       setVideoData(data);
     } catch (err) {
       console.error('Erreur récupération vidéo:', err);
-      setError('Impossible de charger les données de la vidéo.');
-      toast.error('Erreur lors du chargement de la vidéo.');
+      const errorMessage = err.message || 'Impossible de charger les données de la vidéo.';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const videoUrl = videoData
-    ? supabase.storage.from('videos').getPublicUrl(videoData.storage_path).data.publicUrl
-    : '';
+  const handleReconnect = async () => {
+    try {
+      await supabase.auth.signOut();
+      navigate('/login');
+    } catch (error) {
+      console.error('Erreur lors de la déconnexion:', error);
+      toast.error('Erreur lors de la déconnexion');
+    }
+  };
+
+  // Utiliser la fonction getVideoUrl pour obtenir l'URL correcte
+  const videoUrl = videoData ? getVideoUrl(videoData) : '';
 
   const copyToClipboard = () => {
     if (videoUrl) {
       navigator.clipboard.writeText(videoUrl);
       toast.success('Lien copié dans le presse-papiers !');
+    } else {
+      toast.error('Aucun lien disponible à copier.');
     }
   };
 
-  if (loading) return <p className="text-white">Chargement...</p>;
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen text-white">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
+        <p>Chargement de votre vidéo...</p>
+      </div>
+    );
+  }
 
   if (error || !videoData) {
     return (
-      <div className="flex flex-col items-center text-center text-white p-6">
-        <p className="text-red-500 mb-4">{error || 'Vidéo non trouvée.'}</p>
-        <Button onClick={fetchVideoData} className="bg-blue-500 hover:bg-blue-600 mb-4">
-          Réessayer
-        </Button>
-        <Button onClick={() => navigate('/login')} className="bg-gray-500 hover:bg-gray-600">
-          Se reconnecter
-        </Button>
+      <div className="flex flex-col items-center justify-center min-h-screen text-white p-6 text-center">
+        <div className="bg-red-500/20 border border-red-500 rounded-lg p-6 max-w-md">
+          <h2 className="text-xl font-bold mb-2">Erreur</h2>
+          <p className="mb-4">{error || 'Vidéo non trouvée.'}</p>
+          <div className="flex flex-col gap-3">
+            <Button onClick={fetchVideoData} className="bg-blue-600 hover:bg-blue-700">
+              Réessayer
+            </Button>
+            <Button onClick={handleReconnect} className="bg-gray-600 hover:bg-gray-700">
+              Se reconnecter
+            </Button>
+            <Button onClick={() => navigate('/videos')} className="bg-green-600 hover:bg-green-700">
+              Mes vidéos
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col items-center text-center text-white p-6">
-      <h1 className="text-2xl font-bold mb-6">Votre vidéo est en ligne !</h1>
-      <div className="mb-8 p-6 border-2 border-blue-500 rounded-lg bg-white/10 backdrop-blur-md">
-        <h3 className="text-xl mb-4">Partagez votre vidéo avec ce QR code</h3>
-        <div className="flex justify-center mb-4">
-          <QRCode value={videoUrl} size={200} fgColor="#38b2ac" />
+    <div className="flex flex-col items-center justify-center min-h-screen text-white p-6">
+      <div className="max-w-lg w-full bg-black/50 backdrop-blur-md rounded-2xl p-8 border border-white/20">
+        <h1 className="text-3xl font-bold mb-6 text-center">Votre vidéo est en ligne !</h1>
+        
+        <div className="mb-8 p-6 border-2 border-blue-500 rounded-lg bg-white/5 text-center">
+          <h3 className="text-xl mb-4">Partagez votre vidéo avec ce QR code</h3>
+          <div className="flex justify-center mb-4">
+            {videoUrl ? (
+              <QRCode 
+                value={videoUrl} 
+                size={200} 
+                level="H"
+                fgColor="#ffffff"
+                bgColor="transparent"
+                includeMargin={false}
+              />
+            ) : (
+              <div className="h-48 w-48 flex items-center justify-center bg-gray-800 rounded">
+                <p className="text-sm text-gray-400">URL non disponible</p>
+              </div>
+            )}
+          </div>
+          <p className="text-sm text-gray-300">
+            Scannez ce QR code pour accéder à votre vidéo
+          </p>
         </div>
-        <p className="text-sm text-gray-200">
-          Scannez ce QR code pour accéder à votre vidéo
-        </p>
-      </div>
-      <div className="mb-6 w-full max-w-md">
-        <p className="mb-2">Lien direct vers votre vidéo :</p>
-        <input
-          type="text"
-          value={videoUrl}
-          readOnly
-          className="w-full p-2 border rounded bg-white/10 text-white mb-4"
-        />
-        <div className="flex gap-4 mt-4 justify-center">
-          <Button onClick={copyToClipboard}>Copier le lien</Button>
+        
+        <div className="mb-6">
+          <p className="mb-2 text-center">Lien direct vers votre vidéo :</p>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={videoUrl || 'URL non disponible'}
+              readOnly
+              className="flex-1 p-2 border border-gray-600 rounded bg-white/10 text-white text-sm"
+            />
+            <Button 
+              onClick={copyToClipboard}
+              disabled={!videoUrl}
+              className="bg-blue-600 hover:bg-blue-700 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Copier
+            </Button>
+          </div>
+        </div>
+        
+        <div className="flex flex-col gap-3">
+          <Button
+            onClick={() => navigate('/videos')}
+            className="bg-purple-600 hover:bg-purple-700"
+          >
+            Voir toutes mes vidéos
+          </Button>
+          <Button
+            onClick={() => navigate('/record-video')}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            Créer une nouvelle vidéo
+          </Button>
+          <Button
+            onClick={() => navigate('/directory')}
+            className="bg-orange-600 hover:bg-orange-700"
+          >
+            Explorer l'annuaire
+          </Button>
         </div>
       </div>
-      <Button
-        onClick={() => navigate('/directory')}
-        className="bg-orange-500 hover:bg-orange-600"
-      >
-        Explorer l'annuaire des participants
-      </Button>
     </div>
   );
 };
