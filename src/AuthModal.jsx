@@ -1,9 +1,11 @@
+// src/AuthModal.jsx
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './components/ui/dialog.jsx';
 import { Button } from './components/ui/button.jsx';
 import { Input } from './components/ui/input.jsx';
 import { Label } from './components/ui/label.jsx';
 import { useAuth } from './context/AuthContext.jsx';
+import { toast } from 'sonner';
 
 const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -34,12 +36,14 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
     if (!email || !password) {
       setError('Veuillez remplir tous les champs');
       setLoading(false);
+      toast.error('Veuillez remplir tous les champs');
       return;
     }
 
     if (!isLogin && (!firstName || !lastName)) {
       setError('Veuillez remplir tous les champs');
       setLoading(false);
+      toast.error('Veuillez remplir tous les champs');
       return;
     }
 
@@ -54,38 +58,35 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
         result = await signUp(email, password, firstName, lastName);
         console.log('Résultat d\'inscription:', result);
         
-        // Pour l'inscription, vérifier si l'email de confirmation est nécessaire
+        // Vérifier si un email de confirmation est nécessaire
         if (result?.user?.identities?.length === 0) {
           setShowConfirmation(true);
           setError(null);
           setLoading(false);
-          // Ne pas appeler onClose() ici pour laisser le message visible
+          toast.success('Inscription réussie ! Vérifiez votre email.');
           return;
         }
       }
       
-      // Si l'inscription a réussi et qu'aucun email de confirmation n'est nécessaire (par exemple, si l'utilisateur est déjà confirmé ou si la configuration Supabase ne l'exige pas)
-      // Ou si la connexion a réussi
+      // Si l'authentification réussit
       if (result && result.user) {
-        console.log("Authentification réussie, fermeture du modal");
-        
-        // Attendre un peu pour que les triggers de base de données s'exécutent
+        console.log('Authentification réussie, fermeture du modal');
         await new Promise(resolve => setTimeout(resolve, 1500));
-        
         onAuthSuccess(result.user);
-        onClose(); // Fermer le modal après un succès d'authentification direct
+        onClose();
         resetForm();
+        toast.success(isLogin ? 'Connexion réussie !' : 'Inscription réussie !');
       } else {
         setError('Erreur d\'authentification - Veuillez réessayer');
+        toast.error('Erreur d\'authentification - Veuillez réessayer');
       }
     } catch (err) {
       console.error('Erreur d\'authentification dans AuthModal:', err);
-      
-      // Afficher l'erreur spécifique du contexte d'authentification
       const errorMessage = err.message || "Une erreur s'est produite lors de l'authentification";
       setError(errorMessage);
+      toast.error(errorMessage);
       
-      // Si c'est une erreur de credentials, suggérer l'inscription
+      // Suggestion d'inscription si erreur de credentials
       if (errorMessage.includes('Email ou mot de passe incorrect') && isLogin) {
         setTimeout(() => {
           setError(errorMessage + ' - Vous pouvez également créer un nouveau compte en cliquant sur "Pas de compte ? Inscrivez-vous"');
@@ -105,7 +106,6 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
     }}>
       <DialogContent className="sm:max-w-[425px]">
         {showConfirmation ? (
-          // Écran de confirmation après inscription
           <>
             <DialogHeader>
               <DialogTitle className="text-center text-green-600">✅ Inscription réussie !</DialogTitle>
@@ -151,7 +151,6 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
             </div>
           </>
         ) : (
-          // Formulaire de connexion/inscription normal
           <>
             <DialogHeader>
               <DialogTitle>{isLogin ? 'Connexion' : 'Inscription'}</DialogTitle>
@@ -219,13 +218,13 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
                 <div className={`text-sm p-3 rounded-md ${
                   error.startsWith('✅') 
                     ? 'text-green-700 bg-green-50 border border-green-200' 
-                    : 'text-red-500'
+                    : 'text-red-500 bg-red-50 border border-red-200'
                 }`}>
                   {error}
                 </div>
               )}
               <Button type="submit" className="w-full" disabled={loading || authLoading}>
-                {loading ? 'Chargement...' : (isLogin ? 'Connexion' : 'Inscription')}
+                {loading || authLoading ? 'Chargement...' : (isLogin ? 'Connexion' : 'Inscription')}
               </Button>
               <Button
                 variant="link"
