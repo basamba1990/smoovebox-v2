@@ -31,14 +31,17 @@ const VideoSuccess = () => {
         return;
       }
 
-      console.log('Chargement vidéo ID:', videoId);
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError || !user) {
         console.log('Utilisateur non authentifié, redirection vers /login');
-        throw new Error('Utilisateur non authentifié');
+        setError('Veuillez vous reconnecter.');
+        toast.error('Utilisateur non authentifié.');
+        navigate('/login');
+        return;
       }
       console.log('Utilisateur authentifié:', user.id);
 
+      console.log('Chargement vidéo ID:', videoId);
       const { data, error } = await supabase
         .from('videos')
         .select('id, title, description, storage_path, created_at')
