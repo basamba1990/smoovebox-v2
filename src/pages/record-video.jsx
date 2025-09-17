@@ -161,6 +161,14 @@ const RecordVideo = () => {
     setError(null);
 
     try {
+      // Créer une session anonyme si pas de session existante
+      let { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (!sessionData?.session) {
+        const { data, error } = await supabase.auth.signInAnonymously();
+        if (error) throw error;
+        sessionData = data;
+      }
+
       const file = new File([recordedVideo.blob], `video-${Date.now()}.webm`, {
         type: 'video/webm',
       });
@@ -174,6 +182,9 @@ const RecordVideo = () => {
       const response = await retryOperation(() =>
         fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-video`, {
           method: 'POST',
+          headers: {
+            Authorization: `Bearer ${sessionData.session.access_token}`,
+          },
           body: formData,
         })
       );
