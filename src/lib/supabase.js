@@ -1,4 +1,3 @@
-// src/lib/supabase.js
 import { createClient } from '@supabase/supabase-js';
 import { VIDEO_STATUS } from '../constants/videoStatus.js';
 
@@ -77,16 +76,37 @@ export const retryOperation = async (operation, maxRetries = 3, baseDelay = 1000
  */
 export const refreshSession = async () => {
   try {
-    const { data: { session }, error } = await supabase.auth.getSession();
-    if (error || !session) {
-      console.warn('Session non trouvée, tentative de rafraîchissement');
-      const { error: refreshError } = await supabase.auth.refreshSession();
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError) {
+      console.error('Erreur lors de la récupération de la session:', sessionError);
+      return false;
+    }
+    
+    // Si nous avons une session, vérifions si elle est encore valide
+    if (session) {
+      const now = Math.floor(Date.now() / 1000);
+      if (session.expires_at && now < session.expires_at) {
+        return true; // Session valide
+      }
+      
+      // Session expirée, essayons de la rafraîchir
+      console.log('Session expirée, tentative de rafraîchissement...');
+      const { data: { session: newSession }, error: refreshError } = await supabase.auth.refreshSession();
+      
       if (refreshError) {
         console.error('Erreur lors du rafraîchissement de la session:', refreshError);
         return false;
       }
+      
+      return !!newSession;
     }
-    return true;
+    
+    // Pas de session, vérifions si nous pouvons en récupérer une depuis le stockage
+    console.log('Aucune session active, vérification du stockage...');
+    const { data: { session: storedSession }, error: storedError } = await supabase.auth.getSession();
+    
+    return !!storedSession && !storedError;
   } catch (error) {
     console.error('Erreur lors de la vérification de la session:', error);
     return false;
@@ -326,6 +346,28 @@ export const watchVideoStatus = (videoId, onStatusChange) => {
 
   return () => {
     subscription.unsubscribe();
+  };
+};
+
+/**
+ * Gestionnaire d'erreurs Supabase avec réessai automatique
+ */
+export const handleSupabaseError = (error, operation = 'operation') => {
+  console.error(`Erreur lors de ${operation}:`, error);
+  
+  if (error.code === 'PGRST116') {
+    return { error: 'Aucun résultat trouvé', details: error.message };
+  } else if (error.code === '42501') {
+    return { error: 'Permission refusée', details: 'Vous n\'avez pas les droits nécessaires' };
+  } else if (error.code === 'PGRST301') {
+    return { error: 'Non authentifié', details: 'Veuillez vous reconnecter' };
+  } else if (error.code === 'PGRST302') {
+    return { error: 'Jeton expiré', details: 'Votre session a expiré' };
+  }
+  
+  return { 
+    error: 'Erreur inattendue', 
+    details: error.message || 'Une erreur s\'est produite' 
   };
 };
 
