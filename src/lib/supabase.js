@@ -316,4 +316,30 @@ export const handleSupabaseError = (error, operation = 'operation') => {
   };
 };
 
+export const getVideoUrl = (video) => {
+  if (!video) return null;
+
+  if (video.public_url) return video.public_url;
+
+  const path = video.storage_path || video.file_path;
+  if (!path) return null;
+
+  try {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    if (!supabaseUrl) {
+      console.error('URL Supabase non configurée');
+      return null;
+    }
+
+    const url = new URL(supabaseUrl);
+    const projectRef = url.hostname.split('.')[0];
+    const cleanPath = path.replace(/^videos\//, '');
+
+    return `https://${projectRef}.supabase.co/storage/v1/object/public/videos/${cleanPath}`;
+  } catch (e) {
+    console.error('Erreur de construction de l\'URL:', e);
+    return null;
+  }
+};
+
 export default supabase;
