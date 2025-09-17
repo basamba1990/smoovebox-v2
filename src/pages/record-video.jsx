@@ -108,8 +108,8 @@ const RecordVideo = () => {
       if (videoRef.current) videoRef.current.srcObject = stream;
 
       recordedChunksRef.current = [];
-      const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9,opus')
-        ? 'video/webm; codecs=vp9,opus'
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+        ? 'video/webm;codecs=vp8,opus'
         : MediaRecorder.isTypeSupported('video/webm')
         ? 'video/webm'
         : 'video/mp4';
@@ -153,26 +153,48 @@ const RecordVideo = () => {
     setError(null);
 
     try {
-      const fileName = `video-${Date.now()}.webm`;
-      const file = new File([recordedVideo.blob], fileName, { type: 'video/webm' });
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) throw new Error('Utilisateur non authentifié');
 
-      // Upload direct Storage
-      const { data: uploadData, error: uploadError } = await supabase
+      const fileName = `video-${Date.now()}.webm`;
+      const pathInBucket = `${user.id}/${fileName}`;
+      const fullStoragePath = `videos/${pathInBucket}`;
+
+      // 1) Générer une URL signée pour l'upload
+      const { data: signed, error: signedErr } = await supabase
         .storage
         .from('videos')
-        .upload(fileName, file, { cacheControl: '3600', upsert: true });
+        .createSignedUploadUrl(pathInBucket, { upsert: true });
 
-      if (uploadError) throw uploadError;
+      if (signedErr) throw signedErr;
 
-      // Stocker métadonnées dans table videos
+      // 2) Upload via fetch PUT (robuste pour gros fichiers)
+      const putResp = await fetch(signed.signedUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'video/webm',
+          'x-upsert': 'true',
+        },
+        body: recordedVideo.blob,
+      });
+
+      if (!putResp.ok) {
+        const text = await putResp.text().catch(() => '');
+        throw new Error(`Upload Storage échoué: ${putResp.status} ${text}`);
+      }
+
+      // 3) Insérer la row dans la table videos avec user_id et storage_path
       const { data: videoData, error: insertError } = await supabase
         .from('videos')
         .insert([{
           title: 'Ma vidéo SpotBulle',
           description: 'Vidéo enregistrée via SpotBulle',
-          storage_path: uploadData.path,
-          tags: tags.split(',').map(t => t.trim()),
-          status: 'uploaded'
+          user_id: user.id, // CRITIQUE: requis par RLS/schéma
+          storage_path: fullStoragePath, // Inclut le bucket pour Edge Functions
+          original_file_name: fileName,
+          format: 'webm',
+          tags: tags ? tags.split(',').map(t => t.trim()) : null,
+          status: 'uploaded',
         }])
         .select()
         .single();
