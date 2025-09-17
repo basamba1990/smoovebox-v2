@@ -10,20 +10,20 @@ import RecordVideo from '@/pages/record-video.jsx';
 import VideoSuccess from '@/pages/video-success.jsx';
 import Directory from '@/pages/directory.jsx';
 import UserRegistration from '@components/UserRegistration.jsx';
-import VideoManagement from '@/pages/VideoManagement.jsx';
+import Login from '@/pages/login.jsx';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<App />} />
+        <Route path="/login" element={<App />} /> {/* Redirige vers App.jsx pour utiliser AuthModal */}
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/record-video" element={<RecordVideo />} />
         <Route path="/video-success" element={<VideoSuccess />} />
         <Route path="/directory" element={<Directory />} />
         <Route path="/register" element={<UserRegistration />} />
-        <Route path="/videos" element={<VideoManagement />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>
