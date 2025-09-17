@@ -24,20 +24,9 @@ const RecordVideo = () => {
   useEffect(() => {
     let mounted = true;
 
-    console.log('RecordVideo: Vérification auth, user:', user, 'loading:', loading);
-
-    // Vérifier si l'utilisateur est connecté
-    if (!loading && !user) {
-      console.log('RecordVideo: Utilisateur non connecté, redirection vers /');
-      setError('Vous devez être connecté pour enregistrer une vidéo.');
-      toast.error('Veuillez vous connecter pour continuer.');
-      navigate('/'); // Rediriger vers la page d'accueil
-      return;
-    }
-
     const initCamera = async () => {
-      if (!mounted || !user) return;
-      console.log('RecordVideo: Initialisation caméra pour user:', user?.id);
+      if (!mounted) return;
+      // Attendre que videoRef soit disponible
       const waitForVideoElement = () => {
         return new Promise((resolve, reject) => {
           const check = () => {
@@ -57,7 +46,7 @@ const RecordVideo = () => {
         await waitForVideoElement();
         await requestCameraAccess();
       } catch (err) {
-        console.error('RecordVideo: Erreur initialisation caméra:', err);
+        console.error('Erreur initialisation caméra:', err);
         if (mounted) {
           setError('Impossible d\'initialiser la caméra. Veuillez recharger la page.');
           toast.error('Erreur d\'initialisation de la caméra.');
@@ -65,17 +54,16 @@ const RecordVideo = () => {
       }
     };
 
-    if (user) initCamera();
+    initCamera();
 
     return () => {
       mounted = false;
       stopStream();
     };
-  }, [loading, user, navigate]);
+  }, []);
 
   const stopStream = () => {
     if (streamRef.current) {
-      console.log('RecordVideo: Arrêt du flux caméra');
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
@@ -83,7 +71,6 @@ const RecordVideo = () => {
 
   const requestCameraAccess = async () => {
     try {
-      console.log('RecordVideo: Demande d\'accès à la caméra');
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 1280, height: 720 },
         audio: true,
@@ -92,12 +79,11 @@ const RecordVideo = () => {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         setCameraAccess(true);
-        console.log('RecordVideo: Accès caméra réussi');
       } else {
         throw new Error('Élément vidéo non disponible dans le DOM');
       }
     } catch (err) {
-      console.error('RecordVideo: Erreur accès caméra:', err);
+      console.error('Erreur accès caméra:', err);
       setError('Impossible d\'accéder à la caméra. Veuillez vérifier les permissions ou recharger la page.');
       toast.error('Erreur d\'accès à la caméra.');
     }
@@ -123,7 +109,6 @@ const RecordVideo = () => {
     }
 
     try {
-      console.log('RecordVideo: Début enregistrement');
       const stream = streamRef.current || await navigator.mediaDevices.getUserMedia({
         video: { width: 1280, height: 720 },
         audio: true,
@@ -141,7 +126,7 @@ const RecordVideo = () => {
         : MediaRecorder.isTypeSupported('video/webm') 
         ? 'video/webm'
         : 'video/mp4';
-      console.log('RecordVideo: Format vidéo utilisé:', mimeType);
+      console.log('Format vidéo utilisé:', mimeType);
 
       mediaRecorderRef.current = new MediaRecorder(stream, { mimeType });
 
@@ -150,7 +135,6 @@ const RecordVideo = () => {
       };
 
       mediaRecorderRef.current.onstop = () => {
-        console.log('RecordVideo: Enregistrement arrêté');
         const blob = new Blob(recordedChunksRef.current, { type: mimeType });
         setRecordedVideo({ blob, url: URL.createObjectURL(blob) });
         stopStream();
@@ -159,7 +143,7 @@ const RecordVideo = () => {
       mediaRecorderRef.current.start();
       setRecording(true);
     } catch (err) {
-      console.error('RecordVideo: Erreur démarrage enregistrement:', err);
+      console.error('Erreur démarrage enregistrement:', err);
       setError(`Impossible de démarrer l'enregistrement: ${err.message}`);
       toast.error('Erreur lors de l\'enregistrement.');
     }
@@ -173,16 +157,9 @@ const RecordVideo = () => {
   };
 
   const uploadVideo = async () => {
-    if (!recordedVideo) {
-      setError('Aucune vidéo enregistrée.');
-      toast.error('Veuillez enregistrer une vidéo avant de l\'envoyer.');
-      return;
-    }
-    if (!user) {
-      console.log('RecordVideo: Utilisateur non connecté lors de l\'upload');
-      setError('Vous devez être connecté pour envoyer une vidéo.');
-      toast.error('Veuillez vous connecter pour continuer.');
-      navigate('/');
+    if (!recordedVideo || !user) {
+      setError('Vous devez être connecté et avoir une vidéo enregistrée.');
+      toast.error('Connexion ou vidéo manquante.');
       return;
     }
 
@@ -190,7 +167,6 @@ const RecordVideo = () => {
     setError(null);
 
     try {
-      console.log('RecordVideo: Début upload vidéo pour user:', user.id);
       const { data: { session }, error: sessionError } = await retryOperation(() => 
         supabase.auth.getSession()
       );
@@ -223,11 +199,11 @@ const RecordVideo = () => {
       }
 
       const data = await response.json();
-      console.log('RecordVideo: Réponse upload-video:', data);
+      console.log('Réponse upload-video:', data);
       toast.success('Vidéo envoyée avec succès !');
       navigate(`/video-success?id=${data.video.id}`);
     } catch (err) {
-      console.error('RecordVideo: Erreur upload:', err);
+      console.error('Erreur upload:', err);
       setError(`Erreur lors de l'upload: ${err.message}`);
       toast.error('Erreur lors de l\'upload.');
     } finally {
