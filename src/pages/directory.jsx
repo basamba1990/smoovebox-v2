@@ -1,3 +1,4 @@
+// src/pages/directory.jsx
 import { useState, useEffect } from 'react';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { useNavigate } from 'react-router-dom';
@@ -9,41 +10,69 @@ const Directory = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('all');
-  const [selectedVideoId, setSelectedVideoId] = useState(null); // TODO: renseigner selon votre UI
+  const [selectedVideoId, setSelectedVideoId] = useState(null); // TODO: Implémenter VideoPicker
   const supabase = useSupabaseClient();
   const user = useUser();
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchUsers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      setError(null);
+
+      // Vérifier la session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        console.error('Erreur de session:', sessionError);
+        setError('Session invalide. Veuillez vous reconnecter.');
+        toast.error('Session invalide.');
+        navigate('/login');
+        return;
+      }
+
+      if (!user) {
+        setError('Utilisateur non authentifié.');
+        toast.error('Utilisateur non authentifié.');
+        navigate('/login');
+        return;
+      }
 
       let query = supabase
         .from('profiles')
-        .select('id, sex, passions, clubs, football_interest, created_at');
+        .select('id, user_id, username, full_name, avatar_url, bio, sex, passions, clubs, football_interest, created_at');
 
       if (filter === 'football') {
-        // football_interest = true OU passions contient 'football'
         query = query.or('football_interest.eq.true,passions.cs.{football}');
       } else if (filter === 'passions') {
-        // passions non vide (par défaut '{}' pour text[])
-        query = query.neq('passions', '{}');
+        query = query.not('passions', 'is', null).not('passions', 'eq', '{}');
       }
 
       const { data, error } = await query.order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erreur récupération profils:', error);
+        if (error.code === '42501') {
+          setError('Permissions insuffisantes pour accéder à l\'annuaire.');
+          toast.error('Permissions insuffisantes.');
+        } else if (error.code === 'PGRST116') {
+          setError('Aucune donnée disponible dans l\'annuaire.');
+          toast.error('Aucune donnée disponible.');
+        } else {
+          setError('Impossible de charger l\'annuaire.');
+          toast.error('Erreur lors du chargement de l\'annuaire.');
+        }
+        throw error;
+      }
+
       setUsers(data || []);
-      setError(null);
     } catch (err) {
-      console.error('Erreur récupération utilisateurs:', err);
-      setError("Impossible de charger l'annuaire.");
-      toast.error("Erreur lors du chargement de l'annuaire.");
+      console.error('Erreur récupération profils:', err);
+      setError('Impossible de charger l\'annuaire.');
+      toast.error('Erreur lors du chargement de l\'annuaire.');
     } finally {
       setLoading(false);
     }
@@ -65,7 +94,7 @@ const Directory = () => {
         body: {
           user_id: user.id,
           target_user_id: targetUserId,
-          video_id: selectedVideoId, // requis par la fonction
+          video_id: selectedVideoId,
         },
       });
       if (error) throw error;
@@ -76,29 +105,65 @@ const Directory = () => {
     }
   };
 
-  if (loading) return <div className="text-white text-center mt-10">Chargement de l&apos;annuaire...</div>;
-  if (error) return <div className="text-red-500 text-center mt-10">{error}</div>;
+  if (loading) {
+    return (
+      <div className="text-white text-center mt-10">
+        Chargement de l&apos;annuaire...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-red-500 text-center mt-10">
+        {error}
+        <Button onClick={fetchUsers} className="ml-4 bg-blue-500">
+          Réessayer
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 min-h-screen bg-black text-white">
       <h1 className="text-3xl font-bold mb-6">Annuaire des Participants</h1>
 
-      {/* TODO: ajoutez un sélecteur de vidéo pour selectedVideoId */}
+      {/* TODO: Ajouter un composant VideoPicker */}
       {/* <VideoPicker onChange={setSelectedVideoId} /> */}
 
       <div className="mb-6">
         <h3 className="text-lg text-white mb-2">Filtrer par :</h3>
         <div className="flex gap-2 flex-wrap">
-          <Button onClick={() => setFilter('all')} className={filter === 'all' ? 'bg-blue-500' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}>Tous</Button>
-          <Button onClick={() => setFilter('football')} className={filter === 'football' ? 'bg-blue-500' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}>Football</Button>
-          <Button onClick={() => setFilter('passions')} className={filter === 'passions' ? 'bg-blue-500' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}>Par passions</Button>
+          <Button
+            onClick={() => setFilter('all')}
+            className={filter === 'all' ? 'bg-blue-500' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}
+          >
+            Tous
+          </Button>
+          <Button
+            onClick={() => setFilter('football')}
+            className={filter === 'football' ? 'bg-blue-500' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}
+          >
+            Football
+          </Button>
+          <Button
+            onClick={() => setFilter('passions')}
+            className={filter === 'passions' ? 'bg-blue-500' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'}
+          >
+            Par passions
+          </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {users.map((u) => (
           <div key={u.id} className="bg-white/10 backdrop-blur-md p-4 rounded-lg border border-gray-200">
-            <h3 className="text-white font-medium">Utilisateur {String(u.id).slice(0, 8)}</h3>
+            <h3 className="text-white font-medium">
+              {u.username || `Utilisateur ${String(u.user_id).slice(0, 8)}`}
+            </h3>
+            <p className="text-gray-200">
+              Sexe : {u.sex || 'Non spécifié'}
+            </p>
             <p className="text-gray-200">
               Passions : {Array.isArray(u.passions) && u.passions.length > 0 ? u.passions.join(', ') : 'Aucune'}
             </p>
@@ -106,4 +171,23 @@ const Directory = () => {
               Clubs : {Array.isArray(u.clubs) && u.clubs.length > 0 ? u.clubs.join(', ') : 'Aucun'}
             </p>
             {u.football_interest && <p className="text-blue-400">🎯 Passionné de football</p>}
-            <Button onClick={() => handleConnect(u.id)} className="mt-2 bg-orange-
+            <Button
+              onClick={() => handleConnect(u.user_id)}
+              className="mt-2 bg-orange-500 hover:bg-orange-600"
+            >
+              Connecter
+            </Button>
+          </div>
+        ))}
+      </div>
+
+      {users.length === 0 && (
+        <div className="text-center mt-10 text-gray-400">
+          Aucun participant trouvé avec ce filtre.
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Directory;
