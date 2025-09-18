@@ -4,13 +4,14 @@ import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button-enhanced.jsx';
+import VideoPicker from '../components/VideoPicker.jsx';
 
 const Directory = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('all');
-  const [selectedVideoId, setSelectedVideoId] = useState(null); // TODO: Implémenter VideoPicker
+  const [selectedVideoId, setSelectedVideoId] = useState(null);
   const supabase = useSupabaseClient();
   const user = useUser();
   const navigate = useNavigate();
@@ -43,7 +44,8 @@ const Directory = () => {
 
       let query = supabase
         .from('profiles')
-        .select('id, user_id, username, full_name, avatar_url, bio, sex, passions, clubs, football_interest, created_at');
+        .select('id, user_id, username, full_name, avatar_url, bio, sex, passions, clubs, football_interest, created_at')
+        .neq('user_id', user.id); // Exclure l'utilisateur connecté
 
       if (filter === 'football') {
         query = query.or('football_interest.eq.true,passions.cs.{football}');
@@ -128,8 +130,7 @@ const Directory = () => {
     <div className="p-8 min-h-screen bg-black text-white">
       <h1 className="text-3xl font-bold mb-6">Annuaire des Participants</h1>
 
-      {/* TODO: Ajouter un composant VideoPicker */}
-      {/* <VideoPicker onChange={setSelectedVideoId} /> */}
+      <VideoPicker onChange={setSelectedVideoId} />
 
       <div className="mb-6">
         <h3 className="text-lg text-white mb-2">Filtrer par :</h3>
@@ -174,6 +175,7 @@ const Directory = () => {
             <Button
               onClick={() => handleConnect(u.user_id)}
               className="mt-2 bg-orange-500 hover:bg-orange-600"
+              disabled={!selectedVideoId}
             >
               Connecter
             </Button>
