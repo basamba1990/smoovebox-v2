@@ -26,9 +26,27 @@ const RecordVideo = () => {
       if (!mounted) return;
 
       // Vérifier l'authentification
+      console.log('Vérification de la session...');
       const isSessionValid = await refreshSession();
       if (!isSessionValid) {
+        console.error('Session invalide');
         toast.error('Veuillez vous connecter pour enregistrer une vidéo.');
+        navigate('/login');
+        return;
+      }
+
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      console.log('Utilisateur:', user?.id, 'Auth UID:', session?.user?.id, 'User Error:', userError, 'Session Error:', sessionError);
+      if (userError || !user) {
+        console.error('Utilisateur non authentifié');
+        toast.error('Utilisateur non authentifié.');
+        navigate('/login');
+        return;
+      }
+      if (user.id !== session?.user?.id) {
+        console.error('Incohérence entre user.id et auth.uid()');
+        toast.error('Erreur d\'authentification.');
         navigate('/login');
         return;
       }
@@ -72,7 +90,6 @@ const RecordVideo = () => {
 
   const requestCameraAccess = async () => {
     try {
-      // Vérifier les permissions du microphone
       const micPermission = await navigator.permissions.query({ name: 'microphone' });
       if (micPermission.state === 'denied') {
         throw new Error('Accès au microphone refusé.');
@@ -84,7 +101,6 @@ const RecordVideo = () => {
       });
       streamRef.current = stream;
 
-      // Vérifier la présence de pistes audio
       const audioTracks = stream.getAudioTracks();
       if (audioTracks.length === 0) {
         throw new Error('Aucune piste audio détectée. Vérifiez votre microphone.');
@@ -131,7 +147,6 @@ const RecordVideo = () => {
         }));
       streamRef.current = stream;
 
-      // Vérifier la présence de pistes audio
       const audioTracks = stream.getAudioTracks();
       if (audioTracks.length === 0) {
         throw new Error('Aucune piste audio détectée. Vérifiez votre microphone.');
@@ -187,42 +202,50 @@ const RecordVideo = () => {
 
     try {
       // Vérifier et rafraîchir la session
+      console.log('Vérification de la session avant upload...');
       const isSessionValid = await refreshSession();
       if (!isSessionValid) {
         throw new Error('Utilisateur non authentifié');
       }
 
       const { data: { user }, error: authError } = await supabase.auth.getUser();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      console.log('Utilisateur:', user?.id, 'Auth UID:', session?.user?.id, 'Auth Error:', authError, 'Session Error:', sessionError);
       if (authError || !user) throw new Error('Utilisateur non authentifié');
+      if (user.id !== session?.user?.id) throw new Error('Incohérence entre user.id et auth.uid()');
 
       const fileName = `video-${Date.now()}.webm`;
-      const pathInBucket = `${user.id}/${fileName}`;
-      const fullStoragePath = `videos/${pathInBucket}`;
+      const pathInBucket = `videos/${user.id}/${fileName}`;
+      console.log('Chemin de stockage:', pathInBucket, 'User ID:', user.id);
 
-      // Générer une URL signée pour l'upload
-      const { data: signed, error: signedErr } = await supabase
-        .storage
+      // Upload direct
+      console.log('Début de l\'upload dans le bucket videos...');
+      const { error: uploadError } = await supabase.storage
         .from('videos')
-        .createSignedUploadUrl(pathInBucket, { upsert: true });
+        .upload(pathInBucket, recordedVideo.blob, {
+          contentType: 'video/webm',
+          cacheControl: '3600',
+          upsert: false,
+        });
 
-      if (signedErr) throw signedErr;
+      if (uploadError) {
+        console.error('Erreur d\'upload dans storage:', uploadError);
+        throw new Error(`Échec de l'upload: ${uploadError.message}`);
+      }
+      console.log('Upload réussi dans le bucket videos.');
 
-      // Upload via fetch PUT
-      const putResp = await fetch(signed.signedUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'video/webm',
-          'x-upsert': 'true',
-        },
-        body: recordedVideo.blob,
-      });
+      // Générer une URL signée
+      console.log('Génération de l\'URL signée...');
+      const { data: signedUrl, error: urlError } = await supabase.storage
+        .from('videos')
+        .createSignedUrl(pathInBucket, 365 * 24 * 60 * 60);
 
-      if (!putResp.ok) {
-        const text = await putResp.text().catch(() => '');
-        throw new Error(`Upload Storage échoué: ${putResp.status} ${text}`);
+      if (urlError) {
+        console.warn('Erreur lors de la génération de l\'URL signée:', urlError);
       }
 
       // Insérer dans la table videos
+      console.log('Insertion dans la table videos...');
       const { data: videoData, error: insertError } = await supabase
         .from('videos')
         .insert([
@@ -230,7 +253,7 @@ const RecordVideo = () => {
             title: 'Ma vidéo SpotBulle',
             description: 'Vidéo enregistrée via SpotBulle',
             user_id: user.id,
-            storage_path: fullStoragePath,
+            storage_path: pathInBucket,
             original_file_name: fileName,
             format: 'webm',
             tags: tags ? tags.split(',').map(t => t.trim()) : null,
@@ -240,7 +263,11 @@ const RecordVideo = () => {
         .select()
         .single();
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        console.error('Erreur lors de l\'insertion dans videos:', insertError);
+        throw new Error(`Erreur base de données: ${insertError.message}`);
+      }
+      console.log('Insertion réussie:', videoData);
 
       toast.success('Vidéo envoyée avec succès !');
       navigate(`/video-success?id=${videoData.id}`);
