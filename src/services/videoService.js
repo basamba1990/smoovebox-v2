@@ -20,12 +20,12 @@ function validateStoragePath(path) {
   
   // Vérifier la structure du chemin
   const pathParts = cleanPath.split('/');
-  if (pathParts.length < 2) {
-    throw new Error('Le chemin de stockage doit contenir au moins un répertoire et un nom de fichier');
+  if (pathParts.length < 3 || pathParts[0] !== 'videos') {
+    throw new Error('Le chemin de stockage doit commencer par "videos/<user_id>/<filename>"');
   }
   
   // Vérifier que l'ID utilisateur est valide
-  const userId = pathParts[0];
+  const userId = pathParts[1];
   if (!userId || userId === 'null' || userId === 'undefined') {
     throw new Error('ID utilisateur invalide dans le chemin de stockage');
   }
@@ -114,8 +114,11 @@ export const videoService = {
     if (!metadata || !metadata.title) throw new Error('Titre de la vidéo requis');
     
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      console.log('Utilisateur:', user?.id, 'Auth UID:', session?.user?.id, 'User Error:', userError, 'Session Error:', sessionError);
       if (!user) throw new Error('Utilisateur non connecté');
+      if (user.id !== session?.user?.id) throw new Error('Incohérence entre user.id et auth.uid()');
 
       // Générer un nom de fichier unique avec validation
       const fileNameParts = file.name?.split('.') || [];
@@ -123,9 +126,11 @@ export const videoService = {
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
       
       // Valider et générer le chemin de stockage
-      const filePath = validateStoragePath(`${user.id}/${fileName}`);
+      const filePath = validateStoragePath(`videos/${user.id}/${fileName}`);
+      console.log('Chemin de stockage:', filePath, 'Expected UID in path:', user.id);
 
       // Upload du fichier via l'API Supabase Storage
+      console.log('Début de l\'upload dans le bucket videos...');
       const { error: uploadError } = await supabase.storage
         .from('videos')
         .upload(filePath, file, {
@@ -145,10 +150,13 @@ export const videoService = {
         });
 
       if (uploadError) {
+        console.error('Erreur d\'upload dans storage:', uploadError);
         throw new Error(`Échec de l'upload: ${uploadError.message}`);
       }
+      console.log('Upload réussi dans le bucket videos.');
 
       // Générer l'URL signée après l'upload réussi
+      console.log('Génération de l\'URL signée...');
       const { data: publicUrl, error: urlError } = await supabase.storage
         .from('videos')
         .createSignedUrl(filePath, 365 * 24 * 60 * 60);
@@ -158,6 +166,7 @@ export const videoService = {
       }
 
       // Créer l'entrée vidéo dans la base de données
+      console.log('Insertion dans la table videos...');
       const { data: videoData, error: videoError } = await supabase
         .from('videos')
         .insert({
@@ -178,9 +187,10 @@ export const videoService = {
         .single();
 
       if (videoError) {
-        console.error('Erreur détaillée de Supabase:', videoError);
+        console.error('Erreur lors de l\'insertion dans videos:', videoError);
         throw new Error(`Erreur base de données: ${videoError.message}`);
       }
+      console.log('Insertion réussie:', videoData);
 
       // Assurez-vous que la progression est à 100% à la fin
       if (onProgress) {
