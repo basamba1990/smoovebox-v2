@@ -16,33 +16,56 @@ const Directory = () => {
 
   useEffect(() => {
     fetchUsers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter]);
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      setError(null);
+
+      // Vérifier la session
+      const isSessionValid = await supabase.auth.getSession();
+      if (!isSessionValid.data.session) {
+        setError('Session invalide. Veuillez vous reconnecter.');
+        toast.error('Session invalide.');
+        navigate('/login');
+        return;
+      }
 
       let query = supabase
-        .from('users')
-        .select('id, sex, passions, clubs, football_interest, created_at');
+        .from('profiles') // Utiliser profiles au lieu de users
+        .select('id, user_id, username, full_name, avatar_url, bio, sex, passions, clubs, football_interest, created_at');
 
       if (filter === 'football') {
         query = query.or('football_interest.eq.true,passions.cs.{football}');
       } else if (filter === 'passions') {
-        query = query.neq('passions', '{}');
+        query = query.not('passions', 'eq', '{}'); // Utiliser .not() au lieu de .neq() pour les tableaux
       }
 
       const { data, error } = await query.order('created_at', {
         ascending: false,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erreur récupération utilisateurs:', error);
+        if (error.code === '42501') {
+          setError('Permissions insuffisantes pour accéder à l\'annuaire.');
+          toast.error('Permissions insuffisantes.');
+        } else if (error.code === 'PGRST116') {
+          setError('Aucune donnée disponible dans l\'annuaire.');
+          toast.error('Aucune donnée disponible.');
+        } else {
+          setError('Impossible de charger l\'annuaire.');
+          toast.error('Erreur lors du chargement de l\'annuaire.');
+        }
+        throw error;
+      }
+
       setUsers(data || []);
     } catch (err) {
       console.error('Erreur récupération utilisateurs:', err);
-      setError("Impossible de charger l'annuaire.");
-      toast.error("Erreur lors du chargement de l'annuaire.");
+      setError('Impossible de charger l\'annuaire.');
+      toast.error('Erreur lors du chargement de l\'annuaire.');
     } finally {
       setLoading(false);
     }
@@ -56,7 +79,7 @@ const Directory = () => {
     }
 
     try {
-      const { error } = await supabase.functions.invoke('match-profiles', {
+      const { data, error } = await supabase.functions.invoke('match-profiles', {
         body: { user_id: user.id, target_user_id: targetUserId },
       });
       if (error) throw error;
@@ -67,15 +90,24 @@ const Directory = () => {
     }
   };
 
-  if (loading)
+  if (loading) {
     return (
       <div className="text-white text-center mt-10">
         Chargement de l&apos;annuaire...
       </div>
     );
+  }
 
-  if (error)
-    return <div className="text-red-500 text-center mt-10">{error}</div>;
+  if (error) {
+    return (
+      <div className="text-red-500 text-center mt-10">
+        {error}
+        <Button onClick={fetchUsers} className="ml-4 bg-blue-500">
+          Réessayer
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 min-h-screen bg-black text-white">
@@ -124,8 +156,11 @@ const Directory = () => {
             className="bg-white/10 backdrop-blur-md p-4 rounded-lg border border-gray-200"
           >
             <h3 className="text-white font-medium">
-              Utilisateur {u.id.slice(0, 8)}
+              {u.username || `Utilisateur ${u.user_id.slice(0, 8)}`}
             </h3>
+            <p className="text-gray-200">
+              Sexe : {u.sex || 'Non spécifié'}
+            </p>
             <p className="text-gray-200">
               Passions :{' '}
               {Array.isArray(u.passions) && u.passions.length > 0
@@ -142,7 +177,7 @@ const Directory = () => {
               <p className="text-blue-400">🎯 Passionné de football</p>
             )}
             <Button
-              onClick={() => handleConnect(u.id)}
+              onClick={() => handleConnect(u.user_id)}
               className="mt-2 bg-orange-500 hover:bg-orange-600"
             >
               Connecter
@@ -150,6 +185,12 @@ const Directory = () => {
           </div>
         ))}
       </div>
+
+      {users.length === 0 && (
+        <div className="text-center mt-10 text-gray-400">
+          Aucun participant trouvé avec ce filtre.
+        </div>
+      )}
     </div>
   );
 };
