@@ -136,6 +136,41 @@ const VideoSuccess = () => {
         toast.error('Erreur lors de la génération de l’URL de la vidéo.');
       } else {
         setVideoUrl(url);
+        // Envoyer un email avec l'URL
+        try {
+          if (!import.meta.env.VITE_SUPABASE_URL) {
+            console.error('VITE_SUPABASE_URL manquant');
+            toast.error('Erreur de configuration serveur.');
+            setError('Erreur de configuration serveur.');
+            return;
+          }
+          const response = await Promise.race([
+            fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${user.access_token}`,
+                'X-Client-Info': 'spotbulle',
+              },
+              body: JSON.stringify({
+                user_id: user.id,
+                video_id: videoId,
+                video_url: url,
+              }),
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout envoi email')), 10000)),
+          ]);
+          if (!response.ok) {
+            console.warn('Erreur envoi email:', await response.text());
+            toast.warning('Vidéo chargée, mais échec de l’envoi de l’email.');
+          } else {
+            console.log('Email envoyé avec succès pour vidéo:', videoId);
+            toast.success('Un email avec le lien de votre vidéo a été envoyé.');
+          }
+        } catch (emailError) {
+          console.warn('Erreur envoi email:', emailError);
+          toast.warning('Vidéo chargée, mais échec de l’envoi de l’email.');
+        }
       }
     } catch (err) {
       console.error('Erreur récupération vidéo:', err);
@@ -166,7 +201,14 @@ const VideoSuccess = () => {
     }
   };
 
-  if (loading) return <p className="text-white">Chargement...</p>;
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen text-white">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
+        <p>Chargement de votre vidéo...</p>
+      </div>
+    );
+  }
 
   if (error || !videoData) {
     return (
