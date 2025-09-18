@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
     // Envoyer l'email
     console.log('Envoi email à:', profile.email);
     const { data, error: emailError } = await resend.emails.send({
-      from: 'SpotBulle <no-reply@smoovebox.com>', // Remplacer par votre domaine configuré dans Resend
+      from: 'SpotBulle <no-reply@spotbulle.com>', // Remplacer par votre domaine configuré dans Resend
       to: profile.email,
       subject: 'Votre vidéo SpotBulle',
       html: `
