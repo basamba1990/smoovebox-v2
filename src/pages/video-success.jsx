@@ -1,120 +1,161 @@
-import { useEffect, useState } from 'react';
+// src/pages/video-success.jsx
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode.react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button-enhanced.jsx';
-import { supabase, refreshSession, getVideoUrl } from '../lib/supabase';
+import { supabase, refreshSession } from '../lib/supabase';
+import { videoService } from '../services/videoService';
 
 const VideoSuccess = () => {
   const [videoData, setVideoData] = useState(null);
+  const [videoUrl, setVideoUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const videoId = searchParams.get('id');
+  const videoId = useMemo(() => searchParams.get('id'), [searchParams]);
 
-  useEffect(() => {
-    if (videoId) {
-      fetchVideoData();
-    } else {
-      setError('ID de vidéo manquant dans l\'URL');
-      setLoading(false);
+  const buildAccessibleUrl = useCallback(async (video) => {
+    try {
+      if (video?.public_url) {
+        console.log('Utilisation de public_url depuis la base:', video.public_url);
+        return video.public_url;
+      }
+
+      if (video?.storage_path) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers = {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`,
+          'X-Client-Info': 'spotbulle',
+        };
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-signed-url`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ storage_path: video.storage_path, expires_in: 365 * 24 * 60 * 60 }),
+        });
+
+        if (!response.ok) {
+          console.warn('Erreur génération URL signée:', await response.text());
+          // Fallback to createSignedUrl directly
+          const { data: signed, error: signedErr } = await supabase
+            .storage
+            .from('videos')
+            .createSignedUrl(video.storage_path, 365 * 24 * 60 * 60);
+          if (signedErr) {
+            console.warn('Erreur createSignedUrl:', signedErr);
+          } else if (signed?.signedUrl) {
+            console.log('URL signée générée:', signed.signedUrl);
+            return signed.signedUrl;
+          }
+        } else {
+          const { signed_url } = await response.json();
+          if (signed_url) {
+            console.log('URL signée via fonction Edge:', signed_url);
+            return signed_url;
+          }
+        }
+
+        const { data: pub } = supabase.storage.from('videos').getPublicUrl(video.storage_path);
+        if (pub?.publicUrl) {
+          console.log('URL publique générée:', pub.publicUrl);
+          return pub.publicUrl;
+        }
+      }
+
+      console.warn('Aucune URL accessible générée');
+      return '';
+    } catch (e) {
+      console.warn('Erreur lors de la génération de l’URL de la vidéo:', e);
+      return '';
     }
-  }, [videoId]);
+  }, []);
 
   const fetchVideoData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Vérification robuste de la session
+      // Vérifier la session
       const isSessionValid = await refreshSession();
       if (!isSessionValid) {
-        setError('Session expirée. Veuillez vous reconnecter.');
-        toast.error('Session expirée. Veuillez vous reconnecter.');
-        navigate('/login');
+        console.log('Session invalide, redirection suggérée vers /login');
+        setError('Veuillez vous reconnecter.');
+        toast.error('Session invalide, veuillez vous reconnecter.');
         return;
       }
 
-      // Récupération de l'utilisateur
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) {
-        setError('Utilisateur non authentifié.');
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        console.log('Utilisateur non authentifié, erreur:', authError);
+        setError('Veuillez vous reconnecter.');
         toast.error('Utilisateur non authentifié.');
-        navigate('/login');
         return;
       }
+      console.log('Utilisateur authentifié:', user.id);
 
-      console.log('Tentative de récupération de la vidéo:', videoId);
-      
-      // Requête avec toutes les colonnes nécessaires
-      const { data, error: videoError } = await supabase
+      console.log('Chargement vidéo ID:', videoId);
+      const { data, error } = await supabase
         .from('videos')
-        .select(`
-          id, 
-          title, 
-          description, 
-          storage_path,
-          file_path,
-          public_url,
-          created_at, 
-          status, 
-          user_id,
-          original_file_name,
-          file_size,
-          format,
-          duration
-        `)
+        .select('id, title, description, storage_path, created_at, public_url')
         .eq('id', videoId)
         .single();
 
-      if (videoError) {
-        console.error('Erreur détaillée Supabase:', videoError);
-        
-        if (videoError.code === 'PGRST116') {
-          throw new Error('Vidéo non trouvée. Elle a peut-être été supprimée.');
-        } else if (videoError.code === '42501') {
-          throw new Error('Permissions insuffisantes pour accéder à cette vidéo.');
+      if (error) {
+        console.error('Erreur Supabase:', error);
+        if (error.code === 'PGRST116') {
+          setError('Vidéo non trouvée.');
+          toast.error('Vidéo non trouvée.');
+        } else if (error.code === '42501') {
+          setError('Accès non autorisé à la vidéo.');
+          toast.error('Vous n’avez pas l’autorisation d’accéder à cette vidéo.');
         } else {
-          throw videoError;
+          setError('Erreur lors du chargement de la vidéo.');
+          toast.error('Erreur lors du chargement de la vidéo.');
         }
+        throw error;
       }
 
-      if (!data) {
-        throw new Error('Aucune donnée de vidéo retournée');
-      }
-
-      // Vérification que l'utilisateur accède à sa propre vidéo
-      if (data.user_id !== user.id) {
-        setError('Vous ne pouvez pas accéder à cette vidéo.');
-        toast.error('Accès non autorisé.');
-        navigate('/videos');
-        return;
-      }
-
+      console.log('Données vidéo:', data);
       setVideoData(data);
+
+      // Incrémenter les vues
+      try {
+        await videoService.incrementViews(videoId);
+        console.log('Vues incrémentées pour vidéo:', videoId);
+      } catch (viewError) {
+        console.warn('Erreur incrémentation vues:', viewError);
+        toast.warning('Vidéo chargée, mais échec de l’incrémentation des vues.');
+      }
+
+      // Générer l'URL accessible
+      const url = await buildAccessibleUrl(data);
+      if (!url) {
+        setError('Impossible de générer l’URL de la vidéo.');
+        toast.error('Erreur lors de la génération de l’URL de la vidéo.');
+      } else {
+        setVideoUrl(url);
+      }
     } catch (err) {
       console.error('Erreur récupération vidéo:', err);
-      const errorMessage = err.message || 'Impossible de charger les données de la vidéo.';
-      setError(errorMessage);
-      toast.error(errorMessage);
+      if (!error) {
+        setError('Impossible de charger les données de la vidéo.');
+        toast.error('Erreur lors du chargement de la vidéo.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleReconnect = async () => {
-    try {
-      await supabase.auth.signOut();
-      navigate('/login');
-    } catch (error) {
-      console.error('Erreur lors de la déconnexion:', error);
-      toast.error('Erreur lors de la déconnexion');
+  useEffect(() => {
+    if (!videoId) {
+      setError('Paramètre id manquant.');
+      setLoading(false);
+      return;
     }
-  };
-
-  // Utiliser la fonction getVideoUrl pour obtenir l'URL correcte
-  const videoUrl = videoData ? getVideoUrl(videoData) : '';
+    fetchVideoData();
+  }, [videoId]);
 
   const copyToClipboard = () => {
     if (videoUrl) {
@@ -125,105 +166,52 @@ const VideoSuccess = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen text-white">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-        <p>Chargement de votre vidéo...</p>
-      </div>
-    );
-  }
+  if (loading) return <p className="text-white">Chargement...</p>;
 
   if (error || !videoData) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen text-white p-6 text-center">
-        <div className="bg-red-500/20 border border-red-500 rounded-lg p-6 max-w-md">
-          <h2 className="text-xl font-bold mb-2">Erreur</h2>
-          <p className="mb-4">{error || 'Vidéo non trouvée.'}</p>
-          <div className="flex flex-col gap-3">
-            <Button onClick={fetchVideoData} className="bg-blue-600 hover:bg-blue-700">
-              Réessayer
-            </Button>
-            <Button onClick={handleReconnect} className="bg-gray-600 hover:bg-gray-700">
-              Se reconnecter
-            </Button>
-            <Button onClick={() => navigate('/videos')} className="bg-green-600 hover:bg-green-700">
-              Mes vidéos
-            </Button>
-          </div>
-        </div>
+      <div className="flex flex-col items-center text-center text-white p-6">
+        <p className="text-red-500 mb-4">{error || 'Vidéo non trouvée.'}</p>
+        <Button onClick={fetchVideoData} className="bg-blue-500 hover:bg-blue-600 mb-4">
+          Réessayer
+        </Button>
+        <Button onClick={() => navigate('/login')} className="bg-gray-500 hover:bg-gray-600">
+          Se reconnecter
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen text-white p-6">
-      <div className="max-w-lg w-full bg-black/50 backdrop-blur-md rounded-2xl p-8 border border-white/20">
-        <h1 className="text-3xl font-bold mb-6 text-center">Votre vidéo est en ligne !</h1>
-        
-        <div className="mb-8 p-6 border-2 border-blue-500 rounded-lg bg-white/5 text-center">
-          <h3 className="text-xl mb-4">Partagez votre vidéo avec ce QR code</h3>
-          <div className="flex justify-center mb-4">
-            {videoUrl ? (
-              <QRCode 
-                value={videoUrl} 
-                size={200} 
-                level="H"
-                fgColor="#ffffff"
-                bgColor="transparent"
-                includeMargin={false}
-              />
-            ) : (
-              <div className="h-48 w-48 flex items-center justify-center bg-gray-800 rounded">
-                <p className="text-sm text-gray-400">URL non disponible</p>
-              </div>
-            )}
-          </div>
-          <p className="text-sm text-gray-300">
-            Scannez ce QR code pour accéder à votre vidéo
-          </p>
+    <div className="flex flex-col items-center text-center text-white p-6">
+      <h1 className="text-2xl font-bold mb-6">Votre vidéo est en ligne !</h1>
+      <div className="mb-8 p-6 border-2 border-blue-500 rounded-lg bg-white/10 backdrop-blur-md">
+        <h3 className="text-xl mb-4">Partagez votre vidéo avec ce QR code</h3>
+        <div className="flex justify-center mb-4">
+          <QRCode value={videoUrl} size={200} fgColor="#38b2ac" />
         </div>
-        
-        <div className="mb-6">
-          <p className="mb-2 text-center">Lien direct vers votre vidéo :</p>
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={videoUrl || 'URL non disponible'}
-              readOnly
-              className="flex-1 p-2 border border-gray-600 rounded bg-white/10 text-white text-sm"
-            />
-            <Button 
-              onClick={copyToClipboard}
-              disabled={!videoUrl}
-              className="bg-blue-600 hover:bg-blue-700 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Copier
-            </Button>
-          </div>
-        </div>
-        
-        <div className="flex flex-col gap-3">
-          <Button
-            onClick={() => navigate('/videos')}
-            className="bg-purple-600 hover:bg-purple-700"
-          >
-            Voir toutes mes vidéos
-          </Button>
-          <Button
-            onClick={() => navigate('/record-video')}
-            className="bg-green-600 hover:bg-green-700"
-          >
-            Créer une nouvelle vidéo
-          </Button>
-          <Button
-            onClick={() => navigate('/directory')}
-            className="bg-orange-600 hover:bg-orange-700"
-          >
-            Explorer l'annuaire
-          </Button>
+        <p className="text-sm text-gray-200">
+          Scannez ce QR code pour accéder à votre vidéo
+        </p>
+      </div>
+      <div className="mb-6 w-full max-w-md">
+        <p className="mb-2">Lien direct vers votre vidéo :</p>
+        <input
+          type="text"
+          value={videoUrl}
+          readOnly
+          className="w-full p-2 border rounded bg-white/10 text-white mb-4"
+        />
+        <div className="flex gap-4 mt-4 justify-center">
+          <Button onClick={copyToClipboard}>Copier le lien</Button>
         </div>
       </div>
+      <Button
+        onClick={() => navigate('/directory')}
+        className="bg-orange-500 hover:bg-orange-600"
+      >
+        Explorer l'annuaire des participants
+      </Button>
     </div>
   );
 };
