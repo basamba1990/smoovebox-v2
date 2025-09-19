@@ -38,7 +38,6 @@ const VideoSuccess = () => {
 
         if (!response.ok) {
           console.warn('Erreur génération URL signée:', await response.text());
-          // Fallback to createSignedUrl directly
           const { data: signed, error: signedErr } = await supabase
             .storage
             .from('videos')
@@ -77,10 +76,8 @@ const VideoSuccess = () => {
       setLoading(true);
       setError(null);
 
-      // Vérifier la session
       const isSessionValid = await refreshSession();
       if (!isSessionValid) {
-        console.log('Session invalide, redirection suggérée vers /login');
         setError('Veuillez vous reconnecter.');
         toast.error('Session invalide, veuillez vous reconnecter.');
         return;
@@ -88,14 +85,11 @@ const VideoSuccess = () => {
 
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError || !user) {
-        console.log('Utilisateur non authentifié, erreur:', authError);
         setError('Veuillez vous reconnecter.');
         toast.error('Utilisateur non authentifié.');
         return;
       }
-      console.log('Utilisateur authentifié:', user.id);
 
-      console.log('Chargement vidéo ID:', videoId);
       const { data, error } = await supabase
         .from('videos')
         .select('id, title, description, storage_path, created_at, public_url')
@@ -103,7 +97,6 @@ const VideoSuccess = () => {
         .single();
 
       if (error) {
-        console.error('Erreur Supabase:', error);
         if (error.code === 'PGRST116') {
           setError('Vidéo non trouvée.');
           toast.error('Vidéo non trouvée.');
@@ -117,31 +110,24 @@ const VideoSuccess = () => {
         throw error;
       }
 
-      console.log('Données vidéo:', data);
       setVideoData(data);
 
-      // Incrémenter les vues
       try {
         await videoService.incrementViews(videoId);
-        console.log('Vues incrémentées pour vidéo:', videoId);
       } catch (viewError) {
-        console.warn('Erreur incrémentation vues:', viewError);
         toast.warning('Vidéo chargée, mais échec de l’incrémentation des vues.');
       }
 
-      // Générer l'URL accessible
       const url = await buildAccessibleUrl(data);
       if (!url) {
         setError('Impossible de générer l’URL de la vidéo.');
         toast.error('Erreur lors de la génération de l’URL de la vidéo.');
       } else {
         setVideoUrl(url);
-        // Envoyer un email avec l'URL
         try {
           if (!import.meta.env.VITE_SUPABASE_URL) {
-            console.error('VITE_SUPABASE_URL manquant');
-            toast.error('Erreur de configuration serveur.');
             setError('Erreur de configuration serveur.');
+            toast.error('Erreur de configuration serveur.');
             return;
           }
           const response = await Promise.race([
@@ -161,19 +147,15 @@ const VideoSuccess = () => {
             new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout envoi email')), 10000)),
           ]);
           if (!response.ok) {
-            console.warn('Erreur envoi email:', await response.text());
             toast.warning('Vidéo chargée, mais échec de l’envoi de l’email.');
           } else {
-            console.log('Email envoyé avec succès pour vidéo:', videoId);
             toast.success('Un email avec le lien de votre vidéo a été envoyé.');
           }
-        } catch (emailError) {
-          console.warn('Erreur envoi email:', emailError);
+        } catch {
           toast.warning('Vidéo chargée, mais échec de l’envoi de l’email.');
         }
       }
-    } catch (err) {
-      console.error('Erreur récupération vidéo:', err);
+    } catch {
       if (!error) {
         setError('Impossible de charger les données de la vidéo.');
         toast.error('Erreur lors du chargement de la vidéo.');
@@ -203,7 +185,7 @@ const VideoSuccess = () => {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen text-white">
+      <div className="flex flex-col items-center justify-center min-h-screen text-white bg-black">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
         <p>Chargement de votre vidéo...</p>
       </div>
@@ -212,7 +194,7 @@ const VideoSuccess = () => {
 
   if (error || !videoData) {
     return (
-      <div className="flex flex-col items-center text-center text-white p-6">
+      <div className="flex flex-col items-center text-center text-white p-6 min-h-screen bg-black">
         <p className="text-red-500 mb-4">{error || 'Vidéo non trouvée.'}</p>
         <Button onClick={fetchVideoData} className="bg-blue-500 hover:bg-blue-600 mb-4">
           Réessayer
@@ -225,7 +207,7 @@ const VideoSuccess = () => {
   }
 
   return (
-    <div className="flex flex-col items-center text-center text-white p-6">
+    <div className="flex flex-col items-center text-center text-white p-6 min-h-screen bg-black">
       <h1 className="text-2xl font-bold mb-6">Votre vidéo est en ligne !</h1>
       <div className="mb-8 p-6 border-2 border-blue-500 rounded-lg bg-white/10 backdrop-blur-md">
         <h3 className="text-xl mb-4">Partagez votre vidéo avec ce QR code</h3>
