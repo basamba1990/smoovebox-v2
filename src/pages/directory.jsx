@@ -25,29 +25,17 @@ const Directory = () => {
       setLoading(true);
       setError(null);
 
-      // Vérifier la session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session) {
-        console.error('Erreur de session:', sessionError);
-        setError('Session invalide. Veuillez vous reconnecter.');
-        toast.error('Session invalide.');
-        navigate('/login');
-        return;
-      }
-
-      if (!user) {
-        setError('Utilisateur non authentifié.');
-        toast.error('Utilisateur non authentifié.');
-        navigate('/login');
-        return;
-      }
-
-      console.log('Récupération des profils pour utilisateur:', user.id);
-
       let query = supabase
         .from('profiles')
-        .select('id, user_id, username, full_name, avatar_url, bio, sex, passions, clubs, football_interest, created_at')
-        .neq('user_id', user.id); // Exclure l'utilisateur connecté
+        .select('id, user_id, username, full_name, avatar_url, bio, sex, passions, clubs, football_interest, created_at');
+
+      // Exclure l'utilisateur connecté si authentifié
+      if (user) {
+        query = query.neq('user_id', user.id);
+        console.log('Récupération des profils pour utilisateur authentifié:', user.id);
+      } else {
+        console.log('Récupération des profils en mode anonyme');
+      }
 
       if (filter === 'football') {
         query = query.or('football_interest.eq.true,passions.cs.{football}');
