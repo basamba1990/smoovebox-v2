@@ -1,0 +1,145 @@
+-- 1. Activer l'extension uuid-ossp
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" SCHEMA public;
+
+-- 2. Créer la table public.profiles
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  username text,
+  full_name text,
+  avatar_url text,
+  bio text,
+  sex text,
+  passions text[] DEFAULT '{}',
+  clubs text[] DEFAULT '{}',
+  football_interest boolean DEFAULT false,
+  created_at timestamp with time zone DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON public.profiles(user_id);
+
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+GRANT SELECT ON public.profiles TO anon, authenticated;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+    AND tablename = 'profiles'
+    AND policyname = 'Profiles are visible to everyone'
+  ) THEN
+    CREATE POLICY "Profiles are visible to everyone" ON public.profiles
+    FOR SELECT
+    TO anon, authenticated
+    USING (true);
+  END IF;
+END $$;
+
+-- 3. Créer la table public.videos
+CREATE TABLE IF NOT EXISTS public.videos (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  title text,
+  storage_path text,
+  status text,
+  created_at timestamp with time zone DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_videos_user_id ON public.videos(user_id);
+
+ALTER TABLE public.videos ENABLE ROW LEVEL SECURITY;
+
+GRANT SELECT, INSERT ON public.videos TO authenticated;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+    AND tablename = 'videos'
+    AND policyname = 'Users can view own videos'
+  ) THEN
+    CREATE POLICY "Users can view own videos" ON public.videos
+    FOR SELECT
+    TO authenticated
+    USING (auth.uid() = user_id);
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+    AND tablename = 'videos'
+    AND policyname = 'Users can insert own videos'
+  ) THEN
+    CREATE POLICY "Users can insert own videos" ON public.videos
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (auth.uid() = user_id);
+  END IF;
+END $$;
+
+-- 4. Créer la table public.connections
+CREATE TABLE IF NOT EXISTS public.connections (
+  id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+  requester_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  target_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  video_id uuid REFERENCES public.videos(id) ON DELETE CASCADE,
+  status text DEFAULT 'pending',
+  created_at timestamp with time zone DEFAULT NOW(),
+  updated_at timestamp with time zone DEFAULT NOW()
+);
+
+ALTER TABLE public.connections ENABLE ROW LEVEL SECURITY;
+
+GRANT SELECT, INSERT, UPDATE ON public.connections TO authenticated;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+    AND tablename = 'connections'
+    AND policyname = 'Users can view own connections'
+  ) THEN
+    CREATE POLICY "Users can view own connections" ON public.connections
+    FOR SELECT
+    TO authenticated
+    USING (auth.uid() = requester_id OR auth.uid() = target_id);
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+    AND tablename = 'connections'
+    AND policyname = 'Users can create connections'
+  ) THEN
+    CREATE POLICY "Users can create connections" ON public.connections
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (auth.uid() = requester_id);
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+    AND tablename = 'connections'
+    AND policyname = 'Users can update own connections'
+  ) THEN
+    CREATE POLICY "Users can update own connections" ON public.connections
+    FOR UPDATE
+    TO authenticated
+    USING (auth.uid() = requester_id)
+    WITH CHECK (auth.uid() = requester_id);
+  END IF;
+END $$;
