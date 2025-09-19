@@ -2,9 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
-import { Button } from './components/ui/button-enhanced.jsx';
-import { toast } from 'sonner';
-import LoadingScreen from './components/LoadingScreen.jsx';
 
 const App = () => {
   const supabase = useSupabaseClient();
@@ -22,7 +19,6 @@ const App = () => {
       } catch (err) {
         console.error('Erreur connexion Supabase:', err);
         setConnectionStatus('disconnected');
-        toast.error('Erreur de connexion à Supabase.');
       } finally {
         setLoading(false);
       }
@@ -30,40 +26,49 @@ const App = () => {
     checkConnection();
   }, [supabase]);
 
-  if (loading) {
-    return <LoadingScreen />;
-  }
-
   return (
     <Routes>
       <Route
         path="/"
         element={
-          user ? (
-            <div className="p-8 min-h-screen bg-black text-white">
-              <h1 className="text-3xl font-bold mb-6">Bienvenue, {user.email}</h1>
-              <Button onClick={() => navigate('/record-video')} className="bg-blue-500">
+          loading ? (
+            <div style={{ padding: '2rem', background: '#000', color: '#fff' }}>
+              <h1 style={{ fontSize: '2rem', fontWeight: 'bold' }}>Chargement...</h1>
+            </div>
+          ) : user ? (
+            <div style={{ padding: '2rem', background: '#000', color: '#fff' }}>
+              <h1 style={{ fontSize: '2rem', fontWeight: 'bold' }}>Bienvenue, {user.email}</h1>
+              <button
+                style={{ background: '#3b82f6', color: '#fff', padding: '0.5rem 1rem', marginRight: '1rem' }}
+                onClick={() => navigate('/record-video')}
+              >
                 Enregistrer une vidéo
-              </Button>
-              <Button
+              </button>
+              <button
+                style={{ background: '#ef4444', color: '#fff', padding: '0.5rem 1rem' }}
                 onClick={async () => {
                   await supabase.auth.signOut();
                   navigate('/login');
                 }}
-                className="ml-4 bg-red-500"
               >
                 Déconnexion
-              </Button>
+              </button>
             </div>
           ) : (
-            <div className="p-8 min-h-screen bg-black text-white">
-              <h1 className="text-3xl font-bold mb-6">Bienvenue sur SpotBulle</h1>
-              <Button onClick={() => navigate('/login')} className="bg-blue-500">
+            <div style={{ padding: '2rem', background: '#000', color: '#fff' }}>
+              <h1 style={{ fontSize: '2rem', fontWeight: 'bold' }}>Bienvenue sur SpotBulle</h1>
+              <button
+                style={{ background: '#3b82f6', color: '#fff', padding: '0.5rem 1rem', marginRight: '1rem' }}
+                onClick={() => navigate('/login')}
+              >
                 Se connecter
-              </Button>
-              <Button onClick={() => navigate('/register')} className="ml-4 bg-green-500">
+              </button>
+              <button
+                style={{ background: '#22c55e', color: '#fff', padding: '0.5rem 1rem' }}
+                onClick={() => navigate('/register')}
+              >
                 S'inscrire
-              </Button>
+              </button>
             </div>
           )
         }
