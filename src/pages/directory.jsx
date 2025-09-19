@@ -42,6 +42,8 @@ const Directory = () => {
         return;
       }
 
+      console.log('Récupération des profils pour utilisateur:', user.id);
+
       let query = supabase
         .from('profiles')
         .select('id, user_id, username, full_name, avatar_url, bio, sex, passions, clubs, football_interest, created_at')
@@ -71,6 +73,7 @@ const Directory = () => {
       }
 
       setUsers(data || []);
+      console.log('Profils récupérés:', data?.length || 0);
     } catch (err) {
       console.error('Erreur récupération profils:', err);
       setError('Impossible de charger l\'annuaire.');
@@ -92,11 +95,23 @@ const Directory = () => {
     }
 
     try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        console.error('Erreur session dans handleConnect:', sessionError);
+        toast.error('Session invalide. Veuillez vous reconnecter.');
+        navigate('/auth');
+        return;
+      }
+      console.log('Token JWT envoyé à match-profiles:', session.access_token);
+
       const { error } = await supabase.functions.invoke('match-profiles', {
         body: {
           user_id: user.id,
           target_user_id: targetUserId,
           video_id: selectedVideoId,
+        },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
         },
       });
       if (error) throw error;
