@@ -31,7 +31,7 @@ function AppContent() {
   const [connectionStatus, setConnectionStatus] = useState('connected');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showWelcome, setShowWelcome] = useState(true);
-  const { user, loading, signOut, profile, error: authError, connectionStatus: authConnectionStatus } = useAuth();
+  const { user, loading, signOut, profile, error: authError } = useAuth();
   const navigate = useNavigate();
 
   const loadDashboardData = async () => {
@@ -254,6 +254,7 @@ function AppContent() {
     setIsAuthModalOpen(false);
     setShowWelcome(false);
     setIsAuthenticated(true);
+    navigate('/record-video'); // Redirection vers /record-video après authentification
     loadDashboardData().catch(err => {
       console.error('Erreur après authentification:', err);
     });
@@ -294,7 +295,7 @@ function AppContent() {
       
       if (connectionResult.connected) {
         setConnectionStatus('connected');
-        setSupabaseError(null); // Correction ici
+        setSupabaseError(null);
       } else {
         setConnectionStatus('disconnected');
         setSupabaseError(connectionResult.error);
@@ -351,6 +352,7 @@ function AppContent() {
     );
   }
 
+  // Affichage du dashboard pour les utilisateurs authentifiés
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
       <ProfessionalHeader 
