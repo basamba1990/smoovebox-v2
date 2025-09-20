@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext.jsx';
+import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import AuthModal from './AuthModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import VideoManagement from './pages/VideoManagement.jsx';
@@ -11,7 +11,6 @@ import EmptyState from './components/EmptyState.jsx';
 import ProfessionalHeader from './components/ProfessionalHeader.jsx';
 import ModernTabs from './components/ModernTabs.jsx';
 import WelcomeAgent from './components/WelcomeAgent.jsx';
-import { useAuth } from './context/AuthContext.jsx';
 import { Button } from './components/ui/button-enhanced.jsx';
 import { Tabs, TabsContent } from './components/ui/tabs.jsx';
 import { supabase, checkSupabaseConnection } from './lib/supabase.js';
@@ -31,7 +30,6 @@ function AppContent() {
   const [connectionStatus, setConnectionStatus] = useState('connected');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showWelcome, setShowWelcome] = useState(true);
-
   const { user, loading, signOut, profile } = useAuth();
   const navigate = useNavigate();
 
@@ -45,7 +43,7 @@ function AppContent() {
       setDashboardLoading(true);
       setDashboardError(null);
 
-      let { data: videos, error: videosError } = await supabase
+      const { data: videosData, error: videosError } = await supabase
         .from('videos')
         .select('*, transcriptions(*)')
         .eq('user_id', user.id)
@@ -53,29 +51,33 @@ function AppContent() {
 
       if (videosError) throw videosError;
 
-      let { data: stats, error: statsError } = await supabase.rpc('get_user_video_stats', { user_id_param: user.id });
-      if (statsError) stats = null;
+      const { data: statsData, error: statsError } = await supabase
+        .rpc('get_user_video_stats', { user_id_param: user.id });
+
+      if (statsError) console.warn('Erreur récupération stats:', statsError);
 
       const dashboardData = {
-        totalVideos: videos?.length || 0,
-        recentVideos: videos?.slice(0, 5) || [],
+        totalVideos: videosData.length,
+        recentVideos: videosData.slice(0, 5),
         videosByStatus: {
-          ready: videos.filter(v => ['ready', 'uploaded', 'published'].includes(v.status)).length,
-          processing: videos.filter(v => ['processing', 'analyzing', 'transcribing'].includes(v.status)).length,
-          transcribed: videos.filter(v => (v.transcription_text && v.transcription_text.length > 0) || (v.transcription_data && Object.keys(v.transcription_data).length > 0)).length,
-          analyzed: videos.filter(v => (v.analysis_result && Object.keys(v.analysis_result).length > 0) || (v.analysis && Object.keys(v.analysis).length > 0) || (v.ai_result && v.ai_result.length > 0)).length,
-          failed: videos.filter(v => v.status === 'failed').length,
+          ready: videosData.filter(v => ['ready','uploaded','published'].includes(v.status)).length,
+          processing: videosData.filter(v => ['processing','analyzing','transcribing'].includes(v.status)).length,
+          transcribed: videosData.filter(v => v.transcription_text?.length > 0 || (v.transcription_data && Object.keys(v.transcription_data).length > 0)).length,
+          analyzed: videosData.filter(v => v.analysis_result || v.analysis || v.ai_result).length,
+          failed: videosData.filter(v => v.status === 'failed').length
         },
-        totalDuration: videos.reduce((sum, video) => sum + (video.duration || 0), 0),
-        videoPerformance: stats?.performance_data || [],
-        progressStats: stats?.progress_stats || { completed: 0, inProgress: 0, totalTime: 0 },
+        totalDuration: videosData.reduce((sum, video) => sum + (video.duration || 0), 0),
+        transcriptionsCount: videosData.filter(v => v.transcription_text?.length > 0 || (v.transcription_data && Object.keys(v.transcription_data).length > 0)).length,
+        analysisCount: videosData.filter(v => v.analysis_result || v.analysis || v.ai_result).length,
+        videoPerformance: statsData?.performance_data || [],
+        progressStats: statsData?.progress_stats || { completed: 0, inProgress: 0, totalTime: 0 }
       };
 
       setDashboardData(dashboardData);
     } catch (err) {
       console.error('Erreur dashboard:', err);
       setDashboardData(null);
-      setDashboardError(err.message || 'Erreur lors du chargement des données');
+      setDashboardError(err.message || 'Erreur récupération données');
     } finally {
       setDashboardLoading(false);
     }
@@ -86,8 +88,9 @@ function AppContent() {
       if (user && profile) {
         setIsAuthenticated(true);
         setShowWelcome(false);
+        setIsAuthModalOpen(false);
         if (activeTab === 'dashboard') {
-          setTimeout(() => loadDashboardData().catch(console.error), 500);
+          setTimeout(() => { loadDashboardData(); }, 500);
         }
       } else {
         setIsAuthenticated(false);
@@ -101,20 +104,18 @@ function AppContent() {
     if (!loading) {
       const checkConnection = async () => {
         try {
-          const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Timeout connexion')), 5000)
-          );
-          const result = await Promise.race([checkSupabaseConnection(), timeoutPromise]);
-          if (result.connected) {
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000));
+          const connectionResult = await Promise.race([checkSupabaseConnection(), timeoutPromise]);
+          if (connectionResult.connected) {
             setConnectionStatus('connected');
             setSupabaseError(null);
           } else {
             setConnectionStatus('disconnected');
-            setSupabaseError(result.error);
+            setSupabaseError(connectionResult.error);
           }
-        } catch (err) {
+        } catch (error) {
           setConnectionStatus('disconnected');
-          setSupabaseError(err.message);
+          setSupabaseError(`Erreur de vérification: ${error.message}`);
         }
       };
       const timer = setTimeout(checkConnection, 100);
@@ -122,12 +123,12 @@ function AppContent() {
     }
   }, [loading]);
 
-  const handleAuthSuccess = userData => {
+  const handleAuthSuccess = (userData) => {
     setIsAuthModalOpen(false);
     setShowWelcome(false);
     setIsAuthenticated(true);
     navigate('/record-video');
-    loadDashboardData().catch(console.error);
+    loadDashboardData();
   };
 
   const handleSignOut = async () => {
@@ -140,13 +141,18 @@ function AppContent() {
   };
 
   if (loading) return <LoadingScreen />;
+
   if (supabaseError) return <SupabaseDiagnostic error={supabaseError} onRetry={() => window.location.reload()} onContinue={() => setSupabaseError(null)} />;
 
   if (showWelcome && !isAuthenticated) {
     return (
       <>
         <WelcomeAgent onOpenAuthModal={() => setIsAuthModalOpen(true)} />
-        <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onAuthSuccess={handleAuthSuccess} />
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          onClose={() => setIsAuthModalOpen(false)}
+          onAuthSuccess={handleAuthSuccess}
+        />
       </>
     );
   }
@@ -168,14 +174,13 @@ function AppContent() {
               Démarrer une nouvelle vidéo
             </Button>
           </div>
-
           <ModernTabs activeTab={activeTab} onTabChange={setActiveTab} user={user} />
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsContent value="dashboard" className="space-y-6">
               {dashboardLoading ? (
                 <LoadingScreen message="Chargement du dashboard..." showReloadButton={false} />
               ) : dashboardError ? (
-                <EmptyState type="error" onAction={() => loadDashboardData()} loading={dashboardLoading} />
+                <EmptyState type="error" onAction={loadDashboardData} loading={dashboardLoading} />
               ) : !dashboardData || dashboardData.totalVideos === 0 ? (
                 <EmptyState type="dashboard" onAction={() => setActiveTab('upload')} />
               ) : (
@@ -194,8 +199,11 @@ function AppContent() {
           </Tabs>
         </div>
       </main>
-
-      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} onAuthSuccess={handleAuthSuccess} />
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onAuthSuccess={handleAuthSuccess}
+      />
     </div>
   );
 }
