@@ -1,3 +1,4 @@
+// functions/tts/index.js
 import OpenAI from 'npm:openai@4.68.1';
 
 const corsHeaders = {
@@ -27,8 +28,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Vérification de l'authentification
-    const authHeader = req.headers.get('Authorization');
+    // (Optionnel) Vérification simple d'auth : on exige la présence d'un Bearer
+    const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return new Response(
         JSON.stringify({ error: 'Authentification requise' }),
@@ -37,20 +38,22 @@ Deno.serve(async (req) => {
     }
 
     const openai = new OpenAI({ apiKey: openaiApiKey });
-    const { text, voice = 'nova', speed = 1.0 } = await req.json();
 
-    if (!text) {
+    const body = await req.json();
+    const { text, voice = 'nova', speed = 1.0 } = body || {};
+
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
       return new Response(
         JSON.stringify({ error: 'Texte requis' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Validation des paramètres
     const validVoices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
     const selectedVoice = validVoices.includes(voice) ? voice : 'nova';
     const selectedSpeed = Math.min(2.0, Math.max(0.25, parseFloat(speed) || 1.0));
 
+    // Appel OpenAI TTS
     const mp3 = await openai.audio.speech.create({
       model: 'tts-1-hd',
       voice: selectedVoice,
@@ -58,20 +61,25 @@ Deno.serve(async (req) => {
       speed: selectedSpeed
     });
 
-    const buffer = Buffer.from(await mp3.arrayBuffer());
-    
-    return new Response(buffer, {
+    // Convertir la réponse en ArrayBuffer (compatible Deno)
+    // La plupart des SDK renvoient un objet avec arrayBuffer() ou un Blob-like
+    const arrayBuffer = await mp3.arrayBuffer();
+    const uint8 = new Uint8Array(arrayBuffer);
+
+    return new Response(uint8, {
       status: 200,
       headers: {
         ...corsHeaders,
         'Content-Type': 'audio/mpeg',
-        'Content-Length': buffer.length.toString()
+        'Content-Length': String(uint8.length),
+        'Cache-Control': 'no-store'
       }
     });
+
   } catch (error) {
     console.error('Erreur TTS:', error);
     return new Response(
-      JSON.stringify({ error: 'Erreur lors de la synthèse vocale', details: error.message }),
+      JSON.stringify({ error: 'Erreur lors de la synthèse vocale', details: String(error) }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
