@@ -25,6 +25,10 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   `;
 
   const generateSpeech = async () => {
+    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+      throw new Error('Variables d’environnement Supabase manquantes');
+    }
+
     setIsLoading(true);
     setIsPlaying(false);
     setNeedsManualPlay(false);
@@ -32,12 +36,13 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
     try {
       const isSessionValid = await refreshSession();
       const { data: { session } } = await supabase.auth.getSession();
-      if (!isSessionValid || !session) throw new Error('Session invalide, authentification requise');
+
+      if (!isSessionValid || !session) throw new Error('Session invalide');
 
       const headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
-        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
       };
 
       const response = await retryOperation(() =>
@@ -100,12 +105,8 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   };
 
   const handleGoDashboard = () => {
-    if (user) {
-      navigate('/dashboard');
-    } else {
-      toast.info('Veuillez vous connecter pour accéder au dashboard.');
-      onOpenAuthModal();
-    }
+    if (user) navigate('/dashboard');
+    else onOpenAuthModal();
   };
 
   const handleManualPlay = async () => {
@@ -121,9 +122,7 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   };
 
   useEffect(() => {
-    return () => {
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
-    };
+    return () => { if (audioUrl) URL.revokeObjectURL(audioUrl); };
   }, [audioUrl]);
 
   return (
@@ -139,7 +138,7 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
           <Button
             onClick={handleStartExperience}
             disabled={isLoading}
-            className="relative bg-gradient-to-r from-blue-600 to-red-600 text-white text-xl font-bold py-4 px-8 rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+            className="bg-gradient-to-r from-blue-600 to-red-600 text-white text-xl font-bold py-4 px-8 rounded-full"
           >
             {isLoading ? 'Génération de l’audio...' : '🎤 Démarrer l’expérience'}
           </Button>
