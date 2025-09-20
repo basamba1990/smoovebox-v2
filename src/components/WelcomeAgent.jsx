@@ -1,20 +1,16 @@
+// src/components/WelcomeAgent.jsx
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button-enhanced.jsx';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { retryOperation, refreshSession } from '../lib/supabase';
-import { useAuth } from '../context/AuthContext.jsx';
-import { useSupabaseClient } from '@supabase/auth-helpers-react';
+import { retryOperation } from '../lib/supabase';
 
 const WelcomeAgent = ({ onOpenAuthModal }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioUrl, setAudioUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [needsManualPlay, setNeedsManualPlay] = useState(false);
   const audioRef = useRef(null);
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const supabase = useSupabaseClient();
 
   const welcomeMessage = `
     Bonjour et bienvenue sous le dôme SpotBulle !
@@ -25,57 +21,40 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   `;
 
   const generateSpeech = async () => {
-    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-      throw new Error('Variables d’environnement Supabase manquantes');
-    }
-
-    setIsLoading(true);
-    setIsPlaying(false);
-    setNeedsManualPlay(false);
-
     try {
-      const isSessionValid = await refreshSession();
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!isSessionValid || !session) throw new Error('Session invalide');
-
-      const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-      };
+      setIsLoading(true);
+      setIsPlaying(true);
 
       const response = await retryOperation(() =>
         fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tts`, {
           method: 'POST',
-          headers,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Client-Info': 'spotbulle',
+          },
           body: JSON.stringify({ text: welcomeMessage.trim(), voice: 'alloy', speed: 1.0 }),
-        }),
-        3,
-        1000
+        })
       );
 
-      if (!response.ok) throw new Error(`Erreur HTTP ${response.status}: ${await response.text()}`);
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('audio')) throw new Error(`Réponse non audio: ${await response.text()}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Erreur HTTP ${response.status}: ${errorText}`);
+      }
 
-      const arrayBuffer = await response.arrayBuffer();
-      const blob = new Blob([arrayBuffer], { type: contentType || 'audio/mpeg' });
+      const contentType = response.headers.get('content-type');
+      console.log('Content-Type de l\'audio:', contentType);
+      if (!contentType?.includes('audio')) {
+        throw new Error('Réponse non audio reçue');
+      }
 
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
-      const url = URL.createObjectURL(blob);
+      const audioBlob = new Blob([await response.arrayBuffer()], { type: contentType || 'audio/mpeg' });
+      console.log('Taille du blob audio:', audioBlob.size);
+      const url = URL.createObjectURL(audioBlob);
       setAudioUrl(url);
 
       if (audioRef.current) {
         audioRef.current.src = url;
-        audioRef.current.load();
-        try {
-          await audioRef.current.play();
-          setIsPlaying(true);
-        } catch {
-          setNeedsManualPlay(true);
-          toast.info('Appuyez sur “Écouter l’accueil” pour lancer l’audio.');
-        }
+        await audioRef.current.play();
       }
     } catch (err) {
       console.error('Erreur TTS:', err);
@@ -87,42 +66,14 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   };
 
   const handleStartExperience = async () => {
-    try {
-      await generateSpeech();
-
-      if (!user) {
-        toast.info('Veuillez vous connecter pour démarrer l’expérience.');
-        onOpenAuthModal();
-        return;
-      }
-
-      navigate('/record-video');
-    } catch (err) {
-      console.error('Erreur handleStartExperience:', err);
-      if (!user) onOpenAuthModal();
-      else navigate('/record-video');
-    }
-  };
-
-  const handleGoDashboard = () => {
-    if (user) navigate('/dashboard');
-    else onOpenAuthModal();
-  };
-
-  const handleManualPlay = async () => {
-    if (audioRef.current && audioUrl) {
-      try {
-        await audioRef.current.play();
-        setIsPlaying(true);
-        setNeedsManualPlay(false);
-      } catch {
-        toast.error('Impossible de lire l’audio.');
-      }
-    }
+    await generateSpeech();
+    navigate('/record-video');
   };
 
   useEffect(() => {
-    return () => { if (audioUrl) URL.revokeObjectURL(audioUrl); };
+    return () => {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    };
   }, [audioUrl]);
 
   return (
@@ -138,39 +89,49 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
           <Button
             onClick={handleStartExperience}
             disabled={isLoading}
-            className="bg-gradient-to-r from-blue-600 to-red-600 text-white text-xl font-bold py-4 px-8 rounded-full"
+            className="relative bg-gradient-to-r from-blue-600 to-red-600 hover:from-blue-700 hover:to-red-700 text-white text-xl font-bold py-4 px-8 rounded-full transition-all duration-300 transform hover:scale-105 disabled:opacity-50 shadow-lg hover:shadow-xl overflow-hidden group"
           >
-            {isLoading ? 'Génération de l’audio...' : '🎤 Démarrer l’expérience'}
+            <span className="relative z-10 flex items-center justify-center">
+              {isLoading ? (
+                <>
+                  <svg
+                    className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                  Génération de l’audio...
+                </>
+              ) : isPlaying ? (
+                '🎤 Écoutez votre accueil...'
+              ) : (
+                '🎤 Démarrer l’expérience'
+              )}
+            </span>
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent to-white/20 group-hover:from-white/10 group-hover:to-white/30 transform group-hover:scale-110 transition-transform duration-300" />
           </Button>
-
-          {needsManualPlay && (
-            <Button
-              onClick={handleManualPlay}
-              className="bg-gradient-to-r from-yellow-600 to-yellow-800 text-white font-bold py-4 px-8 rounded-full"
-            >
-              ▶️ Écouter l’accueil
-            </Button>
-          )}
-
-          <Button
-            onClick={handleGoDashboard}
-            className="bg-gradient-to-r from-green-600 to-green-800 text-white font-bold py-4 px-8 rounded-full"
-          >
-            📊 Aller au dashboard
-          </Button>
-
           <Button
             onClick={onOpenAuthModal}
-            className="bg-gradient-to-r from-purple-600 to-purple-800 text-white font-bold py-4 px-8 rounded-full"
+            className="bg-gradient-to-r from-green-600 to-green-800 hover:from-green-700 hover:to-green-900 text-white font-bold py-4 px-8 rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
           >
             Se connecter
           </Button>
         </div>
-
         <audio
           ref={audioRef}
           onEnded={() => setIsPlaying(false)}
-          onError={() => setIsPlaying(false)}
+          onError={(e) => {
+            console.error('Erreur lecture audio:', e);
+            setIsPlaying(false);
+            toast.error('Erreur de lecture audio.');
+          }}
         />
       </div>
     </div>
