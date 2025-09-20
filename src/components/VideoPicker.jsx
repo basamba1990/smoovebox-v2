@@ -20,12 +20,14 @@ const VideoPicker = ({ onChange }) => {
 
         const { data, error } = await supabase
           .from('videos')
-          .select('id, title, created_at')
+          .select('id, title, created_at, status')
           .eq('user_id', user.id)
-          .eq('status', 'uploaded')
+          .in('status', ['uploaded', 'processed', 'published'])
           .order('created_at', { ascending: false });
 
         if (error) throw error;
+
+        console.log("🎥 Vidéos trouvées :", data);
         setVideos(data || []);
       } catch (err) {
         console.error('Erreur récupération vidéos:', err);
@@ -56,7 +58,7 @@ const VideoPicker = ({ onChange }) => {
           </option>
           {videos.map((video) => (
             <option key={video.id} value={video.id}>
-              {video.title} ({new Date(video.created_at).toLocaleDateString()})
+              {video.title || `Vidéo ${video.id.slice(0, 6)}`} – {video.status} ({new Date(video.created_at).toLocaleDateString()})
             </option>
           ))}
         </select>
