@@ -5,7 +5,6 @@ import { toast } from 'sonner';
 import { retryOperation, refreshSession } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useSupabaseClient } from '@supabase/auth-helpers-react';
-import { Upload } from 'lucide-react';
 
 const WelcomeAgent = ({ onOpenAuthModal }) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -29,6 +28,7 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
     setIsLoading(true);
     setIsPlaying(false);
     setNeedsManualPlay(false);
+
     try {
       const isSessionValid = await refreshSession();
       const { data: { session } } = await supabase.auth.getSession();
@@ -82,23 +82,27 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   };
 
   const handleStartExperience = async () => {
+    // Générer l'audio, puis vérifier la session
     try {
       await generateSpeech();
-      const isSessionValid = await refreshSession();
-      if (!isSessionValid) {
-        toast.error('Veuillez vous connecter pour continuer.');
+
+      if (!user) {
+        toast.info('Veuillez vous connecter pour démarrer l’expérience.');
         onOpenAuthModal();
         return;
       }
+
       navigate('/record-video');
-    } catch {
-      if (user) navigate('/record-video');
-      else onOpenAuthModal();
+    } catch (err) {
+      console.error('Erreur handleStartExperience:', err);
+      if (!user) onOpenAuthModal();
+      else navigate('/record-video');
     }
   };
 
   const handleGoDashboard = () => {
-    navigate('/dashboard');
+    if (user) navigate('/dashboard');
+    else toast.info('Connectez-vous pour accéder au dashboard.');
   };
 
   const handleManualPlay = async () => {
@@ -144,14 +148,12 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
             </Button>
           )}
 
-          {user && (
-            <Button
-              onClick={handleGoDashboard}
-              className="bg-gradient-to-r from-green-600 to-green-800 text-white font-bold py-4 px-8 rounded-full"
-            >
-              📊 Aller au dashboard
-            </Button>
-          )}
+          <Button
+            onClick={handleGoDashboard}
+            className="bg-gradient-to-r from-green-600 to-green-800 text-white font-bold py-4 px-8 rounded-full"
+          >
+            📊 Aller au dashboard
+          </Button>
 
           <Button
             onClick={onOpenAuthModal}
