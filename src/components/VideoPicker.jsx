@@ -14,10 +14,12 @@ const VideoPicker = ({ onChange }) => {
       try {
         setLoading(true);
         if (!user) {
+          console.log('Utilisateur non authentifié, pas de vidéos à charger');
           toast.error('Veuillez vous connecter pour voir vos vidéos.');
           return;
         }
 
+        console.log('Récupération des vidéos pour:', user.id);
         const { data, error } = await supabase
           .from('videos')
           .select('id, title, created_at, status')
@@ -25,9 +27,12 @@ const VideoPicker = ({ onChange }) => {
           .in('status', ['uploaded', 'processed', 'published'])
           .order('created_at', { ascending: false });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Erreur récupération vidéos:', error);
+          throw error;
+        }
 
-        console.log("🎥 Vidéos trouvées :", data);
+        console.log("Vidéos trouvées :", data);
         setVideos(data || []);
       } catch (err) {
         console.error('Erreur récupération vidéos:', err);
@@ -46,10 +51,14 @@ const VideoPicker = ({ onChange }) => {
       {loading ? (
         <p className="text-gray-400">Chargement des vidéos...</p>
       ) : videos.length === 0 ? (
-        <p className="text-gray-400">Aucune vidéo disponible.</p>
+        <p className="text-gray-400">Aucune vidéo disponible. <button onClick={() => window.location.reload()} className="text-blue-400 underline">Recharger</button></p>
       ) : (
         <select
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value;
+            console.log('Vidéo sélectionnée:', value);
+            onChange(value);
+          }}
           className="w-full p-2 border rounded bg-white/10 text-white"
           defaultValue=""
         >
