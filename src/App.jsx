@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext.jsx';
+import { Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import AuthModal from './AuthModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import VideoManagement from './pages/VideoManagement.jsx';
@@ -11,7 +11,6 @@ import EmptyState from './components/EmptyState.jsx';
 import ProfessionalHeader from './components/ProfessionalHeader.jsx';
 import ModernTabs from './components/ModernTabs.jsx';
 import WelcomeAgent from './components/WelcomeAgent.jsx';
-import { useAuth } from './context/AuthContext.jsx';
 import { Button } from './components/ui/button-enhanced.jsx';
 import { Tabs, TabsContent } from './components/ui/tabs.jsx';
 import { supabase, checkSupabaseConnection } from './lib/supabase.js';
@@ -35,15 +34,16 @@ function AppContent() {
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState(null);
-  const [connectionStatus, setConnectionStatus] = useState('connected');
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [showWelcome, setShowWelcome] = useState(true);
-  const { user, loading, signOut, profile, error: authError, connectionStatus: authConnectionStatus } = useAuth();
+  const [connectionStatus, setConnectionStatus] = useState('checking');
+  const { user, loading, signOut, profile } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const isAuthenticated = !!user && !!profile;
 
   const loadDashboardData = async () => {
-    if (!user || !isAuthenticated) {
-      console.log('Aucun utilisateur connecté ou non authentifié, aucune donnée à charger');
+    if (!user) {
+      console.log('Aucun utilisateur connecté, aucune donnée à charger');
       setDashboardData(null);
       return;
     }
@@ -133,63 +133,54 @@ function AppContent() {
 
   useEffect(() => {
     if (!loading) {
-      if (user && profile) {
-        setIsAuthenticated(true);
-        setShowWelcome(false);
+      if (isAuthenticated) {
         console.log('Utilisateur authentifié avec profil:', user.id, profile);
-        
         if (isAuthModalOpen) {
           setIsAuthModalOpen(false);
         }
         
-        if (activeTab === 'dashboard') {
+        // Charger les données du dashboard si on est sur le dashboard
+        if (location.pathname === '/dashboard') {
           setTimeout(() => {
             loadDashboardData().catch(err => {
               console.error('Erreur lors du chargement initial des données:', err);
             });
           }, 500);
         }
-      } else {
-        setIsAuthenticated(false);
-        setDashboardData(null);
-        setShowWelcome(true);
       }
     }
-  }, [user, profile, loading, activeTab, isAuthModalOpen]);
+  }, [user, profile, loading, isAuthModalOpen, isAuthenticated, location.pathname]);
 
   useEffect(() => {
-    if (!loading) {
-      const checkConnection = async () => {
-        try {
-          console.log('Vérification de la connexion Supabase...');
-          const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Timeout de connexion')), 5000)
-          );
+    const checkConnection = async () => {
+      try {
+        console.log('Vérification de la connexion Supabase...');
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout de connexion')), 5000)
+        );
 
-          const connectionResult = await Promise.race([
-            checkSupabaseConnection(),
-            timeoutPromise
-          ]);
-          
-          if (connectionResult.connected) {
-            setConnectionStatus('connected');
-            setSupabaseError(null);
-          } else {
-            console.warn('Connexion Supabase échouée:', connectionResult.error);
-            setConnectionStatus('disconnected');
-            setSupabaseError(connectionResult.error);
-          }
-        } catch (error) {
-          console.error('Erreur lors de la vérification de connexion:', error);
+        const connectionResult = await Promise.race([
+          checkSupabaseConnection(),
+          timeoutPromise
+        ]);
+        
+        if (connectionResult.connected) {
+          setConnectionStatus('connected');
+          setSupabaseError(null);
+        } else {
+          console.warn('Connexion Supabase échouée:', connectionResult.error);
           setConnectionStatus('disconnected');
-          setSupabaseError(`Erreur de vérification: ${error.message}`);
+          setSupabaseError(connectionResult.error);
         }
-      };
-      
-      const connectionTimer = setTimeout(checkConnection, 100);
-      return () => {
-        clearTimeout(connectionTimer);
-      };
+      } catch (error) {
+        console.error('Erreur lors de la vérification de connexion:', error);
+        setConnectionStatus('disconnected');
+        setSupabaseError(`Erreur de vérification: ${error.message}`);
+      }
+    };
+    
+    if (!loading) {
+      checkConnection();
     }
   }, [loading]);
 
@@ -197,7 +188,7 @@ function AppContent() {
     let mounted = true;
     let dataTimeout = null;
 
-    if (activeTab === 'dashboard' && isAuthenticated) {
+    if (location.pathname === '/dashboard' && isAuthenticated) {
       dataTimeout = setTimeout(() => {
         if (mounted) {
           loadDashboardData().catch(err => {
@@ -250,13 +241,11 @@ function AppContent() {
         }
       };
     }
-  }, [user, activeTab, connectionStatus, isAuthenticated]);
+  }, [user, connectionStatus, isAuthenticated, location.pathname]);
 
   const handleAuthSuccess = (userData) => {
     console.log('Utilisateur authentifié avec succès:', userData.id);
     setIsAuthModalOpen(false);
-    setShowWelcome(false);
-    setIsAuthenticated(true);
     setTimeout(() => {
       navigate('/dashboard');
       loadDashboardData().catch(err => {
@@ -270,16 +259,12 @@ function AppContent() {
       console.log('Déconnexion demandée');
       await signOut();
       setDashboardData(null);
-      setIsAuthenticated(false);
       setActiveTab('dashboard');
-      setShowWelcome(true);
       navigate('/');
     } catch (error) {
       console.error('Erreur de déconnexion:', error);
       setDashboardData(null);
-      setIsAuthenticated(false);
       setActiveTab('dashboard');
-      setShowWelcome(true);
       navigate('/');
     }
   };
@@ -311,25 +296,6 @@ function AppContent() {
     }
   };
 
-  useEffect(() => {
-    let safetyTimeout = null;
-
-    if (loading) {
-      safetyTimeout = setTimeout(() => {
-        console.warn('Timeout de chargement déclenché après 15 secondes');
-        if (loading) {
-          window.location.reload();
-        }
-      }, 15000);
-    }
-    
-    return () => {
-      if (safetyTimeout) {
-        clearTimeout(safetyTimeout);
-      }
-    };
-  }, [loading]);
-
   if (loading) {
     return <LoadingScreen message="Chargement de l'application..." />;
   }
@@ -348,7 +314,7 @@ function AppContent() {
     <div className="app-container">
       <Routes>
         <Route path="/" element={
-          showWelcome && !isAuthenticated ? (
+          !isAuthenticated ? (
             <>
               <WelcomeAgent onOpenAuthModal={() => setIsAuthModalOpen(true)} />
               <AuthModal
@@ -362,10 +328,10 @@ function AppContent() {
           )
         } />
         
-        <Route path="/login" element={<Login />} />
+        <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" replace />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/register" element={<UserRegistration />} />
+        <Route path="/register" element={!isAuthenticated ? <UserRegistration /> : <Navigate to="/dashboard" replace />} />
         
         <Route path="/record-video" element={
           isAuthenticated ? <RecordVideo /> : <Navigate to="/" replace />
@@ -405,10 +371,6 @@ function AppContent() {
                         <LoadingScreen
                           message="Chargement des données du dashboard..."
                           showReloadButton={false}
-                          onCancel={() => {
-                            setDashboardLoading(false);
-                            loadDashboardData();
-                          }}
                         />
                       ) : dashboardError ? (
                         <EmptyState
@@ -419,7 +381,8 @@ function AppContent() {
                       ) : !dashboardData || (dashboardData.totalVideos === 0) ? (
                         <EmptyState
                           type="dashboard"
-                          onAction={() => setActiveTab('upload')}
+                          onAction={() => navigate('/record-video')}
+                          actionLabel="Commencer l'expérience"
                         />
                       ) : (
                         <Dashboard 
@@ -463,7 +426,9 @@ function App() {
   return (
     <ErrorBoundaryEnhanced FallbackComponent={SupabaseErrorFallback}>
       <AuthProvider>
-        <AppContent />
+        <BrowserRouter>
+          <AppContent />
+        </BrowserRouter>
       </AuthProvider>
     </ErrorBoundaryEnhanced>
   );
