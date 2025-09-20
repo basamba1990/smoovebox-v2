@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext.jsx';
 import AuthModal from './AuthModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
@@ -15,7 +15,7 @@ import { useAuth } from './context/AuthContext.jsx';
 import { Button } from './components/ui/button-enhanced.jsx';
 import { Tabs, TabsContent } from './components/ui/tabs.jsx';
 import { supabase, checkSupabaseConnection } from './lib/supabase.js';
-import { Upload, BarChart3, FileText } from 'lucide-react';
+import { Upload } from 'lucide-react';
 import LoadingScreen from './components/LoadingScreen.jsx';
 import SupabaseDiagnostic from './components/SupabaseDiagnostic.jsx';
 import './App.css';
@@ -163,7 +163,6 @@ function AppContent() {
           const connectionResult = await Promise.race([
             checkSupabaseConnection(),
             timeoutPromise
--LRB
           ]);
           
           if (connectionResult.connected) {
@@ -295,7 +294,7 @@ function AppContent() {
       
       if (connectionResult.connected) {
         setConnectionStatus('connected');
-        setSupabase únicosError(null);
+        setSupabaseError(null); // Correction ici
       } else {
         setConnectionStatus('disconnected');
         setSupabaseError(connectionResult.error);
