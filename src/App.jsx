@@ -1,6 +1,5 @@
-// src/App.jsx
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext.jsx';
 import AuthModal from './AuthModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
@@ -164,6 +163,7 @@ function AppContent() {
           const connectionResult = await Promise.race([
             checkSupabaseConnection(),
             timeoutPromise
+-LRB
           ]);
           
           if (connectionResult.connected) {
@@ -255,12 +255,9 @@ function AppContent() {
     setIsAuthModalOpen(false);
     setShowWelcome(false);
     setIsAuthenticated(true);
-    setTimeout(() => {
-      navigate('/record-video'); // Navigation explicite vers /record-video
-      loadDashboardData().catch(err => {
-        console.error('Erreur après authentification:', err);
-      });
-    }, 1000);
+    loadDashboardData().catch(err => {
+      console.error('Erreur après authentification:', err);
+    });
   };
 
   const handleSignOut = async () => {
@@ -298,7 +295,7 @@ function AppContent() {
       
       if (connectionResult.connected) {
         setConnectionStatus('connected');
-        setSupabaseError(null);
+        setSupabase únicosError(null);
       } else {
         setConnectionStatus('disconnected');
         setSupabaseError(connectionResult.error);
@@ -342,90 +339,90 @@ function AppContent() {
     );
   }
 
+  if (showWelcome && !isAuthenticated) {
+    return (
+      <div>
+        <WelcomeAgent onOpenAuthModal={() => setIsAuthModalOpen(true)} />
+        <AuthModal 
+          isOpen={isAuthModalOpen} 
+          onClose={() => setIsAuthModalOpen(false)}
+          onAuthSuccess={handleAuthSuccess}
+        />
+      </div>
+    );
+  }
+
   return (
-    <Routes>
-      <Route path="/" element={
-        showWelcome && !isAuthenticated ? (
-          <div>
-            <WelcomeAgent onOpenAuthModal={() => setIsAuthModalOpen(true)} />
-            <AuthModal 
-              isOpen={isAuthModalOpen} 
-              onClose={() => setIsAuthModalOpen(false)}
-              onAuthSuccess={handleAuthSuccess}
-            />
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
+      <ProfessionalHeader 
+        user={user} 
+        profile={profile} 
+        connectionStatus={connectionStatus}
+        onSignOut={handleSignOut}
+        onAuthModalOpen={() => setIsAuthModalOpen(true)}
+      />
+      <main className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
+        <div className="space-y-6 sm:space-y-8">
+          <div className="flex justify-end mb-4">
+            <Button 
+              onClick={() => navigate('/record-video')} 
+              className="flex items-center gap-2"
+            >
+              <Upload className="h-4 w-4" />
+              Démarrer une nouvelle vidéo
+            </Button>
           </div>
-        ) : (
-          <Navigate to="/record-video" replace /> // Redirection vers /record-video pour utilisateurs authentifiés
-        )
-      } />
-      <Route path="/dashboard" element={
-        isAuthenticated ? (
-          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
-            <ProfessionalHeader 
-              user={user} 
-              profile={profile} 
-              connectionStatus={connectionStatus}
-              onSignOut={handleSignOut}
-              onAuthModalOpen={() => setIsAuthModalOpen(true)}
-            />
-            <main className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
-              <div className="space-y-6 sm:space-y-8">
-                <ModernTabs activeTab={activeTab} onTabChange={setActiveTab} user={user} />
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                  <TabsContent value="dashboard" className="space-y-6">
-                    {dashboardLoading ? (
-                      <LoadingScreen 
-                        message="Chargement des données du dashboard..." 
-                        showReloadButton={false}
-                        onCancel={() => {
-                          setDashboardLoading(false);
-                          loadDashboardData();
-                        }}
-                      />
-                    ) : dashboardError ? (
-                      <EmptyState 
-                        type="error" 
-                        onAction={() => loadDashboardData()} 
-                        loading={dashboardLoading}
-                      />
-                    ) : !dashboardData || (dashboardData.totalVideos === 0) ? (
-                      <EmptyState 
-                        type="dashboard" 
-                        onAction={() => setActiveTab('upload')}
-                      />
-                    ) : (
-                      <div className="space-y-6">
-                        <Dashboard data={dashboardData} />
-                      </div>
-                    )}
-                  </TabsContent>
-                  <TabsContent value="videos" className="space-y-6">
-                    <VideoManagement />
-                  </TabsContent>
-                  <TabsContent value="upload" className="space-y-6">
-                    <EnhancedVideoUploader />
-                  </TabsContent>
-                  <TabsContent value="progress" className="space-y-6">
-                    <ProgressTracking 
-                      userId={user.id} 
-                      userProfile={profile} 
-                      isVisible={true}
-                    />
-                  </TabsContent>
-                </Tabs>
-              </div>
-            </main>
-            <AuthModal 
-              isOpen={isAuthModalOpen} 
-              onClose={() => setIsAuthModalOpen(false)}
-              onAuthSuccess={handleAuthSuccess}
-            />
-          </div>
-        ) : (
-          <Navigate to="/" replace />
-        )
-      } />
-    </Routes>
+          <ModernTabs activeTab={activeTab} onTabChange={setActiveTab} user={user} />
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsContent value="dashboard" className="space-y-6">
+              {dashboardLoading ? (
+                <LoadingScreen 
+                  message="Chargement des données du dashboard..." 
+                  showReloadButton={false}
+                  onCancel={() => {
+                    setDashboardLoading(false);
+                    loadDashboardData();
+                  }}
+                />
+              ) : dashboardError ? (
+                <EmptyState 
+                  type="error" 
+                  onAction={() => loadDashboardData()} 
+                  loading={dashboardLoading}
+                />
+              ) : !dashboardData || (dashboardData.totalVideos === 0) ? (
+                <EmptyState 
+                  type="dashboard" 
+                  onAction={() => setActiveTab('upload')}
+                />
+              ) : (
+                <div className="space-y-6">
+                  <Dashboard data={dashboardData} />
+                </div>
+              )}
+            </TabsContent>
+            <TabsContent value="videos" className="space-y-6">
+              <VideoManagement />
+            </TabsContent>
+            <TabsContent value="upload" className="space-y-6">
+              <EnhancedVideoUploader />
+            </TabsContent>
+            <TabsContent value="progress" className="space-y-6">
+              <ProgressTracking 
+                userId={user.id} 
+                userProfile={profile} 
+                isVisible={true}
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </main>
+      <AuthModal 
+        isOpen={isAuthModalOpen} 
+        onClose={() => setIsAuthModalOpen(false)}
+        onAuthSuccess={handleAuthSuccess}
+      />
+    </div>
   );
 }
 
