@@ -82,7 +82,6 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   };
 
   const handleStartExperience = async () => {
-    // Générer l'audio, puis vérifier la session
     try {
       await generateSpeech();
 
@@ -101,8 +100,12 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   };
 
   const handleGoDashboard = () => {
-    if (user) navigate('/dashboard');
-    else toast.info('Connectez-vous pour accéder au dashboard.');
+    if (user) {
+      navigate('/dashboard');
+    } else {
+      toast.info('Veuillez vous connecter pour accéder au dashboard.');
+      onOpenAuthModal();
+    }
   };
 
   const handleManualPlay = async () => {
@@ -118,7 +121,9 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   };
 
   useEffect(() => {
-    return () => { if (audioUrl) URL.revokeObjectURL(audioUrl); };
+    return () => {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    };
   }, [audioUrl]);
 
   return (
