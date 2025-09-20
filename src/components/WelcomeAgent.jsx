@@ -11,7 +11,7 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioUrl, setAudioUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [needsManualPlay, setNeedsManualPlay] = useState(false);
+  const [needsManualPlay, setNeedsManualPlay] = useState(false); 
   const audioRef = useRef(null);
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -25,7 +25,6 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
     Prêt à commencer ? L'aventure vous attend !
   `;
 
-  // Génération du TTS
   const generateSpeech = async () => {
     setIsLoading(true);
     setIsPlaying(false);
@@ -34,7 +33,9 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
     try {
       const isSessionValid = await refreshSession();
       const { data: { session } } = await supabase.auth.getSession();
-      if (!isSessionValid || !session) throw new Error('Session invalide');
+      if (!isSessionValid || !session) {
+        throw new Error('Session invalide, authentification requise');
+      }
 
       const headers = {
         'Content-Type': 'application/json',
@@ -52,10 +53,19 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
         1000
       );
 
-      if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`);
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Erreur HTTP ${response.status}: ${text}`);
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('audio')) {
+        const text = await response.text();
+        throw new Error(`Réponse non audio: ${text}`);
+      }
 
       const arrayBuffer = await response.arrayBuffer();
-      const blob = new Blob([arrayBuffer], { type: response.headers.get('content-type') || 'audio/mpeg' });
+      const blob = new Blob([arrayBuffer], { type: contentType || 'audio/mpeg' });
 
       if (audioUrl) URL.revokeObjectURL(audioUrl);
       const url = URL.createObjectURL(blob);
@@ -67,14 +77,15 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
         try {
           await audioRef.current.play();
           setIsPlaying(true);
-        } catch {
-          setNeedsManualPlay(true);
-          toast.info('Appuyez sur le bouton pour écouter l’accueil.');
+        } catch (playErr) {
+          console.warn('Lecture auto bloquée:', playErr);
+          setNeedsManualPlay(true); 
+          toast.info('Appuyez sur “Écouter l’accueil” pour lancer l’audio.');
         }
       }
     } catch (err) {
       console.error('Erreur TTS:', err);
-      toast.error(`Erreur audio: ${err.message}`);
+      toast.error(`Erreur lors de la génération audio: ${err.message}`);
       setIsPlaying(false);
       throw err;
     } finally {
@@ -82,7 +93,24 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
     }
   };
 
-  // Lecture manuelle
+  const handleStartExperience = async () => {
+    try {
+      await generateSpeech();
+      const isSessionValid = await refreshSession();
+      if (!isSessionValid) {
+        toast.error('Veuillez vous connecter pour continuer.');
+        onOpenAuthModal();
+        return;
+      }
+      navigate('/record-video');
+    } catch (err) {
+      console.error('Erreur dans handleStartExperience:', err);
+      toast.error('Erreur lors du démarrage de l\'expérience. Redirection en cours...');
+      if (user) navigate('/record-video');
+      else onOpenAuthModal();
+    }
+  };
+
   const handleManualPlay = async () => {
     if (audioRef.current && audioUrl) {
       try {
@@ -96,46 +124,20 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
     }
   };
 
-  useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
-
-  // Bouton principal dynamique
-  const handleMainButton = async () => {
-    try {
-      if (user) {
-        // Connecté → Dashboard
-        navigate('/dashboard');
-        return;
-      }
-
-      // Non connecté → TTS + record-video
-      await generateSpeech();
-      const isSessionValid = await refreshSession();
-      if (!isSessionValid) {
-        toast.error('Veuillez vous connecter pour continuer.');
-        onOpenAuthModal();
-        return;
-      }
-      navigate('/record-video');
-    } catch {
-      if (!user) onOpenAuthModal();
+  const handleDashboardClick = () => {
+    if (user) {
+      navigate('/dashboard');
+    } else {
+      toast.info('Veuillez vous connecter pour accéder au Dashboard.');
+      onOpenAuthModal();
     }
   };
 
-  // Déterminer le texte et l’icône du bouton
-  const getButtonContent = () => {
-    if (isLoading) return <>⏳ Génération audio...</>;
-    if (isPlaying) return <>🎤 Lecture de l’accueil...</>;
-    if (user) return <>📊 Accéder au Dashboard</>;
-    return <>🎤 Démarrer l’expérience</>;
-  };
-
-  // Couleurs dynamiques selon état
-  const getButtonClasses = () => {
-    if (isLoading) return 'bg-gray-600 cursor-not-allowed';
-    if (isPlaying) return 'bg-purple-600 hover:bg-purple-700';
-    if (user) return 'bg-blue-600 hover:bg-blue-700';
-    return 'bg-gradient-to-r from-blue-600 to-red-600 hover:from-blue-700 hover:to-red-700';
-  };
+  useEffect(() => {
+    return () => {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    };
+  }, [audioUrl]);
 
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center text-white bg-black p-8">
@@ -149,21 +151,59 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Button
-            onClick={handleMainButton}
+            onClick={handleStartExperience}
             disabled={isLoading}
-            className={`text-white text-xl font-bold py-4 px-8 rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl ${getButtonClasses()}`}
+            className="relative bg-gradient-to-r from-blue-600 to-red-600 hover:from-blue-700 hover:to-red-700 text-white text-xl font-bold py-4 px-8 rounded-full transition-all duration-300 transform hover:scale-105 disabled:opacity-50 shadow-lg hover:shadow-xl overflow-hidden group"
           >
-            {getButtonContent()}
+            <span className="relative z-10 flex items-center justify-center">
+              {isLoading ? (
+                <>
+                  <svg
+                    className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                  Génération de l’audio...
+                </>
+              ) : isPlaying ? (
+                '🎤 Écoutez votre accueil...'
+              ) : (
+                '🎤 Démarrer l’expérience'
+              )}
+            </span>
           </Button>
 
           {needsManualPlay && (
             <Button
               onClick={handleManualPlay}
-              className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-4 px-8 rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+              className="bg-gradient-to-r from-yellow-600 to-yellow-800 hover:from-yellow-700 hover:to-yellow-900 text-white font-bold py-4 px-8 rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
             >
               ▶️ Écouter l’accueil
             </Button>
           )}
+
+          <Button
+            onClick={onOpenAuthModal}
+            className="bg-gradient-to-r from-green-600 to-green-800 hover:from-green-700 hover:to-green-900 text-white font-bold py-4 px-8 rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+          >
+            Se connecter
+          </Button>
+
+          {/* ✅ Bouton toujours visible vers le dashboard */}
+          <Button
+            onClick={handleDashboardClick}
+            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-4 px-8 rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+          >
+            📊 Aller au Dashboard
+          </Button>
         </div>
 
         <audio
