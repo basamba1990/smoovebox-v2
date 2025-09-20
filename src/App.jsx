@@ -1,6 +1,7 @@
+// src/App.jsx
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext.jsx';
+import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext.jsx';
 import AuthModal from './AuthModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import VideoManagement from './pages/VideoManagement.jsx';
@@ -11,10 +12,8 @@ import EmptyState from './components/EmptyState.jsx';
 import ProfessionalHeader from './components/ProfessionalHeader.jsx';
 import ModernTabs from './components/ModernTabs.jsx';
 import WelcomeAgent from './components/WelcomeAgent.jsx';
-import { Button } from './components/ui/button-enhanced.jsx';
-import { Tabs, TabsContent } from './components/ui/tabs.jsx';
+import { useAuth } from './context/AuthContext.jsx';
 import { supabase, checkSupabaseConnection } from './lib/supabase.js';
-import { Upload } from 'lucide-react';
 import LoadingScreen from './components/LoadingScreen.jsx';
 import SupabaseDiagnostic from './components/SupabaseDiagnostic.jsx';
 import './App.css';
@@ -30,6 +29,8 @@ function AppContent() {
   const [connectionStatus, setConnectionStatus] = useState('connected');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showWelcome, setShowWelcome] = useState(true);
+  const [postLoginRedirect, setPostLoginRedirect] = useState(null);
+
   const { user, loading, signOut, profile } = useAuth();
   const navigate = useNavigate();
 
@@ -43,41 +44,57 @@ function AppContent() {
       setDashboardLoading(true);
       setDashboardError(null);
 
-      const { data: videosData, error: videosError } = await supabase
-        .from('videos')
-        .select('*, transcriptions(*)')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      // Récupération des vidéos
+      let videos = [];
+      try {
+        const { data: videosData, error: vError } = await supabase
+          .from('videos')
+          .select(`*, transcriptions (*)`)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+        if (vError) throw vError;
+        videos = videosData;
+      } catch {
+        // fallback simple
+        const { data: videosData, error: vError } = await supabase
+          .from('videos')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+        if (vError) throw vError;
+        videos = videosData;
+      }
 
-      if (videosError) throw videosError;
-
-      const { data: statsData, error: statsError } = await supabase
-        .rpc('get_user_video_stats', { user_id_param: user.id });
-
-      if (statsError) console.warn('Erreur récupération stats:', statsError);
+      // Récupération stats
+      let stats = null;
+      try {
+        const { data: statsData, error: statsError } = await supabase
+          .rpc('get_user_video_stats', { user_id_param: user.id });
+        if (!statsError) stats = statsData;
+      } catch {}
 
       const dashboardData = {
-        totalVideos: videosData.length,
-        recentVideos: videosData.slice(0, 5),
+        totalVideos: videos.length,
+        recentVideos: videos.slice(0, 5),
         videosByStatus: {
-          ready: videosData.filter(v => ['ready','uploaded','published'].includes(v.status)).length,
-          processing: videosData.filter(v => ['processing','analyzing','transcribing'].includes(v.status)).length,
-          transcribed: videosData.filter(v => v.transcription_text?.length > 0 || (v.transcription_data && Object.keys(v.transcription_data).length > 0)).length,
-          analyzed: videosData.filter(v => v.analysis_result || v.analysis || v.ai_result).length,
-          failed: videosData.filter(v => v.status === 'failed').length
+          ready: videos.filter(v => ['ready','uploaded','published'].includes(v.status)).length,
+          processing: videos.filter(v => ['processing','analyzing','transcribing'].includes(v.status)).length,
+          transcribed: videos.filter(v => v.transcription_text || (v.transcription_data && Object.keys(v.transcription_data).length > 0)).length,
+          analyzed: videos.filter(v => v.analysis_result || v.analysis || v.ai_result).length,
+          failed: videos.filter(v => v.status === 'failed').length
         },
-        totalDuration: videosData.reduce((sum, video) => sum + (video.duration || 0), 0),
-        transcriptionsCount: videosData.filter(v => v.transcription_text?.length > 0 || (v.transcription_data && Object.keys(v.transcription_data).length > 0)).length,
-        analysisCount: videosData.filter(v => v.analysis_result || v.analysis || v.ai_result).length,
-        videoPerformance: statsData?.performance_data || [],
-        progressStats: statsData?.progress_stats || { completed: 0, inProgress: 0, totalTime: 0 }
+        totalDuration: videos.reduce((sum, v) => sum + (v.duration || 0), 0),
+        transcriptionsCount: videos.filter(v => v.transcription_text || (v.transcription_data && Object.keys(v.transcription_data).length > 0)).length,
+        analysisCount: videos.filter(v => v.analysis_result || v.analysis || v.ai_result).length,
+        videoPerformance: stats?.performance_data || [],
+        progressStats: stats?.progress_stats || { completed:0, inProgress:0, totalTime:0 }
       };
 
       setDashboardData(dashboardData);
     } catch (err) {
       console.error('Erreur dashboard:', err);
       setDashboardData(null);
-      setDashboardError(err.message || 'Erreur récupération données');
+      setDashboardError(err.message || 'Erreur lors de la récupération des données');
     } finally {
       setDashboardLoading(false);
     }
@@ -88,9 +105,11 @@ function AppContent() {
       if (user && profile) {
         setIsAuthenticated(true);
         setShowWelcome(false);
-        setIsAuthModalOpen(false);
-        if (activeTab === 'dashboard') {
-          setTimeout(() => { loadDashboardData(); }, 500);
+        if (isAuthModalOpen) setIsAuthModalOpen(false);
+        if (activeTab === 'dashboard') loadDashboardData().catch(console.error);
+        if (postLoginRedirect) {
+          navigate(postLoginRedirect);
+          setPostLoginRedirect(null);
         }
       } else {
         setIsAuthenticated(false);
@@ -98,7 +117,7 @@ function AppContent() {
         setShowWelcome(true);
       }
     }
-  }, [user, profile, loading, activeTab]);
+  }, [user, profile, loading, activeTab, isAuthModalOpen]);
 
   useEffect(() => {
     if (!loading) {
@@ -115,7 +134,7 @@ function AppContent() {
           }
         } catch (error) {
           setConnectionStatus('disconnected');
-          setSupabaseError(`Erreur de vérification: ${error.message}`);
+          setSupabaseError(`Erreur: ${error.message}`);
         }
       };
       const timer = setTimeout(checkConnection, 100);
@@ -127,84 +146,134 @@ function AppContent() {
     setIsAuthModalOpen(false);
     setShowWelcome(false);
     setIsAuthenticated(true);
-    navigate('/record-video');
-    loadDashboardData();
+    if (postLoginRedirect) {
+      navigate(postLoginRedirect);
+      setPostLoginRedirect(null);
+    } else {
+      setActiveTab('dashboard');
+      navigate('/dashboard');
+    }
+    loadDashboardData().catch(console.error);
   };
 
   const handleSignOut = async () => {
-    await signOut();
-    setDashboardData(null);
-    setIsAuthenticated(false);
-    setActiveTab('dashboard');
-    setShowWelcome(true);
-    navigate('/');
+    try {
+      await signOut();
+    } finally {
+      setDashboardData(null);
+      setIsAuthenticated(false);
+      setActiveTab('dashboard');
+      setShowWelcome(true);
+      navigate('/');
+    }
+  };
+
+  const handleGoDashboard = () => {
+    if (user && isAuthenticated) {
+      navigate('/dashboard');
+    } else {
+      setPostLoginRedirect('/dashboard');
+      setIsAuthModalOpen(true);
+    }
+  };
+
+  const handleRetryConnection = async () => {
+    setConnectionStatus('checking');
+    setSupabaseError(null);
+    try {
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000));
+      const connectionResult = await Promise.race([checkSupabaseConnection(), timeoutPromise]);
+      if (connectionResult.connected) {
+        setConnectionStatus('connected');
+        setSupabaseError(null);
+      } else {
+        setConnectionStatus('disconnected');
+        setSupabaseError(connectionResult.error);
+      }
+    } catch (error) {
+      setConnectionStatus('disconnected');
+      setSupabaseError(`Erreur: ${error.message}`);
+    }
   };
 
   if (loading) return <LoadingScreen />;
-
-  if (supabaseError) return <SupabaseDiagnostic error={supabaseError} onRetry={() => window.location.reload()} onContinue={() => setSupabaseError(null)} />;
-
-  if (showWelcome && !isAuthenticated) {
-    return (
-      <>
-        <WelcomeAgent onOpenAuthModal={() => setIsAuthModalOpen(true)} />
-        <AuthModal
-          isOpen={isAuthModalOpen}
-          onClose={() => setIsAuthModalOpen(false)}
-          onAuthSuccess={handleAuthSuccess}
-        />
-      </>
-    );
-  }
+  if (supabaseError) return <SupabaseDiagnostic error={supabaseError} onRetry={handleRetryConnection} onContinue={() => setSupabaseError(null)} />;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
-      <ProfessionalHeader
-        user={user}
-        profile={profile}
-        connectionStatus={connectionStatus}
-        onSignOut={handleSignOut}
-        onAuthModalOpen={() => setIsAuthModalOpen(true)}
-      />
-      <main className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
-        <div className="space-y-6 sm:space-y-8">
-          <div className="flex justify-end mb-4">
-            <Button onClick={() => navigate('/record-video')} className="flex items-center gap-2">
-              <Upload className="h-4 w-4" />
-              Démarrer une nouvelle vidéo
-            </Button>
+    <Routes>
+      <Route path="/" element={
+        showWelcome && !isAuthenticated ? (
+          <>
+            <WelcomeAgent onOpenAuthModal={() => setIsAuthModalOpen(true)} />
+            <AuthModal
+              isOpen={isAuthModalOpen}
+              onClose={() => setIsAuthModalOpen(false)}
+              onSuccess={handleAuthSuccess}
+            />
+          </>
+        ) : (
+          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
+            <ProfessionalHeader
+              user={user}
+              profile={profile}
+              connectionStatus={connectionStatus}
+              onSignOut={handleSignOut}
+              onAuthModalOpen={() => setIsAuthModalOpen(true)}
+            />
+            <main className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
+              <ModernTabs activeTab={activeTab} onTabChange={setActiveTab} user={user} />
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <TabsContent value="dashboard">
+                  {dashboardLoading ? <LoadingScreen message="Chargement du dashboard..." /> :
+                   dashboardError ? <EmptyState type="error" onAction={() => loadDashboardData()} /> :
+                   !dashboardData || dashboardData.totalVideos === 0 ? <EmptyState type="dashboard" onAction={() => setActiveTab('upload')} /> :
+                   <Dashboard data={dashboardData} />
+                  }
+                </TabsContent>
+                <TabsContent value="videos"><VideoManagement /></TabsContent>
+                <TabsContent value="upload"><EnhancedVideoUploader /></TabsContent>
+                <TabsContent value="progress"><ProgressTracking userId={user.id} userProfile={profile} isVisible /></TabsContent>
+              </Tabs>
+            </main>
+            <AuthModal
+              isOpen={isAuthModalOpen}
+              onClose={() => setIsAuthModalOpen(false)}
+              onSuccess={handleAuthSuccess}
+            />
           </div>
-          <ModernTabs activeTab={activeTab} onTabChange={setActiveTab} user={user} />
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsContent value="dashboard" className="space-y-6">
-              {dashboardLoading ? (
-                <LoadingScreen message="Chargement du dashboard..." showReloadButton={false} />
-              ) : dashboardError ? (
-                <EmptyState type="error" onAction={loadDashboardData} loading={dashboardLoading} />
-              ) : !dashboardData || dashboardData.totalVideos === 0 ? (
-                <EmptyState type="dashboard" onAction={() => setActiveTab('upload')} />
-              ) : (
-                <Dashboard data={dashboardData} />
-              )}
-            </TabsContent>
-            <TabsContent value="videos" className="space-y-6">
-              <VideoManagement />
-            </TabsContent>
-            <TabsContent value="upload" className="space-y-6">
-              <EnhancedVideoUploader />
-            </TabsContent>
-            <TabsContent value="progress" className="space-y-6">
-              <ProgressTracking userId={user.id} userProfile={profile} isVisible={true} />
-            </TabsContent>
-          </Tabs>
-        </div>
-      </main>
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        onAuthSuccess={handleAuthSuccess}
-      />
-    </div>
+        )
+      } />
+      <Route path="/dashboard" element={
+        isAuthenticated ? (
+          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
+            <ProfessionalHeader
+              user={user}
+              profile={profile}
+              connectionStatus={connectionStatus}
+              onSignOut={handleSignOut}
+              onAuthModalOpen={() => setIsAuthModalOpen(true)}
+            />
+            <main className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
+              <ModernTabs activeTab={activeTab} onTabChange={setActiveTab} user={user} />
+              <Tabs value="dashboard" className="w-full">
+                <TabsContent value="dashboard">
+                  {dashboardLoading ? <LoadingScreen message="Chargement du dashboard..." /> :
+                   dashboardError ? <EmptyState type="error" onAction={() => loadDashboardData()} /> :
+                   !dashboardData || dashboardData.totalVideos === 0 ? <EmptyState type="dashboard" onAction={() => setActiveTab('upload')} /> :
+                   <Dashboard data={dashboardData} />
+                  }
+                </TabsContent>
+              </Tabs>
+            </main>
+            <AuthModal
+              isOpen={isAuthModalOpen}
+              onClose={() => setIsAuthModalOpen(false)}
+              onSuccess={handleAuthSuccess}
+            />
+          </div>
+        ) : <Navigate to="/" replace />
+      } />
+    </Routes>
   );
 }
 
