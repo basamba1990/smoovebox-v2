@@ -11,6 +11,7 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioUrl, setAudioUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [needsManualPlay, setNeedsManualPlay] = useState(false); // 👈 fallback
   const audioRef = useRef(null);
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -25,11 +26,12 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
   `;
 
   const generateSpeech = async () => {
-    try {
-      setIsLoading(true);
-      setIsPlaying(true);
+    setIsLoading(true);
+    setIsPlaying(false);
+    setNeedsManualPlay(false);
 
-      // Vérifier et rafraîchir la session
+    try {
+      // Rafraîchir la session
       const isSessionValid = await refreshSession();
       const { data: { session } } = await supabase.auth.getSession();
       if (!isSessionValid || !session) {
@@ -38,11 +40,9 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
 
       const headers = {
         'Content-Type': 'application/json',
-        'X-Client-Info': 'spotbulle',
         'Authorization': `Bearer ${session.access_token}`,
+        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || '',
       };
-
-      console.log('Envoi requête TTS avec headers:', headers);
 
       const response = await retryOperation(() =>
         fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tts`, {
@@ -55,29 +55,40 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
       );
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Erreur HTTP ${response.status}: ${errorText}`);
+        const text = await response.text();
+        throw new Error(`Erreur HTTP ${response.status}: ${text}`);
       }
 
-      const contentType = response.headers.get('content-type');
-      console.log('Content-Type de l\'audio:', contentType);
-      if (!contentType?.includes('audio')) {
-        throw new Error('Réponse non audio reçue');
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('audio')) {
+        const text = await response.text();
+        throw new Error(`Réponse non audio: ${text}`);
       }
 
-      const audioBlob = new Blob([await response.arrayBuffer()], { type: contentType || 'audio/mpeg' });
-      console.log('Taille du blob audio:', audioBlob.size);
-      const url = URL.createObjectURL(audioBlob);
+      const arrayBuffer = await response.arrayBuffer();
+      const blob = new Blob([arrayBuffer], { type: contentType || 'audio/mpeg' });
+
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      const url = URL.createObjectURL(blob);
       setAudioUrl(url);
 
       if (audioRef.current) {
         audioRef.current.src = url;
-        await audioRef.current.play();
+        audioRef.current.load();
+        try {
+          await audioRef.current.play();
+          setIsPlaying(true);
+        } catch (playErr) {
+          console.warn('Lecture auto bloquée:', playErr);
+          setNeedsManualPlay(true); // 👈 activer le fallback
+          toast.info('Appuyez sur “Écouter l’accueil” pour lancer l’audio.');
+        }
       }
     } catch (err) {
       console.error('Erreur TTS:', err);
       toast.error(`Erreur lors de la génération audio: ${err.message}`);
       setIsPlaying(false);
+      throw err;
     } finally {
       setIsLoading(false);
     }
@@ -96,10 +107,21 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
     } catch (err) {
       console.error('Erreur dans handleStartExperience:', err);
       toast.error('Erreur lors du démarrage de l\'expérience. Redirection en cours...');
-      if (user) {
-        navigate('/record-video');
-      } else {
-        onOpenAuthModal();
+      if (user) navigate('/record-video');
+      else onOpenAuthModal();
+    }
+  };
+
+  // 👇 bouton manuel pour le fallback
+  const handleManualPlay = async () => {
+    if (audioRef.current && audioUrl) {
+      try {
+        await audioRef.current.play();
+        setIsPlaying(true);
+        setNeedsManualPlay(false);
+      } catch (err) {
+        console.error('Erreur lecture manuelle:', err);
+        toast.error('Impossible de lire l’audio.');
       }
     }
   };
@@ -149,8 +171,17 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
                 '🎤 Démarrer l’expérience'
               )}
             </span>
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent to-white/20 group-hover:from-white/10 group-hover:to-white/30 transform group-hover:scale-110 transition-transform duration-300" />
           </Button>
+
+          {needsManualPlay && (
+            <Button
+              onClick={handleManualPlay}
+              className="bg-gradient-to-r from-yellow-600 to-yellow-800 hover:from-yellow-700 hover:to-yellow-900 text-white font-bold py-4 px-8 rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+            >
+              ▶️ Écouter l’accueil
+            </Button>
+          )}
+
           <Button
             onClick={onOpenAuthModal}
             className="bg-gradient-to-r from-green-600 to-green-800 hover:from-green-700 hover:to-green-900 text-white font-bold py-4 px-8 rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
@@ -158,6 +189,7 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
             Se connecter
           </Button>
         </div>
+
         <audio
           ref={audioRef}
           onEnded={() => setIsPlaying(false)}
