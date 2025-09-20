@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // (Optionnel) Vérification simple d'auth : on exige la présence d'un Bearer
+    // Vérification simple d'auth
     const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return new Response(
@@ -40,7 +40,12 @@ Deno.serve(async (req) => {
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
     const body = await req.json();
-    const { text, voice = 'nova', speed = 1.0 } = body || {};
+    const { 
+      text, 
+      voice = 'alloy', 
+      speed = 1.0, 
+      model = 'gpt-4o-mini-tts' // ✅ modèle recommandé par défaut
+    } = body || {};
 
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
       return new Response(
@@ -49,20 +54,22 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Voix valides supportées par OpenAI
     const validVoices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
-    const selectedVoice = validVoices.includes(voice) ? voice : 'nova';
+    const selectedVoice = validVoices.includes(voice) ? voice : 'alloy';
     const selectedSpeed = Math.min(2.0, Math.max(0.25, parseFloat(speed) || 1.0));
+
+    // Sélection du modèle : rapide/éco (gpt-4o-mini-tts) ou qualité (tts-1-hd)
+    const selectedModel = (model === 'tts-1-hd') ? 'tts-1-hd' : 'gpt-4o-mini-tts';
 
     // Appel OpenAI TTS
     const mp3 = await openai.audio.speech.create({
-      model: 'tts-1-hd',
+      model: selectedModel,
       voice: selectedVoice,
       input: text,
       speed: selectedSpeed
     });
 
-    // Convertir la réponse en ArrayBuffer (compatible Deno)
-    // La plupart des SDK renvoient un objet avec arrayBuffer() ou un Blob-like
     const arrayBuffer = await mp3.arrayBuffer();
     const uint8 = new Uint8Array(arrayBuffer);
 
