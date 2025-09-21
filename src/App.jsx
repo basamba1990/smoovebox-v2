@@ -1,6 +1,7 @@
+// src/App.jsx
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext.jsx';
+import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext.jsx';
 import AuthModal from './AuthModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import VideoManagement from './pages/VideoManagement.jsx';
@@ -11,19 +12,13 @@ import EmptyState from './components/EmptyState.jsx';
 import ProfessionalHeader from './components/ProfessionalHeader.jsx';
 import ModernTabs from './components/ModernTabs.jsx';
 import WelcomeAgent from './components/WelcomeAgent.jsx';
+import { useAuth } from './context/AuthContext.jsx';
 import { Button } from './components/ui/button-enhanced.jsx';
 import { Tabs, TabsContent } from './components/ui/tabs.jsx';
 import { supabase, checkSupabaseConnection } from './lib/supabase.js';
 import { Upload, BarChart3, FileText } from 'lucide-react';
 import LoadingScreen from './components/LoadingScreen.jsx';
 import SupabaseDiagnostic from './components/SupabaseDiagnostic.jsx';
-import AuthCallback from './pages/AuthCallback.jsx';
-import ResetPassword from './pages/ResetPassword.jsx';
-import RecordVideo from './pages/record-video.jsx';
-import VideoSuccess from './pages/video-success.jsx';
-import Directory from './pages/directory.jsx';
-import UserRegistration from './components/UserRegistration.jsx';
-import Login from './pages/login.jsx';
 import './App.css';
 import './styles/design-system.css';
 
@@ -34,16 +29,15 @@ function AppContent() {
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState(null);
-  const [connectionStatus, setConnectionStatus] = useState('checking');
-  const { user, loading, signOut, profile } = useAuth();
+  const [connectionStatus, setConnectionStatus] = useState('connected');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(true);
+  const { user, loading, signOut, profile, error: authError, connectionStatus: authConnectionStatus } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
-
-  const isAuthenticated = !!user && !!profile;
 
   const loadDashboardData = async () => {
-    if (!user) {
-      console.log('Aucun utilisateur connecté, aucune donnée à charger');
+    if (!user || !isAuthenticated) {
+      console.log('Aucun utilisateur connecté ou non authentifié, aucune donnée à charger');
       setDashboardData(null);
       return;
     }
@@ -52,15 +46,18 @@ function AppContent() {
       setDashboardLoading(true);
       setDashboardError(null);
       console.log('Chargement des données dashboard pour:', user.id);
-      
+
       let videos = [];
       try {
         const { data: videosData, error: vError } = await supabase
           .from('videos')
-          .select(`*, transcriptions(*)`)
+          .select(`
+            *,
+            transcriptions (*)
+          `)
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });
-        
+          
         if (vError) throw vError;
         videos = videosData;
       } catch (viewError) {
@@ -70,16 +67,16 @@ function AppContent() {
           .select('*')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });
-        
+          
         if (vError) throw vError;
         videos = videosData;
       }
-      
+
       let stats = null;
       try {
         const { data: statsData, error: statsError } = await supabase
           .rpc('get_user_video_stats', { user_id_param: user.id });
-        
+          
         if (statsError) {
           console.warn('Erreur lors de la récupération des statistiques:', statsError);
         } else {
@@ -88,7 +85,7 @@ function AppContent() {
       } catch (statsError) {
         console.warn('Exception lors de la récupération des statistiques:', statsError);
       }
-      
+
       const dashboardData = {
         totalVideos: videos.length,
         recentVideos: videos.slice(0, 5),
@@ -101,7 +98,7 @@ function AppContent() {
           }).length,
           analyzed: videos.filter(v => {
             return v.analysis_result && Object.keys(v.analysis_result).length > 0 || 
-                   (v.analysis && Object.keys(v.analysis).length > 0) || 
+                   (v.analysis && Object.keys(v.analysis).length > 0) ||
                    (v.ai_result && v.ai_result.length > 0);
           }).length,
           failed: videos.filter(v => v.status === 'failed').length
@@ -113,13 +110,13 @@ function AppContent() {
         }).length,
         analysisCount: videos.filter(v => {
           return v.analysis_result && Object.keys(v.analysis_result).length > 0 || 
-                 (v.analysis && Object.keys(v.analysis).length > 0) || 
+                 (v.analysis && Object.keys(v.analysis).length > 0) ||
                  (v.ai_result && v.ai_result.length > 0);
         }).length,
         videoPerformance: stats?.performance_data || [],
         progressStats: stats?.progress_stats || { completed: 0, inProgress: 0, totalTime: 0 }
       };
-      
+
       setDashboardData(dashboardData);
       console.log('Données dashboard chargées avec succès:', dashboardData);
     } catch (err) {
@@ -133,54 +130,61 @@ function AppContent() {
 
   useEffect(() => {
     if (!loading) {
-      if (isAuthenticated) {
+      if (user && profile) {
+        setIsAuthenticated(true);
+        setShowWelcome(false);
         console.log('Utilisateur authentifié avec profil:', user.id, profile);
         if (isAuthModalOpen) {
           setIsAuthModalOpen(false);
         }
-        
-        // Charger les données du dashboard si on est sur le dashboard
-        if (location.pathname === '/dashboard') {
+        if (activeTab === 'dashboard') {
           setTimeout(() => {
             loadDashboardData().catch(err => {
               console.error('Erreur lors du chargement initial des données:', err);
             });
           }, 500);
         }
+      } else {
+        setIsAuthenticated(false);
+        setDashboardData(null);
+        setShowWelcome(true);
       }
     }
-  }, [user, profile, loading, isAuthModalOpen, isAuthenticated, location.pathname]);
+  }, [user, profile, loading, activeTab, isAuthModalOpen]);
 
   useEffect(() => {
-    const checkConnection = async () => {
-      try {
-        console.log('Vérification de la connexion Supabase...');
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Timeout de connexion')), 5000)
-        );
-
-        const connectionResult = await Promise.race([
-          checkSupabaseConnection(),
-          timeoutPromise
-        ]);
-        
-        if (connectionResult.connected) {
-          setConnectionStatus('connected');
-          setSupabaseError(null);
-        } else {
-          console.warn('Connexion Supabase échouée:', connectionResult.error);
-          setConnectionStatus('disconnected');
-          setSupabaseError(connectionResult.error);
-        }
-      } catch (error) {
-        console.error('Erreur lors de la vérification de connexion:', error);
-        setConnectionStatus('disconnected');
-        setSupabaseError(`Erreur de vérification: ${error.message}`);
-      }
-    };
-    
     if (!loading) {
-      checkConnection();
+      const checkConnection = async () => {
+        try {
+          console.log('Vérification de la connexion Supabase...');
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout de connexion')), 5000)
+          );
+          
+          const connectionResult = await Promise.race([
+            checkSupabaseConnection(),
+            timeoutPromise
+          ]);
+          
+          if (connectionResult.connected) {
+            setConnectionStatus('connected');
+            setSupabaseError(null);
+          } else {
+            console.warn('Connexion Supabase échouée:', connectionResult.error);
+            setConnectionStatus('disconnected');
+            setSupabaseError(connectionResult.error);
+          }
+        } catch (error) {
+          console.error('Erreur lors de la vérification de connexion:', error);
+          setConnectionStatus('disconnected');
+          setSupabaseError(`Erreur de vérification: ${error.message}`);
+        }
+      };
+      
+      const connectionTimer = setTimeout(checkConnection, 100);
+      return () => {
+        clearTimeout(connectionTimer);
+      };
     }
   }, [loading]);
 
@@ -188,7 +192,7 @@ function AppContent() {
     let mounted = true;
     let dataTimeout = null;
 
-    if (location.pathname === '/dashboard' && isAuthenticated) {
+    if (activeTab === 'dashboard' && isAuthenticated) {
       dataTimeout = setTimeout(() => {
         if (mounted) {
           loadDashboardData().catch(err => {
@@ -206,19 +210,22 @@ function AppContent() {
         try {
           videosChannel = supabase
             .channel('videos_changes')
-            .on('postgres_changes', {
-              event: '*',
-              schema: 'public',
-              table: 'videos',
-              filter: `user_id=eq.${user.id}`
-            }, payload => {
-              console.log('Changement détecté dans la table videos:', payload);
-              if (mounted) {
-                loadDashboardData().catch(err => {
-                  console.error('Erreur lors du rechargement après changement:', err);
-                });
+            .on('postgres_changes', 
+              { 
+                event: '*', 
+                schema: 'public', 
+                table: 'videos',
+                filter: `user_id=eq.${user.id}` 
+              }, 
+              payload => {
+                console.log('Changement détecté dans la table videos:', payload);
+                if (mounted) {
+                  loadDashboardData().catch(err => {
+                    console.error('Erreur lors du rechargement après changement:', err);
+                  });
+                }
               }
-            })
+            )
             .subscribe((status) => {
               console.log('Statut de souscription aux changements videos:', status);
             });
@@ -241,12 +248,14 @@ function AppContent() {
         }
       };
     }
-  }, [user, connectionStatus, isAuthenticated, location.pathname]);
+  }, [user, activeTab, connectionStatus, isAuthenticated]);
 
   const handleAuthSuccess = (userData) => {
     console.log('Utilisateur authentifié avec succès:', userData.id);
     setIsAuthModalOpen(false);
+    setShowWelcome(false);
     setTimeout(() => {
+      setActiveTab('dashboard');
       navigate('/dashboard');
       loadDashboardData().catch(err => {
         console.error('Erreur après authentification:', err);
@@ -259,12 +268,16 @@ function AppContent() {
       console.log('Déconnexion demandée');
       await signOut();
       setDashboardData(null);
+      setIsAuthenticated(false);
       setActiveTab('dashboard');
+      setShowWelcome(true);
       navigate('/');
     } catch (error) {
       console.error('Erreur de déconnexion:', error);
       setDashboardData(null);
+      setIsAuthenticated(false);
       setActiveTab('dashboard');
+      setShowWelcome(true);
       navigate('/');
     }
   };
@@ -274,7 +287,7 @@ function AppContent() {
     setSupabaseError(null);
 
     try {
-      const timeoutPromise = new Promise((_, reject) =>
+      const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Timeout de reconnexion')), 5000)
       );
       
@@ -296,14 +309,33 @@ function AppContent() {
     }
   };
 
+  useEffect(() => {
+    let safetyTimeout = null;
+    
+    if (loading) {
+      safetyTimeout = setTimeout(() => {
+        console.warn('Timeout de chargement déclenché après 15 secondes');
+        if (loading) {
+          window.location.reload();
+        }
+      }, 15000);
+    }
+    
+    return () => {
+      if (safetyTimeout) {
+        clearTimeout(safetyTimeout);
+      }
+    };
+  }, [loading]);
+
   if (loading) {
-    return <LoadingScreen message="Chargement de l'application..." />;
+    return <LoadingScreen />;
   }
 
   if (supabaseError) {
     return (
-      <SupabaseDiagnostic
-        error={supabaseError}
+      <SupabaseDiagnostic 
+        error={supabaseError} 
         onRetry={handleRetryConnection}
         onContinue={() => setSupabaseError(null)}
       />
@@ -311,126 +343,146 @@ function AppContent() {
   }
 
   return (
-    <div className="app-container">
-      <Routes>
-        <Route path="/" element={
-          !isAuthenticated ? (
-            <>
-              <WelcomeAgent onOpenAuthModal={() => setIsAuthModalOpen(true)} />
-              <AuthModal
-                isOpen={isAuthModalOpen}
-                onClose={() => setIsAuthModalOpen(false)}
-                onAuthSuccess={handleAuthSuccess}
-              />
-            </>
-          ) : (
-            <Navigate to="/dashboard" replace />
-          )
-        } />
-        
-        <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" replace />} />
-        <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/register" element={!isAuthenticated ? <UserRegistration /> : <Navigate to="/dashboard" replace />} />
-        
-        <Route path="/record-video" element={
-          isAuthenticated ? <RecordVideo /> : <Navigate to="/" replace />
-        } />
-        
-        <Route path="/video-success" element={
-          isAuthenticated ? <VideoSuccess /> : <Navigate to="/" replace />
-        } />
-        
-        <Route path="/directory" element={
-          isAuthenticated ? <Directory /> : <Navigate to="/" replace />
-        } />
-        
-        <Route path="/dashboard" element={
-          isAuthenticated ? (
-            <div className="dashboard-layout">
-              <ProfessionalHeader
-                user={user}
-                profile={profile}
-                connectionStatus={connectionStatus}
-                onSignOut={handleSignOut}
-                onAuthModalOpen={() => setIsAuthModalOpen(true)}
-              />
-              
-              <div className="main-content">
-                <ModernTabs 
-                  activeTab={activeTab} 
-                  onTabChange={setActiveTab}
-                  showUploadButton={true}
-                  onUploadClick={() => navigate('/record-video')}
-                />
-                
-                <div className="tab-content">
-                  {activeTab === 'dashboard' && (
-                    <>
-                      {dashboardLoading ? (
-                        <LoadingScreen
-                          message="Chargement des données du dashboard..."
-                          showReloadButton={false}
-                        />
-                      ) : dashboardError ? (
-                        <EmptyState
-                          type="error"
-                          onAction={() => loadDashboardData()}
-                          loading={dashboardLoading}
-                        />
-                      ) : !dashboardData || (dashboardData.totalVideos === 0) ? (
-                        <EmptyState
-                          type="dashboard"
-                          onAction={() => navigate('/record-video')}
-                          actionLabel="Commencer l'expérience"
-                        />
-                      ) : (
-                        <Dashboard 
-                          data={dashboardData}
-                          loading={dashboardLoading}
-                        />
-                      )}
-                    </>
-                  )}
-                  
-                  {activeTab === 'videos' && (
+    <Routes>
+      <Route path="/" element={
+        showWelcome && !isAuthenticated ? (
+          <div>
+            <WelcomeAgent onOpenAuthModal={() => setIsAuthModalOpen(true)} />
+            <AuthModal 
+              isOpen={isAuthModalOpen} 
+              onClose={() => setIsAuthModalOpen(false)}
+              onSuccess={handleAuthSuccess}
+            />
+          </div>
+        ) : (
+          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
+            <ProfessionalHeader 
+              user={user} 
+              profile={profile} 
+              connectionStatus={connectionStatus}
+              onSignOut={handleSignOut}
+              onAuthModalOpen={() => setIsAuthModalOpen(true)}
+            />
+            <main className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
+              <div className="space-y-6 sm:space-y-8">
+                <ModernTabs activeTab={activeTab} onTabChange={setActiveTab} user={user} />
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                  <TabsContent value="dashboard" className="space-y-6">
+                    {dashboardLoading ? (
+                      <LoadingScreen 
+                        message="Chargement des données du dashboard..." 
+                        showReloadButton={false}
+                        onCancel={() => {
+                          setDashboardLoading(false);
+                          loadDashboardData();
+                        }}
+                      />
+                    ) : dashboardError ? (
+                      <EmptyState 
+                        type="error" 
+                        onAction={() => loadDashboardData()} 
+                        loading={dashboardLoading}
+                      />
+                    ) : !dashboardData || (dashboardData.totalVideos === 0) ? (
+                      <EmptyState 
+                        type="dashboard" 
+                        onAction={() => setActiveTab('upload')}
+                      />
+                    ) : (
+                      <div className="space-y-6">
+                        <Dashboard data={dashboardData} />
+                      </div>
+                    )}
+                  </TabsContent>
+                  <TabsContent value="videos" className="space-y-6">
                     <VideoManagement />
-                  )}
-                  
-                  {activeTab === 'upload' && (
+                  </TabsContent>
+                  <TabsContent value="upload" className="space-y-6">
                     <EnhancedVideoUploader />
-                  )}
-                  
-                  {activeTab === 'progress' && (
-                    <ProgressTracking />
-                  )}
-                </div>
+                  </TabsContent>
+                  <TabsContent value="progress" className="space-y-6">
+                    <ProgressTracking 
+                      userId={user.id} 
+                      userProfile={profile} 
+                      isVisible={true}
+                    />
+                  </TabsContent>
+                </Tabs>
               </div>
-              
-              <AuthModal
-                isOpen={isAuthModalOpen}
-                onClose={() => setIsAuthModalOpen(false)}
-                onAuthSuccess={handleAuthSuccess}
-              />
-            </div>
-          ) : (
-            <Navigate to="/" replace />
-          )
-        } />
-      </Routes>
-    </div>
+            </main>
+            <AuthModal 
+              isOpen={isAuthModalOpen} 
+              onClose={() => setIsAuthModalOpen(false)}
+              onSuccess={handleAuthSuccess}
+            />
+          </div>
+        )
+      } />
+      <Route path="/dashboard" element={
+        isAuthenticated ? (
+          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
+            <ProfessionalHeader 
+              user={user} 
+              profile={profile} 
+              connectionStatus={connectionStatus}
+              onSignOut={handleSignOut}
+              onAuthModalOpen={() => setIsAuthModalOpen(true)}
+            />
+            <main className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
+              <div className="space-y-6 sm:space-y-8">
+                <ModernTabs activeTab={activeTab} onTabChange={setActiveTab} user={user} />
+                <Tabs value="dashboard" className="w-full">
+                  <TabsContent value="dashboard" className="space-y-6">
+                    {dashboardLoading ? (
+                      <LoadingScreen 
+                        message="Chargement des données du dashboard..." 
+                        showReloadButton={false}
+                        onCancel={() => {
+                          setDashboardLoading(false);
+                          loadDashboardData();
+                        }}
+                      />
+                    ) : dashboardError ? (
+                      <EmptyState 
+                        type="error" 
+                        onAction={() => loadDashboardData()} 
+                        loading={dashboardLoading}
+                      />
+                    ) : !dashboardData || (dashboardData.totalVideos === 0) ? (
+                      <EmptyState 
+                        type="dashboard" 
+                        onAction={() => setActiveTab('upload')}
+                      />
+                    ) : (
+                      <div className="space-y-6">
+                        <Dashboard data={dashboardData} />
+                      </div>
+                    )}
+                  </TabsContent>
+                </Tabs>
+              </div>
+            </main>
+            <AuthModal 
+              isOpen={isAuthModalOpen} 
+              onClose={() => setIsAuthModalOpen(false)}
+              onSuccess={handleAuthSuccess}
+            />
+          </div>
+        ) : (
+          <Navigate to="/" replace />
+        )
+      } />
+    </Routes>
   );
 }
 
 function App() {
   return (
-    <ErrorBoundaryEnhanced FallbackComponent={SupabaseErrorFallback}>
-      <AuthProvider>
-        <BrowserRouter>
-          <AppContent />
-        </BrowserRouter>
-      </AuthProvider>
-    </ErrorBoundaryEnhanced>
+    <AuthProvider>
+      <ErrorBoundaryEnhanced FallbackComponent={SupabaseErrorFallback}>
+        <AppContent />
+      </ErrorBoundaryEnhanced>
+    </AuthProvider>
   );
 }
 
