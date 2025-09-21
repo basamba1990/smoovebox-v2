@@ -1,3 +1,4 @@
+// src/components/WelcomeAgent.jsx
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button-enhanced.jsx';
 import { useNavigate } from 'react-router-dom';
@@ -121,12 +122,6 @@ const WelcomeAgent = ({ onOpenAuthModal }) => {
             className="bg-gradient-to-r from-green-600 to-green-800 hover:from-green-700 hover:to-green-900 text-white font-bold py-4 px-8 rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
           >
             Se connecter
-          </Button>
-          <Button
-            onClick={() => navigate('/dashboard')}
-            className="bg-gradient-to-r from-purple-600 to-purple-800 hover:from-purple-700 hover:to-purple-900 text-white font-bold py-4 px-8 rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
-          >
-            Tableau de bord
           </Button>
         </div>
         <audio
