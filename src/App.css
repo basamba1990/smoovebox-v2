@@ -3,11 +3,13 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ----------------- THEME VARIABLES ----------------- */
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -26,11 +28,13 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -41,6 +45,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* ----------------- LIGHT THEME ----------------- */
 :root {
   --radius: 0.625rem;
   --background: oklch(1 0 0);
@@ -61,11 +66,13 @@
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
+
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
+
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -76,6 +83,7 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
+/* ----------------- DARK THEME ----------------- */
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
@@ -95,11 +103,13 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
+
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
+
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -110,6 +120,7 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* ----------------- BASE ----------------- */
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -117,4 +128,50 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* ----------------- APP COMPONENTS ----------------- */
+.app-container {
+  min-height: 100vh;
+  background-color: var(--background);
+  color: var(--foreground);
+  transition: background-color 0.3s, color 0.3s;
+}
+
+.dashboard-error,
+.empty-dashboard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+  background: var(--card);
+  color: var(--foreground);
+  border-radius: 8px;
+  margin: 2rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  transition: background 0.3s, color 0.3s, box-shadow 0.3s;
+}
+
+.dashboard-error p,
+.empty-dashboard p {
+  margin-bottom: 1rem;
+  color: var(--muted-foreground);
+}
+
+.dashboard-error button,
+.empty-dashboard button {
+  padding: 0.5rem 1rem;
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.dashboard-error button:hover,
+.empty-dashboard button:hover {
+  background-color: oklch(0.7 0 0); /* hover plus clair */
 }
