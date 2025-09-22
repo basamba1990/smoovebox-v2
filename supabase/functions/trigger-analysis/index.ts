@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${Deno.env.get('MY_SUPABASE_ANON_KEY')}` // Utilisation de la clé anonyme avec préfixe MY_
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}` 
       },
       body: JSON.stringify({ videoId: videoId })
     });
