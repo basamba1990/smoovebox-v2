@@ -6,6 +6,7 @@ import VideoPlayer from '../components/VideoPlayer';
 import VideoAnalysisResults from '../components/VideoAnalysisResults';
 import TranscriptionViewer from '../components/TranscriptionViewer';
 import VideoProcessingStatus from '../components/VideoProcessingStatus';
+import { Button } from '../components/ui/button-enhanced.jsx';
 
 const VideoManagement = () => {
   const { user } = useAuth();
@@ -15,6 +16,7 @@ const VideoManagement = () => {
   const [error, setError] = useState(null);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [processingVideoId, setProcessingVideoId] = useState(null);
+  const [analysisProgress, setAnalysisProgress] = useState({});
   const channelRef = useRef(null);
   const mountedRef = useRef(true);
 
@@ -246,6 +248,156 @@ const VideoManagement = () => {
     } catch (e) {
       console.error('Erreur de construction de l\'URL:', e);
       return null;
+    }
+  };
+
+  // NOUVELLE FONCTION : Déclenchement manuel de l'analyse
+  const triggerManualAnalysis = async (video) => {
+    if (!video) return;
+
+    try {
+      setProcessingVideoId(video.id);
+      setAnalysisProgress(prev => ({
+        ...prev,
+        [video.id]: { step: 'Démarrage de l\'analyse...', progress: 10 }
+      }));
+
+      toast.loading('Déclenchement de l\'analyse IA...', { id: 'manual-analysis-toast' });
+
+      const { data: session, error: authError } = await supabase.auth.getSession();
+      if (authError || !session?.session?.access_token) {
+        throw new Error('Session non valide, veuillez vous reconnecter');
+      }
+
+      // Étape 1: Transcription
+      setAnalysisProgress(prev => ({
+        ...prev,
+        [video.id]: { step: 'Transcription en cours...', progress: 30 }
+      }));
+
+      const transcribeResponse = await fetch(
+        'https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/transcribe-video',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.session.access_token}`,
+          },
+          body: JSON.stringify({ video_id: video.id }),
+        }
+      );
+
+      if (!transcribeResponse.ok) {
+        let errorMessage = 'Erreur lors de la transcription';
+        try {
+          const errorResult = await transcribeResponse.json();
+          errorMessage = errorResult.error || errorResult.details || errorMessage;
+        } catch (e) {
+          errorMessage = `${transcribeResponse.status} ${transcribeResponse.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const transcribeResult = await transcribeResponse.json();
+      if (transcribeResult.error) {
+        throw new Error(transcribeResult.error);
+      }
+
+      setAnalysisProgress(prev => ({
+        ...prev,
+        [video.id]: { step: 'Transcription terminée, analyse en cours...', progress: 60 }
+      }));
+
+      toast.success('Transcription terminée, analyse IA en cours...', { id: 'manual-analysis-toast' });
+
+      // Attendre que la transcription soit complète avant l'analyse
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      // Étape 2: Analyse
+      setAnalysisProgress(prev => ({
+        ...prev,
+        [video.id]: { step: 'Analyse IA en cours...', progress: 80 }
+      }));
+
+      const analyzeResponse = await fetch(
+        'https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/analyze-transcription',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.session.access_token}`,
+          },
+          body: JSON.stringify({ video_id: video.id }),
+        }
+      );
+
+      if (!analyzeResponse.ok) {
+        let errorMessage = 'Erreur lors de l\'analyse';
+        try {
+          const errorResult = await analyzeResponse.json();
+          errorMessage = errorResult.error || errorMessage;
+        } catch (e) {
+          errorMessage = `${analyzeResponse.status} ${analyzeResponse.statusText}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const analyzeResult = await analyzeResponse.json();
+      if (analyzeResult.error) {
+        throw new Error(analyzeResult.error);
+      }
+
+      setAnalysisProgress(prev => ({
+        ...prev,
+        [video.id]: { step: 'Analyse terminée !', progress: 100 }
+      }));
+
+      toast.success('Analyse IA terminée avec succès !', { id: 'manual-analysis-toast' });
+
+      // Mettre à jour l'interface
+      setVideos((prev) =>
+        prev.map((v) => (v.id === video.id ? { ...v, status: 'analyzed' } : v))
+      );
+      setSelectedVideo((prev) =>
+        prev?.id === video.id ? { ...prev, status: 'analyzed' } : prev
+      );
+
+      // Rafraîchir les données après un court délai
+      setTimeout(() => {
+        if (mountedRef.current) {
+          fetchVideos();
+          fetchStats();
+        }
+      }, 2000);
+
+    } catch (err) {
+      console.error('Erreur lors de l\'analyse manuelle:', err);
+      let errorMessage = err.message;
+
+      if (errorMessage.includes('Échec de confirmation de la mise à jour')) {
+        errorMessage = 'Problème de connexion à la base de données. Veuillez réessayer.';
+      }
+
+      toast.error(`Erreur: ${errorMessage}`, { id: 'manual-analysis-toast' });
+
+      setVideos((prev) =>
+        prev.map((v) =>
+          v.id === video.id ? { ...v, status: 'failed', error_message: errorMessage } : v
+        )
+      );
+      setSelectedVideo((prev) =>
+        prev?.id === video.id ? { ...prev, status: 'failed', error_message: errorMessage } : prev
+      );
+    } finally {
+      setProcessingVideoId(null);
+      // Nettoyer la progression après 3 secondes
+      setTimeout(() => {
+        setAnalysisProgress(prev => {
+          const newProgress = { ...prev };
+          delete newProgress[video.id];
+          return newProgress;
+        });
+      }, 3000);
     }
   };
 
@@ -668,6 +820,22 @@ const VideoManagement = () => {
                   {video.status === 'failed' && video.error_message && (
                     <p className="text-xs text-red-500 mt-1 truncate">{video.error_message}</p>
                   )}
+                  
+                  {/* Indicateur de progression pour l'analyse manuelle */}
+                  {analysisProgress[video.id] && (
+                    <div className="mt-2 bg-blue-50 p-2 rounded">
+                      <div className="flex justify-between text-xs mb-1">
+                        <span>{analysisProgress[video.id].step}</span>
+                        <span>{analysisProgress[video.id].progress}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-1.5">
+                        <div 
+                          className="bg-blue-600 h-1.5 rounded-full" 
+                          style={{ width: `${analysisProgress[video.id].progress}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -713,38 +881,53 @@ const VideoManagement = () => {
                 </div>
 
                 <div className="flex flex-wrap gap-2 mb-4">
+                  {/* NOUVEAU BOUTON : Analyse complète */}
+                  <Button
+                    onClick={() => triggerManualAnalysis(selectedVideo)}
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+                    disabled={processingVideoId === selectedVideo.id}
+                  >
+                    {processingVideoId === selectedVideo.id ? (
+                      <>🔍 Analyse en cours...</>
+                    ) : (
+                      <>🤖 Analyser avec IA</>
+                    )}
+                  </Button>
+
                   {selectedVideo.status !== 'processing' &&
                     selectedVideo.status !== 'analyzing' &&
                     selectedVideo.status !== 'transcribing' && (
                       <>
-                        <button
-                          onClick={() => transcribeVideo(selectedVideo)}
-                          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-                          disabled={processingVideoId === selectedVideo.id || selectedVideo.hasTranscription}
-                        >
-                          {processingVideoId === selectedVideo.id
-                            ? 'Transcription en cours...'
-                            : 'Transcrire la vidéo'}
-                        </button>
+                        {!selectedVideo.hasTranscription && (
+                          <Button
+                            onClick={() => transcribeVideo(selectedVideo)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                            disabled={processingVideoId === selectedVideo.id}
+                          >
+                            {processingVideoId === selectedVideo.id
+                              ? 'Transcription en cours...'
+                              : 'Transcrire la vidéo'}
+                          </Button>
+                        )}
                         {selectedVideo.hasTranscription && !selectedVideo.hasAnalysis && (
-                          <button
+                          <Button
                             onClick={() => analyzeVideo(selectedVideo)}
-                            className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+                            className="bg-purple-600 hover:bg-purple-700 text-white"
                             disabled={processingVideoId === selectedVideo.id}
                           >
                             {processingVideoId === selectedVideo.id
                               ? 'Analyse en cours...'
-                              : 'Analyser la vidéo'}
-                          </button>
+                              : 'Analyser la transcription'}
+                          </Button>
                         )}
                       </>
                     )}
-                  <button
+                  <Button
                     onClick={() => deleteVideo(selectedVideo)}
-                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                    className="bg-red-600 hover:bg-red-700 text-white"
                   >
                     Supprimer
-                  </button>
+                  </Button>
                 </div>
 
                 {selectedVideo.hasTranscription && (
@@ -766,8 +949,8 @@ const VideoManagement = () => {
                   selectedVideo.status !== 'failed' && (
                     <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded">
                       <p>
-                        Aucune transcription ou analyse disponible pour cette vidéo. Lancez la
-                        transcription ou l'analyse ci-dessus.
+                        Aucune transcription ou analyse disponible pour cette vidéo. 
+                        Utilisez le bouton "Analyser avec IA" pour lancer le processus complet.
                       </p>
                     </div>
                   )}
