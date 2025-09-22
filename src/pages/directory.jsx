@@ -12,10 +12,12 @@ const Directory = () => {
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('all');
   const [selectedVideoId, setSelectedVideoId] = useState(null);
+
   const supabase = useSupabaseClient();
   const user = useUser();
   const navigate = useNavigate();
 
+  // Récupération des profils selon filtre
   useEffect(() => {
     fetchUsers();
   }, [filter]);
@@ -27,16 +29,14 @@ const Directory = () => {
 
       let query = supabase
         .from('profiles')
-        .select('id, user_id, username, full_name, avatar_url, bio, sex, passions, clubs, football_interest, created_at');
+        .select(
+          'id, user_id, username, full_name, avatar_url, bio, sex, passions, clubs, football_interest, created_at'
+        );
 
-      // Exclure l'utilisateur connecté si authentifié
-      if (user) {
-        query = query.neq('user_id', user.id);
-        console.log('Récupération des profils pour utilisateur authentifié:', user.id);
-      } else {
-        console.log('Récupération des profils en mode anonyme');
-      }
+      // Exclure l'utilisateur connecté
+      if (user) query = query.neq('user_id', user.id);
 
+      // Appliquer filtres
       if (filter === 'football') {
         query = query.or('football_interest.eq.true,passions.cs.{football}');
       } else if (filter === 'passions') {
@@ -47,62 +47,64 @@ const Directory = () => {
 
       if (error) {
         console.error('Erreur récupération profils:', error);
-        if (error.code === '42501') {
-          setError('Permissions insuffisantes pour accéder à l\'annuaire.');
-          toast.error('Permissions insuffisantes.');
-        } else if (error.code === 'PGRST116') {
-          setError('Aucune donnée disponible dans l\'annuaire.');
-          toast.error('Aucune donnée disponible.');
-        } else {
-          setError('Impossible de charger l\'annuaire.');
-          toast.error('Erreur lors du chargement de l\'annuaire.');
-        }
-        throw error;
+        setError('Impossible de charger l’annuaire.');
+        toast.error('Erreur lors du chargement de l’annuaire.');
+        return;
       }
 
       setUsers(data || []);
-      console.log('Profils récupérés:', data?.length || 0);
     } catch (err) {
       console.error('Erreur récupération profils:', err);
-      setError('Impossible de charger l\'annuaire.');
-      toast.error('Erreur lors du chargement de l\'annuaire.');
+      setError('Impossible de charger l’annuaire.');
+      toast.error('Erreur lors du chargement de l’annuaire.');
     } finally {
       setLoading(false);
     }
   };
 
+  // Gestion du bouton Connecter
   const handleConnect = async (targetUserId) => {
     if (!user) {
       toast.error('Veuillez vous connecter pour initier une mise en relation.');
       navigate('/auth');
       return;
     }
+
     if (!selectedVideoId) {
-      toast.error('Veuillez sélectionner une vidéo à associer à la mise en relation.');
+      toast.error('Veuillez sélectionner une vidéo avant de connecter un utilisateur.');
       return;
     }
 
     try {
+      // Récupérer la session pour le JWT
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !session) {
-        console.error('Erreur session dans handleConnect:', sessionError);
+        console.error('Erreur session:', sessionError);
         toast.error('Session invalide. Veuillez vous reconnecter.');
         navigate('/auth');
         return;
       }
-      console.log('Token JWT envoyé à match-profiles:', session.access_token);
 
-      const { error } = await supabase.functions.invoke('match-profiles', {
-        body: {
+      // Appel de la fonction Edge
+      const { data, error } = await supabase.functions.invoke('match-profiles', {
+        body: JSON.stringify({
           user_id: user.id,
           target_user_id: targetUserId,
           video_id: selectedVideoId,
-        },
+        }),
         headers: {
           Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
         },
       });
-      if (error) throw error;
+
+      if (error) {
+        console.error('Erreur invocation match-profiles:', error);
+        toast.error('Impossible de lancer la mise en relation.');
+        return;
+      }
+
+      console.log('Réponse match-profiles:', data);
       toast.success('Mise en relation initiée avec succès !');
     } catch (err) {
       console.error('Erreur mise en relation:', err);
@@ -110,12 +112,9 @@ const Directory = () => {
     }
   };
 
+  // Affichage loading / erreur
   if (loading) {
-    return (
-      <div className="text-white text-center mt-10">
-        Chargement de l&apos;annuaire...
-      </div>
-    );
+    return <div className="text-white text-center mt-10">Chargement de l&apos;annuaire...</div>;
   }
 
   if (error) {
@@ -133,8 +132,10 @@ const Directory = () => {
     <div className="p-8 min-h-screen bg-black text-white">
       <h1 className="text-3xl font-bold mb-6">Annuaire des Participants</h1>
 
+      {/* Sélecteur vidéo */}
       <VideoPicker onChange={setSelectedVideoId} />
 
+      {/* Filtres */}
       <div className="mb-6">
         <h3 className="text-lg text-white mb-2">Filtrer par :</h3>
         <div className="flex gap-2 flex-wrap">
@@ -159,15 +160,12 @@ const Directory = () => {
         </div>
       </div>
 
+      {/* Liste des utilisateurs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {users.map((u) => (
           <div key={u.id} className="bg-white/10 backdrop-blur-md p-4 rounded-lg border border-gray-200">
-            <h3 className="text-white font-medium">
-              {u.username || `Utilisateur ${String(u.user_id).slice(0, 8)}`}
-            </h3>
-            <p className="text-gray-200">
-              Sexe : {u.sex || 'Non spécifié'}
-            </p>
+            <h3 className="text-white font-medium">{u.username || `Utilisateur ${String(u.user_id).slice(0, 8)}`}</h3>
+            <p className="text-gray-200">Sexe : {u.sex || 'Non spécifié'}</p>
             <p className="text-gray-200">
               Passions : {Array.isArray(u.passions) && u.passions.length > 0 ? u.passions.join(', ') : 'Aucune'}
             </p>
@@ -175,6 +173,7 @@ const Directory = () => {
               Clubs : {Array.isArray(u.clubs) && u.clubs.length > 0 ? u.clubs.join(', ') : 'Aucun'}
             </p>
             {u.football_interest && <p className="text-blue-400">🎯 Passionné de football</p>}
+
             <Button
               onClick={() => handleConnect(u.user_id)}
               className="mt-2 bg-orange-500 hover:bg-orange-600"
@@ -187,9 +186,7 @@ const Directory = () => {
       </div>
 
       {users.length === 0 && (
-        <div className="text-center mt-10 text-gray-400">
-          Aucun participant trouvé avec ce filtre.
-        </div>
+        <div className="text-center mt-10 text-gray-400">Aucun participant trouvé avec ce filtre.</div>
       )}
     </div>
   );
