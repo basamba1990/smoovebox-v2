@@ -15,7 +15,7 @@ import VideoSuccess from '@/pages/video-success.jsx';
 import Directory from '@/pages/directory.jsx';
 import Login from '@/pages/login.jsx';
 import ProfessionalHeader from './components/ProfessionalHeader.jsx';
-import Home from '@/pages/Home.jsx'; // Nouvelle importation
+import Home from '@/pages/home.jsx'; // Nouvelle importation
 import './App.css';
 import './styles/design-system.css';
 
