@@ -34,8 +34,8 @@ Deno.serve(async (req) => {
     console.log('Fonction transcribe-video appelée')
     
     // Initialiser les variables d'environnement
-    const supabaseUrl = Deno.env.get('MY_SUPABASE_URL')
-    const supabaseServiceKey = Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY')
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
 
     console.log('Clé de service Supabase:', supabaseServiceKey ? 'Définie' : 'Non définie');
