@@ -15,6 +15,7 @@ import VideoSuccess from '@/pages/video-success.jsx';
 import Directory from '@/pages/directory.jsx';
 import Login from '@/pages/login.jsx';
 import ProfessionalHeader from './components/ProfessionalHeader.jsx';
+import Home from '@/pages/Home.jsx'; // Nouvelle importation
 import './App.css';
 import './styles/design-system.css';
 
@@ -221,7 +222,7 @@ function AppContent() {
     console.log('Utilisateur authentifié avec succès:', userData.id);
     setIsAuthModalOpen(false);
     setTimeout(() => {
-      navigate('/record-video');
+      navigate('/');
       loadDashboardData().catch(err => {
         console.error('Erreur après authentification:', err);
       });
@@ -286,15 +287,27 @@ function AppContent() {
     <>
       <Routes>
         <Route path="/" element={
-          user ? <Navigate to="/record-video" replace /> : <WelcomeAgent onOpenAuthModal={() => setIsAuthModalOpen(true)} />
+          user ? 
+            <RequireAuth>
+              <Home 
+                dashboardData={dashboardData}
+                loading={dashboardLoading}
+                error={dashboardError}
+                onRetry={loadDashboardData}
+                user={user}
+                profile={profile}
+                connectionStatus={connectionStatus}
+                onSignOut={handleSignOut}
+                onAuthModalOpen={() => setIsAuthModalOpen(true)}
+              />
+            </RequireAuth>
+          : 
+            <WelcomeAgent onOpenAuthModal={() => setIsAuthModalOpen(true)} />
         } />
         <Route path="/login" element={<Login />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/record-video" element={<RecordVideo />} />
-        <Route path="/video-success" element={<VideoSuccess />} />
-        <Route path="/directory" element={<Directory />} />
-        <Route path="/dashboard" element={
+        <Route path="/record-video" element={
           <RequireAuth>
             <div className="app-container">
               <ProfessionalHeader 
@@ -304,38 +317,13 @@ function AppContent() {
                 onSignOut={handleSignOut} 
                 onAuthModalOpen={() => setIsAuthModalOpen(true)} 
               />
-              {dashboardLoading ? (
-                <LoadingScreen 
-                  message="Chargement des données du dashboard..." 
-                  showReloadButton={false} 
-                  onCancel={() => {
-                    setDashboardLoading(false);
-                    loadDashboardData();
-                  }} 
-                />
-              ) : dashboardError ? (
-                <div className="dashboard-error">
-                  <p>Erreur lors du chargement des données: {dashboardError}</p>
-                  <button onClick={loadDashboardData}>Réessayer</button>
-                </div>
-              ) : !dashboardData || dashboardData.totalVideos === 0 ? (
-                <div className="empty-dashboard">
-                  <p>Aucune vidéo trouvée. Commencez par enregistrer votre première vidéo!</p>
-                  <button onClick={() => navigate('/record-video')}>
-                    Commencer l'enregistrement
-                  </button>
-                </div>
-              ) : (
-                <Dashboard 
-                  dashboardData={dashboardData}
-                  loading={dashboardLoading}
-                  error={dashboardError}
-                  onRetry={loadDashboardData}
-                />
-              )}
+              <RecordVideo />
             </div>
           </RequireAuth>
         } />
+        <Route path="/video-success" element={<VideoSuccess />} />
+        <Route path="/directory" element={<Directory />} />
+        <Route path="/dashboard" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       
