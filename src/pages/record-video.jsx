@@ -1,4 +1,3 @@
-// src/pages/record-video.jsx
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -13,6 +12,8 @@ const RecordVideo = () => {
   const [countdown, setCountdown] = useState(0);
   const [error, setError] = useState(null);
   const [tags, setTags] = useState('');
+  const [analysisProgress, setAnalysisProgress] = useState(null);
+  const [uploadedVideoId, setUploadedVideoId] = useState(null);
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
@@ -81,6 +82,57 @@ const RecordVideo = () => {
     };
   }, [navigate]);
 
+  // NOUVEAU : Vérification du statut de l'analyse
+  useEffect(() => {
+    if (!uploadedVideoId) return;
+
+    const checkAnalysisStatus = async () => {
+      try {
+        const { data: video, error } = await supabase
+          .from('videos')
+          .select('status, analysis_result, error_message')
+          .eq('id', uploadedVideoId)
+          .single();
+
+        if (error) throw error;
+
+        switch (video.status) {
+          case 'uploaded':
+            setAnalysisProgress('📥 Vidéo uploadée, en attente de traitement...');
+            break;
+          case 'processing':
+            setAnalysisProgress('🔍 Transcription en cours...');
+            break;
+          case 'transcribed':
+            setAnalysisProgress('🤖 Analyse IA en cours...');
+            break;
+          case 'analyzed':
+            setAnalysisProgress('✅ Analyse terminée !');
+            toast.success('Votre vidéo a été analysée avec succès !');
+            // Rediriger vers la page de succès après 3 secondes
+            setTimeout(() => {
+              navigate(`/video-success?id=${uploadedVideoId}`);
+            }, 3000);
+            break;
+          case 'failed':
+            setAnalysisProgress(`❌ Erreur: ${video.error_message}`);
+            toast.error('Erreur lors de l\'analyse de la vidéo.');
+            break;
+          default:
+            setAnalysisProgress('⏳ En attente de traitement...');
+        }
+      } catch (error) {
+        console.error('Erreur vérification statut:', error);
+      }
+    };
+
+    const interval = setInterval(() => {
+      checkAnalysisStatus();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [uploadedVideoId, navigate]);
+
   const stopStream = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
@@ -133,10 +185,12 @@ const RecordVideo = () => {
     setError(null);
     setCountdown(3);
 
+    // Compte à rebours visuel amélioré
     for (let i = 3; i > 0; i--) {
+      setCountdown(i);
       await new Promise(res => setTimeout(res, 1000));
-      setCountdown(i - 1);
     }
+    setCountdown(0);
 
     try {
       const stream =
@@ -176,6 +230,9 @@ const RecordVideo = () => {
 
       mediaRecorderRef.current.start();
       setRecording(true);
+      
+      // Feedback visuel pendant l'enregistrement
+      toast.success('Enregistrement en cours... Parlez maintenant !');
     } catch (err) {
       console.error('Erreur démarrage enregistrement:', err);
       setError(`Impossible de démarrer l'enregistrement: ${err.message}`);
@@ -187,6 +244,7 @@ const RecordVideo = () => {
     if (mediaRecorderRef.current && recording) {
       mediaRecorderRef.current.stop();
       setRecording(false);
+      toast.success('Enregistrement terminé !');
     }
   };
 
@@ -199,6 +257,7 @@ const RecordVideo = () => {
 
     setUploading(true);
     setError(null);
+    setAnalysisProgress('📤 Upload de la vidéo...');
 
     try {
       // Vérifier et rafraîchir la session
@@ -219,6 +278,7 @@ const RecordVideo = () => {
       console.log('Chemin de stockage:', pathInBucket, 'User ID:', user.id);
 
       // Upload direct
+      setAnalysisProgress('📤 Envoi de la vidéo...');
       console.log('Début de l\'upload dans le bucket videos...');
       const { error: uploadError } = await supabase.storage
         .from('videos')
@@ -229,22 +289,23 @@ const RecordVideo = () => {
         });
 
       if (uploadError) {
-        console.error('Erreur d\'upload dans storage:', uploadError);
+        console.error('Erreur d'upload dans storage:', uploadError);
         throw new Error(`Échec de l'upload: ${uploadError.message}`);
       }
       console.log('Upload réussi dans le bucket videos.');
 
       // Générer une URL signée
-      console.log('Génération de l\'URL signée...');
+      console.log('Génération de l'URL signée...');
       const { data: signedUrl, error: urlError } = await supabase.storage
         .from('videos')
         .createSignedUrl(pathInBucket, 365 * 24 * 60 * 60);
 
       if (urlError) {
-        console.warn('Erreur lors de la génération de l\'URL signée:', urlError);
+        console.warn('Erreur lors de la génération de l'URL signée:', urlError);
       }
 
       // Insérer dans la table videos
+      setAnalysisProgress('💾 Enregistrement dans la base...');
       console.log('Insertion dans la table videos...');
       const { data: videoData, error: insertError } = await supabase
         .from('videos')
@@ -264,16 +325,40 @@ const RecordVideo = () => {
         .single();
 
       if (insertError) {
-        console.error('Erreur lors de l\'insertion dans videos:', insertError);
+        console.error('Erreur lors de l'insertion dans videos:', insertError);
         throw new Error(`Erreur base de données: ${insertError.message}`);
       }
       console.log('Insertion réussie:', videoData);
 
-      toast.success('Vidéo envoyée avec succès !');
-      navigate(`/video-success?id=${videoData.id}`);
+      setUploadedVideoId(videoData.id);
+      setAnalysisProgress('🚀 Démarrage de l'analyse IA...');
+
+      // Déclencher l'analyse automatiquement
+      try {
+        const response = await fetch('https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/transcribe-video', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ video_id: videoData.id }),
+        });
+
+        if (!response.ok) {
+          console.warn('Erreur lors du déclenchement de l'analyse automatique');
+        } else {
+          console.log('Analyse automatique déclenchée avec succès');
+        }
+      } catch (analysisError) {
+        console.warn('Erreur analyse automatique:', analysisError);
+      }
+
+      toast.success('Vidéo envoyée avec succès ! Analyse en cours...');
+
     } catch (err) {
       console.error('Erreur upload:', err);
       setError(`Erreur lors de l'upload: ${err.message}`);
+      setAnalysisProgress(null);
       toast.error('Erreur lors de l\'upload.');
     } finally {
       setUploading(false);
@@ -284,75 +369,169 @@ const RecordVideo = () => {
     if (recordedVideo?.url) URL.revokeObjectURL(recordedVideo.url);
     setRecordedVideo(null);
     setError(null);
+    setAnalysisProgress(null);
+    setUploadedVideoId(null);
     requestCameraAccess();
   };
 
   return (
     <div className="p-8 min-h-screen bg-black text-white flex flex-col items-center">
-      <h1 className="text-3xl font-bold mb-6">Enregistrez votre vidéo</h1>
+      <h1 className="text-3xl font-bold mb-6">Enregistrez votre vidéo SpotBulle</h1>
 
-      {error && <div className="bg-red-100 text-red-700 p-2 rounded mb-4">{error}</div>}
-
-      {countdown > 0 && (
-        <div className="text-white text-center mb-4">
-          <h1 className="text-6xl font-bold">{countdown}</h1>
-          <p>Préparez-vous à parler...</p>
+      {error && (
+        <div className="bg-red-100 text-red-700 p-4 rounded mb-4 max-w-md">
+          <strong>Erreur :</strong> {error}
         </div>
       )}
 
-      <div className="mb-4">
+      {/* Compte à rebours amélioré */}
+      {countdown > 0 && (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
+          <div className="text-white text-center">
+            <div className="text-9xl font-bold mb-4 text-blue-400">{countdown}</div>
+            <p className="text-2xl">Préparez-vous à parler...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Indicateur de progression de l'analyse */}
+      {analysisProgress && (
+        <div className="bg-blue-900 text-white p-4 rounded-lg mb-6 max-w-md w-full">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-semibold">📊 Analyse en cours</span>
+            <span className="text-sm bg-blue-700 px-2 py-1 rounded">{analysisProgress}</span>
+          </div>
+          <div className="w-full bg-blue-700 rounded-full h-2">
+            <div 
+              className="bg-green-400 h-2 rounded-full transition-all duration-1000 ease-in-out"
+              style={{ 
+                width: analysisProgress.includes('terminée') ? '100%' : 
+                       analysisProgress.includes('Analyse IA') ? '75%' :
+                       analysisProgress.includes('Transcription') ? '50%' :
+                       analysisProgress.includes('Upload') ? '25%' : '10%' 
+              }}
+            ></div>
+          </div>
+        </div>
+      )}
+
+      <div className="mb-6 relative">
         <video
           ref={videoRef}
           autoPlay
           muted={!recordedVideo}
-          className="w-full max-w-md border-2 border-blue-500 rounded-lg bg-black"
+          className="w-full max-w-md border-2 border-blue-500 rounded-lg bg-black shadow-lg"
           playsInline
         />
+        {recording && (
+          <div className="absolute top-4 right-4 bg-red-600 text-white px-2 py-1 rounded-full text-sm animate-pulse">
+            ● ENREGISTREMENT
+          </div>
+        )}
       </div>
 
       {!recordedVideo ? (
-        <div>
+        <div className="text-center">
           {!recording ? (
             <Button
               onClick={startRecording}
-              disabled={!cameraAccess}
-              className={cameraAccess ? '' : 'opacity-50 cursor-not-allowed'}
+              disabled={!cameraAccess || countdown > 0}
+              className={`text-lg px-8 py-3 ${
+                cameraAccess 
+                  ? 'bg-gradient-to-r from-red-600 to-blue-600 hover:from-red-700 hover:to-blue-700' 
+                  : 'bg-gray-600 opacity-50 cursor-not-allowed'
+              }`}
             >
-              {cameraAccess ? 'Commencer l\'enregistrement' : 'Caméra non disponible'}
+              {cameraAccess ? '🎤 Commencer l\'enregistrement' : '📷 Caméra non disponible'}
             </Button>
           ) : (
-            <Button onClick={stopRecording} className="bg-red-500 hover:bg-red-600">
-              Arrêter l'enregistrement
+            <Button 
+              onClick={stopRecording} 
+              className="bg-red-600 hover:bg-red-700 text-lg px-8 py-3"
+            >
+              ⏹️ Arrêter l'enregistrement
             </Button>
           )}
+          
+          <div className="mt-4 text-sm text-gray-400">
+            <p>💡 Conseil : Parlez clairement et regardez la caméra</p>
+            <p>⏱️ Durée recommandée : 1-3 minutes</p>
+          </div>
         </div>
       ) : (
-        <div className="w-full max-w-md">
-          <p className="text-blue-400 mb-2">Vidéo enregistrée avec succès !</p>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-white mb-1">
-              Ajouter des tags (séparés par des virgules) :
+        <div className="w-full max-w-md space-y-4">
+          <div className="bg-green-900 text-green-100 p-3 rounded-lg">
+            <p className="font-semibold">✅ Vidéo enregistrée avec succès !</p>
+            <p className="text-sm">Durée : {Math.round(recordedVideo.blob.size / 1024 / 1024)} Mo</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">
+              🏷️ Ajouter des mots-clés (séparés par des virgules) :
             </label>
             <input
               type="text"
               value={tags}
               onChange={e => setTags(e.target.value)}
-              placeholder="Football, Sport, etc."
-              className="w-full p-2 border rounded bg-white/10 text-white"
+              placeholder="ex: Football, Sport, Passion, CAN2025"
+              className="w-full p-3 border border-gray-600 rounded bg-gray-900 text-white placeholder-gray-400"
             />
+            <p className="text-xs text-gray-400 mt-1">
+              Ces mots-clés aideront l'IA à mieux comprendre votre vidéo
+            </p>
           </div>
-          <div className="flex gap-4 justify-center">
-            <Button onClick={retryRecording} className="bg-gray-500 hover:bg-gray-600">
-              Réessayer
+
+          <div className="flex gap-3 justify-center">
+            <Button 
+              onClick={retryRecording} 
+              className="bg-gray-600 hover:bg-gray-700 flex-1"
+              disabled={uploading}
+            >
+              🔄 Réessayer
             </Button>
             <Button
               onClick={uploadVideo}
               disabled={uploading}
-              className={uploading ? 'opacity-70 cursor-not-allowed' : ''}
+              className={`flex-1 ${
+                uploading 
+                  ? 'bg-blue-400 opacity-70 cursor-not-allowed' 
+                  : 'bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700'
+              }`}
             >
-              {uploading ? 'Envoi en cours...' : 'Valider et envoyer'}
+              {uploading ? (
+                <span className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Envoi...
+                </span>
+              ) : (
+                '🚀 Valider et analyser'
+              )}
             </Button>
           </div>
+
+          {analysisProgress && (
+            <div className="mt-4 p-3 bg-blue-900 rounded-lg">
+              <p className="text-sm font-medium mb-2">📈 Progression de l'analyse :</p>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span>Upload vidéo</span>
+                  <span>{analysisProgress.includes('Upload') ? '✅' : '⏳'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Transcription</span>
+                  <span>{analysisProgress.includes('Transcription') ? '✅' : '⏳'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Analyse IA</span>
+                  <span>{analysisProgress.includes('Analyse IA') ? '✅' : '⏳'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Résultats</span>
+                  <span>{analysisProgress.includes('terminée') ? '✅' : '⏳'}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
