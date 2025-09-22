@@ -1,3 +1,4 @@
+// functions/trigger-analysis/index.ts (version corrigée)
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 
 const corsHeaders = {
@@ -11,51 +12,74 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('MY_SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('MY_SUPABASE_SERVICE_ROLE_KEY');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!supabaseUrl || !supabaseServiceKey) {
-      console.error('Variables d\'environnement manquantes pour trigger-analysis');
-      return new Response(JSON.stringify({ error: 'Configuration incomplète' }), { status: 500 });
+      console.error('Variables d\'environnement manquantes');
+      return new Response(JSON.stringify({ error: 'Configuration incomplète' }), { 
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
     const serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { persistSession: false },
     });
 
-    const { record } = await req.json();
-    const videoId = record?.id;
+    // Vérifier si c'est un trigger de base de données
+    const { type, record, table } = await req.json();
+    
+    if (type === 'INSERT' && table === 'videos' && record?.status === 'uploaded') {
+      const videoId = record.id;
+      
+      console.log(`📥 Trigger activé pour la vidéo ${videoId}`);
 
-    if (!videoId) {
-      console.error('videoId manquant dans le payload du trigger.');
-      return new Response(JSON.stringify({ error: 'videoId manquant' }), { status: 400 });
+      // Appeler directement transcribe-video
+      const transcribeResponse = await fetch(`${supabaseUrl}/functions/v1/transcribe-video`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseServiceKey}`
+        },
+        body: JSON.stringify({ videoId })
+      });
+
+      if (!transcribeResponse.ok) {
+        const errorText = await transcribeResponse.text();
+        console.error(`❌ Erreur transcription: ${errorText}`);
+        
+        await serviceClient
+          .from('videos')
+          .update({ 
+            status: 'failed', 
+            error_message: `Échec transcription: ${errorText}` 
+          })
+          .eq('id', videoId);
+          
+        return new Response(JSON.stringify({ error: 'Échec transcription' }), { 
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      console.log(`✅ Transcription déclenchée pour ${videoId}`);
+      return new Response(JSON.stringify({ success: true, videoId }), { 
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
-    console.log(`Trigger reçu pour la vidéo ${videoId}. Appel de analyze-transcription...`);
-
-    // Appel de la fonction analyze-transcription avec la vraie URL
-    const analyzeResponse = await fetch(`https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/analyze-transcription`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}` 
-      },
-      body: JSON.stringify({ videoId: videoId })
+    return new Response(JSON.stringify({ message: 'Trigger ignoré - pas une nouvelle vidéo' }), { 
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
-    if (!analyzeResponse.ok) {
-      const errorText = await analyzeResponse.text();
-      console.error(`Erreur lors de l\'appel à analyze-transcription pour ${videoId}: ${analyzeResponse.status} - ${errorText}`);
-      // Mettre à jour le statut de la vidéo à FAILED si l\'analyse échoue
-      await serviceClient.from('videos').update({ status: 'failed', error_message: `Analyse échouée: ${errorText}` }).eq('id', videoId);
-      return new Response(JSON.stringify({ error: 'Échec de l\'analyse', details: errorText }), { status: 500 });
-    }
-
-    console.log(`Appel à analyze-transcription réussi pour la vidéo ${videoId}.`);
-    return new Response(JSON.stringify({ success: true, videoId: videoId }), { status: 200 });
-
   } catch (error) {
-    console.error('Erreur dans la fonction trigger-analysis:', error.message);
-    return new Response(JSON.stringify({ error: 'Erreur interne du serveur', details: error.message }), { status: 500 });
+    console.error('❌ Erreur trigger-analysis:', error);
+    return new Response(JSON.stringify({ error: 'Erreur interne' }), { 
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   }
 });
