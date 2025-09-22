@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import Dashboard from "../components/Dashboard.jsx";
 import RecordVideo from "./record-video.jsx";
@@ -16,16 +16,34 @@ export default function Home({
   loadDashboardData,
 }) {
   const recordRef = useRef(null);
+  const dashboardRef = useRef(null);
 
-  const scrollToRecord = () => {
-    if (recordRef.current) {
-      recordRef.current.scrollIntoView({ behavior: "smooth" });
-    }
+  const [showWelcome, setShowWelcome] = useState(
+    !dashboardData || dashboardData.totalVideos === 0
+  );
+  const [showRecord, setShowRecord] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(
+    dashboardData && dashboardData.totalVideos > 0
+  );
+
+  const handleStartExperience = () => {
+    setShowWelcome(false);
+    setShowRecord(true);
+    setTimeout(() => {
+      if (recordRef.current) recordRef.current.scrollIntoView({ behavior: "smooth" });
+    }, 200);
   };
+
+  useEffect(() => {
+    if (dashboardData && dashboardData.totalVideos > 0) {
+      setShowDashboard(true);
+      setShowRecord(false);
+      if (dashboardRef.current) dashboardRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [dashboardData]);
 
   return (
     <div className="app-container min-h-screen bg-gray-50 dark:bg-gray-950">
-      {/* Header */}
       <ProfessionalHeader
         user={user}
         profile={profile}
@@ -33,39 +51,43 @@ export default function Home({
         onSignOut={onSignOut}
       />
 
-      {/* Bienvenue Agent (si pas encore de vidéos) */}
-      {!dashboardData || dashboardData.totalVideos === 0 ? (
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
-          <WelcomeAgent onOpenAuthModal={() => console.log("open modal")} />
-        </motion.div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 md:p-8">
-          {/* Bloc RecordVideo */}
+      <div className="flex flex-col md:flex-row gap-6 p-4 md:p-8">
+        {/* Colonne gauche: WelcomeAgent + RecordVideo */}
+        <div className="flex-1 flex flex-col gap-6">
+          {showWelcome && (
+            <motion.div
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+            >
+              <WelcomeAgent onOpenAuthModal={handleStartExperience} />
+            </motion.div>
+          )}
+
+          {showRecord && (
+            <motion.div
+              ref={recordRef}
+              className="bg-white dark:bg-gray-900 shadow-md rounded-2xl p-4 md:p-6 flex flex-col"
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+            >
+              <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-100">
+                🎥 Enregistrer une vidéo
+              </h2>
+              <RecordVideo />
+            </motion.div>
+          )}
+        </div>
+
+        {/* Colonne droite: Dashboard */}
+        {showDashboard && (
           <motion.div
-            ref={recordRef}
-            className="bg-white dark:bg-gray-900 shadow-md rounded-2xl p-4 md:p-6 flex flex-col"
+            ref={dashboardRef}
+            className="flex-1 bg-white dark:bg-gray-900 shadow-md rounded-2xl p-4 md:p-6 flex flex-col"
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
-          >
-            <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-100">
-              🎥 Enregistrer une vidéo
-            </h2>
-            <div className="flex-1">
-              <RecordVideo />
-            </div>
-          </motion.div>
-
-          {/* Bloc Dashboard */}
-          <motion.div
-            className="bg-white dark:bg-gray-900 shadow-md rounded-2xl p-4 md:p-6 flex flex-col"
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
           >
             <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-100">
               📊 Mon Dashboard
@@ -92,8 +114,8 @@ export default function Home({
               />
             )}
           </motion.div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
