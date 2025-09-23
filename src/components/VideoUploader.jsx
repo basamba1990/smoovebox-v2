@@ -18,17 +18,13 @@ const VideoUploader = ({ onUploadComplete }) => {
   const [uploadPhase, setUploadPhase] = useState('idle');
   const [transcribing, setTranscribing] = useState(false);
   const fileInputRef = useRef(null);
-  
-  // Fonction pour appeler l'Edge Function de rafraîchissement des stats
+
+  // Rafraîchir les stats utilisateur via Edge Function
   const refreshStats = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const accessToken = session?.access_token;
-
-      if (!accessToken) {
-        console.error("Impossible de récupérer le token d'authentification");
-        return;
-      }
+      if (!accessToken) return;
 
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/refresh-user-video-stats`, {
         method: 'POST',
@@ -40,12 +36,10 @@ const VideoUploader = ({ onUploadComplete }) => {
 
       if (!response.ok) {
         const errorData = await response.text();
-        console.error('Erreur lors du rafraîchissement des stats:', errorData);
-      } else {
-        console.log('Stats rafraîchies avec succès');
-      }
-    } catch (error) {
-      console.error('Erreur réseau lors du rafraîchissement des stats:', error);
+        console.error('Erreur rafraîchissement stats:', errorData);
+      } else console.log('Stats rafraîchies avec succès');
+    } catch (err) {
+      console.error('Erreur réseau rafraîchissement stats:', err);
     }
   };
 
@@ -55,199 +49,142 @@ const VideoUploader = ({ onUploadComplete }) => {
     setSuccess(null);
     setUploadPhase('idle');
     setProgress(0);
-    
+
     if (!selectedFile) {
       setFile(null);
       return;
     }
-    
-    // Vérifier le type de fichier
+
+    // Vérifier le type
     const validTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm'];
     if (!validTypes.includes(selectedFile.type)) {
-      setError('Format de fichier non supporté. Veuillez utiliser MP4, MOV, AVI ou WebM.');
+      setError('Format non supporté. Utilisez MP4, MOV, AVI ou WebM.');
       setFile(null);
       e.target.value = null;
       return;
     }
-    
-    // Vérifier la taille du fichier (100MB max)
+
+    // Vérifier la taille (100MB max)
     if (selectedFile.size > 100 * 1024 * 1024) {
-      setError('Le fichier est trop volumineux. La taille maximale est de 100MB.');
+      setError('Le fichier est trop volumineux. Max: 100MB.');
       setFile(null);
       e.target.value = null;
       return;
     }
-    
+
     setFile(selectedFile);
-    
-    // Utiliser le nom du fichier comme titre par défaut si aucun titre n'est défini
+
     if (!title) {
       const fileName = selectedFile.name.replace(/\.[^/.]+$/, '');
       setTitle(fileName);
     }
   };
 
-  const uploadWithProgress = (file, filePath, onProgress) => {
-    return new Promise(async (resolve, reject) => {
-      try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError || !session) {
-          reject(new Error('Session d\'authentification non trouvée'));
-          return;
-        }
+  // Upload via Supabase Storage JS avec suivi
+  const uploadFile = async (file, path) => {
+    const { data, error } = await supabase.storage
+      .from('videos')
+      .upload(path, file, {
+        cacheControl: '3600',
+        upsert: false,
+        onUploadProgress: (event) => {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          setProgress(percent);
+        },
+      });
 
-        const xhr = new XMLHttpRequest();
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const url = `${supabaseUrl}/storage/v1/object/videos/${filePath}`;
-        
-        xhr.upload.addEventListener('progress', (event) => {
-          if (event.lengthComputable) {
-            const percent = Math.round((event.loaded / event.total) * 100);
-            onProgress(percent);
-          }
-        });
-        
-        xhr.addEventListener('load', () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const response = xhr.responseText ? JSON.parse(xhr.responseText) : {};
-              resolve(response);
-            } catch (parseError) {
-              resolve({ success: true });
-            }
-          } else {
-            reject(new Error(`Upload failed with status: ${xhr.status} - ${xhr.responseText}`));
-          }
-        });
-        
-        xhr.addEventListener('error', () => {
-          reject(new Error('Upload failed due to network error'));
-        });
-        
-        xhr.open('POST', url);
-        xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
-        xhr.setRequestHeader('Content-Type', file.type);
-        xhr.setRequestHeader('Cache-Control', '3600');
-        xhr.send(file);
-        
-      } catch (error) {
-        reject(error);
-      }
-    });
+    if (error) throw error;
+    return data;
   };
-  
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
-    
-    if (!user) {
-      setError('Vous devez être connecté pour uploader une vidéo');
-      return;
-    }
-    
-    if (!file) {
-      setError('Veuillez sélectionner une vidéo à uploader');
-      return;
-    }
-    
-    if (!title.trim()) {
-      setError('Veuillez entrer un titre pour la vidéo');
-      return;
-    }
-    
+
+    if (!user) return setError('Vous devez être connecté pour uploader une vidéo');
+    if (!file) return setError('Veuillez sélectionner une vidéo');
+    if (!title.trim()) return setError('Veuillez entrer un titre');
+
     try {
       setUploading(true);
       setUploadPhase('uploading');
       setProgress(0);
-      
-      const filePath = `${user.id}/${Date.now()}_${file.name}`;
-      
-      await uploadWithProgress(file, filePath, (percent) => {
-        setProgress(percent);
-      });
-      
+
+      // Chemin RLS compatible
+      const filePath = `videos/${user.id}/${Date.now()}_${file.name}`;
+
+      // Upload
+      await uploadFile(file, filePath);
+
       setUploadPhase('processing');
-      
+
+      // URL signée
       const { data: publicUrl, error: urlError } = await supabase.storage
         .from('videos')
         .createSignedUrl(filePath, 365 * 24 * 60 * 60);
-      
-      if (urlError) {
-        console.warn("Impossible de générer l'URL signée:", urlError);
-      }
-      
+
+      if (urlError) console.warn('Impossible de générer l\'URL signée:', urlError);
+
+      // Insertion DB
       const { data: videoData, error: dbError } = await supabase
         .from('videos')
-        .insert([
-          {
-            user_id: user.id,
-            title: title.trim(),
-            description: description.trim() || null,
-            storage_path: filePath,
-            file_path: filePath,
-            url: publicUrl?.signedUrl || null,
-            status: 'ready',
-            original_file_name: file.name,
-            file_size: file.size,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-        ])
+        .insert([{
+          user_id: user.id, // ou laissez trigger
+          title: title.trim(),
+          description: description.trim() || null,
+          storage_path: filePath,
+          file_path: filePath,
+          url: publicUrl?.signedUrl || null,
+          status: 'ready',
+          original_file_name: file.name,
+          file_size: file.size,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }])
         .select()
         .single();
-      
-      if (dbError) {
-        throw new Error(`Erreur lors de la création de l'entrée: ${dbError.message}`);
-      }
-      
-      // Appeler la transcription avec la fonction Edge
+
+      if (dbError) throw new Error(dbError.message);
+
+      // Transcription via Edge Function
       try {
         setTranscribing(true);
         const { data: { session } } = await supabase.auth.getSession();
         const accessToken = session?.access_token;
-        
+
         if (accessToken) {
-          await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-video`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${accessToken}`
-              },
-              body: JSON.stringify({
-                videoId: videoData.id,
-                videoUrl: publicUrl?.signedUrl || null
-              })
-            }
-          );
+          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-video`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({
+              videoId: videoData.id,
+              videoUrl: publicUrl?.signedUrl || null,
+            }),
+          });
         }
       } catch (transcribeError) {
-        console.error('Erreur lors de l\'appel à la fonction de transcription:', transcribeError);
+        console.error('Erreur transcription:', transcribeError);
       } finally {
         setTranscribing(false);
       }
-      
-      // Rafraîchir les statistiques après l'upload réussi
+
       await refreshStats();
-      
+
       setUploadPhase('success');
-      setSuccess("Vidéo uploadée avec succès! La transcription est en cours...");
-      
-      // Réinitialiser le formulaire
+      setSuccess('Vidéo uploadée avec succès! La transcription est en cours...');
+
+      // Reset formulaire
       setFile(null);
       setTitle('');
       setDescription('');
-      if (fileInputRef.current) {
-        fileInputRef.current.value = null;
-      }
-      
-      if (onUploadComplete && videoData) {
-        onUploadComplete(videoData);
-      }
-      
+      if (fileInputRef.current) fileInputRef.current.value = null;
+
+      if (onUploadComplete && videoData) onUploadComplete(videoData);
+
     } catch (err) {
       setUploadPhase('error');
       setError(`Erreur lors de l'upload: ${err.message}`);
@@ -265,48 +202,34 @@ const VideoUploader = ({ onUploadComplete }) => {
     setSuccess(null);
     setUploadPhase('idle');
     setTranscribing(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = null;
-    }
+    if (fileInputRef.current) fileInputRef.current.value = null;
   };
 
   const getPhaseMessage = () => {
     switch (uploadPhase) {
-      case 'uploading':
-        return `Upload en cours... ${progress}%`;
-      case 'processing':
-        return 'Traitement de la vidéo...';
-      case 'success':
-        return 'Upload terminé avec succès !';
-      case 'error':
-        return 'Erreur lors de l\'upload';
-      default:
-        return 'Prêt à uploader';
+      case 'uploading': return `Upload en cours... ${progress}%`;
+      case 'processing': return 'Traitement de la vidéo...';
+      case 'success': return 'Upload terminé avec succès !';
+      case 'error': return 'Erreur lors de l\'upload';
+      default: return 'Prêt à uploader';
     }
   };
 
   const getPhaseColor = () => {
     switch (uploadPhase) {
       case 'uploading':
-      case 'processing':
-        return 'text-blue-600';
-      case 'success':
-        return 'text-green-600';
-      case 'error':
-        return 'text-red-600';
-      default:
-        return 'text-gray-600';
+      case 'processing': return 'text-blue-600';
+      case 'success': return 'text-green-600';
+      case 'error': return 'text-red-600';
+      default: return 'text-gray-600';
     }
   };
 
   const getPhaseIcon = () => {
     switch (uploadPhase) {
-      case 'success':
-        return <CheckCircle className="h-5 w-5 text-green-600" />;
-      case 'error':
-        return <AlertCircle className="h-5 w-5 text-red-600" />;
-      default:
-        return <Upload className="h-5 w-5" />;
+      case 'success': return <CheckCircle className="h-5 w-5 text-green-600" />;
+      case 'error': return <AlertCircle className="h-5 w-5 text-red-600" />;
+      default: return <Upload className="h-5 w-5" />;
     }
   };
 
@@ -327,7 +250,7 @@ const VideoUploader = ({ onUploadComplete }) => {
           <div className="space-y-2">
             <Progress value={progress} className="w-full" />
             <p className="text-sm text-gray-600 text-center">
-              {uploadPhase === 'uploading' ? `${progress}% uploadé` : 
+              {uploadPhase === 'uploading' ? `${progress}% uploadé` :
                transcribing ? 'Démarrage de la transcription...' : 'Traitement en cours...'}
             </p>
           </div>
@@ -341,12 +264,7 @@ const VideoUploader = ({ onUploadComplete }) => {
                 <h4 className="font-medium text-green-800">Succès !</h4>
                 <p className="text-sm text-green-700 mt-1">{success}</p>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSuccess(null)}
-                className="text-green-600 hover:text-green-800"
-              >
+              <Button variant="ghost" size="sm" onClick={() => setSuccess(null)} className="text-green-600 hover:text-green-800">
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -361,12 +279,7 @@ const VideoUploader = ({ onUploadComplete }) => {
                 <h4 className="font-medium text-red-800">Erreur d'upload</h4>
                 <p className="text-sm text-red-700 mt-1">{error}</p>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setError(null)}
-                className="text-red-600 hover:text-red-800"
-              >
+              <Button variant="ghost" size="sm" onClick={() => setError(null)} className="text-red-600 hover:text-red-800">
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -425,17 +338,11 @@ const VideoUploader = ({ onUploadComplete }) => {
           </div>
 
           <div className="flex gap-3 pt-4">
-            <Button
-              type="submit"
-              disabled={!file || !title.trim() || uploading || transcribing}
-              className="flex-1"
-            >
+            <Button type="submit" disabled={!file || !title.trim() || uploading || transcribing} className="flex-1">
               {uploading ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  {uploadPhase === 'uploading' ? 
-                    `Upload en cours... ${progress}%` : 
-                    'Traitement en cours...'}
+                  {uploadPhase === 'uploading' ? `Upload en cours... ${progress}%` : 'Traitement en cours...'}
                 </>
               ) : transcribing ? (
                 <>
@@ -446,13 +353,7 @@ const VideoUploader = ({ onUploadComplete }) => {
                 'Uploader la vidéo'
               )}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={resetForm}
-              disabled={uploading || transcribing}
-              className="flex-1"
-            >
+            <Button type="button" variant="outline" onClick={resetForm} disabled={uploading || transcribing} className="flex-1">
               Réinitialiser
             </Button>
           </div>
