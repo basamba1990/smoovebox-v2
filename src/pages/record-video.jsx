@@ -14,19 +14,28 @@ const RecordVideo = () => {
   const [tags, setTags] = useState('');
   const [analysisProgress, setAnalysisProgress] = useState(null);
   const [uploadedVideoId, setUploadedVideoId] = useState(null);
+  const [recordingTime, setRecordingTime] = useState(0); // Temps d'enregistrement
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
   const streamRef = useRef(null);
   const navigate = useNavigate();
+  const maxRecordingTime = 120; // 2 minutes max
 
+  // Nettoyage des Object URLs
+  useEffect(() => {
+    return () => {
+      if (recordedVideo?.url) URL.revokeObjectURL(recordedVideo.url);
+    };
+  }, [recordedVideo]);
+
+  // Initialisation authentification et caméra
   useEffect(() => {
     let mounted = true;
 
     const checkAuthAndInitCamera = async () => {
       if (!mounted) return;
 
-      // Vérifier l'authentification
       console.log('Vérification de la session...');
       const isSessionValid = await refreshSession();
       if (!isSessionValid) {
@@ -82,6 +91,24 @@ const RecordVideo = () => {
     };
   }, [navigate]);
 
+  // Timer pour durée max d'enregistrement
+  useEffect(() => {
+    let timer;
+    if (recording) {
+      timer = setInterval(() => {
+        setRecordingTime(prev => {
+          const newTime = prev + 1;
+          if (newTime >= maxRecordingTime) {
+            stopRecording();
+            toast.info('Temps d\'enregistrement maximum atteint (2 min).');
+          }
+          return newTime;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [recording]);
+
   // Vérification du statut de l'analyse
   useEffect(() => {
     if (!uploadedVideoId) return;
@@ -114,7 +141,7 @@ const RecordVideo = () => {
             }, 3000);
             break;
           case 'failed':
-            setAnalysisProgress(`❌ Erreur: ${video.error_message}`);
+ setAnalysisProgress(`❌ Erreur: ${video.error_message || 'Échec de l\'analyse'}`);
             toast.error('Erreur lors de l\'analyse de la vidéo.');
             break;
           default:
@@ -122,11 +149,11 @@ const RecordVideo = () => {
         }
       } catch (error) {
         console.error('Erreur vérification statut:', error);
+        setAnalysisProgress('❌ Erreur lors de la vérification du statut');
       }
     };
 
     const interval = setInterval(checkAnalysisStatus, 3000);
-
     return () => clearInterval(interval);
   }, [uploadedVideoId, navigate]);
 
@@ -205,14 +232,22 @@ const RecordVideo = () => {
       if (videoRef.current) videoRef.current.srcObject = stream;
 
       recordedChunksRef.current = [];
-      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
-        ? 'video/webm;codecs=vp8,opus'
-        : MediaRecorder.isTypeSupported('video/webm')
-        ? 'video/webm'
-        : 'video/mp4';
-      console.log('MimeType utilisé pour MediaRecorder:', mimeType);
+      const preferredTypes = [
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+        'video/mp4;codecs=h264,aac',
+        'video/mp4',
+      ];
+      const mimeType = preferredTypes.find(type => MediaRecorder.isTypeSupported(type)) || '';
+      if (!mimeType) {
+        throw new Error('Aucun format vidéo supporté par ce navigateur.');
+      }
 
-      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType });
+      console.log('MimeType utilisé pour MediaRecorder:', mimeType);
+      mediaRecorderRef.current = new MediaRecorder(stream, {
+        mimeType,
+        bitsPerSecond: 500000, // Réduit la qualité pour limiter la taille
+      });
 
       mediaRecorderRef.current.ondataavailable = event => {
         if (event.data.size > 0) recordedChunksRef.current.push(event.data);
@@ -221,6 +256,7 @@ const RecordVideo = () => {
       mediaRecorderRef.current.onstop = () => {
         const blob = new Blob(recordedChunksRef.current, { type: mimeType });
         setRecordedVideo({ blob, url: URL.createObjectURL(blob) });
+        setRecordingTime(0);
         stopStream();
       };
 
@@ -242,6 +278,7 @@ const RecordVideo = () => {
     }
   };
 
+  // Upload chunked pour gérer les gros fichiers
   const uploadVideo = async () => {
     if (!recordedVideo) {
       setError('Vous devez enregistrer une vidéo.');
@@ -254,7 +291,6 @@ const RecordVideo = () => {
     setAnalysisProgress('📤 Upload de la vidéo...');
 
     try {
-      // Vérifier et rafraîchir la session
       console.log('Vérification de la session avant upload...');
       const isSessionValid = await refreshSession();
       if (!isSessionValid) {
@@ -267,26 +303,35 @@ const RecordVideo = () => {
       if (authError || !user) throw new Error('Utilisateur non authentifié');
       if (user.id !== session?.user?.id) throw new Error('Incohérence entre user.id et auth.uid()');
 
-      const fileName = `video-${Date.now()}.webm`;
+      const fileName = `video-${Date.now()}.${recordedVideo.blob.type.split('/')[1]}`;
       const pathInBucket = `videos/${user.id}/${fileName}`;
       console.log('Chemin de stockage:', pathInBucket, 'User ID:', user.id);
 
-      // Upload direct
+      // Upload chunked
       setAnalysisProgress('📤 Envoi de la vidéo...');
       console.log('Début de l\'upload dans le bucket videos...');
-      const { error: uploadError } = await supabase.storage
-        .from('videos')
-        .upload(pathInBucket, recordedVideo.blob, {
-          contentType: 'video/webm',
-          cacheControl: '3600',
-          upsert: false,
-        });
+      const chunkSize = 5 * 1024 * 1024; // 5MB chunks
+      const totalChunks = Math.ceil(recordedVideo.blob.size / chunkSize);
+      let offset = 0;
 
-      if (uploadError) {
-        console.error('Erreur d\'upload dans storage:', uploadError);
-        throw new Error(`Échec de l'upload: ${uploadError.message}`);
+      for (let i = 0; i < totalChunks; i++) {
+        const chunk = recordedVideo.blob.slice(offset, offset + chunkSize);
+        const { error: uploadError } = await supabase.storage
+          .from('videos')
+          .upload(pathInBucket, chunk, {
+            contentType: recordedVideo.blob.type,
+            cacheControl: '3600',
+            upsert: i === 0, // Premier chunk crée, les suivants ajoutent
+            contentRange: `bytes ${offset}-${offset + chunk.size - 1}/${recordedVideo.blob.size}`,
+          });
+
+        if (uploadError) {
+          console.error('Erreur d\'upload chunk:', uploadError);
+          throw new Error(`Échec de l'upload: ${uploadError.message}`);
+        }
+        offset += chunkSize;
       }
-      console.log('Upload réussi dans le bucket videos.');
+      console.log('Upload chunked réussi.');
 
       // Générer une URL signée
       console.log('Génération de l\'URL signée...');
@@ -310,8 +355,8 @@ const RecordVideo = () => {
             user_id: user.id,
             storage_path: pathInBucket,
             original_file_name: fileName,
-            format: 'webm',
-            tags: tags ? tags.split(',').map(t => t.trim()) : null,
+            format: recordedVideo.blob.type.split('/')[1],
+            tags: tags.length > 0 ? tags.split(',').map(t => t.trim()) : [], // Tableau vide si pas de tags
             status: 'uploaded',
           },
         ])
@@ -338,16 +383,17 @@ const RecordVideo = () => {
           body: JSON.stringify({ video_id: videoData.id }),
         });
 
+        const result = await response.json().catch(() => null);
         if (!response.ok) {
-          console.warn('Erreur lors du déclenchement de l\'analyse automatique');
-        } else {
-          console.log('Analyse automatique déclenchée avec succès');
+          console.error('Erreur analyse automatique:', result?.error || response.statusText);
+          throw new Error(result?.error || 'Erreur lors du déclenchement de l\'analyse');
         }
+        console.log('Analyse automatique déclenchée avec succès:', result);
       } catch (analysisError) {
         console.warn('Erreur analyse automatique:', analysisError);
+        setAnalysisProgress('❌ Erreur lors du démarrage de l\'analyse');
+        toast.error('Erreur lors du démarrage de l\'analyse.');
       }
-
-      toast.success('Vidéo envoyée avec succès ! Analyse en cours...');
     } catch (err) {
       console.error('Erreur upload:', err);
       setError(`Erreur lors de l'upload: ${err.message}`);
@@ -364,6 +410,7 @@ const RecordVideo = () => {
     setError(null);
     setAnalysisProgress(null);
     setUploadedVideoId(null);
+    setRecordingTime(0);
     requestCameraAccess();
   };
 
@@ -416,7 +463,7 @@ const RecordVideo = () => {
         />
         {recording && (
           <div className="absolute top-4 right-4 bg-red-600 text-white px-2 py-1 rounded-full text-sm animate-pulse">
-            ● ENREGISTREMENT
+            ● ENREGISTREMENT ({recordingTime}s)
           </div>
         )}
       </div>
@@ -446,14 +493,14 @@ const RecordVideo = () => {
 
           <div className="mt-4 text-sm text-gray-400">
             <p>💡 Conseil : Parlez clairement et regardez la caméra</p>
-            <p>⏱️ Durée recommandée : 1-3 minutes</p>
+            <p>⏱️ Durée max : 2 minutes</p>
           </div>
         </div>
       ) : (
         <div className="w-full max-w-md space-y-4">
           <div className="bg-green-900 text-green-100 p-3 rounded-lg">
             <p className="font-semibold">✅ Vidéo enregistrée avec succès !</p>
-            <p className="text-sm">Durée : {Math.round(recordedVideo.blob.size / 1024 / 1024)} Mo</p>
+            <p className="text-sm">Taille : {Math.round(recordedVideo.blob.size / 1024 / 1024)} Mo</p>
           </div>
 
           <div>
