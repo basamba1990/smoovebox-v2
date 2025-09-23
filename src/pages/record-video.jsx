@@ -235,7 +235,7 @@ const RecordVideo = () => {
       toast.success('Enregistrement en cours... Parlez maintenant !');
     } catch (err) {
       console.error('Erreur démarrage enregistrement:', err);
-      setError(`Impossible de démarrer l'enregistrement: ${err.message}`);
+      setError('Impossible de démarrer l\'enregistrement: ' + err.message);
       toast.error('Erreur lors de l\'enregistrement.');
     }
   };
@@ -289,19 +289,19 @@ const RecordVideo = () => {
         });
 
       if (uploadError) {
-        console.error('Erreur d'upload dans storage:', uploadError);
-        throw new Error(`Échec de l'upload: ${uploadError.message}`);
+        console.error('Erreur d\\'upload dans storage:', uploadError);
+        throw new Error('Échec de l\\'upload: ' + uploadError.message);
       }
       console.log('Upload réussi dans le bucket videos.');
 
       // Générer une URL signée
-      console.log('Génération de l'URL signée...');
+      console.log('Génération de l\\'URL signée...');
       const { data: signedUrl, error: urlError } = await supabase.storage
         .from('videos')
         .createSignedUrl(pathInBucket, 365 * 24 * 60 * 60);
 
       if (urlError) {
-        console.warn('Erreur lors de la génération de l'URL signée:', urlError);
+        console.warn('Erreur lors de la génération de l\\'URL signée:', urlError);
       }
 
       // Insérer dans la table videos
@@ -325,13 +325,13 @@ const RecordVideo = () => {
         .single();
 
       if (insertError) {
-        console.error('Erreur lors de l'insertion dans videos:', insertError);
-        throw new Error(`Erreur base de données: ${insertError.message}`);
+        console.error('Erreur lors de l\\'insertion dans videos:', insertError);
+        throw new Error('Erreur base de données: ' + insertError.message);
       }
       console.log('Insertion réussie:', videoData);
 
       setUploadedVideoId(videoData.id);
-      setAnalysisProgress('🚀 Démarrage de l'analyse IA...');
+      setAnalysisProgress('🚀 Démarrage de l\\'analyse IA...');
 
       // Déclencher l'analyse automatiquement
       try {
@@ -345,7 +345,7 @@ const RecordVideo = () => {
         });
 
         if (!response.ok) {
-          console.warn('Erreur lors du déclenchement de l'analyse automatique');
+          console.warn('Erreur lors du déclenchement de l\\'analyse automatique');
         } else {
           console.log('Analyse automatique déclenchée avec succès');
         }
@@ -357,9 +357,9 @@ const RecordVideo = () => {
 
     } catch (err) {
       console.error('Erreur upload:', err);
-      setError(`Erreur lors de l'upload: ${err.message}`);
+      setError('Erreur lors de l\\'upload: ' + err.message);
       setAnalysisProgress(null);
-      toast.error('Erreur lors de l\'upload.');
+      toast.error('Erreur lors de l\\'upload.');
     } finally {
       setUploading(false);
     }
@@ -442,7 +442,7 @@ const RecordVideo = () => {
                   : 'bg-gray-600 opacity-50 cursor-not-allowed'
               }`}
             >
-              {cameraAccess ? '🎤 Commencer l\'enregistrement' : '📷 Caméra non disponible'}
+              {cameraAccess ? '🎤 Commencer l\\'enregistrement' : '📷 Caméra non disponible'}
             </Button>
           ) : (
             <Button 
