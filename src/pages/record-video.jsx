@@ -128,7 +128,7 @@ const RecordVideo = () => {
             }, 3000);
             break;
           case 'failed':
-            setAnalysisProgress(`❌ Erreur: ${video.error_message || 'Échec de l'analyse'}`);
+            setAnalysisProgress(`❌ Erreur: ${video.error_message || "Échec de l'analyse"}`);
             toast.error('Erreur lors de l\'analyse de la vidéo.');
             break;
           default:
@@ -281,17 +281,19 @@ const RecordVideo = () => {
       // Insérer dans la table videos
       const { data: videoData, error: insertError } = await supabase
         .from('videos')
-        .insert([{
-          title: 'Ma vidéo SpotBulle',
-          description: 'Vidéo enregistrée via SpotBulle',
-          user_id: user.id,
-          storage_path: pathInBucket,
-          signed_url: signedUrlData.signedUrl,
-          original_file_name: fileName,
-          format: recordedVideo.blob.type.split('/')[1],
-          tags: tags.length > 0 ? tags.split(',').map(t => t.trim()) : [],
-          status: 'uploaded',
-        }])
+        .insert([
+          {
+            title: 'Ma vidéo SpotBulle',
+            description: 'Vidéo enregistrée via SpotBulle',
+            user_id: user.id,
+            storage_path: pathInBucket,
+            signed_url: signedUrlData.signedUrl,
+            original_file_name: fileName,
+            format: recordedVideo.blob.type.split('/')[1],
+            tags: tags.length > 0 ? tags.split(',').map(t => t.trim()) : [],
+            status: 'uploaded',
+          },
+        ])
         .select()
         .single();
 
@@ -373,7 +375,7 @@ const RecordVideo = () => {
                 width: analysisProgress.includes('terminée') ? '100%' :
                        analysisProgress.includes('Analyse IA') ? '75%' :
                        analysisProgress.includes('Transcription') ? '50%' :
-                       analysisProgress.includes('Upload') ? '25%' : '10%'
+                       analysisProgress.includes('Upload') ? '25%' : '10%',
               }}
             ></div>
           </div>
