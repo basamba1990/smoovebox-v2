@@ -14,22 +14,20 @@ const RecordVideo = () => {
   const [tags, setTags] = useState('');
   const [analysisProgress, setAnalysisProgress] = useState(null);
   const [uploadedVideoId, setUploadedVideoId] = useState(null);
-  const [recordingTime, setRecordingTime] = useState(0); // Temps d'enregistrement
+  const [recordingTime, setRecordingTime] = useState(0);
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
   const streamRef = useRef(null);
   const navigate = useNavigate();
-  const maxRecordingTime = 120; // 2 minutes max
+  const maxRecordingTime = 120;
 
-  // Nettoyage des Object URLs
   useEffect(() => {
     return () => {
       if (recordedVideo?.url) URL.revokeObjectURL(recordedVideo.url);
     };
   }, [recordedVideo]);
 
-  // Initialisation authentification et caméra
   useEffect(() => {
     let mounted = true;
 
@@ -81,7 +79,6 @@ const RecordVideo = () => {
     };
   }, [navigate]);
 
-  // Timer pour durée max d'enregistrement
   useEffect(() => {
     let timer;
     if (recording) {
@@ -96,7 +93,6 @@ const RecordVideo = () => {
     return () => clearInterval(timer);
   }, [recording]);
 
-  // Vérification du statut de l'analyse
   useEffect(() => {
     if (!uploadedVideoId) return;
 
@@ -264,21 +260,18 @@ const RecordVideo = () => {
       const fileName = `video-${Date.now()}.${recordedVideo.blob.type.split('/')[1]}`;
       const pathInBucket = `videos/${user.id}/${fileName}`;
 
-      // Upload direct
       const { error: uploadError } = await supabase.storage
         .from('videos')
         .upload(pathInBucket, recordedVideo.blob, { upsert: true });
 
       if (uploadError) throw uploadError;
 
-      // Générer une URL publique pour lecture
       const { data: publicUrlData } = supabase.storage
         .from('videos')
         .getPublicUrl(pathInBucket);
 
       if (!publicUrlData?.publicUrl) throw new Error('Impossible de générer l\'URL publique');
 
-      // Insérer dans la table videos
       const { data: videoData, error: insertError } = await supabase
         .from('videos')
         .insert([
@@ -303,31 +296,22 @@ const RecordVideo = () => {
       setRecordedVideo(prev => ({ ...prev, url: publicUrlData.publicUrl }));
       setAnalysisProgress('🚀 Démarrage de l\'analyse IA...');
 
-      // Déclencher l'analyse automatique
-      try {
-        const response = await fetch('https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/transcribe-video', {
+      // ✅ Utilisation de supabase.functions.invoke au lieu de fetch manuel
+      const { data: transcribeData, error: transcribeError } = await supabase.functions.invoke(
+        'transcribe-video',
+        {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ video_id: videoData.id }),
-        });
-
-        if (!response.ok) {
-          const result = await response.json().catch(() => null);
-          throw new Error(result?.error || 'Erreur lors du déclenchement de l\'analyse');
+          body: { videoId: videoData.id }
         }
-      } catch (analysisError) {
-        console.warn('Erreur analyse automatique:', analysisError);
-        setAnalysisProgress('❌ Erreur lors du démarrage de l\'analyse');
-        toast.error('Erreur lors du démarrage de l\'analyse.');
-      }
+      );
+
+      if (transcribeError) throw transcribeError;
+
     } catch (err) {
-      console.error('Erreur upload:', err);
-      setError(`Erreur lors de l'upload: ${err.message}`);
+      console.error('Erreur upload ou analyse:', err);
+      setError(`Erreur : ${err.message}`);
       setAnalysisProgress(null);
-      toast.error('Erreur lors de l\'upload.');
+      toast.error('Erreur lors de l\'upload ou de l\'analyse.');
     } finally {
       setUploading(false);
     }
