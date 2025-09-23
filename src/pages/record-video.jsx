@@ -36,27 +36,17 @@ const RecordVideo = () => {
     const checkAuthAndInitCamera = async () => {
       if (!mounted) return;
 
-      console.log('Vérification de la session...');
       const isSessionValid = await refreshSession();
       if (!isSessionValid) {
-        console.error('Session invalide');
         toast.error('Veuillez vous connecter pour enregistrer une vidéo.');
         navigate('/login');
         return;
       }
 
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      console.log('Utilisateur:', user?.id, 'Auth UID:', session?.user?.id, 'User Error:', userError, 'Session Error:', sessionError);
-      if (userError || !user) {
-        console.error('Utilisateur non authentifié');
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!user || !session) {
         toast.error('Utilisateur non authentifié.');
-        navigate('/login');
-        return;
-      }
-      if (user.id !== session?.user?.id) {
-        console.error('Incohérence entre user.id et auth.uid()');
-        toast.error('Erreur d\'authentification.');
         navigate('/login');
         return;
       }
@@ -98,10 +88,7 @@ const RecordVideo = () => {
       timer = setInterval(() => {
         setRecordingTime(prev => {
           const newTime = prev + 1;
-          if (newTime >= maxRecordingTime) {
-            stopRecording();
-            toast.info('Temps d\'enregistrement maximum atteint (2 min).');
-          }
+          if (newTime >= maxRecordingTime) stopRecording();
           return newTime;
         });
       }, 1000);
@@ -141,7 +128,7 @@ const RecordVideo = () => {
             }, 3000);
             break;
           case 'failed':
- setAnalysisProgress(`❌ Erreur: ${video.error_message || 'Échec de l\'analyse'}`);
+            setAnalysisProgress(`❌ Erreur: ${video.error_message || 'Échec de l'analyse'}`);
             toast.error('Erreur lors de l\'analyse de la vidéo.');
             break;
           default:
@@ -166,27 +153,15 @@ const RecordVideo = () => {
 
   const requestCameraAccess = async () => {
     try {
-      const micPermission = await navigator.permissions.query({ name: 'microphone' });
-      if (micPermission.state === 'denied') {
-        throw new Error('Accès au microphone refusé.');
-      }
-
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 1280, height: 720 },
         audio: true,
       });
       streamRef.current = stream;
 
-      const audioTracks = stream.getAudioTracks();
-      if (audioTracks.length === 0) {
-        throw new Error('Aucune piste audio détectée. Vérifiez votre microphone.');
-      }
-
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         setCameraAccess(true);
-      } else {
-        throw new Error('Élément vidéo non disponible dans le DOM');
       }
     } catch (err) {
       console.error('Erreur accès caméra/micro:', err);
@@ -224,35 +199,24 @@ const RecordVideo = () => {
         }));
       streamRef.current = stream;
 
-      const audioTracks = stream.getAudioTracks();
-      if (audioTracks.length === 0) {
-        throw new Error('Aucune piste audio détectée. Vérifiez votre microphone.');
-      }
-
       if (videoRef.current) videoRef.current.srcObject = stream;
 
       recordedChunksRef.current = [];
+
       const preferredTypes = [
-        'video/webm;codecs=vp8,opus',
-        'video/webm',
         'video/mp4;codecs=h264,aac',
         'video/mp4',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
       ];
-      const mimeType = preferredTypes.find(type => MediaRecorder.isTypeSupported(type)) || '';
-      if (!mimeType) {
-        throw new Error('Aucun format vidéo supporté par ce navigateur.');
-      }
+      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      const mimeType = preferredTypes.find(type => MediaRecorder.isTypeSupported(type) && (!isSafari || type.startsWith('video/mp4'))) || '';
+      if (!mimeType) throw new Error('Aucun format vidéo supporté par ce navigateur.');
 
-      console.log('MimeType utilisé pour MediaRecorder:', mimeType);
-      mediaRecorderRef.current = new MediaRecorder(stream, {
-        mimeType,
-        bitsPerSecond: 500000, // Réduit la qualité pour limiter la taille
-      });
-
+      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType, bitsPerSecond: 500000 });
       mediaRecorderRef.current.ondataavailable = event => {
         if (event.data.size > 0) recordedChunksRef.current.push(event.data);
       };
-
       mediaRecorderRef.current.onstop = () => {
         const blob = new Blob(recordedChunksRef.current, { type: mimeType });
         setRecordedVideo({ blob, url: URL.createObjectURL(blob) });
@@ -278,7 +242,6 @@ const RecordVideo = () => {
     }
   };
 
-  // Upload chunked pour gérer les gros fichiers
   const uploadVideo = async () => {
     if (!recordedVideo) {
       setError('Vous devez enregistrer une vidéo.');
@@ -291,88 +254,54 @@ const RecordVideo = () => {
     setAnalysisProgress('📤 Upload de la vidéo...');
 
     try {
-      console.log('Vérification de la session avant upload...');
       const isSessionValid = await refreshSession();
-      if (!isSessionValid) {
-        throw new Error('Utilisateur non authentifié');
-      }
+      if (!isSessionValid) throw new Error('Utilisateur non authentifié');
 
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      console.log('Utilisateur:', user?.id, 'Auth UID:', session?.user?.id, 'Auth Error:', authError, 'Session Error:', sessionError);
-      if (authError || !user) throw new Error('Utilisateur non authentifié');
-      if (user.id !== session?.user?.id) throw new Error('Incohérence entre user.id et auth.uid()');
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!user || !session) throw new Error('Utilisateur non authentifié');
 
       const fileName = `video-${Date.now()}.${recordedVideo.blob.type.split('/')[1]}`;
       const pathInBucket = `videos/${user.id}/${fileName}`;
-      console.log('Chemin de stockage:', pathInBucket, 'User ID:', user.id);
 
-      // Upload chunked
-      setAnalysisProgress('📤 Envoi de la vidéo...');
-      console.log('Début de l\'upload dans le bucket videos...');
-      const chunkSize = 5 * 1024 * 1024; // 5MB chunks
-      const totalChunks = Math.ceil(recordedVideo.blob.size / chunkSize);
-      let offset = 0;
-
-      for (let i = 0; i < totalChunks; i++) {
-        const chunk = recordedVideo.blob.slice(offset, offset + chunkSize);
-        const { error: uploadError } = await supabase.storage
-          .from('videos')
-          .upload(pathInBucket, chunk, {
-            contentType: recordedVideo.blob.type,
-            cacheControl: '3600',
-            upsert: i === 0, // Premier chunk crée, les suivants ajoutent
-            contentRange: `bytes ${offset}-${offset + chunk.size - 1}/${recordedVideo.blob.size}`,
-          });
-
-        if (uploadError) {
-          console.error('Erreur d\'upload chunk:', uploadError);
-          throw new Error(`Échec de l'upload: ${uploadError.message}`);
-        }
-        offset += chunkSize;
-      }
-      console.log('Upload chunked réussi.');
-
-      // Générer une URL signée
-      console.log('Génération de l\'URL signée...');
-      const { data: signedUrl, error: urlError } = await supabase.storage
+      // Upload direct
+      const { error: uploadError } = await supabase.storage
         .from('videos')
-        .createSignedUrl(pathInBucket, 365 * 24 * 60 * 60);
+        .upload(pathInBucket, recordedVideo.blob, { upsert: true });
 
-      if (urlError) {
-        console.warn('Erreur lors de la génération de l\'URL signée:', urlError);
-      }
+      if (uploadError) throw uploadError;
+
+      // Générer une URL signée pour lecture
+      const { data: signedUrlData, error: urlError } = await supabase.storage
+        .from('videos')
+        .createSignedUrl(pathInBucket, 60 * 60);
+
+      if (urlError) throw urlError;
 
       // Insérer dans la table videos
-      setAnalysisProgress('💾 Enregistrement dans la base...');
-      console.log('Insertion dans la table videos...');
       const { data: videoData, error: insertError } = await supabase
         .from('videos')
-        .insert([
-          {
-            title: 'Ma vidéo SpotBulle',
-            description: 'Vidéo enregistrée via SpotBulle',
-            user_id: user.id,
-            storage_path: pathInBucket,
-            original_file_name: fileName,
-            format: recordedVideo.blob.type.split('/')[1],
-            tags: tags.length > 0 ? tags.split(',').map(t => t.trim()) : [], // Tableau vide si pas de tags
-            status: 'uploaded',
-          },
-        ])
+        .insert([{
+          title: 'Ma vidéo SpotBulle',
+          description: 'Vidéo enregistrée via SpotBulle',
+          user_id: user.id,
+          storage_path: pathInBucket,
+          signed_url: signedUrlData.signedUrl,
+          original_file_name: fileName,
+          format: recordedVideo.blob.type.split('/')[1],
+          tags: tags.length > 0 ? tags.split(',').map(t => t.trim()) : [],
+          status: 'uploaded',
+        }])
         .select()
         .single();
 
-      if (insertError) {
-        console.error('Erreur lors de l\'insertion dans videos:', insertError);
-        throw new Error(`Erreur base de données: ${insertError.message}`);
-      }
-      console.log('Insertion réussie:', videoData);
+      if (insertError) throw insertError;
 
       setUploadedVideoId(videoData.id);
+      setRecordedVideo(prev => ({ ...prev, url: signedUrlData.signedUrl }));
       setAnalysisProgress('🚀 Démarrage de l\'analyse IA...');
 
-      // Déclencher l'analyse automatiquement
+      // Déclencher l'analyse automatique
       try {
         const response = await fetch('https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/transcribe-video', {
           method: 'POST',
@@ -383,12 +312,10 @@ const RecordVideo = () => {
           body: JSON.stringify({ video_id: videoData.id }),
         });
 
-        const result = await response.json().catch(() => null);
         if (!response.ok) {
-          console.error('Erreur analyse automatique:', result?.error || response.statusText);
+          const result = await response.json().catch(() => null);
           throw new Error(result?.error || 'Erreur lors du déclenchement de l\'analyse');
         }
-        console.log('Analyse automatique déclenchée avec succès:', result);
       } catch (analysisError) {
         console.warn('Erreur analyse automatique:', analysisError);
         setAnalysisProgress('❌ Erreur lors du démarrage de l\'analyse');
@@ -456,10 +383,12 @@ const RecordVideo = () => {
       <div className="mb-6 relative">
         <video
           ref={videoRef}
+          src={recordedVideo?.url || undefined}
           autoPlay
           muted={!recordedVideo}
-          className="w-full max-w-md border-2 border-blue-500 rounded-lg bg-black shadow-lg"
+          controls
           playsInline
+          className="w-full max-w-md border-2 border-blue-500 rounded-lg bg-black shadow-lg"
         />
         {recording && (
           <div className="absolute top-4 right-4 bg-red-600 text-white px-2 py-1 rounded-full text-sm animate-pulse">
@@ -546,30 +475,6 @@ const RecordVideo = () => {
               )}
             </Button>
           </div>
-
-          {analysisProgress && (
-            <div className="mt-4 p-3 bg-blue-900 rounded-lg">
-              <p className="text-sm font-medium mb-2">📈 Progression de l'analyse :</p>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span>Upload vidéo</span>
-                  <span>{analysisProgress.includes('Upload') ? '✅' : '⏳'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Transcription</span>
-                  <span>{analysisProgress.includes('Transcription') ? '✅' : '⏳'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Analyse IA</span>
-                  <span>{analysisProgress.includes('Analyse IA') ? '✅' : '⏳'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Résultats</span>
-                  <span>{analysisProgress.includes('terminée') ? '✅' : '⏳'}</span>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>
