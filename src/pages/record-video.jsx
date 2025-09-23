@@ -82,7 +82,7 @@ const RecordVideo = () => {
     };
   }, [navigate]);
 
-  // NOUVEAU : Vérification du statut de l'analyse
+  // Vérification du statut de l'analyse
   useEffect(() => {
     if (!uploadedVideoId) return;
 
@@ -109,7 +109,6 @@ const RecordVideo = () => {
           case 'analyzed':
             setAnalysisProgress('✅ Analyse terminée !');
             toast.success('Votre vidéo a été analysée avec succès !');
-            // Rediriger vers la page de succès après 3 secondes
             setTimeout(() => {
               navigate(`/video-success?id=${uploadedVideoId}`);
             }, 3000);
@@ -126,9 +125,7 @@ const RecordVideo = () => {
       }
     };
 
-    const interval = setInterval(() => {
-      checkAnalysisStatus();
-    }, 3000);
+    const interval = setInterval(checkAnalysisStatus, 3000);
 
     return () => clearInterval(interval);
   }, [uploadedVideoId, navigate]);
@@ -185,7 +182,6 @@ const RecordVideo = () => {
     setError(null);
     setCountdown(3);
 
-    // Compte à rebours visuel amélioré
     for (let i = 3; i > 0; i--) {
       setCountdown(i);
       await new Promise(res => setTimeout(res, 1000));
@@ -230,8 +226,6 @@ const RecordVideo = () => {
 
       mediaRecorderRef.current.start();
       setRecording(true);
-      
-      // Feedback visuel pendant l'enregistrement
       toast.success('Enregistrement en cours... Parlez maintenant !');
     } catch (err) {
       console.error('Erreur démarrage enregistrement:', err);
@@ -289,19 +283,19 @@ const RecordVideo = () => {
         });
 
       if (uploadError) {
-        console.error('Erreur d\\'upload dans storage:', uploadError);
-        throw new Error('Échec de l\\'upload: ' + uploadError.message);
+        console.error('Erreur d\'upload dans storage:', uploadError);
+        throw new Error(`Échec de l'upload: ${uploadError.message}`);
       }
       console.log('Upload réussi dans le bucket videos.');
 
       // Générer une URL signée
-      console.log('Génération de l\\'URL signée...');
+      console.log('Génération de l\'URL signée...');
       const { data: signedUrl, error: urlError } = await supabase.storage
         .from('videos')
         .createSignedUrl(pathInBucket, 365 * 24 * 60 * 60);
 
       if (urlError) {
-        console.warn('Erreur lors de la génération de l\\'URL signée:', urlError);
+        console.warn('Erreur lors de la génération de l\'URL signée:', urlError);
       }
 
       // Insérer dans la table videos
@@ -325,13 +319,13 @@ const RecordVideo = () => {
         .single();
 
       if (insertError) {
-        console.error('Erreur lors de l\\'insertion dans videos:', insertError);
-        throw new Error('Erreur base de données: ' + insertError.message);
+        console.error('Erreur lors de l\'insertion dans videos:', insertError);
+        throw new Error(`Erreur base de données: ${insertError.message}`);
       }
       console.log('Insertion réussie:', videoData);
 
       setUploadedVideoId(videoData.id);
-      setAnalysisProgress('🚀 Démarrage de l\\'analyse IA...');
+      setAnalysisProgress('🚀 Démarrage de l\'analyse IA...');
 
       // Déclencher l'analyse automatiquement
       try {
@@ -345,7 +339,7 @@ const RecordVideo = () => {
         });
 
         if (!response.ok) {
-          console.warn('Erreur lors du déclenchement de l\\'analyse automatique');
+          console.warn('Erreur lors du déclenchement de l\'analyse automatique');
         } else {
           console.log('Analyse automatique déclenchée avec succès');
         }
@@ -354,12 +348,11 @@ const RecordVideo = () => {
       }
 
       toast.success('Vidéo envoyée avec succès ! Analyse en cours...');
-
     } catch (err) {
       console.error('Erreur upload:', err);
-      setError('Erreur lors de l\\'upload: ' + err.message);
+      setError(`Erreur lors de l'upload: ${err.message}`);
       setAnalysisProgress(null);
-      toast.error('Erreur lors de l\\'upload.');
+      toast.error('Erreur lors de l\'upload.');
     } finally {
       setUploading(false);
     }
@@ -384,7 +377,6 @@ const RecordVideo = () => {
         </div>
       )}
 
-      {/* Compte à rebours amélioré */}
       {countdown > 0 && (
         <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
           <div className="text-white text-center">
@@ -394,7 +386,6 @@ const RecordVideo = () => {
         </div>
       )}
 
-      {/* Indicateur de progression de l'analyse */}
       {analysisProgress && (
         <div className="bg-blue-900 text-white p-4 rounded-lg mb-6 max-w-md w-full">
           <div className="flex items-center justify-between mb-2">
@@ -402,13 +393,13 @@ const RecordVideo = () => {
             <span className="text-sm bg-blue-700 px-2 py-1 rounded">{analysisProgress}</span>
           </div>
           <div className="w-full bg-blue-700 rounded-full h-2">
-            <div 
+            <div
               className="bg-green-400 h-2 rounded-full transition-all duration-1000 ease-in-out"
-              style={{ 
-                width: analysisProgress.includes('terminée') ? '100%' : 
+              style={{
+                width: analysisProgress.includes('terminée') ? '100%' :
                        analysisProgress.includes('Analyse IA') ? '75%' :
                        analysisProgress.includes('Transcription') ? '50%' :
-                       analysisProgress.includes('Upload') ? '25%' : '10%' 
+                       analysisProgress.includes('Upload') ? '25%' : '10%'
               }}
             ></div>
           </div>
@@ -437,22 +428,22 @@ const RecordVideo = () => {
               onClick={startRecording}
               disabled={!cameraAccess || countdown > 0}
               className={`text-lg px-8 py-3 ${
-                cameraAccess 
-                  ? 'bg-gradient-to-r from-red-600 to-blue-600 hover:from-red-700 hover:to-blue-700' 
+                cameraAccess
+                  ? 'bg-gradient-to-r from-red-600 to-blue-600 hover:from-red-700 hover:to-blue-700'
                   : 'bg-gray-600 opacity-50 cursor-not-allowed'
               }`}
             >
-              {cameraAccess ? '🎤 Commencer l\\'enregistrement' : '📷 Caméra non disponible'}
+              {cameraAccess ? '🎤 Commencer l\'enregistrement' : '📷 Caméra non disponible'}
             </Button>
           ) : (
-            <Button 
-              onClick={stopRecording} 
+            <Button
+              onClick={stopRecording}
               className="bg-red-600 hover:bg-red-700 text-lg px-8 py-3"
             >
               ⏹️ Arrêter l'enregistrement
             </Button>
           )}
-          
+
           <div className="mt-4 text-sm text-gray-400">
             <p>💡 Conseil : Parlez clairement et regardez la caméra</p>
             <p>⏱️ Durée recommandée : 1-3 minutes</p>
@@ -482,8 +473,8 @@ const RecordVideo = () => {
           </div>
 
           <div className="flex gap-3 justify-center">
-            <Button 
-              onClick={retryRecording} 
+            <Button
+              onClick={retryRecording}
               className="bg-gray-600 hover:bg-gray-700 flex-1"
               disabled={uploading}
             >
@@ -493,8 +484,8 @@ const RecordVideo = () => {
               onClick={uploadVideo}
               disabled={uploading}
               className={`flex-1 ${
-                uploading 
-                  ? 'bg-blue-400 opacity-70 cursor-not-allowed' 
+                uploading
+                  ? 'bg-blue-400 opacity-70 cursor-not-allowed'
                   : 'bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700'
               }`}
             >
