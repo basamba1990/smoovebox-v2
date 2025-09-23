@@ -104,7 +104,7 @@ const RecordVideo = () => {
       try {
         const { data: video, error } = await supabase
           .from('videos')
-          .select('status, analysis_result, error_message')
+          .select('status, analysis, error_message')
           .eq('id', uploadedVideoId)
           .single();
 
@@ -271,12 +271,12 @@ const RecordVideo = () => {
 
       if (uploadError) throw uploadError;
 
-      // Générer une URL signée pour lecture
-      const { data: signedUrlData, error: urlError } = await supabase.storage
+      // Générer une URL publique pour lecture
+      const { data: publicUrlData } = supabase.storage
         .from('videos')
-        .createSignedUrl(pathInBucket, 60 * 60);
+        .getPublicUrl(pathInBucket);
 
-      if (urlError) throw urlError;
+      if (!publicUrlData?.publicUrl) throw new Error('Impossible de générer l\'URL publique');
 
       // Insérer dans la table videos
       const { data: videoData, error: insertError } = await supabase
@@ -287,7 +287,7 @@ const RecordVideo = () => {
             description: 'Vidéo enregistrée via SpotBulle',
             user_id: user.id,
             storage_path: pathInBucket,
-            signed_url: signedUrlData.signedUrl,
+            public_url: publicUrlData.publicUrl,
             original_file_name: fileName,
             format: recordedVideo.blob.type.split('/')[1],
             tags: tags.length > 0 ? tags.split(',').map(t => t.trim()) : [],
@@ -300,7 +300,7 @@ const RecordVideo = () => {
       if (insertError) throw insertError;
 
       setUploadedVideoId(videoData.id);
-      setRecordedVideo(prev => ({ ...prev, url: signedUrlData.signedUrl }));
+      setRecordedVideo(prev => ({ ...prev, url: publicUrlData.publicUrl }));
       setAnalysisProgress('🚀 Démarrage de l\'analyse IA...');
 
       // Déclencher l'analyse automatique
