@@ -57,6 +57,7 @@ Deno.serve(async (req) => {
       )
     }
 
+    // Création du client Supabase Service Role
     serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { persistSession: false },
       global: {
@@ -68,6 +69,7 @@ Deno.serve(async (req) => {
       }
     })
 
+    // Fonction pour confirmer la mise à jour dans la base de données
     async function confirmDatabaseUpdate(client: ReturnType<typeof createClient>, videoId: string, attempts = 0, maxAttempts = 5): Promise<boolean> {
       if (attempts >= maxAttempts) {
         console.error(`Échec de confirmation de la mise à jour après ${maxAttempts} tentatives`)
@@ -92,6 +94,7 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Gestion de l'identification de l'utilisateur
     let userId: string | null = null
     let token: string | null = null
     const userAgent = req.headers.get('user-agent') || ''
@@ -118,7 +121,7 @@ Deno.serve(async (req) => {
 
       if (token) {
         try {
-          const { data, error } = await serviceClient.auth.getUser(token)
+          const { data } = await serviceClient.auth.getUser(token)
           if (data.user) userId = data.user.id
         } catch {}
       }
@@ -148,6 +151,7 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Récupération des paramètres vidéo
     let videoUrl: string | null = null
     const url = new URL(req.url)
     videoId = url.searchParams.get('videoId')
@@ -173,7 +177,11 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Erreur lors de la récupération de la vidéo', details: videoError.message }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 })
     }
 
-    const { error: updateError } = await serviceClient.from('videos').update({ status: VIDEO_STATUS.PROCESSING, updated_at: new Date().toISOString(), transcription_attempts: (video.transcription_attempts || 0) + 1 }).eq('id', videoId as string)
+    await serviceClient.from('videos').update({
+      status: VIDEO_STATUS.PROCESSING,
+      updated_at: new Date().toISOString(),
+      transcription_attempts: (video.transcription_attempts || 0) + 1
+    }).eq('id', videoId as string)
 
     // -----------------------------
     // TÉLÉCHARGEMENT DIRECT SÉCURISÉ
@@ -182,15 +190,10 @@ Deno.serve(async (req) => {
     if ((video as any).storage_path) {
       try {
         const storagePath = (video as any).storage_path as string
-        let bucketName: string
-        let filePath: string
-        if (storagePath.startsWith('videos/')) {
-          bucketName = 'videos'
-          filePath = storagePath.slice('videos/'.length)
-        } else {
-          bucketName = 'videos'
-          filePath = storagePath
-        }
+        const bucketName = 'videos'
+        let filePath = storagePath.startsWith('videos/') ? storagePath.slice('videos/'.length) : storagePath
+        console.log(`Téléchargement du fichier: bucket=${bucketName}, path=${filePath}`)
+
         const { data: fileData, error: downloadError } = await serviceClient.storage.from(bucketName).download(filePath)
         if (downloadError) throw downloadError
         if (!fileData || fileData.size === 0) throw new Error('Le fichier téléchargé est vide ou introuvable')
@@ -200,15 +203,20 @@ Deno.serve(async (req) => {
       }
     }
 
-    // fallback via videoUrl si direct download échoue
+    // fallback via publicUrl si download direct échoue
     if (!audioBlob) {
       if (!videoUrl) videoUrl = (video as any).url
-      let isValidUrl = false
       if (videoUrl) {
-        try { new URL(videoUrl); isValidUrl = true } catch {}
-      }
-      if (isValidUrl && videoUrl) {
         try {
+          let isValidUrl = false
+          try { new URL(videoUrl); isValidUrl = true } catch {}
+          if (!isValidUrl) {
+            const storagePath = (video as any).storage_path as string
+            const bucketName = 'videos'
+            const filePath = storagePath.startsWith('videos/') ? storagePath.slice('videos/'.length) : storagePath
+            videoUrl = serviceClient.storage.from(bucketName).getPublicUrl(filePath).data.publicUrl
+            console.log(`Fallback publicUrl utilisé: ${videoUrl}`)
+          }
           const response = await fetch(videoUrl, { method: 'GET', headers: { 'User-Agent': 'Supabase-Edge-Function/1.0' } })
           if (!response.ok) throw new Error(`Échec du téléchargement via URL. Statut: ${response.status}`)
           audioBlob = await response.blob()
