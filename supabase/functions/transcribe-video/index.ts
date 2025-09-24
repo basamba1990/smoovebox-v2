@@ -271,12 +271,13 @@ Deno.serve(async (req) => {
     });
     if (updateError) throw updateError;
 
-    // 🎬 Génération URL signée
+    // 🎬 Génération URL signée sécurisée
     let bucket = 'videos';
     let filePath = video.storage_path || video.file_path || '';
     if (filePath && filePath.startsWith(`${bucket}/`)) {
       filePath = filePath.substring(bucket.length + 1);
     }
+
     let videoUrl: string | null = null;
     if (filePath) {
       try {
@@ -285,6 +286,7 @@ Deno.serve(async (req) => {
         });
         if (signedUrlError && !video.public_url) throw signedUrlError;
         videoUrl = signedUrlData?.signedUrl || video.public_url || null;
+        console.log('URL signée générée:', videoUrl);
       } catch (signedUrlError) {
         if (video.public_url) {
           videoUrl = video.public_url;
@@ -297,7 +299,7 @@ Deno.serve(async (req) => {
     }
     if (!videoUrl) throw new Error('Impossible de générer une URL vidéo');
 
-    // 📥 Télécharger vidéo
+    // 📥 Télécharger vidéo via URL signée
     const fetchResp = await withRetry(async () => {
       const resp = await fetch(videoUrl!);
       if (!resp.ok) {
