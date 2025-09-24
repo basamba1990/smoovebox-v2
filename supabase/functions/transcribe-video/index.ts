@@ -311,58 +311,91 @@ Deno.serve(async (req) => {
       console.log(`Statut de la vidéo ${videoId} mis à jour à '${VIDEO_STATUS.PROCESSING}'`)
     }
 
-    // 5. TÉLÉCHARGEMENT ET TRANSCRIPTION
+    // 5. TÉLÉCHARGEMENT ET TRANSCRIPTION - VERSION CORRIGÉE
     let audioBlob: Blob | null = null;
 
-    if ((video as any).storage_path) {
-      console.log(`Tentative de téléchargement direct depuis le storage: ${(video as any).storage_path}`)
-      
+    // Fonction améliorée pour télécharger depuis Supabase Storage
+    async function downloadFromSupabaseStorage(storagePath: string): Promise<Blob | null> {
       try {
-        const storagePath = (video as any).storage_path as string;
-        let bucketName: string;
-        let filePath: string;
-
+        console.log(`Tentative de téléchargement depuis le storage: ${storagePath}`);
+        
+        // Extraire le bucket et le chemin du fichier
         const pathParts = storagePath.split('/');
+        let bucketName = 'videos';
+        let filePath = storagePath;
+
+        // Si le chemin commence par le nom du bucket, l'extraire
         if (pathParts.length > 1 && pathParts[0] === 'videos') {
           bucketName = pathParts[0];
           filePath = pathParts.slice(1).join('/');
-        } else {
-          bucketName = 'videos';
-          filePath = storagePath;
         }
         
-        console.log(`Téléchargement direct - Bucket: ${bucketName}, Fichier: ${filePath}`);
+        console.log(`Téléchargement - Bucket: ${bucketName}, Fichier: ${filePath}`);
         
-        const { data: fileData, error: downloadError } = await serviceClient.storage
-          .from(bucketName)
-          .download(filePath);
+        // Méthode 1: Téléchargement direct
+        try {
+          const { data: fileData, error: downloadError } = await serviceClient!.storage
+            .from(bucketName)
+            .download(filePath);
 
-        if (downloadError) {
-          console.error('Erreur de téléchargement direct:', downloadError);
-          throw downloadError;
+          if (downloadError) {
+            console.warn('Échec du téléchargement direct, tentative avec URL signée...');
+            throw downloadError;
+          }
+
+          if (!fileData) {
+            throw new Error('Aucune donnée de fichier retournée');
+          }
+
+          if (fileData.size === 0) {
+            throw new Error('Le fichier téléchargé est vide');
+          }
+
+          console.log(`Téléchargement direct réussi, taille: ${fileData.size} octets, type: ${fileData.type}`);
+          return fileData;
+        } catch (directError) {
+          // Méthode 2: URL signée
+          console.log('Tentative avec URL signée...');
+          const { data: signedUrlData, error: signedError } = await serviceClient!.storage
+            .from(bucketName)
+            .createSignedUrl(filePath, 60); // 60 secondes
+
+          if (signedError) {
+            console.warn('Échec de génération d\'URL signée:', signedError);
+            throw signedError;
+          }
+
+          if (signedUrlData?.signedUrl) {
+            const response = await fetch(signedUrlData.signedUrl);
+            if (!response.ok) {
+              throw new Error(`Échec du téléchargement via URL signée: ${response.status}`);
+            }
+            
+            const blob = await response.blob();
+            if (blob.size === 0) {
+              throw new Error('Le fichier téléchargé via URL signée est vide');
+            }
+            
+            console.log(`Téléchargement via URL signée réussi, taille: ${blob.size} octets`);
+            return blob;
+          }
         }
-
-        if (!fileData) {
-          throw new Error('Aucune donnée de fichier retournée par le téléchargement');
-        }
-
-        console.log(`Fichier téléchargé directement avec succès, taille: ${fileData.size} octets`);
-        
-        if (fileData.size === 0) {
-          throw new Error('Le fichier téléchargé est vide');
-        }
-
-        audioBlob = fileData;
-        console.log(`Téléchargement direct réussi, type: ${audioBlob.type}`);
-        
-      } catch (storageError: any) {
-        console.error('Échec du téléchargement direct:', storageError.message);
+      } catch (error: any) {
+        console.error('Échec du téléchargement depuis Supabase Storage:', error.message);
+        return null;
       }
+      return null;
     }
 
+    // TENTATIVE PRINCIPALE: Téléchargement depuis Supabase Storage
+    if ((video as any).storage_path) {
+      audioBlob = await downloadFromSupabaseStorage((video as any).storage_path);
+    }
+
+    // FALLBACK: Téléchargement via URL
     if (!audioBlob) {
       if (!videoUrl) {
-        videoUrl = (video as any).url
+        videoUrl = (video as any).url;
       }
 
       let isValidUrl = false;
@@ -406,6 +439,7 @@ Deno.serve(async (req) => {
       }
     }
 
+    // VÉRIFICATION FINALE
     if (!audioBlob) {
       const errorMessage = `Impossible de télécharger la vidéo. Storage path: ${(video as any).storage_path || 'non défini'}, URL: ${videoUrl || 'non définie'}`;
       console.error(errorMessage);
@@ -420,7 +454,15 @@ Deno.serve(async (req) => {
         .eq('id', videoId as string);
 
       return new Response(
-        JSON.stringify({ error: 'Téléchargement impossible', details: errorMessage }),
+        JSON.stringify({ 
+          error: 'Téléchargement impossible', 
+          details: errorMessage,
+          suggestions: [
+            'Vérifier que le fichier existe dans Supabase Storage',
+            'Vérifier les permissions du bucket videos',
+            'Vérifier que le storage_path est correct'
+          ]
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
@@ -434,9 +476,14 @@ Deno.serve(async (req) => {
 
     let transcriptionResult: any;
     try {
-      const file = new File([audioBlob], 'audio.mp4', { type: audioBlob.type || 'video/mp4' });
+      // Déterminer le type MIME correct
+      const mimeType = audioBlob.type || 'audio/mp4';
+      const fileExtension = mimeType.includes('webm') ? 'webm' : 'mp4';
+      const fileName = `audio.${fileExtension}`;
       
-      console.log(`Envoi du fichier à OpenAI Whisper, taille: ${file.size} octets`);
+      const file = new File([audioBlob], fileName, { type: mimeType });
+      
+      console.log(`Envoi du fichier à OpenAI Whisper, taille: ${file.size} octets, type: ${mimeType}`);
       
       transcriptionResult = await openai.audio.transcriptions.create({
         file: file,
@@ -532,167 +579,3 @@ Deno.serve(async (req) => {
       if (typeof transcriptionData === 'object' && !Array.isArray(transcriptionData)) {
         try {
           JSON.stringify(transcriptionData);
-          updatePayload.transcription_data = transcriptionData;
-        } catch (e) {
-          console.error('Erreur de sérialisation JSON pour transcription_data:', e);
-          updatePayload.error_message = 'Données de transcription malformées';
-          updatePayload.transcription_data = null;
-        }
-      } else {
-        console.warn('transcription_data n\'est pas un objet JSON valide, non enregistré.');
-        updatePayload.error_message = 'Données de transcription malformées';
-        updatePayload.transcription_data = null;
-      }
-    }
-
-    console.log('Payload de mise à jour pour la table videos:', JSON.stringify(updatePayload, null, 2));
-
-    const { error: transcriptionUpdateError } = await serviceClient
-      .from('videos')
-      .update(updatePayload)
-      .eq('id', videoId as string);
-
-    if (transcriptionUpdateError) {
-      console.error('Erreur lors de la mise à jour de la transcription:', transcriptionUpdateError);
-      
-      console.log('Tentative alternative avec des données simplifiées...');
-      
-      const simplifiedPayload = {
-        transcription_text: transcriptionData?.text || '',
-        status: VIDEO_STATUS.TRANSCRIBED,
-        updated_at: new Date().toISOString()
-      };
-      
-      console.log('Payload simplifié:', JSON.stringify(simplifiedPayload, null, 2));
-
-      const { error: retryError } = await serviceClient
-        .from('videos')
-        .update(simplifiedPayload)
-        .eq('id', videoId as string);
-          
-      if (retryError) {
-        console.error('Échec de la tentative alternative:', retryError);
-        
-        await serviceClient
-          .from('videos')
-          .update({ 
-            status: VIDEO_STATUS.FAILED, 
-            error_message: `Erreur lors de l'enregistrement de la transcription: ${retryError.message}`,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId as string);
-
-        return new Response(
-          JSON.stringify({
-            error: 'Erreur d\'enregistrement de la transcription',
-            details: retryError.message
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-        );
-      } else {
-        console.log('Tentative alternative réussie!');
-      }
-    }
-
-    console.log('Transcription enregistrée avec succès dans la table videos.')
-
-    // 8. CONFIRMER LA MISE À JOUR DE LA BASE DE DONNÉES
-    const confirmed = await confirmDatabaseUpdate(serviceClient, videoId as string)
-    if (!confirmed) {
-      console.warn(`La mise à jour de la base de données pour la vidéo ${videoId} n'a pas pu être confirmée.`)
-      
-      await serviceClient
-        .from('videos')
-        .update({ 
-          status: VIDEO_STATUS.FAILED, 
-          error_message: `La transcription a été enregistrée mais la confirmation de la base de données a échoué.`,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId as string);
-    }
-
-    // 9. DÉCLENCHER LA FONCTION D'ANALYSE
-    if (confirmed) {
-      try {
-        const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`;
-        
-        const headers = {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseServiceKey}`
-        };
-        
-        console.log(`Appel de la fonction analyze-transcription à ${analyzeEndpoint}`);
-        console.log('En-têtes:', JSON.stringify(headers, null, 2));
-        
-        const response = await fetch(analyzeEndpoint, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ videoId })
-        });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`Erreur de la fonction d'analyse (${response.status}): ${errorText}`);
-          await serviceClient
-            .from('videos')
-            .update({ 
-              status: VIDEO_STATUS.FAILED, 
-              error_message: `Échec de l'appel à la fonction d'analyse: ${errorText}`,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', videoId as string);
-        } else {
-          const responseData = await response.json();
-          console.log('Analyse démarrée avec succès:', responseData);
-        }
-      } catch (invokeError: any) {
-        console.error("Erreur lors de l'invocation de la fonction d'analyse:", invokeError)
-        await serviceClient
-          .from('videos')
-          .update({ 
-            status: VIDEO_STATUS.FAILED, 
-            error_message: `Erreur lors de l'invocation de la fonction d'analyse: ${invokeError.message}`,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId as string);
-      }
-    } else {
-      console.warn('Analyse non déclenchée car la transcription n\'a pas été confirmée');
-    }
-
-    return new Response(
-      JSON.stringify({ 
-        message: 'Transcription terminée avec succès', 
-        videoId,
-        transcription_length: transcriptionResult.text.length,
-        transcription_confirmed: confirmed
-      }), 
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200
-      }
-    )
-
-  } catch (error: any) {
-    console.error('Erreur générale dans la fonction transcribe-video:', error)
-    
-    if (videoId && serviceClient) {
-      await serviceClient
-        .from('videos')
-        .update({ 
-          status: VIDEO_STATUS.FAILED, 
-          error_message: `Erreur interne: ${error.message}`,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', videoId as string);
-    }
-    
-    return new Response(
-      JSON.stringify({
-        error: 'Erreur interne du serveur',
-        details: error.message || 'Une erreur inattendue est survenue.'
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-    )
-  }
-})
