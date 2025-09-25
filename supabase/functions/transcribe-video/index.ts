@@ -47,29 +47,75 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+  
   if (!supabaseUrl || !serviceKey || !openaiApiKey) {
+    console.error('Configuration manquante:', {
+      hasSupabaseUrl: !!supabaseUrl,
+      hasServiceKey: !!serviceKey,
+      hasOpenAiKey: !!openaiApiKey
+    });
     return new Response(JSON.stringify({ error: 'Configuration incomplète' }), { headers: corsHeaders, status: 500 });
   }
 
+  // Vérification du format de la clé de service
+  if (!serviceKey.startsWith('eyJ') && serviceKey.length < 50) {
+    console.error('Clé de service invalide - format incorrect');
+    return new Response(JSON.stringify({ error: 'Configuration Supabase invalide' }), { headers: corsHeaders, status: 500 });
+  }
+
   const url = new URL(req.url);
-  let body: any = {};
+  let body = {};
   try {
     body = await req.json();
   } catch {}
-
+  
   const videoId = body.videoId || url.searchParams.get('videoId');
   const bearer = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || null;
 
-  // === Option A : créer un client Supabase côté utilisateur final ===
-  const userClient = bearer ? createClient(supabaseUrl, bearer, { auth: { persistSession: false } }) : null;
-  const serviceClient = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-  const dbClient = userClient ?? serviceClient;
+  // OPTION A IMPLÉMENTÉE : Création des deux clients
+  const serviceClient = createClient(supabaseUrl, serviceKey, { 
+    auth: { persistSession: false },
+    global: {
+      fetch: (input, init) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        return fetch(input, {
+          ...init,
+          signal: controller.signal
+        }).finally(() => clearTimeout(timeoutId));
+      }
+    }
+  });
 
-  // Récupérer userId depuis JWT ou payload
+  // Client utilisateur final (RLS ON, auth.uid() disponible)
+  const userClient = bearer ? createClient(supabaseUrl, bearer, { 
+    auth: { persistSession: false },
+    global: {
+      fetch: (input, init) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        return fetch(input, {
+          ...init,
+          signal: controller.signal
+        }).finally(() => clearTimeout(timeoutId));
+      }
+    }
+  }) : null;
+
+  // Décoder l'utilisateur depuis le token client si présent; sinon, accepter userId explicite
   let userId = body.userId || body.user_id || null;
-  if (!userId && userClient) {
-    const { data, error } = await userClient.auth.getUser();
-    if (!error && data?.user?.id) userId = data.user.id;
+  
+  if (!userId && bearer) {
+    try {
+      const { data, error } = await serviceClient.auth.getUser(bearer);
+      if (!error && data?.user?.id) {
+        userId = data.user.id;
+      } else {
+        console.error('Erreur décodage token:', error);
+      }
+    } catch (e) {
+      console.error('Erreur lors du décodage du token:', e);
+    }
   }
 
   if (!userId) {
@@ -81,18 +127,37 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Charger vidéo (RLS compatible avec dbClient)
+    // TEST de connexion avec la clé de service
+    try {
+      const { data, error } = await serviceClient.from('videos').select('count').limit(1);
+      if (error) {
+        console.error('Erreur test connexion serviceClient:', error);
+        throw new Error(`Erreur API Supabase: ${error.message}`);
+      }
+    } catch (testError) {
+      console.error('Échec test connexion Supabase:', testError);
+      throw new Error(`Impossible de se connecter à Supabase: ${testError.message}`);
+    }
+
+    // Charger vidéo (chemins normalisés) - utiliser userClient si disponible pour respecter RLS
+    const dbClientForSelect = userClient ?? serviceClient;
+    
     const video = await withRetry(async () => {
-      const { data, error } = await dbClient
+      const { data, error } = await dbClientForSelect
         .from('videos')
         .select('id, user_id, status, storage_path, file_path, public_url, transcription_attempts')
         .eq('id', videoId)
         .eq('user_id', userId)
         .single();
-      if (error || !data) throw error ?? new Error('Vidéo non trouvée');
+      
+      if (error || !data) {
+        console.error('Erreur récupération vidéo:', error);
+        throw error ?? new Error('Vidéo non trouvée');
+      }
       return data;
     });
 
+    // Normaliser objectPath: jamais préfixé par le nom du bucket
     const bucket = 'videos';
     let objectPath = (video.storage_path || video.file_path || '').trim();
     if (objectPath.startsWith(`${bucket}/`)) objectPath = objectPath.slice(bucket.length + 1);
@@ -101,8 +166,11 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ success: true, message: 'Déjà transcrite', video_id: videoId }), { headers: corsHeaders, status: 200 });
     }
 
+    // Mise à jour du statut - utiliser userClient pour déclencher correctement les triggers
+    const dbClientForUpdate = userClient ?? serviceClient;
+    
     await withRetry(async () => {
-      const { error } = await dbClient
+      const { error } = await dbClientForUpdate
         .from('videos')
         .update({
           status: VIDEO_STATUS.TRANSCRIBING,
@@ -111,19 +179,34 @@ Deno.serve(async (req) => {
         })
         .eq('id', videoId)
         .eq('user_id', userId);
-      if (error) throw error;
+      
+      if (error) {
+        console.error('Erreur mise à jour statut:', error);
+        throw error;
+      }
     });
 
-    // Obtenir URL lecture (signée si nécessaire)
+    // Obtenir URL lecture - utiliser serviceClient pour le storage (nécessite des privilèges élevés)
     let videoUrl = video.public_url || null;
     if (!videoUrl && objectPath) {
-      const { data, error } = await serviceClient.storage.from(bucket).createSignedUrl(objectPath, 3600);
-      if (error) throw error;
-      videoUrl = data?.signedUrl || null;
+      try {
+        const { data, error } = await serviceClient.storage.from(bucket).createSignedUrl(objectPath, 3600);
+        if (error) {
+          console.error('Erreur génération URL signée:', error);
+          throw error;
+        }
+        videoUrl = data?.signedUrl || null;
+      } catch (storageError) {
+        console.error('Erreur accès storage:', storageError);
+        // Tenter avec l'URL publique comme fallback
+        const { data: publicUrlData } = serviceClient.storage.from(bucket).getPublicUrl(objectPath);
+        videoUrl = publicUrlData.publicUrl;
+      }
     }
+    
     if (!videoUrl) throw new Error('Aucune URL de lecture disponible');
 
-    const resp = await withRetry(() => fetch(videoUrl));
+    const resp = await withRetry(() => fetch(videoUrl!));
     if (!resp.ok) throw new Error(`Téléchargement vidéo: ${resp.status} ${resp.statusText}`);
     const blob = await resp.blob();
 
@@ -146,7 +229,7 @@ Deno.serve(async (req) => {
           confidence: Number(s.confidence || 0),
         }))
       : [];
-
+    
     const confidence = segments.length
       ? Number((segments.reduce((a, s) => a + (s.confidence || 0), 0) / segments.length).toFixed(4))
       : null;
@@ -160,8 +243,9 @@ Deno.serve(async (req) => {
       confidence_score: confidence,
     });
 
+    // Upsert transcription - utiliser userClient pour respecter RLS et triggers
     await withRetry(async () => {
-      const { error } = await dbClient
+      const { error } = await dbClientForUpdate
         .from('transcriptions')
         .upsert(
           {
@@ -178,11 +262,16 @@ Deno.serve(async (req) => {
           },
           { onConflict: 'video_id' }
         );
-      if (error) throw error;
+      
+      if (error) {
+        console.error('Erreur upsert transcription:', error);
+        throw error;
+      }
     });
 
+    // Mise à jour vidéo - utiliser userClient pour respecter RLS et triggers
     await withRetry(async () => {
-      const { error } = await dbClient
+      const { error } = await dbClientForUpdate
         .from('videos')
         .update({
           transcription_text: fullText,
@@ -192,24 +281,30 @@ Deno.serve(async (req) => {
         })
         .eq('id', videoId)
         .eq('user_id', userId);
-      if (error) throw error;
+      
+      if (error) {
+        console.error('Erreur mise à jour vidéo:', error);
+        throw error;
+      }
     });
 
-    // Appels en arrière-plan (serviceClient OK)
+    // Appels en arrière-plan - utiliser serviceClient (tâches admin)
+    const analyzeUrl = `${supabaseUrl}/functions/v1/analyze-transcription`;
     EdgeRuntime.waitUntil(
-      fetch(`${supabaseUrl}/functions/v1/analyze-transcription`, {
+      fetch(analyzeUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
         body: JSON.stringify({ videoId }),
-      }).catch(() => {})
+      }).catch((e) => console.error('Erreur appel analyse:', e))
     );
 
+    const statsUrl = `${supabaseUrl}/functions/v1/refresh-user-video-stats`;
     EdgeRuntime.waitUntil(
-      fetch(`${supabaseUrl}/functions/v1/refresh-user-video-stats`, {
+      fetch(statsUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
         body: JSON.stringify({ userId }),
-      }).catch(() => {})
+      }).catch((e) => console.error('Erreur appel stats:', e))
     );
 
     return new Response(
@@ -224,8 +319,9 @@ Deno.serve(async (req) => {
     );
   } catch (e) {
     console.error('Erreur transcribe-video:', e);
+    
     try {
-      await dbClient
+      await serviceClient
         .from('videos')
         .update({
           status: VIDEO_STATUS.FAILED,
@@ -234,10 +330,16 @@ Deno.serve(async (req) => {
         })
         .eq('id', videoId ?? '')
         .eq('user_id', userId);
-    } catch {}
-    return new Response(
-      JSON.stringify({ error: 'Erreur interne du serveur', details: e?.message || 'Inconnue' }),
-      { headers: corsHeaders, status: 500 }
-    );
+    } catch (updateError) {
+      console.error('Erreur lors de la mise à jour du statut d\'erreur:', updateError);
+    }
+    
+    return new Response(JSON.stringify({ 
+      error: 'Erreur interne du serveur', 
+      details: e?.message || 'Inconnue' 
+    }), {
+      headers: corsHeaders,
+      status: 500,
+    });
   }
 });
