@@ -52,20 +52,26 @@ Deno.serve(async (req) => {
   }
 
   const url = new URL(req.url);
-  let body = {};
+  let body: any = {};
   try {
     body = await req.json();
   } catch {}
+
   const videoId = body.videoId || url.searchParams.get('videoId');
   const bearer = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || null;
 
-  // Décoder l’utilisateur depuis le token client si présent; sinon, accepter userId explicite
-  let userId = body.userId || body.user_id || null;
+  // === Option A : créer un client Supabase côté utilisateur final ===
+  const userClient = bearer ? createClient(supabaseUrl, bearer, { auth: { persistSession: false } }) : null;
   const serviceClient = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
-  if (!userId && bearer) {
-    const { data, error } = await serviceClient.auth.getUser(bearer);
+  const dbClient = userClient ?? serviceClient;
+
+  // Récupérer userId depuis JWT ou payload
+  let userId = body.userId || body.user_id || null;
+  if (!userId && userClient) {
+    const { data, error } = await userClient.auth.getUser();
     if (!error && data?.user?.id) userId = data.user.id;
   }
+
   if (!userId) {
     return new Response(JSON.stringify({ error: 'Authentification requise', details: 'userId manquant' }), { headers: corsHeaders, status: 401 });
   }
@@ -75,9 +81,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Charger vidéo (chemins normalisés)
+    // Charger vidéo (RLS compatible avec dbClient)
     const video = await withRetry(async () => {
-      const { data, error } = await serviceClient
+      const { data, error } = await dbClient
         .from('videos')
         .select('id, user_id, status, storage_path, file_path, public_url, transcription_attempts')
         .eq('id', videoId)
@@ -87,7 +93,6 @@ Deno.serve(async (req) => {
       return data;
     });
 
-    // Normaliser objectPath: jamais préfixé par le nom du bucket
     const bucket = 'videos';
     let objectPath = (video.storage_path || video.file_path || '').trim();
     if (objectPath.startsWith(`${bucket}/`)) objectPath = objectPath.slice(bucket.length + 1);
@@ -97,7 +102,7 @@ Deno.serve(async (req) => {
     }
 
     await withRetry(async () => {
-      const { error } = await serviceClient
+      const { error } = await dbClient
         .from('videos')
         .update({
           status: VIDEO_STATUS.TRANSCRIBING,
@@ -109,7 +114,7 @@ Deno.serve(async (req) => {
       if (error) throw error;
     });
 
-    // Obtenir URL lecture
+    // Obtenir URL lecture (signée si nécessaire)
     let videoUrl = video.public_url || null;
     if (!videoUrl && objectPath) {
       const { data, error } = await serviceClient.storage.from(bucket).createSignedUrl(objectPath, 3600);
@@ -118,7 +123,7 @@ Deno.serve(async (req) => {
     }
     if (!videoUrl) throw new Error('Aucune URL de lecture disponible');
 
-    const resp = await withRetry(() => fetch(videoUrl!));
+    const resp = await withRetry(() => fetch(videoUrl));
     if (!resp.ok) throw new Error(`Téléchargement vidéo: ${resp.status} ${resp.statusText}`);
     const blob = await resp.blob();
 
@@ -141,6 +146,7 @@ Deno.serve(async (req) => {
           confidence: Number(s.confidence || 0),
         }))
       : [];
+
     const confidence = segments.length
       ? Number((segments.reduce((a, s) => a + (s.confidence || 0), 0) / segments.length).toFixed(4))
       : null;
@@ -155,7 +161,7 @@ Deno.serve(async (req) => {
     });
 
     await withRetry(async () => {
-      const { error } = await serviceClient
+      const { error } = await dbClient
         .from('transcriptions')
         .upsert(
           {
@@ -176,7 +182,7 @@ Deno.serve(async (req) => {
     });
 
     await withRetry(async () => {
-      const { error } = await serviceClient
+      const { error } = await dbClient
         .from('videos')
         .update({
           transcription_text: fullText,
@@ -189,19 +195,17 @@ Deno.serve(async (req) => {
       if (error) throw error;
     });
 
-    // Appels en arrière-plan
-    const analyzeUrl = `${supabaseUrl}/functions/v1/analyze-transcription`;
+    // Appels en arrière-plan (serviceClient OK)
     EdgeRuntime.waitUntil(
-      fetch(analyzeUrl, {
+      fetch(`${supabaseUrl}/functions/v1/analyze-transcription`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
         body: JSON.stringify({ videoId }),
       }).catch(() => {})
     );
 
-    const statsUrl = `${supabaseUrl}/functions/v1/refresh-user-video-stats`;
     EdgeRuntime.waitUntil(
-      fetch(statsUrl, {
+      fetch(`${supabaseUrl}/functions/v1/refresh-user-video-stats`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${serviceKey}` },
         body: JSON.stringify({ userId }),
@@ -221,7 +225,7 @@ Deno.serve(async (req) => {
   } catch (e) {
     console.error('Erreur transcribe-video:', e);
     try {
-      await serviceClient
+      await dbClient
         .from('videos')
         .update({
           status: VIDEO_STATUS.FAILED,
@@ -231,9 +235,9 @@ Deno.serve(async (req) => {
         .eq('id', videoId ?? '')
         .eq('user_id', userId);
     } catch {}
-    return new Response(JSON.stringify({ error: 'Erreur interne du serveur', details: e?.message || 'Inconnue' }), {
-      headers: corsHeaders,
-      status: 500,
-    });
+    return new Response(
+      JSON.stringify({ error: 'Erreur interne du serveur', details: e?.message || 'Inconnue' }),
+      { headers: corsHeaders, status: 500 }
+    );
   }
 });
