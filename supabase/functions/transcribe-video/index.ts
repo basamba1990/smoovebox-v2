@@ -23,7 +23,7 @@ const corsHeaders = {
 // HARDCODE POUR TEST (REMPLACEZ PAR VOS VRAIES VALEURS - SUPPRIMEZ CETTE SECTION APRÈS)
 const supabaseUrl = 'https://nyxtckjfaajhacboxojd.supabase.co';
 const serviceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im55eHRja2pmYWFqaGFjYm94b2pkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NjAzNjk5MiwiZXhwIjoyMDYxNjEyOTkyfQ.lGxR0dmDqOkcH-fO5rBAev19j6KcAAqSa9ZaBICZVHg';
-const openaiApiKey = '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';
+const openaiApiKey = '';
 const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im55eHRja2pmYWFqaGFjYm94b2pkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDYwMzY5OTIsImV4cCI6MjA2MTYxMjk5Mn0.9zpLjXat7L6TvfKQB93ef66bnQZgueAreyGZ8fjlPLA';
 console.log('DEBUG HARDCODE - Keys loaded from hardcoded values (test only - remove after)');
 
