@@ -13,7 +13,7 @@ const VIDEO_STATUS = {
   ANALYZED: 'analyzed',
   PUBLISHED: 'published',
   FAILED: 'failed'
-} as const;
+};
 
 const RecordVideo = () => {
   const [recording, setRecording] = useState(false);
