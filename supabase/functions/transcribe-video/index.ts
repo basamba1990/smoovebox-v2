@@ -1,531 +1,368 @@
-import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
-import { Button } from '../components/ui/button-enhanced.jsx';
-import { supabase, refreshSession } from '../lib/supabase';
+import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
+import OpenAI from 'npm:openai@4.104.0';
 
-// Valeurs exactes autorisées pour le statut dans la base de données
 const VIDEO_STATUS = {
   UPLOADED: 'uploaded',
   PROCESSING: 'processing',
+  TRANSCRIBING: 'transcribing',
   TRANSCRIBED: 'transcribed',
   ANALYZING: 'analyzing',
   ANALYZED: 'analyzed',
-  PUBLISHED: 'published',
-  FAILED: 'failed'
+  FAILED: 'failed',
+} as const;
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Content-Type': 'application/json',
 };
 
-const RecordVideo = () => {
-  const [recording, setRecording] = useState(false);
-  const [recordedVideo, setRecordedVideo] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [cameraAccess, setCameraAccess] = useState(false);
-  const [countdown, setCountdown] = useState(0);
-  const [error, setError] = useState(null);
-  const [tags, setTags] = useState('');
-  const [analysisProgress, setAnalysisProgress] = useState(null);
-  const [uploadedVideoId, setUploadedVideoId] = useState(null);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const videoRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const recordedChunksRef = useRef([]);
-  const streamRef = useRef(null);
-  const navigate = useNavigate();
-  const maxRecordingTime = 120; // 2 minutes
-
-  // Nettoyage des ressources à la destruction du composant
-  useEffect(() => {
-    return () => {
-      if (recordedVideo?.url) URL.revokeObjectURL(recordedVideo.url);
-      stopStream();
-    };
-  }, [recordedVideo]);
-
-  // Vérification de l'authentification et initialisation de la caméra
-  useEffect(() => {
-    let mounted = true;
-
-    const checkAuthAndInitCamera = async () => {
-      if (!mounted) return;
-
-      const isSessionValid = await refreshSession();
-      if (!isSessionValid) {
-        toast.error('Veuillez vous connecter pour enregistrer une vidéo.');
-        navigate('/login');
-        return;
-      }
-
-      const { data: { user }, error } = await supabase.auth.getUser();
-      if (error || !user) {
-        toast.error('Utilisateur non authentifié.');
-        navigate('/login');
-        return;
-      }
-
-      try {
-        await requestCameraAccess();
-      } catch (err) {
-        setError('Impossible d\'initialiser la caméra.');
-        toast.error('Erreur d\'initialisation de la caméra.');
-      }
-    };
-
-    checkAuthAndInitCamera();
-
-    return () => {
-      mounted = false;
-      stopStream();
-    };
-  }, [navigate]);
-
-  // Gestion du minuteur d'enregistrement
-  useEffect(() => {
-    let timer;
-    if (recording) {
-      timer = setInterval(() => {
-        setRecordingTime((prev) => {
-          const newTime = prev + 1;
-          if (newTime >= maxRecordingTime) {
-            stopRecording();
-            toast.warning('Temps d\'enregistrement maximum atteint.');
-          }
-          return newTime;
-        });
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [recording]);
-
-  // Suivi de la progression de l'analyse
-  useEffect(() => {
-    if (!uploadedVideoId) return;
-
-    const checkAnalysisStatus = async () => {
-      try {
-        const { data: video, error } = await supabase
-          .from('videos')
-          .select('status, error_message, transcription_data, transcript')
-          .eq('id', uploadedVideoId)
-          .single();
-
-        if (error) throw error;
-
-        switch (video.status) {
-          case VIDEO_STATUS.UPLOADED:
-            setAnalysisProgress('Vidéo uploadée, en attente...');
-            break;
-          case VIDEO_STATUS.PROCESSING:
-            setAnalysisProgress('Transcription en cours...');
-            break;
-          case VIDEO_STATUS.TRANSCRIBED:
-            setAnalysisProgress('Analyse IA en cours...');
-            // Afficher un aperçu de la transcription si disponible
-            const transcriptionText = video.transcription_data?.text || video.transcript?.text || video.transcription_text;
-            if (transcriptionText) {
-              const preview = transcriptionText.substring(0, 100) + '...';
-              toast.info(`Transcription: ${preview}`);
-            }
-            break;
-          case VIDEO_STATUS.ANALYZING:
-            setAnalysisProgress('Analyse approfondie...');
-            break;
-          case VIDEO_STATUS.ANALYZED:
-            setAnalysisProgress('Analyse terminée !');
-            toast.success('Votre vidéo a été analysée avec succès !');
-            setTimeout(() => {
-              navigate(`/video-success?id=${uploadedVideoId}`);
-            }, 2000);
-            break;
-          case VIDEO_STATUS.FAILED:
-            setAnalysisProgress(`Erreur: ${video.error_message || 'Échec de l\'analyse'}`);
-            toast.error('Erreur lors de l\'analyse de la vidéo.');
-            break;
-          default:
-            setAnalysisProgress('En attente de traitement...');
-        }
-      } catch (error) {
-        console.error('Erreur vérification statut:', error);
-        setAnalysisProgress('Erreur lors du suivi de l\'analyse.');
-      }
-    };
-
-    const interval = setInterval(checkAnalysisStatus, 3000);
-    return () => clearInterval(interval);
-  }, [uploadedVideoId, navigate]);
-
-  // Arrêter le stream vidéo/audio
-  const stopStream = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-      setCameraAccess(false);
-    }
-  };
-
-  // Demander l'accès à la caméra/micro
-  const requestCameraAccess = async () => {
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  maxAttempts = 3,
+  baseDelay = 1000
+): Promise<T> {
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720 },
-        audio: true,
-      });
-      streamRef.current = stream;
+      return await operation();
+    } catch (e) {
+      lastError = e as Error;
+      if (attempt === maxAttempts - 1) break;
+      await new Promise((r) => setTimeout(r, baseDelay * 2 ** attempt));
+      console.log(`Tentative ${attempt + 1} échouée, nouvelle tentative dans ${baseDelay * 2 ** attempt}ms`);
+    }
+  }
+  throw lastError ?? new Error('Échec après plusieurs tentatives');
+}
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-        setCameraAccess(true);
-        toast.success('Accès à la caméra/micro autorisé.');
+function ensureSerializable(obj: any): any {
+  if (obj == null || typeof obj !== 'object') return obj ?? null;
+  if (Array.isArray(obj)) return obj.map(ensureSerializable);
+  const out: Record<string, any> = {};
+  for (const k of Object.keys(obj)) out[k] = ensureSerializable(obj[k]);
+  return out;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders, status: 204 });
+  }
+
+  // Vérification robuste de la configuration
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+
+  // Logs sécurisés pour débogage
+  console.log('Configuration vérifiée', {
+    supabaseUrl: supabaseUrl ? `✓ (${supabaseUrl.substring(0, 30)}...)` : '✗',
+    serviceKey: serviceKey ? `✓ (${serviceKey.length} chars)` : '✗',
+    openaiApiKey: openaiApiKey ? `✓ (présente)` : '✗',
+  });
+
+  if (!supabaseUrl || !serviceKey || !openaiApiKey) {
+    return new Response(
+      JSON.stringify({ 
+        error: 'Configuration incomplète', 
+        details: 'Vérifiez SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY et OPENAI_API_KEY' 
+      }),
+      { headers: corsHeaders, status: 500 }
+    );
+  }
+
+  // Validation de la clé OpenAI (doit commencer par "sk-")
+  if (!openaiApiKey.startsWith('sk-')) {
+    console.error('Clé OpenAI invalide - doit commencer par "sk-"', {
+      startsWith: openaiApiKey.substring(0, Math.min(10, openaiApiKey.length)) + '...',
+      length: openaiApiKey.length
+    });
+    return new Response(
+      JSON.stringify({ error: 'Clé OpenAI invalide' }),
+      { headers: corsHeaders, status: 500 }
+    );
+  }
+
+  const url = new URL(req.url);
+  let body: any = {};
+  try {
+    body = await req.json();
+  } catch {
+    // Body optionnel
+  }
+
+  const videoId = body.videoId || url.searchParams.get('videoId');
+  const bearer = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || null;
+
+  // Configuration des clients
+  const baseClientOpts = {
+    auth: { persistSession: false },
+    global: {
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        return fetch(input, { ...init, signal: controller.signal })
+          .finally(() => clearTimeout(timeoutId));
+      },
+    },
+  } as const;
+
+  const serviceClient = createClient(supabaseUrl, serviceKey, baseClientOpts);
+  const userClient = bearer ? createClient(supabaseUrl, bearer, baseClientOpts) : null;
+
+  // Extraction du userId
+  let userId: string | null = body.userId || body.user_id || null;
+  if (!userId && bearer) {
+    try {
+      const { data, error } = await serviceClient.auth.getUser(bearer);
+      if (!error && data?.user?.id) {
+        userId = data.user.id;
+        console.log('UserId extrait du token:', userId.substring(0, 8) + '...');
+      } else {
+        console.warn('Token utilisateur invalide:', error?.message);
       }
-    } catch (err) {
-      setError('Impossible d\'accéder à la caméra ou au microphone.');
-      toast.error('Erreur d\'accès à la caméra/micro: ' + err.message);
-      throw err;
+    } catch (e) {
+      console.error('Erreur décodage token:', e);
     }
-  };
+  }
 
-  // Démarrer l'enregistrement
-  const startRecording = async () => {
-    if (!cameraAccess) {
-      setError('Veuillez autoriser l\'accès à la caméra.');
-      toast.error('Accès caméra requis.');
-      return;
-    }
+  if (!userId) {
+    return new Response(
+      JSON.stringify({ 
+        error: 'Authentification requise', 
+        details: 'Token manquant ou invalide' 
+      }),
+      { headers: corsHeaders, status: 401 }
+    );
+  }
 
-    setError(null);
-    setCountdown(3);
+  if (!videoId || !/^[0-9a-f-]{36}$/i.test(videoId)) {
+    return new Response(
+      JSON.stringify({ error: 'videoId invalide' }),
+      { headers: corsHeaders, status: 400 }
+    );
+  }
 
-    for (let i = 3; i > 0; i--) {
-      setCountdown(i);
-      await new Promise((res) => setTimeout(res, 1000));
-    }
-    setCountdown(0);
-
-    try {
-      const stream = streamRef.current;
-      if (!stream) throw new Error('Aucun flux média disponible');
-
-      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
-        ? 'video/webm;codecs=vp8,opus'
-        : 'video/webm';
-
-      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType });
-
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) recordedChunksRef.current.push(event.data);
-      };
-
-      mediaRecorderRef.current.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, { type: mimeType });
-        setRecordedVideo({ blob, url: URL.createObjectURL(blob) });
-        setRecordingTime(0);
-        recordedChunksRef.current = [];
-        stopStream();
-      };
-
-      mediaRecorderRef.current.start(1000);
-      setRecording(true);
-      toast.success('Enregistrement en cours...');
-    } catch (err) {
-      setError('Impossible de démarrer l\'enregistrement: ' + err.message);
-      toast.error('Erreur lors de l\'enregistrement: ' + err.message);
-    }
-  };
-
-  // Arrêter l'enregistrement
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && recording) {
-      mediaRecorderRef.current.stop();
-      setRecording(false);
-      toast.success('Enregistrement terminé !');
-    }
-  };
-
-  // Fonction pour déclencher la transcription
-  const triggerTranscription = async (videoId, userId, videoUrl) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Session non valide');
-
-      // Appeler la fonction Edge de transcription avec l'URL signée
-      const response = await fetch(`${supabase.supabaseUrl}/functions/v1/transcribe-video`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          videoId: videoId,
-          userId: userId,
-          videoUrl: videoUrl
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Échec de l'appel transcription: ${errorText}`);
-      }
-
-      const result = await response.json();
-      console.log('Transcription démarrée:', result);
-      return result;
-    } catch (error) {
-      console.error('Erreur lors du déclenchement de la transcription:', error);
-      throw error;
-    }
-  };
-
-  // Uploader la vidéo et déclencher la transcription
-  const uploadVideo = async () => {
-    if (!recordedVideo) {
-      setError('Vous devez enregistrer une vidéo.');
-      toast.error('Aucune vidéo à uploader.');
-      return;
-    }
-
-    setUploading(true);
-    setError(null);
-    setAnalysisProgress('Upload de la vidéo...');
-
-    try {
-      // 1. Vérifier l'authentification
-      const isSessionValid = await refreshSession();
-      if (!isSessionValid) throw new Error('Utilisateur non authentifié');
-
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error('Utilisateur non authentifié');
-
-      const fileName = `video-${Date.now()}.webm`;
-      const objectPath = `${user.id}/${fileName}`;
-
-      // 2. Upload vers le storage
-      setAnalysisProgress('Envoi de la vidéo...');
-      const { error: uploadError } = await supabase.storage
+  try {
+    // Lecture de la vidéo - utiliser userClient pour RLS
+    const dbClientRead = userClient ?? serviceClient;
+    const video = await withRetry(async () => {
+      const { data, error } = await dbClientRead
         .from('videos')
-        .upload(objectPath, recordedVideo.blob, {
-          contentType: 'video/webm',
-          cacheControl: '3600',
-        });
-      if (uploadError) throw new Error(`Échec de l'upload: ${uploadError.message}`);
-
-      // 3. CORRECTION : Générer une URL signée au lieu de l'URL publique
-      setAnalysisProgress('Génération de l\'URL sécurisée...');
-      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-        .from('videos')
-        .createSignedUrl(objectPath, 60 * 60); // 1 heure
-
-      if (signedUrlError) throw new Error(`Échec génération URL: ${signedUrlError.message}`);
-
-      // 4. Insertion dans la base avec le statut UPLOADED
-      setAnalysisProgress('Enregistrement en base...');
-      const { data: videoData, error: insertError } = await supabase
-        .from('videos')
-        .insert([
-          {
-            user_id: user.id,
-            title: 'Ma vidéo SpotBulle',
-            storage_path: objectPath,
-            file_path: objectPath, // Compatibilité avec l'ancien schéma
-            public_url: signedUrlData.signedUrl,
-            url: signedUrlData.signedUrl, // Compatibilité avec l'ancien schéma
-            status: VIDEO_STATUS.UPLOADED,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            tags: tags ? tags.split(',').map((tag) => tag.trim()) : [],
-            transcription_attempts: 0,
-            file_size: recordedVideo.blob.size,
-            format: 'webm',
-            duration: recordingTime,
-            is_public: false
-          },
-        ])
-        .select()
+        .select('id, user_id, status, storage_path, file_path, public_url, transcription_attempts')
+        .eq('id', videoId)
+        .eq('user_id', userId)
         .single();
-      if (insertError) throw new Error(`Échec insertion vidéo: ${insertError.message}`);
 
-      setUploadedVideoId(videoData.id);
+      if (error || !data) {
+        console.error('Vidéo non trouvée:', error);
+        throw error ?? new Error('Vidéo non trouvée ou accès non autorisé');
+      }
+      return data;
+    });
 
-      // 5. Mettre à jour le statut en PROCESSING
-      setAnalysisProgress('Préparation de la transcription...');
-      const { error: updateError } = await supabase
+    console.log('Vidéo chargée:', { 
+      id: video.id, 
+      status: video.status,
+      user_match: video.user_id === userId
+    });
+
+    if (video.status === VIDEO_STATUS.TRANSCRIBED) {
+      return new Response(
+        JSON.stringify({ success: true, message: 'Déjà transcrite', video_id: videoId }),
+        { headers: corsHeaders, status: 200 }
+      );
+    }
+
+    // Mise à jour du statut - TOUJOURS utiliser userClient pour éviter auth.uid() null
+    const dbClientWrite = userClient ?? serviceClient;
+    await withRetry(async () => {
+      const { error } = await dbClientWrite
         .from('videos')
         .update({
-          status: VIDEO_STATUS.PROCESSING,
+          status: VIDEO_STATUS.TRANSCRIBING,
           updated_at: new Date().toISOString(),
-          transcription_attempts: 1
+          transcription_attempts: (video.transcription_attempts || 0) + 1,
         })
-        .eq('id', videoData.id);
+        .eq('id', videoId)
+        .eq('user_id', userId);
+      if (error) throw error;
+    });
 
-      if (updateError) {
-        console.warn('Erreur lors de la mise à jour du statut:', updateError);
-      }
-
-      // 6. Déclencher la transcription avec l'URL signée
-      setAnalysisProgress('Démarrage de la transcription...');
-      await triggerTranscription(videoData.id, user.id, signedUrlData.signedUrl);
-
-      toast.success('Vidéo envoyée avec succès ! Analyse en cours...');
-    } catch (err) {
-      setError(`Erreur lors de l'upload: ${err.message}`);
-      setAnalysisProgress(null);
-      
-      // Mettre à jour le statut en FAILED en cas d'erreur
-      if (uploadedVideoId) {
-        await supabase
-          .from('videos')
-          .update({
-            status: VIDEO_STATUS.FAILED,
-            error_message: err.message,
-            transcription_error: err.message,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', uploadedVideoId);
-      }
-      
-      toast.error(`Erreur: ${err.message}`);
-      console.error('Erreur détaillée:', err);
-    } finally {
-      setUploading(false);
+    // Préparation URL vidéo
+    const bucket = 'videos';
+    let objectPath = (video.storage_path || video.file_path || '').trim();
+    if (objectPath.startsWith(`${bucket}/`)) {
+      objectPath = objectPath.slice(bucket.length + 1);
     }
-  };
 
-  // Réinitialiser l'enregistrement
-  const retryRecording = () => {
-    if (recordedVideo?.url) URL.revokeObjectURL(recordedVideo.url);
-    setRecordedVideo(null);
-    setError(null);
-    setAnalysisProgress(null);
-    setUploadedVideoId(null);
-    setRecordingTime(0);
-    setTags('');
-    stopStream();
-    requestCameraAccess();
-  };
+    let videoUrl = video.public_url || null;
+    if (!videoUrl && objectPath) {
+      try {
+        const { data, error } = await serviceClient.storage
+          .from(bucket)
+          .createSignedUrl(objectPath, 3600);
+        if (error) throw error;
+        videoUrl = data?.signedUrl || null;
+      } catch (e) {
+        console.error('Erreur URL signée:', e);
+        throw new Error('Accès fichier refusé');
+      }
+    }
 
-  // Formater le temps d'enregistrement
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+    if (!videoUrl) throw new Error('URL vidéo indisponible');
 
-  return (
-    <div className="p-8 min-h-screen bg-black text-white flex flex-col items-center">
-      <h1 className="text-3xl font-bold mb-6">Enregistrez votre vidéo SpotBulle</h1>
+    // Téléchargement et transcription
+    console.log('Téléchargement vidéo...');
+    const resp = await withRetry(() => fetch(videoUrl!));
+    if (!resp.ok) throw new Error(`Échec téléchargement: ${resp.status}`);
+    
+    const blob = await resp.blob();
+    console.log('Taille vidéo:', blob.size, 'Type:', blob.type);
 
-      {error && (
-        <div className="bg-red-100 text-red-700 p-4 rounded mb-4 max-w-md">
-          <strong>Erreur :</strong> {error}
-        </div>
-      )}
+    // Test de la clé OpenAI avec une requête simple
+    try {
+      const openai = new OpenAI({ apiKey: openaiApiKey });
+      // Test rapide de la clé
+      await openai.models.list().then(models => models.data.slice(0, 1));
+      console.log('Test clé OpenAI réussi');
+    } catch (e) {
+      console.error('Test clé OpenAI échoué:', e);
+      throw new Error('Clé OpenAI invalide ou inactive');
+    }
 
-      {countdown > 0 && (
-        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
-          <div className="text-white text-center">
-            <div className="text-9xl font-bold mb-4 text-blue-400">{countdown}</div>
-            <p className="text-2xl">Préparez-vous à parler...</p>
-          </div>
-        </div>
-      )}
+    const openai = new OpenAI({ apiKey: openaiApiKey });
+    console.log('Début transcription Whisper...');
+    
+    const transcription = await withRetry(() =>
+      openai.audio.transcriptions.create({
+        file: new File([blob], 'video.webm', { type: blob.type || 'video/webm' }),
+        model: 'whisper-1',
+        language: 'fr',
+        response_format: 'verbose_json',
+      })
+    );
 
-      {analysisProgress && (
-        <div className="bg-blue-900 text-white p-4 rounded-lg mb-6 max-w-md w-full">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-semibold">Analyse en cours</span>
-            <span className="text-sm bg-blue-700 px-2 py-1 rounded">{analysisProgress}</span>
-          </div>
-          <div className="w-full bg-blue-700 rounded-full h-2">
-            <div
-              className="bg-green-400 h-2 rounded-full transition-all duration-1000 ease-in-out"
-              style={{
-                width: analysisProgress.includes('terminée') ? '100%' : 
-                       analysisProgress.includes('Analyse IA') ? '75%' :
-                       analysisProgress.includes('Transcription') ? '50%' :
-                       analysisProgress.includes('Upload') ? '25%' : '10%'
-              }}
-            ></div>
-          </div>
-        </div>
-      )}
+    console.log('Transcription réussie:', {
+      duration: (transcription as any)?.duration,
+      language: (transcription as any)?.language,
+    });
 
-      <div className="mb-6 relative">
-        <video
-          ref={videoRef}
-          src={recordedVideo?.url || undefined}
-          autoPlay
-          muted={!recordedVideo}
-          controls={!!recordedVideo}
-          playsInline
-          className="w-full max-w-md border-2 border-blue-500 rounded-lg bg-black shadow-lg"
-        />
-        {recording && (
-          <div className="absolute top-4 right-4 bg-red-600 text-white px-2 py-1 rounded-full text-sm animate-pulse">
-            ● ENREGISTREMENT ({formatTime(recordingTime)})
-          </div>
-        )}
-      </div>
+    const segments = Array.isArray((transcription as any)?.segments)
+      ? (transcription as any).segments.map((s: any) => ({
+          id: String(s.id ?? ''),
+          start: Number(s.start || 0),
+          end: Number(s.end || 0),
+          text: String(s.text || ''),
+          confidence: Number(s.confidence || 0),
+        }))
+      : [];
 
-      {!recordedVideo ? (
-        <div className="text-center">
-          {!recording ? (
-            <Button
-              onClick={startRecording}
-              disabled={!cameraAccess || countdown > 0}
-              className={`text-lg px-8 py-3 ${cameraAccess ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-600'}`}
-            >
-              {cameraAccess ? 'Commencer l\'enregistrement' : 'Caméra non disponible'}
-            </Button>
-          ) : (
-            <Button onClick={stopRecording} className="bg-red-600 hover:bg-red-700 text-lg px-8 py-3">
-              Arrêter l'enregistrement
-            </Button>
-          )}
-          <div className="mt-4 text-sm text-gray-400">
-            <p>💡 Conseil : Parlez clairement et regardez la caméra</p>
-            <p>⏱️ Durée max : 2 minutes</p>
-            <p>🎯 L'IA analysera automatiquement votre discours</p>
-          </div>
-        </div>
-      ) : (
-        <div className="w-full max-w-md space-y-4">
-          <div className="bg-green-900 text-green-100 p-3 rounded-lg">
-            <p className="font-semibold">✅ Vidéo enregistrée avec succès !</p>
-            <p className="text-sm">Taille : {Math.round(recordedVideo.blob.size / 1024 / 1024)} Mo</p>
-            <p className="text-sm">Durée : {formatTime(recordingTime)}</p>
-          </div>
+    const confidence = segments.length > 0
+      ? Number((segments.reduce((a, s) => a + (s.confidence || 0), 0) / segments.length).toFixed(4))
+      : null;
 
-          <div>
-            <label className="block text-sm font-medium text-white mb-2">🏷️ Mots-clés (séparés par des virgules) :</label>
-            <input
-              type="text"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder="ex: Football, Sport, Passion"
-              className="w-full p-3 border border-gray-600 rounded bg-gray-900 text-white placeholder-gray-400"
-              disabled={uploading}
-            />
-            <p className="text-xs text-gray-400 mt-1">Ces mots-clés aideront l'IA à mieux comprendre votre vidéo</p>
-          </div>
+    const fullText = String((transcription as any)?.text || '');
+    const tData = ensureSerializable({
+      text: fullText,
+      segments,
+      language: String((transcription as any)?.language || 'fr'),
+      duration: Number((transcription as any)?.duration || 0),
+      confidence_score: confidence,
+    });
 
-          <div className="flex gap-3 justify-center">
-            <Button onClick={retryRecording} className="bg-gray-600 hover:bg-gray-700 flex-1" disabled={uploading}>
-              🔄 Réessayer
-            </Button>
-            <Button onClick={uploadVideo} disabled={uploading} className="bg-green-600 hover:bg-green-700 flex-1">
-              {uploading ? (
-                <span className="flex items-center justify-center">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Envoi...
-                </span>
-              ) : (
-                '🚀 Valider et analyser'
-              )}
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
+    // Sauvegarde avec userClient pour RLS
+    await withRetry(async () => {
+      const { error } = await dbClientWrite
+        .from('transcriptions')
+        .upsert(
+          {
+            video_id: videoId,
+            user_id: userId,
+            full_text: fullText,
+            transcription_text: fullText,
+            transcription_data: tData,
+            segments,
+            confidence_score: confidence,
+            status: VIDEO_STATUS.TRANSCRIBED,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'video_id' }
+        );
+      if (error) throw error;
+    });
 
-export default RecordVideo;
+    // Mise à jour finale avec userClient
+    await withRetry(async () => {
+      const { error } = await dbClientWrite
+        .from('videos')
+        .update({
+          transcription_text: fullText,
+          transcription_data: tData,
+          status: VIDEO_STATUS.TRANSCRIBED,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', videoId)
+        .eq('user_id', userId);
+      if (error) throw error;
+    });
+
+    console.log('Transcription sauvegardée:', {
+      video_id: videoId,
+      text_length: fullText.length,
+      confidence: confidence,
+    });
+
+    // Tâches background (serviceKey OK car pas de RLS)
+    const analyzeUrl = `${supabaseUrl}/functions/v1/analyze-transcription`;
+    EdgeRuntime.waitUntil(
+      fetch(analyzeUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', 
+          Authorization: `Bearer ${serviceKey}` 
+        },
+        body: JSON.stringify({ videoId }),
+      }).catch((e) => console.error('Erreur analyse:', e))
+    );
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: 'Transcription terminée',
+        video_id: videoId,
+        transcription_length: fullText.length,
+        confidence_score: confidence,
+      }),
+      { headers: corsHeaders, status: 200 }
+    );
+
+  } catch (e: any) {
+    console.error('Erreur transcribe-video:', e?.message || e);
+    
+    // Mise à jour d'erreur - UTILISER userClient POUR ÉVITER auth.uid() NULL
+    try {
+      const clientForErrorUpdate = userClient ?? serviceClient;
+      await clientForErrorUpdate
+        .from('videos')
+        .update({ 
+          status: VIDEO_STATUS.FAILED, 
+          error_message: `Erreur: ${e?.message || String(e)}`,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', videoId)
+        .eq('user_id', userId); // Critère essentiel pour RLS
+    } catch (updateError) {
+      console.error('Échec mise à jour statut erreur:', updateError);
+    }
+
+    return new Response(
+      JSON.stringify({ 
+        error: 'Erreur de transcription', 
+        details: e?.message || 'Inconnue' 
+      }),
+      { headers: corsHeaders, status: 500 }
+    );
+  }
+});
