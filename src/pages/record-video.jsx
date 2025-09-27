@@ -240,13 +240,16 @@ const RecordVideo = () => {
     }
   };
 
-  // Fonction pour déclencher la transcription
-  const triggerTranscription = async (videoId, userId) => {
+  // Fonction pour déclencher la transcription (CORRIGÉE : passage de l'URL signée)
+  const triggerTranscription = async (videoId, userId, videoUrl) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Session non valide');
 
-      // Appeler la fonction Edge de transcription
+      // Log sécurisé avant envoi
+      console.log('Déclenchement transcription pour videoId:', videoId, 'avec URL signée valide.');
+
+      // Appeler la fonction Edge de transcription avec l'URL signée
       const response = await fetch(`${supabase.supabaseUrl}/functions/v1/transcribe-video`, {
         method: 'POST',
         headers: {
@@ -256,6 +259,7 @@ const RecordVideo = () => {
         body: JSON.stringify({
           videoId: videoId,
           userId: userId,
+          videoUrl: videoUrl // URL signée passée explicitement
         }),
       });
 
@@ -273,7 +277,7 @@ const RecordVideo = () => {
     }
   };
 
-  // Uploader la vidéo et déclencher la transcription
+  // Uploader la vidéo et déclencher la transcription (CORRIGÉE : utilisation de createSignedUrl)
   const uploadVideo = async () => {
     if (!recordedVideo) {
       setError('Vous devez enregistrer une vidéo.');
@@ -284,6 +288,8 @@ const RecordVideo = () => {
     setUploading(true);
     setError(null);
     setAnalysisProgress('Upload de la vidéo...');
+
+    let localUploadedVideoId = null; // Variable locale pour gérer l'ID en cas d'erreur
 
     try {
       // 1. Vérifier l'authentification
@@ -306,8 +312,16 @@ const RecordVideo = () => {
         });
       if (uploadError) throw new Error(`Échec de l'upload: ${uploadError.message}`);
 
-      // 3. Récupérer l'URL publique
-      const { data: publicUrlData } = supabase.storage.from('videos').getPublicUrl(objectPath);
+      // 3. CORRECTION : Générer une URL signée au lieu d'utiliser l'URL publique
+      setAnalysisProgress('Génération de l\'URL sécurisée...');
+      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+        .from('videos')
+        .createSignedUrl(objectPath, 60 * 60); // 1 heure en secondes
+
+      if (signedUrlError) throw new Error(`Échec génération URL: ${signedUrlError.message}`);
+
+      // Log sécurisé (sans exposer l'URL complète)
+      console.log('URL signée générée avec succès pour le chemin:', objectPath);
 
       // 4. Insertion dans la base avec le statut UPLOADED
       setAnalysisProgress('Enregistrement en base...');
@@ -318,7 +332,7 @@ const RecordVideo = () => {
             user_id: user.id,
             title: 'Ma vidéo SpotBulle',
             storage_path: objectPath,
-            public_url: publicUrlData.publicUrl,
+            public_url: signedUrlData.signedUrl, // Utiliser l'URL signée
             status: VIDEO_STATUS.UPLOADED,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -330,6 +344,7 @@ const RecordVideo = () => {
         .single();
       if (insertError) throw new Error(`Échec insertion vidéo: ${insertError.message}`);
 
+      localUploadedVideoId = videoData.id;
       setUploadedVideoId(videoData.id);
 
       // 5. Mettre à jour le statut en PROCESSING
@@ -347,9 +362,9 @@ const RecordVideo = () => {
         console.warn('Erreur lors de la mise à jour du statut:', updateError);
       }
 
-      // 6. Déclencher la transcription
+      // 6. Déclencher la transcription avec l'URL signée
       setAnalysisProgress('Démarrage de la transcription...');
-      await triggerTranscription(videoData.id, user.id);
+      await triggerTranscription(videoData.id, user.id, signedUrlData.signedUrl);
 
       toast.success('Vidéo envoyée avec succès ! Analyse en cours...');
     } catch (err) {
@@ -357,7 +372,7 @@ const RecordVideo = () => {
       setAnalysisProgress(null);
       
       // Mettre à jour le statut en FAILED en cas d'erreur
-      if (uploadedVideoId) {
+      if (localUploadedVideoId) {
         await supabase
           .from('videos')
           .update({
@@ -365,7 +380,7 @@ const RecordVideo = () => {
             error_message: err.message,
             updated_at: new Date().toISOString()
           })
-          .eq('id', uploadedVideoId);
+          .eq('id', localUploadedVideoId);
       }
       
       toast.error(`Erreur: ${err.message}`);
