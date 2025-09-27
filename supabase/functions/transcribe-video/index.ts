@@ -177,7 +177,8 @@ Deno.serve(async (req) => {
       confidence_score: confidenceScore
     }
 
-    // CORRECTION : Mise à jour sécurisée de la table videos
+    // CORRECTION : Mise à jour SÉCURISÉE de la table videos
+    // Éviter les champs JSONB problématiques dans un premier temps
     const videoUpdateData: any = {
       transcription_text: transcription.text,
       status: VIDEO_STATUS.TRANSCRIBED,
@@ -185,23 +186,18 @@ Deno.serve(async (req) => {
       processed_at: new Date().toISOString()
     }
 
-    // Ajouter les champs JSONB de manière sécurisée
+    // CORRECTION : Ajouter les champs JSONB UNIQUEMENT s'ils sont valides
     try {
-      videoUpdateData.transcription_data = transcriptionData
+      // Utiliser JSON.stringify pour s'assurer que c'est un JSON valide
+      videoUpdateData.transcription_data = JSON.parse(JSON.stringify(transcriptionData))
     } catch (e) {
       console.warn('Erreur préparation transcription_data, utilisation texte simple')
     }
 
     try {
-      videoUpdateData.transcript = { text: transcription.text }
+      videoUpdateData.transcript = JSON.parse(JSON.stringify({ text: transcription.text }))
     } catch (e) {
       console.warn('Erreur préparation transcript, utilisation texte simple')
-    }
-
-    try {
-      videoUpdateData.transcription = { text: transcription.text, segments: transcription.segments?.slice(0, 10) || [] }
-    } catch (e) {
-      console.warn('Erreur préparation transcription, utilisation texte simple')
     }
 
     // Ajouter le score de confiance si disponible
@@ -210,28 +206,43 @@ Deno.serve(async (req) => {
       videoUpdateData.engagement_score = parseFloat(confidenceScore.toFixed(2))
     }
 
-    // Mise à jour de la vidéo
-    const { error: videoUpdateError } = await serviceClient
-      .from('videos')
-      .update(videoUpdateData)
-      .eq('id', videoId)
+    // CORRECTION : Mise à jour SÉCURISÉE avec gestion d'erreur améliorée
+    let videoUpdateError = null;
+    try {
+      const { error } = await serviceClient
+        .from('videos')
+        .update(videoUpdateData)
+        .eq('id', videoId)
+
+      videoUpdateError = error;
+    } catch (updateException) {
+      console.error('Exception lors de la mise à jour:', updateException)
+      videoUpdateError = updateException;
+    }
 
     if (videoUpdateError) {
       console.error('Erreur mise à jour vidéo:', videoUpdateError)
-      // Tentative de mise à jour simplifiée
-      await serviceClient
+      
+      // CORRECTION : Tentative de mise à jour ULTRA SIMPLIFIÉE sans JSONB
+      const simpleUpdateData = {
+        transcription_text: transcription.text,
+        status: VIDEO_STATUS.TRANSCRIBED,
+        updated_at: new Date().toISOString(),
+        error_message: `Erreur complexe: ${videoUpdateError.message}`
+      }
+
+      const { error: simpleError } = await serviceClient
         .from('videos')
-        .update({
-          transcription_text: transcription.text,
-          status: VIDEO_STATUS.TRANSCRIBED,
-          updated_at: new Date().toISOString(),
-          error_message: videoUpdateError.message
-        })
+        .update(simpleUpdateData)
         .eq('id', videoId)
-      throw new Error(`Erreur mise à jour vidéo: ${videoUpdateError.message}`)
+
+      if (simpleError) {
+        console.error('Échec même avec mise à jour simplifiée:', simpleError)
+        throw new Error(`Erreur critique mise à jour vidéo: ${simpleError.message}`)
+      }
     }
 
-    // CORRECTION : Mise à jour sécurisée de la table transcriptions
+    // CORRECTION : Mise à jour SÉCURISÉE de la table transcriptions
     const transcriptionRecord: any = {
       video_id: videoId,
       user_id: video.user_id,
@@ -244,9 +255,14 @@ Deno.serve(async (req) => {
       processed_at: new Date().toISOString()
     }
 
-    // Ajouter les champs JSONB de manière conditionnelle et sécurisée
+    // CORRECTION : Ajouter les champs JSONB UNIQUEMENT s'ils sont valides
     if (transcription.segments) {
-      transcriptionRecord.segments = transcription.segments.slice(0, 100) // Limiter pour éviter les erreurs
+      try {
+        transcriptionRecord.segments = JSON.parse(JSON.stringify(transcription.segments.slice(0, 50))) // Limiter
+      } catch (e) {
+        console.warn('Erreur préparation segments, utilisation vide')
+        transcriptionRecord.segments = []
+      }
     }
 
     if (confidenceScore !== null) {
@@ -257,29 +273,25 @@ Deno.serve(async (req) => {
       transcriptionRecord.duration = parseFloat(transcription.duration.toFixed(2))
     }
 
+    // Insertion dans transcriptions avec gestion d'erreur
     try {
-      transcriptionRecord.transcription_data = transcriptionData
-    } catch (e) {
-      console.warn('Erreur préparation transcription_data pour transcriptions table')
-    }
+      const { error: transcriptionError } = await serviceClient
+        .from('transcriptions')
+        .upsert(transcriptionRecord, { onConflict: 'video_id' })
 
-    // Insertion dans transcriptions
-    const { error: transcriptionError } = await serviceClient
-      .from('transcriptions')
-      .upsert(transcriptionRecord, { onConflict: 'video_id' })
-
-    if (transcriptionError) {
-      console.error('Erreur insertion transcription:', transcriptionError)
-      // Ne pas échouer complètement, juste logger
+      if (transcriptionError) {
+        console.error('Erreur insertion transcription:', transcriptionError)
+      }
+    } catch (transcriptionException) {
+      console.error('Exception insertion transcription:', transcriptionException)
     }
 
     console.log('Transcription enregistrée avec succès')
 
-    // CORRECTION : Appel sécurisé à la fonction d'analyse
+    // CORRECTION : Appel SÉCURISÉ à la fonction d'analyse
     try {
       const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`
       
-      // Utiliser la clé de service correctement formatée
       const analyzeResponse = await fetch(analyzeEndpoint, {
         method: 'POST',
         headers: {
@@ -287,21 +299,18 @@ Deno.serve(async (req) => {
           'Authorization': `Bearer ${supabaseServiceKey}`
         },
         body: JSON.stringify({ 
-          videoId: videoId,
-          // Ne pas inclure d'autres données potentiellement problématiques
+          videoId: videoId
         })
       })
 
       if (!analyzeResponse.ok) {
         const errorText = await analyzeResponse.text()
         console.warn(`Erreur fonction analyse (${analyzeResponse.status}): ${errorText}`)
-        // Ne pas throw, continuer
       } else {
         console.log('Analyse déclenchée avec succès')
       }
     } catch (invokeError) {
       console.warn("Erreur invocation analyse, continuation sans analyse:", invokeError.message)
-      // Ne pas bloquer le processus principal
     }
 
     return new Response(
@@ -326,12 +335,12 @@ Deno.serve(async (req) => {
         if (supabaseUrl && supabaseServiceKey) {
           const serviceClient = createClient(supabaseUrl, supabaseServiceKey)
           
+          // CORRECTION : Mise à jour ULTRA SIMPLIFIÉE en cas d'erreur
           await serviceClient
             .from('videos')
             .update({ 
               status: VIDEO_STATUS.FAILED, 
-              error_message: error.message,
-              transcription_error: error.message,
+              error_message: error.message.substring(0, 500), // Limiter la taille
               updated_at: new Date().toISOString()
             })
             .eq('id', videoId)
