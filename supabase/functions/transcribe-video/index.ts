@@ -43,7 +43,6 @@ Deno.serve(async (req) => {
       auth: { persistSession: false }
     })
 
-    // Récupération des données
     let videoUrl: string | null = null
     
     if (req.method === 'POST') {
@@ -73,7 +72,6 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Vérifier l'accès à la vidéo
     const { data: video, error: videoError } = await serviceClient
       .from('videos')
       .select('*')
@@ -88,7 +86,6 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Mise à jour du statut
     await serviceClient
       .from('videos')
       .update({ 
@@ -97,7 +94,6 @@ Deno.serve(async (req) => {
       })
       .eq('id', videoId)
 
-    // Récupérer l'URL de la vidéo
     if (!videoUrl) {
       videoUrl = video.public_url || video.url
     }
@@ -119,7 +115,6 @@ Deno.serve(async (req) => {
       videoUrl = signedUrlData.signedUrl
     }
 
-    // Télécharger et transcrire la vidéo
     const response = await fetch(videoUrl)
     if (!response.ok) {
       throw new Error(`Échec téléchargement: ${response.status}`)
@@ -140,7 +135,6 @@ Deno.serve(async (req) => {
       response_format: 'verbose_json'
     })
 
-    // Enregistrer la transcription
     const videoUpdateData = {
       transcription_text: transcription.text,
       status: VIDEO_STATUS.TRANSCRIBED,
@@ -157,17 +151,24 @@ Deno.serve(async (req) => {
       throw new Error(`Erreur mise à jour vidéo: ${updateError.message}`)
     }
 
-    // CORRECTION CRITIQUE : Appel avec x-supabase-service-role au lieu de Authorization
+    // CORRECTION CRITIQUE : Appel avec x-supabase-service-role ET Authorization
     try {
       const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`
       
       console.log('Appel de la fonction analyse-transcription...')
       
+      // Vérifier que la clé de service existe
+      if (!supabaseServiceKey) {
+        throw new Error('Clé de service Supabase manquante')
+      }
+      
+      // Envoyer les deux en-têtes d'authentification pour plus de sécurité
       const analyzeResponse = await fetch(analyzeEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-supabase-service-role': supabaseServiceKey  // CORRECTION ICI
+          'x-supabase-service-role': supabaseServiceKey,
+          'Authorization': `Bearer ${supabaseServiceKey}` // Double authentification
         },
         body: JSON.stringify({ 
           videoId: videoId
@@ -177,6 +178,24 @@ Deno.serve(async (req) => {
       if (!analyzeResponse.ok) {
         const errorText = await analyzeResponse.text()
         console.warn(`Erreur fonction analyse (${analyzeResponse.status}): ${errorText}`)
+        
+        // Tentative alternative avec seulement x-supabase-service-role
+        console.log('Tentative avec seulement x-supabase-service-role...')
+        const retryResponse = await fetch(analyzeEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-supabase-service-role': supabaseServiceKey
+          },
+          body: JSON.stringify({ videoId })
+        })
+        
+        if (!retryResponse.ok) {
+          const retryError = await retryResponse.text()
+          console.warn(`Échec de la retentative (${retryResponse.status}): ${retryError}`)
+        } else {
+          console.log('Analyse déclenchée avec succès après retentative')
+        }
       } else {
         console.log('Analyse déclenchée avec succès')
       }
