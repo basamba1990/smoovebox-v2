@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
-import OpenAI from 'npm:openai@4.28.0'
+import OpenAI from 'npm:openai@4.104.0';
 
 // Alignement avec les statuts définis dans constants/videoStatus.js
 const VIDEO_STATUS = {
