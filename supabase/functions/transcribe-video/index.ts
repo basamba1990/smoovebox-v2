@@ -38,6 +38,21 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
 
+    // CORRECTION : Vérifier si les clés sont des placeholders
+    if (supabaseServiceKey === 'YOUR_SUPABASE_SERVICE_ROLE_KEY') {
+      console.error('Clé de service Supabase non configurée correctement (placeholder détecté)')
+      return new Response(
+        JSON.stringify({ 
+          error: 'Configuration incomplète', 
+          details: "Clé de service Supabase manquante ou placeholder" 
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
+          status: 500 
+        }
+      )
+    }
+
     if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
       console.error('Variables d\'environnement manquantes', {
         supabaseUrl: !!supabaseUrl,
@@ -376,7 +391,7 @@ Deno.serve(async (req) => {
     // ENREGISTRER LA TRANSCRIPTION DANS SUPABASE
     console.log('Enregistrement de la transcription dans Supabase...')
     
-    // Préparer les données de transcription
+    // Préparer les données de transcription (CORRECTION : objet simple pour jsonb, sans wrapping en array)
     const transcriptionData = {
       text: transcription.text,
       segments: transcription.segments,
@@ -385,16 +400,17 @@ Deno.serve(async (req) => {
       confidence_score: confidenceScore
     }
 
-    // Insérer ou mettre à jour dans la table transcriptions
+    // Insérer ou mettre à jour dans la table transcriptions (segments comme jsonb)
     const { error: transcriptionTableError } = await serviceClient
       .from('transcriptions')
       .upsert({
         video_id: videoId,
-        full_text: transcription.text,
-        segments: transcription.segments,
-        transcription_data: transcriptionData,
-        confidence_score: confidenceScore,
         language: transcription.language,
+        full_text: transcription.text,
+        transcription_text: transcription.text,
+        segments: transcription.segments, // Array d'objets -> jsonb
+        transcription_data: transcriptionData, // Objet simple pour jsonb
+        confidence_score: confidenceScore,
         duration: transcription.duration,
         status: 'completed',
         created_at: new Date().toISOString(),
@@ -428,12 +444,14 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Mettre à jour également la table videos avec les données de transcription
+    console.log('Transcription enregistrée avec succès dans la table transcriptions')
+
+    // Mettre à jour également la table videos avec les données de transcription (CORRECTION : objet simple pour jsonb)
     const { error: videoUpdateError } = await serviceClient
       .from('videos')
       .update({
         transcription_text: transcription.text,
-        transcription_data: transcriptionData,
+        transcription_data: transcriptionData, // Objet simple, pas d'array
         status: VIDEO_STATUS.TRANSCRIBED,
         updated_at: new Date().toISOString()
       })
@@ -441,11 +459,32 @@ Deno.serve(async (req) => {
 
     if (videoUpdateError) {
       console.error('Erreur lors de la mise à jour de la vidéo avec la transcription:', videoUpdateError)
+      
+      // CORRECTION : Ne pas échouer complètement ; logger et continuer, mais updater en FAILED si DB critique
+      await serviceClient
+        .from('videos')
+        .update({ 
+          status: VIDEO_STATUS.FAILED, 
+          error_message: `Échec mise à jour vidéo: ${videoUpdateError.message}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId)
+
+      return new Response(
+        JSON.stringify({ 
+          error: 'Erreur mise à jour vidéo', 
+          details: videoUpdateError.message 
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
+          status: 500 
+        }
+      )
     } else {
       console.log('Statut de la vidéo mis à jour à TRANSCRIBED')
     }
 
-    // DÉCLENCHER LA FONCTION D'ANALYSE
+    // DÉCLENCHER LA FONCTION D'ANALYSE (CORRECTION : Gestion robuste des erreurs 401)
     try {
       const analyzeEndpoint = `${supabaseUrl}/functions/v1/analyze-transcription`
       const headers = {
@@ -453,7 +492,10 @@ Deno.serve(async (req) => {
         'Authorization': `Bearer ${supabaseServiceKey}`
       }
 
-      console.log(`Appel de la fonction analyze-transcription via fetch à ${analyzeEndpoint}`)
+      // Log sécurisé
+      console.log(`Appel de la fonction analyze-transcription via fetch à ${analyzeEndpoint.substring(0, 50)}...`)
+
+      console.log(`Clé de service utilisée (tronquée): ${supabaseServiceKey.substring(0, 20)}...`)
       
       const response = await fetch(analyzeEndpoint, {
         method: 'POST',
@@ -464,13 +506,49 @@ Deno.serve(async (req) => {
       if (!response.ok) {
         const errorText = await response.text()
         console.error(`Erreur de la fonction d'analyse (${response.status}): ${errorText}`)
+        
+        // CORRECTION : Pour 401 (Invalid JWT), logger spécifiquement et ne pas updater en FAILED pour transcription
+        if (response.status === 401) {
+          console.error('Erreur 401 : Vérifiez la clé de service Supabase dans les variables d\'environnement')
+        }
+        
+        // Mettre à jour avec erreur d'analyse, mais garder TRANSCRIBED
+        await serviceClient
+          .from('videos')
+          .update({ 
+            status: VIDEO_STATUS.TRANSCRIBED,
+            error_message: `Échec déclenchement analyse: ${response.status} - ${errorText}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId)
+        
         // Ne pas throw, continuer le processus
       } else {
         const responseData = await response.json()
         console.log('Analyse démarrée avec succès:', responseData)
+        
+        // Mettre à jour en ANALYZING après succès
+        await serviceClient
+          .from('videos')
+          .update({ 
+            status: VIDEO_STATUS.ANALYZING,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId)
       }
-    } catch (invokeError) {
+    } catch (invokeError: any) {
       console.error("Erreur lors de l'invocation de la fonction d'analyse:", invokeError)
+      
+      // Mettre à jour avec erreur mais ne pas échouer la transcription
+      await serviceClient
+        .from('videos')
+        .update({ 
+          status: VIDEO_STATUS.TRANSCRIBED,
+          error_message: `Exception invocation analyse: ${invokeError.message}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId)
+      
       // Ne pas échouer complètement, juste logger l'erreur
     }
 
