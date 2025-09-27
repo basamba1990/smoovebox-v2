@@ -104,7 +104,7 @@ const RecordVideo = () => {
       try {
         const { data: video, error } = await supabase
           .from('videos')
-          .select('status, error_message, transcription_data')
+          .select('status, error_message, transcription_data, transcript, transcription_text')
           .eq('id', uploadedVideoId)
           .single();
 
@@ -120,8 +120,9 @@ const RecordVideo = () => {
           case VIDEO_STATUS.TRANSCRIBED:
             setAnalysisProgress('Analyse IA en cours...');
             // Afficher un aperçu de la transcription si disponible
-            if (video.transcription_data?.text) {
-              const preview = video.transcription_data.text.substring(0, 100) + '...';
+            const transcriptionText = video.transcription_data?.text || video.transcript?.text || video.transcription_text;
+            if (transcriptionText) {
+              const preview = transcriptionText.substring(0, 100) + '...';
               toast.info(`Transcription: ${preview}`);
             }
             break;
@@ -222,7 +223,7 @@ const RecordVideo = () => {
         stopStream();
       };
 
-      mediaRecorderRef.current.start(1000); // Enregistrer par morceaux de 1s
+      mediaRecorderRef.current.start(1000);
       setRecording(true);
       toast.success('Enregistrement en cours...');
     } catch (err) {
@@ -240,14 +241,11 @@ const RecordVideo = () => {
     }
   };
 
-  // Fonction pour déclencher la transcription (CORRIGÉE : passage de l'URL signée)
+  // Fonction pour déclencher la transcription
   const triggerTranscription = async (videoId, userId, videoUrl) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Session non valide');
-
-      // Log sécurisé avant envoi
-      console.log('Déclenchement transcription pour videoId:', videoId, 'avec URL signée valide.');
 
       // Appeler la fonction Edge de transcription avec l'URL signée
       const response = await fetch(`${supabase.supabaseUrl}/functions/v1/transcribe-video`, {
@@ -259,7 +257,7 @@ const RecordVideo = () => {
         body: JSON.stringify({
           videoId: videoId,
           userId: userId,
-          videoUrl: videoUrl // URL signée passée explicitement
+          videoUrl: videoUrl
         }),
       });
 
@@ -277,7 +275,7 @@ const RecordVideo = () => {
     }
   };
 
-  // Uploader la vidéo et déclencher la transcription (CORRIGÉE : utilisation de createSignedUrl)
+  // Uploader la vidéo et déclencher la transcription
   const uploadVideo = async () => {
     if (!recordedVideo) {
       setError('Vous devez enregistrer une vidéo.');
@@ -288,8 +286,6 @@ const RecordVideo = () => {
     setUploading(true);
     setError(null);
     setAnalysisProgress('Upload de la vidéo...');
-
-    let localUploadedVideoId = null; // Variable locale pour gérer l'ID en cas d'erreur
 
     try {
       // 1. Vérifier l'authentification
@@ -312,18 +308,18 @@ const RecordVideo = () => {
         });
       if (uploadError) throw new Error(`Échec de l'upload: ${uploadError.message}`);
 
-      // 3. CORRECTION : Générer une URL signée au lieu d'utiliser l'URL publique
+      // 3. Générer une URL signée
       setAnalysisProgress('Génération de l\'URL sécurisée...');
       const { data: signedUrlData, error: signedUrlError } = await supabase.storage
         .from('videos')
-        .createSignedUrl(objectPath, 60 * 60); // 1 heure en secondes
+        .createSignedUrl(objectPath, 60 * 60);
 
       if (signedUrlError) throw new Error(`Échec génération URL: ${signedUrlError.message}`);
 
-      // Log sécurisé (sans exposer l'URL complète)
-      console.log('URL signée générée avec succès pour le chemin:', objectPath);
-
-      // 4. Insertion dans la base avec le statut UPLOADED
+      // 4. CORRECTION : Préparer les tags comme tableau JSONB valide
+      const tagsArray = tags ? tags.split(',').map((tag) => tag.trim()).filter(tag => tag !== '') : [];
+      
+      // Insertion dans la base avec le statut UPLOADED
       setAnalysisProgress('Enregistrement en base...');
       const { data: videoData, error: insertError } = await supabase
         .from('videos')
@@ -332,19 +328,24 @@ const RecordVideo = () => {
             user_id: user.id,
             title: 'Ma vidéo SpotBulle',
             storage_path: objectPath,
-            public_url: signedUrlData.signedUrl, // Utiliser l'URL signée
+            file_path: objectPath,
+            public_url: signedUrlData.signedUrl,
+            url: signedUrlData.signedUrl,
             status: VIDEO_STATUS.UPLOADED,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-            tags: tags ? tags.split(',').map((tag) => tag.trim()) : [],
+            tags: tagsArray, // Tableau simple au lieu de JSONB complexe
             transcription_attempts: 0,
+            file_size: recordedVideo.blob.size,
+            format: 'webm',
+            duration: recordingTime,
+            is_public: false
           },
         ])
         .select()
         .single();
       if (insertError) throw new Error(`Échec insertion vidéo: ${insertError.message}`);
 
-      localUploadedVideoId = videoData.id;
       setUploadedVideoId(videoData.id);
 
       // 5. Mettre à jour le statut en PROCESSING
@@ -372,15 +373,16 @@ const RecordVideo = () => {
       setAnalysisProgress(null);
       
       // Mettre à jour le statut en FAILED en cas d'erreur
-      if (localUploadedVideoId) {
+      if (uploadedVideoId) {
         await supabase
           .from('videos')
           .update({
             status: VIDEO_STATUS.FAILED,
             error_message: err.message,
+            transcription_error: err.message,
             updated_at: new Date().toISOString()
           })
-          .eq('id', localUploadedVideoId);
+          .eq('id', uploadedVideoId);
       }
       
       toast.error(`Erreur: ${err.message}`);
