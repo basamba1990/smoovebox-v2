@@ -17,6 +17,7 @@ const VIDEO_STATUS = {
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 // Timeout pour l'analyse
@@ -37,7 +38,22 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
 
-    console.log('Clé de service Supabase:', supabaseServiceKey ? 'Définie' : 'Non définie');
+    // CORRECTION : Vérifier si la clé de service est un placeholder
+    if (supabaseServiceKey === 'YOUR_SUPABASE_SERVICE_ROLE_KEY') {
+      console.error('Clé de service Supabase non configurée correctement (placeholder détecté)');
+      return new Response(
+        JSON.stringify({
+          error: 'Configuration incomplète',
+          details: "Clé de service Supabase manquante ou placeholder"
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500
+        }
+      );
+    }
+
+    console.log('Clé de service Supabase:', supabaseServiceKey ? 'Définie (tronquée pour sécurité)' : 'Non définie');
 
     if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
       console.error('Variables d\'environnement manquantes', {
@@ -135,8 +151,8 @@ Deno.serve(async (req) => {
     console.log(`Statut de la vidéo ${videoId} mis à jour à '${VIDEO_STATUS.ANALYZING}'.`);
 
     let fullText = '';
-    if (video.transcription_data && typeof video.transcription_data === 'object') {
-      fullText = video.transcription_data.text || '';
+    if (video.transcription_data && typeof video.transcription_data === 'object' && video.transcription_data.text) {
+      fullText = video.transcription_data.text;
     } else if (video.transcription_text) {
       fullText = video.transcription_text;
     } else {
@@ -162,10 +178,10 @@ Deno.serve(async (req) => {
         );
       }
 
-      if (transcriptionData.transcription_data && typeof transcriptionData.transcription_data === 'object') {
-        fullText = transcriptionData.transcription_data.text || '';
-      } else {
-        fullText = transcriptionData.full_text || '';
+      if (transcriptionData.transcription_data && typeof transcriptionData.transcription_data === 'object' && transcriptionData.transcription_data.text) {
+        fullText = transcriptionData.transcription_data.text;
+      } else if (transcriptionData.full_text) {
+        fullText = transcriptionData.full_text;
       }
     }
 
@@ -219,7 +235,7 @@ Assurez-vous que la sortie est un objet JSON valide.`;
         response_format: { type: "json_object" },
         max_tokens: 2000
       });
-    } catch (openaiError) {
+    } catch (openaiError: any) {
       console.error('Erreur OpenAI lors de l\'analyse:', openaiError);
       await serviceClient
         .from('videos')
@@ -256,7 +272,7 @@ Assurez-vous que la sortie est un objet JSON valide.`;
       } else {
         throw new Error('analysis_result n\'est pas un objet JSON valide');
       }
-    } catch (parseError) {
+    } catch (parseError: any) {
       console.error('Erreur lors de l\'analyse du JSON de la réponse OpenAI:', parseError);
       
       await serviceClient
@@ -279,12 +295,12 @@ Assurez-vous que la sortie est un objet JSON valide.`;
 
     console.log(`Analyse terminée pour la vidéo ${videoId}.`);
 
-    // Enregistrer les résultats de l'analyse dans la table 'videos'
+    // CORRECTION : Supprimer ai_score car non présent dans le schéma de la table videos
     const updatePayload = {
       analysis: analysisResult,
       status: VIDEO_STATUS.ANALYZED,
-      updated_at: new Date().toISOString(),
-      ai_score: calculateAIScore(analysisResult)
+      updated_at: new Date().toISOString()
+      // ai_score supprimé : colonne absente dans le schéma
     };
 
     console.log('Payload de mise à jour pour la table videos:', JSON.stringify(updatePayload, null, 2));
@@ -313,7 +329,7 @@ Assurez-vous que la sortie est un objet JSON valide.`;
       );
     }
 
-    // Mettre à jour la table transcriptions
+    // Mettre à jour la table transcriptions (aligné avec le schéma : analysis_result jsonb)
     const transcriptionUpdatePayload = {
       analysis_result: analysisResult,
       updated_at: new Date().toISOString()
@@ -328,7 +344,9 @@ Assurez-vous que la sortie est un objet JSON valide.`;
 
     if (transcriptionUpdateError) {
       console.error('Erreur lors de la mise à jour de la transcription avec les résultats d\'analyse:', transcriptionUpdateError);
-      // Log seulement, ne pas échouer la requête
+      // Log seulement, ne pas échouer la requête (non-bloquant)
+    } else {
+      console.log('Table transcriptions mise à jour avec succès');
     }
 
     console.log(`Vidéo ${videoId} analysée et statut mis à jour à '${VIDEO_STATUS.ANALYZED}'.`);
@@ -369,7 +387,7 @@ Assurez-vous que la sortie est un objet JSON valide.`;
   }
 });
 
-// Fonction helper pour calculer un score IA basé sur l'analyse
+// Fonction helper pour calculer un score IA basé sur l'analyse (CORRECTION : Gardée pour usage futur, mais non utilisée dans update car colonne absente)
 function calculateAIScore(analysisResult: any): number {
   let score = 7.0;
   
