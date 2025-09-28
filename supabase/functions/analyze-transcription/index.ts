@@ -275,16 +275,20 @@ Assurez-vous que la sortie est un objet JSON valide.`;
       );
     }
 
-    console.log(`Analyse terminée pour la vidéo ${videoId}.`);
+    // CORRECTION : Ajouter le score AI calculé dans le JSONB analysis (au lieu d'une colonne dédiée)
+    const aiScore = calculateAIScore(analysisResult);
+    analysisResult.ai_score = aiScore;  // Intégrer directement dans le résultat JSON
+
+    console.log(`Analyse terminée pour la vidéo ${videoId}. Score AI: ${aiScore}`);
 
     // Enregistrer les résultats de l'analyse dans la table 'videos' (colonne analysis)
     const { error: analysisSaveError } = await serviceClient
       .from('videos')
       .update({
-        analysis: analysisResult,  // Utiliser la colonne analysis existante
+        analysis: analysisResult,  // Le score est maintenant dans analysis.ai_score
         status: VIDEO_STATUS.ANALYZED,
-        updated_at: new Date().toISOString(),
-        ai_score: calculateAIScore(analysisResult) // Calculer un score basé sur l'analyse
+        updated_at: new Date().toISOString()
+        // CORRECTION : Suppression de ai_score pour éviter l'erreur de schéma
       })
       .eq('id', videoId);
 
