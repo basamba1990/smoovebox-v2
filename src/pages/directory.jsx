@@ -1,4 +1,3 @@
-// src/pages/directory.jsx
 import { useState, useEffect } from 'react';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { useNavigate } from 'react-router-dom';
@@ -12,6 +11,7 @@ const Directory = () => {
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('all');
   const [selectedVideoId, setSelectedVideoId] = useState(null);
+  const [connecting, setConnecting] = useState(false);
 
   const supabase = useSupabaseClient();
   const user = useUser();
@@ -47,16 +47,16 @@ const Directory = () => {
 
       if (error) {
         console.error('Erreur récupération profils:', error);
-        setError('Impossible de charger l’annuaire.');
-        toast.error('Erreur lors du chargement de l’annuaire.');
+        setError('Impossible de charger l\'annuaire.');
+        toast.error('Erreur lors du chargement de l\'annuaire.');
         return;
       }
 
       setUsers(data || []);
     } catch (err) {
       console.error('Erreur récupération profils:', err);
-      setError('Impossible de charger l’annuaire.');
-      toast.error('Erreur lors du chargement de l’annuaire.');
+      setError('Impossible de charger l\'annuaire.');
+      toast.error('Erreur lors du chargement de l\'annuaire.');
     } finally {
       setLoading(false);
     }
@@ -75,6 +75,8 @@ const Directory = () => {
       return;
     }
 
+    setConnecting(true);
+
     try {
       // Récupérer la session pour le JWT
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -85,30 +87,58 @@ const Directory = () => {
         return;
       }
 
+      console.log('Tentative de connexion avec:', {
+        user_id: user.id,
+        target_user_id: targetUserId,
+        video_id: selectedVideoId
+      });
+
+      // CORRECTION : Utiliser l'URL correcte pour la fonction Edge
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/match-profiles`;
+      
       // Appel de la fonction Edge
-      const { data, error } = await supabase.functions.invoke('match-profiles', {
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({
           user_id: user.id,
           target_user_id: targetUserId,
           video_id: selectedVideoId,
         }),
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
       });
 
-      if (error) {
-        console.error('Erreur invocation match-profiles:', error);
-        toast.error('Impossible de lancer la mise en relation.');
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Erreur invocation match-profiles:', errorText);
+        
+        let errorMessage = 'Impossible de lancer la mise en relation.';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorData.details || errorMessage;
+        } catch (e) {
+          errorMessage = `Erreur ${response.status}: ${errorText}`;
+        }
+        
+        toast.error(errorMessage);
         return;
       }
 
+      const data = await response.json();
       console.log('Réponse match-profiles:', data);
+      
       toast.success('Mise en relation initiée avec succès !');
+      
+      // Réinitialiser la sélection vidéo
+      setSelectedVideoId(null);
+      
     } catch (err) {
       console.error('Erreur mise en relation:', err);
-      toast.error('Erreur lors de la mise en relation.');
+      toast.error(`Erreur lors de la mise en relation: ${err.message}`);
+    } finally {
+      setConnecting(false);
     }
   };
 
@@ -177,9 +207,16 @@ const Directory = () => {
             <Button
               onClick={() => handleConnect(u.user_id)}
               className="mt-2 bg-orange-500 hover:bg-orange-600"
-              disabled={!selectedVideoId}
+              disabled={!selectedVideoId || connecting}
             >
-              Connecter
+              {connecting ? (
+                <span className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Connexion...
+                </span>
+              ) : (
+                'Connecter'
+              )}
             </Button>
           </div>
         ))}
