@@ -15,7 +15,7 @@ const VIDEO_STATUS = {
   FAILED: 'failed'
 };
 
-const RecordVideo = () => {
+const RecordVideo = ({ onVideoUploaded = () => {} }) => {
   const [recording, setRecording] = useState(false);
   const [recordedVideo, setRecordedVideo] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -104,7 +104,7 @@ const RecordVideo = () => {
       try {
         const { data: video, error } = await supabase
           .from('videos')
-          .select('status, error_message, transcription_data, transcript, transcription_text')
+          .select('status, error_message, transcription_data, transcript, transcription_text, duration')
           .eq('id', uploadedVideoId)
           .single();
 
@@ -132,6 +132,10 @@ const RecordVideo = () => {
           case VIDEO_STATUS.ANALYZED:
             setAnalysisProgress('Analyse terminée !');
             toast.success('Votre vidéo a été analysée avec succès !');
+            
+            // NOUVEAU : Appeler le callback pour rafraîchir le dashboard
+            onVideoUploaded();
+            
             setTimeout(() => {
               navigate(`/video-success?id=${uploadedVideoId}`);
             }, 2000);
@@ -151,7 +155,7 @@ const RecordVideo = () => {
 
     const interval = setInterval(checkAnalysisStatus, 3000);
     return () => clearInterval(interval);
-  }, [uploadedVideoId, navigate]);
+  }, [uploadedVideoId, navigate, onVideoUploaded]);
 
   // Arrêter le stream vidéo/audio
   const stopStream = () => {
@@ -167,7 +171,11 @@ const RecordVideo = () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 1280, height: 720 },
-        audio: true,
+        audio: { 
+          channelCount: 1,
+          sampleRate: 16000,
+          sampleSize: 16
+        },
       });
       streamRef.current = stream;
 
@@ -205,11 +213,17 @@ const RecordVideo = () => {
       const stream = streamRef.current;
       if (!stream) throw new Error('Aucun flux média disponible');
 
-      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+        ? 'video/webm;codecs=vp9,opus'
+        : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
         ? 'video/webm;codecs=vp8,opus'
         : 'video/webm';
 
-      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = new MediaRecorder(stream, { 
+        mimeType,
+        audioBitsPerSecond: 128000,
+        videoBitsPerSecond: 2500000
+      });
 
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) recordedChunksRef.current.push(event.data);
@@ -218,7 +232,6 @@ const RecordVideo = () => {
       mediaRecorderRef.current.onstop = () => {
         const blob = new Blob(recordedChunksRef.current, { type: mimeType });
         setRecordedVideo({ blob, url: URL.createObjectURL(blob) });
-        setRecordingTime(0);
         recordedChunksRef.current = [];
         stopStream();
       };
@@ -247,8 +260,10 @@ const RecordVideo = () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Session non valide');
 
-      // Appeler la fonction Edge de transcription avec l'URL signée
-      const response = await fetch(`${supabase.supabaseUrl}/functions/v1/transcribe-video`, {
+      // CORRECTION : Utiliser l'URL correcte pour la fonction Edge
+      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-video`;
+      
+      const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -305,6 +320,7 @@ const RecordVideo = () => {
         .upload(objectPath, recordedVideo.blob, {
           contentType: 'video/webm',
           cacheControl: '3600',
+          upsert: false
         });
       if (uploadError) throw new Error(`Échec de l'upload: ${uploadError.message}`);
 
@@ -316,9 +332,12 @@ const RecordVideo = () => {
 
       if (signedUrlError) throw new Error(`Échec génération URL: ${signedUrlError.message}`);
 
-      // 4. CORRECTION : Préparer les tags comme tableau JSONB valide
+      // 4. Préparer les tags comme tableau JSONB valide
       const tagsArray = tags ? tags.split(',').map((tag) => tag.trim()).filter(tag => tag !== '') : [];
       
+      // CORRECTION : S'assurer que la durée est bien sauvegardée
+      const videoDuration = recordingTime;
+
       // Insertion dans la base avec le statut UPLOADED
       setAnalysisProgress('Enregistrement en base...');
       const { data: videoData, error: insertError } = await supabase
@@ -334,11 +353,11 @@ const RecordVideo = () => {
             status: VIDEO_STATUS.UPLOADED,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-            tags: tagsArray, // Tableau simple au lieu de JSONB complexe
+            tags: tagsArray,
             transcription_attempts: 0,
             file_size: recordedVideo.blob.size,
             format: 'webm',
-            duration: recordingTime,
+            duration: videoDuration, // CORRECTION : Durée bien sauvegardée
             is_public: false
           },
         ])
