@@ -3,6 +3,7 @@ import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button-enhanced.jsx';
+import VideoPicker from '../components/VideoPicker.jsx';
 
 const Directory = () => {
   const [users, setUsers] = useState([]);
@@ -12,6 +13,7 @@ const Directory = () => {
   const [connecting, setConnecting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [existingConnections, setExistingConnections] = useState(new Set());
+  const [selectedVideos, setSelectedVideos] = useState({}); // { userId: videoId }
 
   const supabase = useSupabaseClient();
   const user = useUser();
@@ -110,6 +112,13 @@ const Directory = () => {
     }
   };
 
+  const handleVideoSelect = (targetUserId, videoId) => {
+    setSelectedVideos(prev => ({
+      ...prev,
+      [targetUserId]: videoId
+    }));
+  };
+
   const handleConnect = async (targetUserId) => {
     if (!user) {
       toast.error('Veuillez vous connecter pour initier une mise en relation.');
@@ -126,12 +135,15 @@ const Directory = () => {
     try {
       setConnecting(true);
       
-      // Utilisation de la nouvelle table connections
+      const selectedVideoId = selectedVideos[targetUserId] || null;
+      
+      // Utilisation de la table connections avec video_id optionnel
       const { error } = await supabase
         .from('connections')
         .insert({
           requester_id: user.id,
           target_id: targetUserId,
+          video_id: selectedVideoId, // Peut être null
           status: 'pending'
         });
 
@@ -139,7 +151,15 @@ const Directory = () => {
       
       // Mettre à jour les connexions existantes
       setExistingConnections(prev => new Set([...prev, targetUserId]));
-      toast.success('Demande de connexion envoyée !');
+      
+      // Réinitialiser la sélection vidéo pour cet utilisateur
+      setSelectedVideos(prev => {
+        const newSelection = { ...prev };
+        delete newSelection[targetUserId];
+        return newSelection;
+      });
+      
+      toast.success(selectedVideoId ? 'Demande de connexion avec vidéo envoyée !' : 'Demande de connexion envoyée !');
       
     } catch (err) {
       console.error('Erreur handleConnect:', err);
@@ -248,6 +268,7 @@ const Directory = () => {
           {users.map((userProfile) => {
             const connectionStatus = getConnectionStatus(userProfile.user_id || userProfile.id);
             const isPending = connectionStatus === 'pending';
+            const targetUserId = userProfile.user_id || userProfile.id;
             
             return (
               <div key={userProfile.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
@@ -332,9 +353,22 @@ const Directory = () => {
                   </div>
                 )}
                 
+                {/* Sélecteur de vidéo - seulement si connecté et pas déjà connecté */}
+                {user && connectionStatus === 'can_connect' && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Associer une vidéo (optionnel) :
+                    </label>
+                    <VideoPicker 
+                      onChange={(videoId) => handleVideoSelect(targetUserId, videoId)}
+                      selectedVideo={selectedVideos[targetUserId]}
+                    />
+                  </div>
+                )}
+                
                 {/* Bouton de connexion avec état */}
                 <Button
-                  onClick={() => handleConnect(userProfile.user_id || userProfile.id)}
+                  onClick={() => handleConnect(targetUserId)}
                   disabled={connecting || isPending || !user}
                   className={`w-full ${
                     isPending 
