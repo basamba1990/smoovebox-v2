@@ -1,4 +1,4 @@
-// components/SeminarsList.tsx
+// components/SeminarsList.jsx
 import { useState, useEffect } from 'react';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { toast } from 'sonner';
