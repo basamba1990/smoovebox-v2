@@ -20,6 +20,8 @@ const Dashboard = ({ refreshKey = 0, onDataUpdate }) => {
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [transcribing, setTranscribing] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [selectedVideoForAnalysis, setSelectedVideoForAnalysis] = useState(null);
 
   // Recharger les vidéos quand refreshKey change ou utilisateur change
   useEffect(() => {
@@ -146,6 +148,46 @@ const Dashboard = ({ refreshKey = 0, onDataUpdate }) => {
     }
   };
 
+  const startAnalysis = async (videoId) => {
+    try {
+      setAnalyzing(true);
+      
+      // Mettre à jour le statut immédiatement
+      setVideos(prev => prev.map(video => 
+        video.id === videoId 
+          ? { ...video, status: 'analyzing' }
+          : video
+      ));
+
+      // Appeler l'edge function pour l'analyse IA
+      const { data, error } = await supabase.functions.invoke('analyze-transcription', {
+        body: { videoId }
+      });
+
+      if (error) throw error;
+
+      console.log('✅ Analyse IA lancée:', data);
+      
+      // Recharger les vidéos après un délai
+      setTimeout(() => {
+        fetchVideos();
+      }, 5000);
+
+    } catch (err) {
+      console.error('❌ Erreur startAnalysis:', err);
+      setError(`Erreur analyse IA: ${err.message}`);
+      
+      // Revenir au statut précédent en cas d'erreur
+      setVideos(prev => prev.map(video => 
+        video.id === videoId 
+          ? { ...video, status: 'error' }
+          : video
+      ));
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return 'Date inconnue';
     return new Date(dateString).toLocaleDateString('fr-FR', {
@@ -166,15 +208,16 @@ const Dashboard = ({ refreshKey = 0, onDataUpdate }) => {
       'processed': 'Traitée',
       'error': 'Erreur',
       'transcribed': 'Transcrite',
+      'analyzing': 'Analyse en cours',
       'analyzed': 'Analysée'
     };
 
     let label = statusMap[status] || status;
 
-    if (hasTranscription) {
+    if (hasTranscription && status !== 'transcribed' && status !== 'analyzed') {
       label += ' + Transcription';
     }
-    if (hasAnalysis) {
+    if (hasAnalysis && status !== 'analyzed') {
       label += ' + Analyse IA';
     }
 
@@ -196,6 +239,7 @@ const Dashboard = ({ refreshKey = 0, onDataUpdate }) => {
           baseClass += 'bg-yellow-100 text-yellow-800';
           break;
         case 'processing':
+        case 'analyzing':
           baseClass += 'bg-blue-100 text-blue-800';
           break;
         case 'processed':
@@ -279,8 +323,10 @@ const Dashboard = ({ refreshKey = 0, onDataUpdate }) => {
         await startTranscription(video.id);
         break;
       case 'analyze':
-        // Implémenter l'analyse IA
-        console.log('Analyse IA pour:', video.id);
+        await startAnalysis(video.id);
+        break;
+      case 'view-analysis':
+        setSelectedVideoForAnalysis(video);
         break;
       default:
         break;
@@ -465,7 +511,7 @@ const Dashboard = ({ refreshKey = 0, onDataUpdate }) => {
                             disabled={transcribing}
                           >
                             <FileText className="h-4 w-4 mr-1" />
-                            Transcrire
+                            {transcribing ? 'Traitement...' : 'Transcrire'}
                           </Button>
                         )}
                       </div>
@@ -479,8 +525,28 @@ const Dashboard = ({ refreshKey = 0, onDataUpdate }) => {
                       Analyse IA
                     </h4>
                     {hasAnalysis ? (
-                      <div className="text-sm bg-gray-50 rounded p-3 max-h-32 overflow-y-auto">
-                        {video.analysis?.summary || video.ai_result?.insights || 'Analyse disponible'}
+                      <div className="space-y-2">
+                        <div className="text-sm bg-gray-50 rounded p-3 max-h-24 overflow-y-auto">
+                          {video.analysis?.summary || video.ai_result?.insights || 'Analyse disponible'}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleVideoAction(video, 'view-analysis')}
+                          >
+                            <Eye className="h-3 w-3 mr-1" />
+                            Voir détail
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleVideoAction(video, 'analyze')}
+                            disabled={analyzing}
+                          >
+                            <RefreshCw className="h-3 w-3 mr-1" />
+                            {analyzing ? 'Analyse...' : 'Ré-analyser'}
+                          </Button>
+                        </div>
                       </div>
                     ) : (
                       <div className="text-sm text-gray-500">
@@ -488,9 +554,10 @@ const Dashboard = ({ refreshKey = 0, onDataUpdate }) => {
                           <Button
                             size="sm"
                             onClick={() => handleVideoAction(video, 'analyze')}
+                            disabled={analyzing}
                           >
                             <BarChart3 className="h-4 w-4 mr-1" />
-                            Analyser
+                            {analyzing ? 'Analyse en cours...' : 'Analyser'}
                           </Button>
                         ) : (
                           'Transcription requise'
@@ -557,6 +624,29 @@ const Dashboard = ({ refreshKey = 0, onDataUpdate }) => {
               </Button>
             </CardFooter>
           </Card>
+        </div>
+      )}
+
+      {/* Modal d'analyse détaillée */}
+      {selectedVideoForAnalysis && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b flex justify-between items-center">
+              <h3 className="text-lg font-semibold">
+                Analyse IA détaillée - {selectedVideoForAnalysis.title || 'Sans titre'}
+              </h3>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedVideoForAnalysis(null)}
+              >
+                Fermer
+              </Button>
+            </div>
+            <div className="p-4">
+              <VideoAnalysisResults video={selectedVideoForAnalysis} />
+            </div>
+          </div>
         </div>
       )}
     </div>
