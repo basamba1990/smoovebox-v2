@@ -1,5 +1,5 @@
 // src/pages/home.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Dashboard from "../components/Dashboard.jsx";
 import RecordVideo from "./record-video.jsx";
 import ProfessionalHeader from "../components/ProfessionalHeader.jsx";
@@ -21,8 +21,17 @@ export default function Home({
   loadDashboardData 
 }) {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('record');
+  const [activeTab, setActiveTab] = useState('dashboard'); // Changé pour afficher le dashboard par défaut
   const [profileUpdated, setProfileUpdated] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0); // Clé pour forcer le rafraîchissement
+
+  // Effet pour basculer vers l'onglet profil si incomplet
+  useEffect(() => {
+    if (!isProfileComplete && user) {
+      setActiveTab('profile');
+      toast.info('Veuillez compléter votre profil pour profiter de toutes les fonctionnalités');
+    }
+  }, [isProfileComplete, user]);
 
   const handleNavigateToDirectory = () => {
     navigate('/directory');
@@ -31,7 +40,8 @@ export default function Home({
   const handleProfileUpdated = () => {
     setProfileUpdated(true);
     toast.success('Profil mis à jour avec succès !');
-    // Recharger les données du dashboard si nécessaire
+    // Déclencher un rechargement des données
+    setRefreshKey(prev => prev + 1);
     if (loadDashboardData) {
       loadDashboardData();
     }
@@ -39,11 +49,13 @@ export default function Home({
 
   const handleVideoUploaded = () => {
     // Recharger les données du dashboard après upload vidéo
+    setRefreshKey(prev => prev + 1);
     if (loadDashboardData) {
       setTimeout(() => {
         loadDashboardData();
       }, 2000);
     }
+    toast.success('Vidéo uploadée avec succès!');
   };
 
   // Vérifier si le profil est complet
@@ -89,6 +101,16 @@ export default function Home({
         <div className="flex border-b border-primary-200 dark:border-gray-700 overflow-x-auto">
           <button
             className={`flex-shrink-0 py-3 px-6 font-medium text-sm md:text-base transition-colors whitespace-nowrap ${
+              activeTab === 'dashboard'
+                ? 'text-primary-600 border-b-2 border-primary-600'
+                : 'text-primary-500 hover:text-primary-700 dark:text-gray-400 dark:hover:text-gray-300'
+            }`}
+            onClick={() => setActiveTab('dashboard')}
+          >
+            📊 Mon portfolio vivant
+          </button>
+          <button
+            className={`flex-shrink-0 py-3 px-6 font-medium text-sm md:text-base transition-colors whitespace-nowrap ${
               activeTab === 'record'
                 ? 'text-primary-600 border-b-2 border-primary-600'
                 : 'text-primary-500 hover:text-primary-700 dark:text-gray-400 dark:hover:text-gray-300'
@@ -106,16 +128,6 @@ export default function Home({
             onClick={() => setActiveTab('profile')}
           >
             👤 Carte d'identité SpotBulle
-          </button>
-          <button
-            className={`flex-shrink-0 py-3 px-6 font-medium text-sm md:text-base transition-colors whitespace-nowrap ${
-              activeTab === 'dashboard'
-                ? 'text-primary-600 border-b-2 border-primary-600'
-                : 'text-primary-500 hover:text-primary-700 dark:text-gray-400 dark:hover:text-gray-300'
-            }`}
-            onClick={() => setActiveTab('dashboard')}
-          >
-            📊 Mon portfolio vivant
           </button>
           <button
             className={`flex-shrink-0 py-3 px-6 font-medium text-sm md:text-base transition-colors whitespace-nowrap ${
@@ -181,7 +193,41 @@ export default function Home({
         </div>
 
         {/* Contenu selon l'onglet actif */}
-        {activeTab === 'record' ? (
+        {activeTab === 'dashboard' ? (
+          <div className="bg-white dark:bg-gray-900 shadow-lg rounded-2xl p-4 md:p-6 mb-6 border border-primary-200 dark:border-gray-700">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center">
+                <div className="bg-primary-100 dark:bg-primary-900 p-2 rounded-lg mr-4">
+                  <span className="text-2xl">📊</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-primary-900 dark:text-white">
+                    Mon Portfolio Vivant SpotBulle
+                  </h2>
+                  <p className="text-primary-600 dark:text-primary-400">
+                    Suivez votre évolution dans le programme France–Maroc
+                  </p>
+                </div>
+              </div>
+              <Button 
+                onClick={() => {
+                  setRefreshKey(prev => prev + 1);
+                  if (loadDashboardData) loadDashboardData();
+                }}
+                className="bg-primary-600 hover:bg-primary-700 text-white"
+                disabled={dashboardLoading}
+              >
+                🔄 Actualiser
+              </Button>
+            </div>
+
+            {/* Dashboard avec rafraîchissement forcé */}
+            <Dashboard 
+              refreshKey={refreshKey}
+              onDataUpdate={loadDashboardData}
+            />
+          </div>
+        ) : activeTab === 'record' ? (
           <div className="bg-white dark:bg-gray-900 shadow-lg rounded-2xl p-4 md:p-6 mb-6 border border-primary-200 dark:border-gray-700">
             <div className="flex items-center mb-6">
               <div className="bg-primary-100 dark:bg-primary-900 p-2 rounded-lg mr-4">
@@ -226,7 +272,11 @@ export default function Home({
               </div>
             </div>
             
-            <ProfileForm onProfileUpdated={handleProfileUpdated} />
+            <ProfileForm 
+              user={user}
+              profile={profile}
+              onProfileUpdated={handleProfileUpdated} 
+            />
             
             {!isProfileComplete && (
               <div className="mt-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
@@ -238,72 +288,6 @@ export default function Home({
                   de la plateforme et d'être correctement référencé dans l'annuaire France-Maroc.
                 </p>
               </div>
-            )}
-          </div>
-        ) : activeTab === 'dashboard' ? (
-          <div className="bg-white dark:bg-gray-900 shadow-lg rounded-2xl p-4 md:p-6 mb-6 border border-primary-200 dark:border-gray-700">
-            <div className="flex items-center mb-6">
-              <div className="bg-green-100 dark:bg-green-900 p-2 rounded-lg mr-4">
-                <span className="text-2xl">📊</span>
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-primary-900 dark:text-white">
-                  Mon Portfolio Vivant SpotBulle
-                </h2>
-                <p className="text-primary-600 dark:text-primary-400">
-                  Suivez votre évolution dans le programme France–Maroc
-                </p>
-              </div>
-            </div>
-
-            {dashboardLoading ? (
-              <div className="text-center py-10">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-                <p className="mt-3 text-primary-600 dark:text-primary-400">Chargement de vos données...</p>
-              </div>
-            ) : dashboardError ? (
-              <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg text-center border border-red-200 dark:border-red-800">
-                <p className="text-red-600 dark:text-red-400 mb-3">Erreur : {dashboardError}</p>
-                <Button 
-                  onClick={loadDashboardData}
-                  className="bg-primary-600 hover:bg-primary-700 text-white"
-                >
-                  Réessayer
-                </Button>
-              </div>
-            ) : !dashboardData || dashboardData.totalVideos === 0 ? (
-              <div className="text-center py-10 bg-primary-50 dark:bg-primary-900/20 rounded-lg border border-primary-200 dark:border-primary-800">
-                <div className="text-5xl mb-4">🎬</div>
-                <h3 className="text-lg font-semibold text-primary-800 dark:text-primary-200 mb-2">
-                  Commencez votre aventure SpotBulle
-                </h3>
-                <p className="text-primary-600 dark:text-primary-400 mb-4">
-                  Enregistrez votre première vidéo pour démarrer votre parcours et créer votre portfolio vivant.
-                </p>
-                <div className="flex gap-3 justify-center">
-                  <Button 
-                    onClick={() => setActiveTab('record')}
-                    className="bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white"
-                  >
-                    Première Vidéo
-                  </Button>
-                  {!isProfileComplete && (
-                    <Button 
-                      onClick={() => setActiveTab('profile')}
-                      className="bg-purple-500 hover:bg-purple-600 text-white"
-                    >
-                      Compléter le profil
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <Dashboard 
-                dashboardData={dashboardData}
-                loading={dashboardLoading}
-                error={dashboardError}
-                onRetry={loadDashboardData}
-              />
             )}
           </div>
         ) : activeTab === 'seminars' ? (
