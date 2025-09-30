@@ -21,17 +21,9 @@ export default function Home({
   loadDashboardData 
 }) {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('dashboard'); // Changé pour afficher le dashboard par défaut
+  const [activeTab, setActiveTab] = useState('dashboard'); // Par défaut sur dashboard
   const [profileUpdated, setProfileUpdated] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0); // Clé pour forcer le rafraîchissement
-
-  // Effet pour basculer vers l'onglet profil si incomplet
-  useEffect(() => {
-    if (!isProfileComplete && user) {
-      setActiveTab('profile');
-      toast.info('Veuillez compléter votre profil pour profiter de toutes les fonctionnalités');
-    }
-  }, [isProfileComplete, user]);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const handleNavigateToDirectory = () => {
     navigate('/directory');
@@ -65,6 +57,14 @@ export default function Home({
     profile.centres_interet && 
     profile.centres_interet.length > 0;
 
+  // Effet pour basculer vers l'onglet profil si incomplet
+  useEffect(() => {
+    if (!isProfileComplete && user) {
+      setActiveTab('profile');
+      toast.info('Veuillez compléter votre profil pour profiter de toutes les fonctionnalités');
+    }
+  }, [isProfileComplete, user]);
+
   return (
     <div className="app-container min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 dark:from-gray-900 dark:to-gray-800">
       {/* Header */}
@@ -74,322 +74,95 @@ export default function Home({
         connectionStatus={connectionStatus} 
         onSignOut={onSignOut} 
       />
-
-      {/* Bannière d'accueil */}
-      <div className="bg-gradient-to-r from-primary-500 to-primary-600 text-white p-6 md:p-8 shadow-lg">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold mb-2">
-                🌟 Bienvenue sur SpotBulle France–Maroc
-              </h1>
-              <p className="text-sm md:text-base opacity-90">
-                Innovation Éducative et Networking Sportif - Révélons vos talents
-              </p>
-            </div>
-            {!isProfileComplete && (
-              <div className="bg-yellow-500 text-yellow-900 px-4 py-2 rounded-lg text-sm font-semibold">
-                ⚡ Complétez votre profil
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Navigation par onglets */}
-      <div className="max-w-6xl mx-auto px-4 mt-6">
-        <div className="flex border-b border-primary-200 dark:border-gray-700 overflow-x-auto">
-          <button
-            className={`flex-shrink-0 py-3 px-6 font-medium text-sm md:text-base transition-colors whitespace-nowrap ${
-              activeTab === 'dashboard'
-                ? 'text-primary-600 border-b-2 border-primary-600'
-                : 'text-primary-500 hover:text-primary-700 dark:text-gray-400 dark:hover:text-gray-300'
-            }`}
-            onClick={() => setActiveTab('dashboard')}
-          >
-            📊 Mon portfolio vivant
-          </button>
-          <button
-            className={`flex-shrink-0 py-3 px-6 font-medium text-sm md:text-base transition-colors whitespace-nowrap ${
-              activeTab === 'record'
-                ? 'text-primary-600 border-b-2 border-primary-600'
-                : 'text-primary-500 hover:text-primary-700 dark:text-gray-400 dark:hover:text-gray-300'
-            }`}
-            onClick={() => setActiveTab('record')}
-          >
-            🎥 Expression sous la bulle
-          </button>
-          <button
-            className={`flex-shrink-0 py-3 px-6 font-medium text-sm md:text-base transition-colors whitespace-nowrap ${
-              activeTab === 'profile'
-                ? 'text-primary-600 border-b-2 border-primary-600'
-                : 'text-primary-500 hover:text-primary-700 dark:text-gray-400 dark:hover:text-gray-300'
-            }`}
-            onClick={() => setActiveTab('profile')}
-          >
-            👤 Carte d'identité SpotBulle
-          </button>
-          <button
-            className={`flex-shrink-0 py-3 px-6 font-medium text-sm md:text-base transition-colors whitespace-nowrap ${
-              activeTab === 'seminars'
-                ? 'text-primary-600 border-b-2 border-primary-600'
-                : 'text-primary-500 hover:text-primary-700 dark:text-gray-400 dark:hover:text-gray-300'
-            }`}
-            onClick={() => setActiveTab('seminars')}
-          >
-            🎓 Séminaires
-          </button>
-          <button
-            className={`flex-shrink-0 py-3 px-6 font-medium text-sm md:text-base transition-colors whitespace-nowrap ${
-              activeTab === 'certification'
-                ? 'text-primary-600 border-b-2 border-primary-600'
-                : 'text-primary-500 hover:text-primary-700 dark:text-gray-400 dark:hover:text-gray-300'
-            }`}
-            onClick={() => setActiveTab('certification')}
-          >
-            🏆 Certification
-          </button>
-        </div>
-      </div>
-
-      {/* Contenu principal */}
-      <div className="max-w-6xl mx-auto p-4 md:p-6">
-        {/* Section d'actions rapides */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md flex items-center border border-primary-200 dark:border-gray-700">
-            <div className="bg-primary-100 dark:bg-primary-900 p-3 rounded-lg mr-4">
-              <span className="text-2xl">🎯</span>
-            </div>
-            <div>
-              <h3 className="font-semibold text-primary-900 dark:text-white">Profil SpotBulle</h3>
-              <p className="text-sm text-primary-600 dark:text-primary-400">
-                {isProfileComplete ? 'Profil complet ✓' : 'Complétez votre carte d\'identité'}
-              </p>
-            </div>
-          </div>
-          
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md flex items-center border border-primary-200 dark:border-gray-700">
-            <div className="bg-green-100 dark:bg-green-900 p-3 rounded-lg mr-4">
-              <span className="text-2xl">🤝</span>
-            </div>
-            <div>
-              <h3 className="font-semibold text-primary-900 dark:text-white">Réseau France-Maroc</h3>
-              <p className="text-sm text-primary-600 dark:text-primary-400">Connectez-vous à la communauté</p>
-            </div>
-          </div>
-          
-          <div 
-            className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md flex items-center cursor-pointer hover:shadow-lg transition-shadow border border-primary-200 dark:border-gray-700"
+      
+      <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        {/* Bouton pour l'annuaire */}
+        <div className="mb-6 flex justify-end">
+          <Button 
             onClick={handleNavigateToDirectory}
+            className="bg-primary-600 hover:bg-primary-700 text-white"
           >
-            <div className="bg-purple-100 dark:bg-purple-900 p-3 rounded-lg mr-4">
-              <span className="text-2xl">📋</span>
-            </div>
-            <div>
-              <h3 className="font-semibold text-primary-900 dark:text-white">Annuaire des Talents</h3>
-              <p className="text-sm text-primary-600 dark:text-primary-400">Découvrez les participants</p>
-            </div>
-          </div>
+            📋 Voir l'Annuaire
+          </Button>
         </div>
 
-        {/* Contenu selon l'onglet actif */}
-        {activeTab === 'dashboard' ? (
-          <div className="bg-white dark:bg-gray-900 shadow-lg rounded-2xl p-4 md:p-6 mb-6 border border-primary-200 dark:border-gray-700">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center">
-                <div className="bg-primary-100 dark:bg-primary-900 p-2 rounded-lg mr-4">
-                  <span className="text-2xl">📊</span>
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-primary-900 dark:text-white">
-                    Mon Portfolio Vivant SpotBulle
-                  </h2>
-                  <p className="text-primary-600 dark:text-primary-400">
-                    Suivez votre évolution dans le programme France–Maroc
+        {/* Indicateur de profil incomplet */}
+        {!isProfileComplete && user && (
+          <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-yellow-800">
+                  Profil incomplet
+                </h3>
+                <div className="mt-2 text-sm text-yellow-700">
+                  <p>
+                    Complétez votre profil pour accéder à toutes les fonctionnalités de SpotBulle.
                   </p>
                 </div>
               </div>
-              <Button 
-                onClick={() => {
-                  setRefreshKey(prev => prev + 1);
-                  if (loadDashboardData) loadDashboardData();
-                }}
-                className="bg-primary-600 hover:bg-primary-700 text-white"
-                disabled={dashboardLoading}
-              >
-                🔄 Actualiser
-              </Button>
             </div>
+          </div>
+        )}
 
-            {/* Dashboard avec rafraîchissement forcé */}
-            <Dashboard 
-              refreshKey={refreshKey}
-              onDataUpdate={loadDashboardData}
-            />
+        {/* Onglets */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 mb-8">
+          <div className="border-b border-gray-200 dark:border-gray-700">
+            <nav className="flex -mb-px">
+              {[
+                { id: 'dashboard', label: '📊 Tableau de Bord', icon: '📊' },
+                { id: 'record', label: '🎥 Enregistrer une vidéo', icon: '🎥' },
+                { id: 'profile', label: '👤 Profil', icon: '👤' },
+                { id: 'seminars', label: '🎓 Séminaires', icon: '🎓' },
+                { id: 'certification', label: '🏆 Certification', icon: '🏆' }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`py-4 px-6 text-center border-b-2 font-medium text-sm ${
+                    activeTab === tab.id
+                      ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
           </div>
-        ) : activeTab === 'record' ? (
-          <div className="bg-white dark:bg-gray-900 shadow-lg rounded-2xl p-4 md:p-6 mb-6 border border-primary-200 dark:border-gray-700">
-            <div className="flex items-center mb-6">
-              <div className="bg-primary-100 dark:bg-primary-900 p-2 rounded-lg mr-4">
-                <span className="text-2xl">🎥</span>
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-primary-900 dark:text-white">
-                  Expression sous la bulle - Premier Pitch
-                </h2>
-                <p className="text-primary-600 dark:text-primary-400">
-                  Exprimez vos rêves, besoins et projections "dans 5 ans"
-                </p>
-              </div>
-            </div>
-            
-            <RecordVideo onVideoUploaded={handleVideoUploaded} />
-            
-            <div className="mt-6 p-4 bg-primary-50 dark:bg-primary-900/20 rounded-lg border border-primary-200 dark:border-primary-800">
-              <h3 className="font-semibold mb-2 text-primary-800 dark:text-primary-200">
-                💡 Conseil SpotBulle
-              </h3>
-              <p className="text-sm text-primary-700 dark:text-primary-300">
-                Soyez authentique et passionné ! Votre vidéo sera analysée par notre IA pour vous offrir 
-                une expérience personnalisée et vous connecter avec la communauté France–Maroc.
-                Notre capsule immersive révèle vos talents cachés.
-              </p>
-            </div>
-          </div>
-        ) : activeTab === 'profile' ? (
-          <div className="bg-white dark:bg-gray-900 shadow-lg rounded-2xl p-4 md:p-6 mb-6 border border-primary-200 dark:border-gray-700">
-            <div className="flex items-center mb-6">
-              <div className="bg-purple-100 dark:bg-purple-900 p-2 rounded-lg mr-4">
-                <span className="text-2xl">👤</span>
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-primary-900 dark:text-white">
-                  Carte d'identité SpotBulle
-                </h2>
-                <p className="text-primary-600 dark:text-primary-400">
-                  Complétez votre profil pour créer votre portfolio vivant
-                </p>
-              </div>
-            </div>
-            
-            <ProfileForm 
-              user={user}
-              profile={profile}
-              onProfileUpdated={handleProfileUpdated} 
-            />
-            
-            {!isProfileComplete && (
-              <div className="mt-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
-                <h3 className="font-semibold mb-2 text-yellow-800 dark:text-yellow-200">
-                  ⚡ Important pour votre expérience SpotBulle
-                </h3>
-                <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                  Un profil complet vous permet de bénéficier de toutes les fonctionnalités 
-                  de la plateforme et d'être correctement référencé dans l'annuaire France-Maroc.
-                </p>
-              </div>
+
+          <div className="p-6">
+            {activeTab === 'dashboard' && (
+              <Dashboard 
+                refreshKey={refreshKey}
+                onDataUpdate={loadDashboardData}
+              />
+            )}
+            {activeTab === 'record' && (
+              <RecordVideo 
+                onVideoUploaded={handleVideoUploaded}
+                user={user}
+                profile={profile}
+              />
+            )}
+            {activeTab === 'profile' && (
+              <ProfileForm 
+                user={user}
+                profile={profile}
+                onProfileUpdated={handleProfileUpdated}
+              />
+            )}
+            {activeTab === 'seminars' && (
+              <SeminarsList />
+            )}
+            {activeTab === 'certification' && (
+              <Certification />
             )}
           </div>
-        ) : activeTab === 'seminars' ? (
-          <div className="bg-white dark:bg-gray-900 shadow-lg rounded-2xl p-4 md:p-6 mb-6 border border-primary-200 dark:border-gray-700">
-            <div className="flex items-center mb-6">
-              <div className="bg-blue-100 dark:bg-blue-900 p-2 rounded-lg mr-4">
-                <span className="text-2xl">🎓</span>
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-primary-900 dark:text-white">
-                  Séminaires SpotBulle
-                </h2>
-                <p className="text-primary-600 dark:text-primary-400">
-                  Participez à nos formations "Citoyen des Deux Rives" et développez vos compétences
-                </p>
-              </div>
-            </div>
-            
-            <SeminarsList />
-          </div>
-        ) : activeTab === 'certification' ? (
-          <div className="bg-white dark:bg-gray-900 shadow-lg rounded-2xl p-4 md:p-6 mb-6 border border-primary-200 dark:border-gray-700">
-            <div className="flex items-center mb-6">
-              <div className="bg-amber-100 dark:bg-amber-900 p-2 rounded-lg mr-4">
-                <span className="text-2xl">🏆</span>
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-primary-900 dark:text-white">
-                  Certification SpotBulle
-                </h2>
-                <p className="text-primary-600 dark:text-primary-400">
-                  Recevez votre diplôme et rejoignez le réseau international France-Maroc
-                </p>
-              </div>
-            </div>
-            
-            <Certification />
-          </div>
-        ) : null}
-
-        {/* Section Programme SpotBulle */}
-        <div className="bg-white dark:bg-gray-900 shadow-lg rounded-2xl p-6 mb-6 border border-primary-200 dark:border-gray-700">
-          <h2 className="text-xl font-bold text-primary-900 dark:text-white mb-4 flex items-center">
-            <span className="bg-gradient-to-r from-primary-500 to-primary-600 text-white p-2 rounded-lg mr-3">🇫🇷🇲🇦</span>
-            Programme SpotBulle France–Maroc - Innovation Éducative
-          </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-primary-50 dark:bg-primary-900/20 p-4 rounded-lg border border-primary-200 dark:border-primary-800">
-              <h3 className="font-semibold text-primary-800 dark:text-primary-200 mb-2 flex items-center">
-                <span className="bg-primary-500 text-white p-1 rounded mr-2">1</span>
-                Expression sous la bulle
-              </h3>
-              <p className="text-sm text-primary-700 dark:text-primary-300">
-                Pitch vidéo + questionnaire personnalisé - Créez votre carte d'identité SpotBulle
-              </p>
-            </div>
-            
-            <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg border border-green-200 dark:border-green-800">
-              <h3 className="font-semibold text-green-800 dark:text-green-200 mb-2 flex items-center">
-                <span className="bg-green-500 text-white p-1 rounded mr-2">2</span>
-                Analyse plateforme IA
-              </h3>
-              <p className="text-sm text-green-700 dark:text-green-300">
-                Intelligence artificielle + retour expert pour identifier vos forces et talents
-              </p>
-            </div>
-            
-            <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg border border-purple-200 dark:border-purple-800">
-              <h3 className="font-semibold text-purple-800 dark:text-purple-200 mb-2 flex items-center">
-                <span className="bg-purple-500 text-white p-1 rounded mr-2">3</span>
-                Séminaire citoyen
-              </h3>
-              <p className="text-sm text-purple-700 dark:text-purple-300">
-                Formation aux compétences du XXI° siècle - "Citoyen des deux rives"
-              </p>
-            </div>
-            
-            <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg border border-amber-200 dark:border-amber-800">
-              <h3 className="font-semibold text-amber-800 dark:text-amber-200 mb-2 flex items-center">
-                <span className="bg-amber-500 text-white p-1 rounded mr-2">4</span>
-                Certification & Réseau
-              </h3>
-              <p className="text-sm text-amber-700 dark:text-amber-300">
-                Diplôme SpotBulle Certified + réseau international + agent IA personnalisé
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* CTA pour l'annuaire */}
-        <div className="bg-gradient-to-r from-primary-500 to-primary-600 text-white p-6 rounded-2xl shadow-lg text-center">
-          <h2 className="text-xl font-bold mb-3">Rejoignez l'annuaire des talents SpotBulle</h2>
-          <p className="mb-4 opacity-90">
-            Découvrez les autres participants et créez des connections dans la communauté France–Maroc
-          </p>
-          <Button 
-            onClick={handleNavigateToDirectory}
-            className="bg-white text-primary-600 hover:bg-primary-50 font-semibold"
-          >
-            🌍 Explorer l'Annuaire International
-          </Button>
         </div>
       </div>
     </div>
