@@ -11,7 +11,7 @@ import TranscriptionViewer from './TranscriptionViewer';
 import VideoPlayer from './VideoPlayer';
 import VideoAnalysisResults from './VideoAnalysisResults';
 
-const Dashboard = ({ data }) => {
+const Dashboard = ({ data, refreshKey = 0 }) => {
   const { user } = useAuth();
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,17 +21,21 @@ const Dashboard = ({ data }) => {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [transcribing, setTranscribing] = useState(false);
 
+  // NOUVEAU : Effet pour recharger les vidéos quand refreshKey change
   useEffect(() => {
+    console.log('🔄 Dashboard: refreshKey changé, rechargement des vidéos...', refreshKey);
     if (user) {
       fetchVideos();
     }
-  }, [user]);
+  }, [user, refreshKey]);
 
   const fetchVideos = async () => {
     if (!user) return;
     
     try {
       setLoading(true);
+      console.log('📹 Chargement des vidéos pour user:', user.id);
+      
       const { data, error } = await supabase
         .from('videos')
         .select(`
@@ -51,8 +55,11 @@ const Dashboard = ({ data }) => {
         .order('created_at', { ascending: false });
 
       if (error) {
+        console.error('❌ Erreur récupération vidéos:', error);
         setError(error.message);
       } else {
+        console.log('✅ Vidéos chargées:', data?.length || 0, 'vidéo(s)');
+        
         // Normaliser les données pour s'assurer que nous avons les bonnes propriétés
         const normalizedVideos = data.map(video => {
           // Utiliser transcription_data OU transcription_text pour détecter les transcriptions
@@ -98,6 +105,7 @@ const Dashboard = ({ data }) => {
         setVideos(normalizedVideos);
       }
     } catch (error) {
+      console.error('❌ Erreur générale récupération vidéos:', error);
       setError(error.message);
     } finally {
       setLoading(false);
@@ -121,6 +129,7 @@ const Dashboard = ({ data }) => {
         if (selectedVideo && selectedVideo.id === videoId) {
           setSelectedVideo(null);
         }
+        toast.success('Vidéo supprimée avec succès');
       }
     } catch (error) {
       setError(error.message);
@@ -155,8 +164,11 @@ const Dashboard = ({ data }) => {
         video.id === videoId ? { ...video, status: 'processing' } : video
       ));
       
+      toast.success('Transcription démarrée avec succès');
+      
     } catch (error) {
       setError(error.message);
+      toast.error('Erreur lors du démarrage de la transcription');
     } finally {
       setTranscribing(false);
     }
@@ -281,8 +293,10 @@ const Dashboard = ({ data }) => {
             <Video className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.totalVideos}</div>
-            <p className="text-xs text-muted-foreground">+20% depuis le mois dernier</p>
+            <div className="text-2xl font-bold">{data.totalVideos || videos.length}</div>
+            <p className="text-xs text-muted-foreground">
+              {videos.filter(v => v.hasAnalysis).length} analysée(s)
+            </p>
           </CardContent>
         </Card>
         
@@ -292,8 +306,10 @@ const Dashboard = ({ data }) => {
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.transcribedVideos}</div>
-            <p className="text-xs text-muted-foreground">+10% depuis le mois dernier</p>
+            <div className="text-2xl font-bold">{videos.filter(v => v.hasTranscription).length}</div>
+            <p className="text-xs text-muted-foreground">
+              {videos.filter(v => v.hasTranscription && !v.hasAnalysis).length} en attente d'analyse
+            </p>
           </CardContent>
         </Card>
         
@@ -303,8 +319,10 @@ const Dashboard = ({ data }) => {
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.analyzedVideos}</div>
-            <p className="text-xs text-muted-foreground">+15% depuis le mois dernier</p>
+            <div className="text-2xl font-bold">{videos.filter(v => v.hasAnalysis).length}</div>
+            <p className="text-xs text-muted-foreground">
+              Dernière: {videos[0] ? formatDate(videos[0].created_at) : 'Aucune'}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -330,11 +348,11 @@ const Dashboard = ({ data }) => {
         <div className="text-center py-12">
           <Video className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-medium text-gray-900">Aucune vidéo</h3>
-          <p className="mt-1 text-sm text-gray-500">Commencez par uploader votre première vidéo.</p>
+          <p className="mt-1 text-sm text-gray-500">Commencez par enregistrer votre première vidéo.</p>
           <div className="mt-6">
-            <Button onClick={() => setActiveTab('upload')}>
+            <Button onClick={() => window.location.href = '/record-video'}>
               <Upload className="h-4 w-4 mr-2" />
-              Uploader une vidéo
+              Enregistrer une vidéo
             </Button>
           </div>
         </div>
@@ -351,6 +369,7 @@ const Dashboard = ({ data }) => {
                   <CardTitle className="text-lg">{video.title || 'Sans titre'}</CardTitle>
                   <CardDescription>
                     Uploadé le {formatDate(video.created_at)}
+                    {video.duration && ` • Durée: ${Math.round(video.duration)} secondes`}
                   </CardDescription>
                 </div>
                 <div className="flex items-center space-x-2">
@@ -382,6 +401,7 @@ const Dashboard = ({ data }) => {
                       <p><strong>Statut:</strong> {video.statusLabel}</p>
                       <p><strong>Date d'upload:</strong> {formatDate(video.created_at)}</p>
                       {video.duration && <p><strong>Durée:</strong> {Math.round(video.duration)} secondes</p>}
+                      {video.file_size && <p><strong>Taille:</strong> {Math.round(video.file_size / 1024 / 1024)} Mo</p>}
                     </div>
                     
                     <div>
@@ -436,7 +456,7 @@ const Dashboard = ({ data }) => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList>
           <TabsTrigger value="overview">Vue d'ensemble</TabsTrigger>
-          <TabsTrigger value="videos">Mes Vidéos</TabsTrigger>
+          <TabsTrigger value="videos">Mes Vidéos ({videos.length})</TabsTrigger>
           <TabsTrigger value="upload">Upload</TabsTrigger>
           <TabsTrigger value="progress">Progression</TabsTrigger>
         </TabsList>
@@ -492,10 +512,33 @@ const Dashboard = ({ data }) => {
               <CardDescription>Suivez votre progression</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-center py-12">
-                <BarChart3 className="mx-auto h-12 w-12 text-gray-400" />
-                <h3 className="mt-2 text-sm font-medium text-gray-900">En développement</h3>
-                <p className="mt-1 text-sm text-gray-500">Cette fonctionnalité sera bientôt disponible.</p>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <h4 className="font-semibold text-blue-800">Vidéos complétées</h4>
+                    <p className="text-2xl font-bold text-blue-600">{videos.filter(v => v.hasAnalysis).length}</p>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <h4 className="font-semibold text-green-800">En cours</h4>
+                    <p className="text-2xl font-bold text-green-600">{videos.filter(v => !v.hasAnalysis).length}</p>
+                  </div>
+                </div>
+                
+                {videos.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2">Dernières activités</h4>
+                    <div className="space-y-2">
+                      {videos.slice(0, 3).map(video => (
+                        <div key={video.id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                          <span className="text-sm">{video.title || 'Sans titre'}</span>
+                          <span className={`text-xs px-2 py-1 rounded ${getStatusBadge(video.normalizedStatus)}`}>
+                            {video.statusLabel}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
