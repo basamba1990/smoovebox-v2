@@ -3,25 +3,27 @@ import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button-enhanced.jsx';
-import VideoPicker from '../components/VideoPicker.jsx';
 
 const Directory = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState('all');
-  const [selectedVideoId, setSelectedVideoId] = useState(null);
   const [connecting, setConnecting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [existingConnections, setExistingConnections] = useState(new Set());
 
   const supabase = useSupabaseClient();
   const user = useUser();
   const navigate = useNavigate();
 
-  // Récupération des profils selon filtre et recherche
+  // Récupération des profils ET des connexions existantes
   useEffect(() => {
     fetchUsers();
-  }, [filter, searchTerm]);
+    if (user) {
+      fetchExistingConnections();
+    }
+  }, [filter, searchTerm, user]);
 
   const fetchUsers = async () => {
     try {
@@ -30,47 +32,84 @@ const Directory = () => {
 
       let query = supabase
         .from('profiles')
-        .select(
-          'id, user_id, username, full_name, avatar_url, bio, genre, passions, clubs, centres_interet, jingle, mots_cles, created_at'
-        );
+        .select(`
+          id,
+          user_id,
+          username,
+          full_name,
+          avatar_url,
+          bio,
+          email,
+          skills,
+          location,
+          linkedin_url,
+          github_url,
+          is_creator,
+          sex,
+          is_major,
+          passions,
+          clubs,
+          football_interest,
+          created_at
+        `);
 
-      // Exclure l'utilisateur connecté
-      if (user) query = query.neq('user_id', user.id);
-
-      // Appliquer filtres
-      if (filter === 'football') {
-        query = query.or('centres_interet.cs.{metier_du_foot},passions.cs.{football}');
-      } else if (filter === 'passions') {
-        query = query.not('passions', 'is', null).not('passions', 'eq', '{}');
-      } else if (filter === 'clubs') {
-        query = query.not('clubs', 'is', null).not('clubs', 'eq', '{}');
+      // Exclure l'utilisateur courant de la liste
+      if (user) {
+        query = query.neq('user_id', user.id);
       }
 
-      // Appliquer la recherche par mots-clés ou nom
+      // Application des filtres
+      if (filter !== 'all') {
+        if (filter === 'creator') {
+          query = query.eq('is_creator', true);
+        } else if (filter === 'football') {
+          query = query.eq('football_interest', true);
+        } else if (filter === 'major') {
+          query = query.eq('is_major', true);
+        }
+      }
+
+      // Application de la recherche
       if (searchTerm) {
-        query = query.or(`mots_cles.ilike.%${searchTerm}%,username.ilike.%${searchTerm}%,full_name.ilike.%${searchTerm}%,passions.cs.{${searchTerm}}`);
+        query = query.or(`full_name.ilike.%${searchTerm}%,bio.ilike.%${searchTerm}%,passions.cs.{"${searchTerm}"},clubs.cs.{"${searchTerm}"}`);
       }
 
-      const { data, error } = await query.order('created_at', { ascending: false });
+      const { data, error } = await query;
 
-      if (error) {
-        console.error('Erreur récupération profils:', error);
-        setError('Impossible de charger l\'annuaire.');
-        toast.error('Erreur lors du chargement de l\'annuaire.');
-        return;
-      }
-
+      if (error) throw error;
       setUsers(data || []);
+
     } catch (err) {
-      console.error('Erreur récupération profils:', err);
-      setError('Impossible de charger l\'annuaire.');
-      toast.error('Erreur lors du chargement de l\'annuaire.');
+      console.error('Erreur fetchUsers:', err);
+      setError(`Erreur lors du chargement: ${err.message}`);
+      toast.error('Impossible de charger les profils');
     } finally {
       setLoading(false);
     }
   };
 
-  // Gestion du bouton Connecter
+  const fetchExistingConnections = async () => {
+    try {
+      // Récupérer les connexions existantes de l'utilisateur
+      const { data, error } = await supabase
+        .from('connections')
+        .select('target_id, status')
+        .eq('requester_id', user.id);
+
+      if (error) throw error;
+
+      // Créer un Set des IDs des utilisateurs déjà connectés
+      const connectionsSet = new Set();
+      data?.forEach(connection => {
+        connectionsSet.add(connection.target_id);
+      });
+      setExistingConnections(connectionsSet);
+
+    } catch (err) {
+      console.error('Erreur fetchExistingConnections:', err);
+    }
+  };
+
   const handleConnect = async (targetUserId) => {
     if (!user) {
       toast.error('Veuillez vous connecter pour initier une mise en relation.');
@@ -78,79 +117,62 @@ const Directory = () => {
       return;
     }
 
-    if (!selectedVideoId) {
-      toast.error('Veuillez sélectionner une vidéo avant de connecter un utilisateur.');
+    // Vérifier si déjà connecté
+    if (existingConnections.has(targetUserId)) {
+      toast.info('Vous avez déjà envoyé une demande à cet utilisateur');
       return;
     }
 
-    setConnecting(true);
-
     try {
-      // Récupérer la session pour le JWT
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session) {
-        console.error('Erreur session:', sessionError);
-        toast.error('Session invalide. Veuillez vous reconnecter.');
-        navigate('/auth');
-        return;
-      }
-
-      console.log('Tentative de connexion avec:', {
-        user_id: user.id,
-        target_user_id: targetUserId,
-        video_id: selectedVideoId
-      });
-
-      // CORRECTION : Utiliser l'URL correcte pour la fonction Edge
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/match-profiles`;
+      setConnecting(true);
       
-      // Appel de la fonction Edge
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          user_id: user.id,
-          target_user_id: targetUserId,
-          video_id: selectedVideoId,
-        }),
-      });
+      // Utilisation de la nouvelle table connections
+      const { error } = await supabase
+        .from('connections')
+        .insert({
+          requester_id: user.id,
+          target_id: targetUserId,
+          status: 'pending'
+        });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Erreur invocation match-profiles:', errorText);
-        
-        let errorMessage = 'Impossible de lancer la mise en relation.';
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.error || errorData.details || errorMessage;
-        } catch (e) {
-          errorMessage = `Erreur ${response.status}: ${errorText}`;
-        }
-        
-        toast.error(errorMessage);
-        return;
-      }
-
-      const data = await response.json();
-      console.log('Réponse match-profiles:', data);
+      if (error) throw error;
       
-      toast.success('Mise en relation initiée avec succès !');
-      
-      // Réinitialiser la sélection vidéo
-      setSelectedVideoId(null);
+      // Mettre à jour les connexions existantes
+      setExistingConnections(prev => new Set([...prev, targetUserId]));
+      toast.success('Demande de connexion envoyée !');
       
     } catch (err) {
-      console.error('Erreur mise en relation:', err);
-      toast.error(`Erreur lors de la mise en relation: ${err.message}`);
+      console.error('Erreur handleConnect:', err);
+      if (err.code === '23505') {
+        toast.error('Vous avez déjà envoyé une demande à cet utilisateur');
+        setExistingConnections(prev => new Set([...prev, targetUserId]));
+      } else {
+        toast.error(`Échec de la connexion: ${err.message}`);
+      }
     } finally {
       setConnecting(false);
     }
   };
 
-  // Affichage loading / erreur
+  const getConnectionStatus = (targetUserId) => {
+    if (!user) return 'not_connected';
+    if (existingConnections.has(targetUserId)) return 'pending';
+    return 'can_connect';
+  };
+
+  const renderSkills = (skills) => {
+    if (!skills) return null;
+    if (Array.isArray(skills)) {
+      return skills.map((skill, index) => (
+        <span key={index} className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full mr-1 mb-1">
+          {skill}
+        </span>
+      ));
+    }
+    return null;
+  };
+
+  // Affichage loading
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 dark:from-gray-900 dark:to-gray-800 p-8">
@@ -185,180 +207,166 @@ const Directory = () => {
           Découvrez la communauté France-Maroc et connectez-vous avec des passionnés
         </p>
 
-        {/* Sélecteur vidéo */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg mb-6">
-          <h3 className="text-lg font-semibold text-primary-900 dark:text-white mb-4">
-            🎥 Sélectionnez une vidéo pour connecter
-          </h3>
-          <VideoPicker onChange={setSelectedVideoId} />
-          {selectedVideoId && (
-            <p className="text-sm text-green-600 dark:text-green-400 mt-2">
-              ✓ Vidéo sélectionnée pour la mise en relation
-            </p>
-          )}
-        </div>
-
-        {/* Barre de recherche et filtres */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Barre de recherche */}
+        {/* Barre de filtres et de recherche */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 mb-6">
+          <div className="flex flex-wrap gap-4 items-center">
             <div>
-              <label className="block text-sm font-medium text-primary-900 dark:text-white mb-2">
-                🔍 Rechercher par mots-clés
+              <label htmlFor="filter" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Filtres
+              </label>
+              <select
+                id="filter"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                className="border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              >
+                <option value="all">Tous les membres</option>
+                <option value="creator">Créateurs de contenu</option>
+                <option value="football">Intéressés par le football</option>
+                <option value="major">Majeurs</option>
+              </select>
+            </div>
+            
+            <div className="flex-1 min-w-[200px]">
+              <label htmlFor="search" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Rechercher
               </label>
               <input
+                id="search"
                 type="text"
-                placeholder="Football, passion, club, France, Maroc..."
+                placeholder="Nom, bio, passions ou clubs..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full p-3 border border-primary-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-primary-900 dark:text-white placeholder-primary-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               />
-            </div>
-
-            {/* Filtres */}
-            <div>
-              <label className="block text-sm font-medium text-primary-900 dark:text-white mb-2">
-                🎯 Filtrer par centre d'intérêt
-              </label>
-              <div className="flex gap-2 flex-wrap">
-                <Button
-                  onClick={() => setFilter('all')}
-                  className={`px-4 py-2 rounded-lg transition-all ${
-                    filter === 'all' 
-                      ? 'bg-primary-600 text-white' 
-                      : 'bg-primary-100 text-primary-700 hover:bg-primary-200 dark:bg-gray-700 dark:text-gray-300'
-                  }`}
-                >
-                  Tous
-                </Button>
-                <Button
-                  onClick={() => setFilter('football')}
-                  className={`px-4 py-2 rounded-lg transition-all ${
-                    filter === 'football' 
-                      ? 'bg-primary-600 text-white' 
-                      : 'bg-primary-100 text-primary-700 hover:bg-primary-200 dark:bg-gray-700 dark:text-gray-300'
-                  }`}
-                >
-                  ⚽ Football
-                </Button>
-                <Button
-                  onClick={() => setFilter('passions')}
-                  className={`px-4 py-2 rounded-lg transition-all ${
-                    filter === 'passions' 
-                      ? 'bg-primary-600 text-white' 
-                      : 'bg-primary-100 text-primary-700 hover:bg-primary-200 dark:bg-gray-700 dark:text-gray-300'
-                  }`}
-                >
-                  ❤️ Passions
-                </Button>
-                <Button
-                  onClick={() => setFilter('clubs')}
-                  className={`px-4 py-2 rounded-lg transition-all ${
-                    filter === 'clubs' 
-                      ? 'bg-primary-600 text-white' 
-                      : 'bg-primary-100 text-primary-700 hover:bg-primary-200 dark:bg-gray-700 dark:text-gray-300'
-                  }`}
-                >
-                  🏛️ Clubs
-                </Button>
-              </div>
             </div>
           </div>
         </div>
 
         {/* Liste des utilisateurs */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {users.map((profile) => (
-            <div key={profile.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-primary-200 dark:border-gray-700 hover:shadow-xl transition-shadow">
-              {/* En-tête du profil */}
-              <div className="flex items-center mb-4">
-                <div className="w-12 h-12 bg-gradient-to-r from-primary-500 to-primary-600 rounded-full flex items-center justify-center text-white font-bold text-lg mr-4">
-                  {profile.full_name?.charAt(0) || profile.username?.charAt(0) || 'U'}
+          {users.map((userProfile) => {
+            const connectionStatus = getConnectionStatus(userProfile.user_id || userProfile.id);
+            const isPending = connectionStatus === 'pending';
+            
+            return (
+              <div key={userProfile.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+                {/* En-tête du profil */}
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    {userProfile.avatar_url ? (
+                      <img 
+                        src={userProfile.avatar_url} 
+                        alt={userProfile.full_name}
+                        className="w-12 h-12 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
+                        <span className="text-primary-600 dark:text-primary-300 font-semibold">
+                          {userProfile.full_name ? userProfile.full_name.charAt(0).toUpperCase() : 'U'}
+                        </span>
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                        {userProfile.full_name || 'Utilisateur sans nom'}
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {userProfile.location || 'Localisation non précisée'}
+                      </p>
+                    </div>
+                  </div>
+                  {userProfile.is_creator && (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                      Créateur
+                    </span>
+                  )}
                 </div>
-                <div>
-                  <h3 className="font-semibold text-primary-900 dark:text-white">
-                    {profile.full_name || profile.username || `Utilisateur ${String(profile.user_id).slice(0, 8)}`}
-                  </h3>
-                  <p className="text-sm text-primary-600 dark:text-primary-400">
-                    {profile.genre ? `Genre: ${profile.genre}` : 'SpotBulle Member'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Informations du profil */}
-              <div className="space-y-3 mb-4">
-                {profile.centres_interet && profile.centres_interet.length > 0 && (
-                  <div>
-                    <span className="text-xs font-medium text-primary-700 dark:text-primary-300">Centres d'intérêt:</span>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {profile.centres_interet.map((interest, index) => (
-                        <span key={index} className="px-2 py-1 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 text-xs rounded-full">
-                          {interest}
+                
+                {/* Bio */}
+                <p className="text-gray-600 dark:text-gray-300 text-sm mb-4 line-clamp-2">
+                  {userProfile.bio || 'Aucune biographie fournie.'}
+                </p>
+                
+                {/* Passions */}
+                {userProfile.passions && userProfile.passions.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Passions:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {userProfile.passions.map((passion, index) => (
+                        <span 
+                          key={index}
+                          className="inline-block bg-primary-100 dark:bg-primary-900 text-primary-800 dark:text-primary-200 text-xs px-2 py-1 rounded-full"
+                        >
+                          {passion}
                         </span>
                       ))}
                     </div>
                   </div>
                 )}
-
-                {profile.passions && profile.passions.length > 0 && (
-                  <div>
-                    <span className="text-xs font-medium text-primary-700 dark:text-primary-300">Passions:</span>
-                    <p className="text-sm text-primary-900 dark:text-white mt-1">
-                      {profile.passions.join(', ')}
-                    </p>
+                
+                {/* Clubs */}
+                {userProfile.clubs && userProfile.clubs.length > 0 && (
+                  <div className="mb-3">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Clubs:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {userProfile.clubs.map((club, index) => (
+                        <span 
+                          key={index}
+                          className="inline-block bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs px-2 py-1 rounded-full"
+                        >
+                          {club}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
-
-                {profile.clubs && profile.clubs.length > 0 && (
-                  <div>
-                    <span className="text-xs font-medium text-primary-700 dark:text-primary-300">Clubs:</span>
-                    <p className="text-sm text-primary-900 dark:text-white mt-1">
-                      {profile.clubs.join(', ')}
-                    </p>
+                
+                {/* Compétences */}
+                {userProfile.skills && (
+                  <div className="mb-4">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Compétences:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {renderSkills(userProfile.skills)}
+                    </div>
                   </div>
                 )}
-
-                {profile.mots_cles && (
-                  <div>
-                    <span className="text-xs font-medium text-primary-700 dark:text-primary-300">Mots-clés:</span>
-                    <p className="text-sm text-primary-900 dark:text-white mt-1">
-                      {profile.mots_cles}
-                    </p>
-                  </div>
-                )}
+                
+                {/* Bouton de connexion avec état */}
+                <Button
+                  onClick={() => handleConnect(userProfile.user_id || userProfile.id)}
+                  disabled={connecting || isPending || !user}
+                  className={`w-full ${
+                    isPending 
+                      ? 'bg-gray-400 hover:bg-gray-400 cursor-not-allowed' 
+                      : 'bg-primary-600 hover:bg-primary-700'
+                  } disabled:opacity-50`}
+                >
+                  {!user 
+                    ? 'Connectez-vous' 
+                    : isPending 
+                      ? 'Demande envoyée ✓' 
+                      : connecting 
+                        ? 'Envoi...' 
+                        : 'Envoyer une demande'
+                  }
+                </Button>
               </div>
-
-              {/* Bouton de connexion */}
-              <Button
-                onClick={() => handleConnect(profile.user_id)}
-                className="w-full bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white font-semibold py-3 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!selectedVideoId || connecting}
-              >
-                {connecting ? (
-                  <span className="flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Connexion...
-                  </span>
-                ) : (
-                  '🤝 Connecter avec SpotBulle'
-                )}
-              </Button>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        {users.length === 0 && (
+        {users.length === 0 && !loading && (
           <div className="text-center py-12">
-            <div className="text-6xl mb-4">🔍</div>
-            <h3 className="text-xl font-semibold text-primary-900 dark:text-white mb-2">
-              Aucun participant trouvé
-            </h3>
-            <p className="text-primary-700 dark:text-primary-300">
-              {searchTerm 
-                ? `Aucun résultat pour "${searchTerm}". Essayez d'autres mots-clés.`
-                : 'Aucun participant ne correspond aux filtres sélectionnés.'
-              }
+            <p className="text-gray-500 dark:text-gray-400 text-lg">
+              Aucun profil trouvé pour vos critères de recherche.
             </p>
+            <Button 
+              onClick={() => { setFilter('all'); setSearchTerm(''); }}
+              className="mt-4 bg-primary-600 hover:bg-primary-700"
+            >
+              Voir tous les membres
+            </Button>
           </div>
         )}
       </div>
