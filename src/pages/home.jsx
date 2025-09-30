@@ -4,6 +4,8 @@ import Dashboard from "../components/Dashboard.jsx";
 import RecordVideo from "./record-video.jsx";
 import ProfessionalHeader from "../components/ProfessionalHeader.jsx";
 import ProfileForm from "../components/ProfileForm.jsx";
+import SeminarsList from "../components/SeminarsList.jsx";
+import Certification from "../components/Certification.jsx";
 import { Button } from "../components/ui/button-enhanced.jsx";
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -115,6 +117,26 @@ export default function Home({
           >
             📊 Mon portfolio vivant
           </button>
+          <button
+            className={`flex-shrink-0 py-3 px-6 font-medium text-sm md:text-base transition-colors whitespace-nowrap ${
+              activeTab === 'seminars'
+                ? 'text-primary-600 border-b-2 border-primary-600'
+                : 'text-primary-500 hover:text-primary-700 dark:text-gray-400 dark:hover:text-gray-300'
+            }`}
+            onClick={() => setActiveTab('seminars')}
+          >
+            🎓 Séminaires
+          </button>
+          <button
+            className={`flex-shrink-0 py-3 px-6 font-medium text-sm md:text-base transition-colors whitespace-nowrap ${
+              activeTab === 'certification'
+                ? 'text-primary-600 border-b-2 border-primary-600'
+                : 'text-primary-500 hover:text-primary-700 dark:text-gray-400 dark:hover:text-gray-300'
+            }`}
+            onClick={() => setActiveTab('certification')}
+          >
+            🏆 Certification
+          </button>
         </div>
       </div>
 
@@ -218,7 +240,7 @@ export default function Home({
               </div>
             )}
           </div>
-        ) : (
+        ) : activeTab === 'dashboard' ? (
           <div className="bg-white dark:bg-gray-900 shadow-lg rounded-2xl p-4 md:p-6 mb-6 border border-primary-200 dark:border-gray-700">
             <div className="flex items-center mb-6">
               <div className="bg-green-100 dark:bg-green-900 p-2 rounded-lg mr-4">
@@ -284,7 +306,43 @@ export default function Home({
               />
             )}
           </div>
-        )}
+        ) : activeTab === 'seminars' ? (
+          <div className="bg-white dark:bg-gray-900 shadow-lg rounded-2xl p-4 md:p-6 mb-6 border border-primary-200 dark:border-gray-700">
+            <div className="flex items-center mb-6">
+              <div className="bg-blue-100 dark:bg-blue-900 p-2 rounded-lg mr-4">
+                <span className="text-2xl">🎓</span>
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-primary-900 dark:text-white">
+                  Séminaires SpotBulle
+                </h2>
+                <p className="text-primary-600 dark:text-primary-400">
+                  Participez à nos formations "Citoyen des Deux Rives" et développez vos compétences
+                </p>
+              </div>
+            </div>
+            
+            <SeminarsList />
+          </div>
+        ) : activeTab === 'certification' ? (
+          <div className="bg-white dark:bg-gray-900 shadow-lg rounded-2xl p-4 md:p-6 mb-6 border border-primary-200 dark:border-gray-700">
+            <div className="flex items-center mb-6">
+              <div className="bg-amber-100 dark:bg-amber-900 p-2 rounded-lg mr-4">
+                <span className="text-2xl">🏆</span>
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-primary-900 dark:text-white">
+                  Certification SpotBulle
+                </h2>
+                <p className="text-primary-600 dark:text-primary-400">
+                  Recevez votre diplôme et rejoignez le réseau international France-Maroc
+                </p>
+              </div>
+            </div>
+            
+            <Certification />
+          </div>
+        ) : null}
 
         {/* Section Programme SpotBulle */}
         <div className="bg-white dark:bg-gray-900 shadow-lg rounded-2xl p-6 mb-6 border border-primary-200 dark:border-gray-700">
