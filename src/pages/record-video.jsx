@@ -110,6 +110,8 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
 
         if (error) throw error;
 
+        console.log('📊 Statut vidéo:', video.status, 'Durée:', video.duration);
+
         switch (video.status) {
           case VIDEO_STATUS.UPLOADED:
             setAnalysisProgress('Vidéo uploadée, en attente...');
@@ -133,8 +135,10 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
             setAnalysisProgress('Analyse terminée !');
             toast.success('Votre vidéo a été analysée avec succès !');
             
-            // NOUVEAU : Appeler le callback pour rafraîchir le dashboard
+            // NOUVEAU : Déclencher le rafraîchissement du dashboard
+            console.log('🔄 Déclenchement rafraîchissement dashboard...');
             onVideoUploaded();
+            window.dispatchEvent(new Event('videoUploaded'));
             
             setTimeout(() => {
               navigate(`/video-success?id=${uploadedVideoId}`);
@@ -337,6 +341,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       
       // CORRECTION : S'assurer que la durée est bien sauvegardée
       const videoDuration = recordingTime;
+      console.log('💾 Sauvegarde durée vidéo:', videoDuration, 'secondes');
 
       // Insertion dans la base avec le statut UPLOADED
       setAnalysisProgress('Enregistrement en base...');
