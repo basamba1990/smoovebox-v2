@@ -1,4 +1,4 @@
-// components/Certification.tsx
+// components/Certification.jsx
 import { useState, useEffect } from 'react';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { toast } from 'sonner';
