@@ -32,18 +32,18 @@ const Directory = () => {
       setLoading(true);
       setError(null);
 
-      // CORRECTION : Retirer 'age' et 'interests' qui n'existent pas dans la table
+      // CORRECTION : Utiliser les bonnes colonnes qui existent dans votre table
       let query = supabase
         .from('profiles')
-        .select('id, full_name, bio, location, skills, avatar_url, is_creator, is_football_fan, is_adult');
+        .select('id, full_name, bio, location, skills, avatar_url, is_creator, football_interest, is_major, passions, clubs');
 
-      // Appliquer les filtres
+      // Appliquer les filtres avec les bonnes colonnes
       if (filter === 'creators') {
         query = query.eq('is_creator', true);
       } else if (filter === 'football') {
-        query = query.eq('is_football_fan', true);
+        query = query.eq('football_interest', true);
       } else if (filter === 'adults') {
-        query = query.eq('is_adult', true);
+        query = query.eq('is_major', true);
       }
 
       // Appliquer la recherche
@@ -146,6 +146,30 @@ const Directory = () => {
     return null;
   };
 
+  const renderPassions = (passions) => {
+    if (!passions) return null;
+    if (Array.isArray(passions)) {
+      return passions.map((passion, index) => (
+        <span key={index} className="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full mr-1 mb-1">
+          {passion}
+        </span>
+      ));
+    }
+    return null;
+  };
+
+  const renderClubs = (clubs) => {
+    if (!clubs) return null;
+    if (Array.isArray(clubs)) {
+      return clubs.map((club, index) => (
+        <span key={index} className="inline-block bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full mr-1 mb-1">
+          {club}
+        </span>
+      ));
+    }
+    return null;
+  };
+
   // Affichage loading
   if (loading) {
     return (
@@ -186,7 +210,7 @@ const Directory = () => {
           <select 
             value={filter} 
             onChange={(e) => setFilter(e.target.value)}
-            className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           >
             <option value="all">Tous les membres</option>
             <option value="creators">Créateurs de contenu</option>
@@ -196,10 +220,10 @@ const Directory = () => {
 
           <input
             type="text"
-            placeholder="Rechercher"
+            placeholder="Rechercher un membre par nom..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white flex-grow"
+            className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white flex-grow focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           />
         </div>
 
@@ -208,16 +232,16 @@ const Directory = () => {
           {users.map((profile) => {
             const connectionStatus = getConnectionStatus(profile.id);
             return (
-              <div key={profile.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden border border-gray-200 dark:border-gray-700">
+              <div key={profile.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-shadow">
                 <div className="p-6">
                   <div className="flex items-center mb-4">
                     <img
                       src={profile.avatar_url || '/default-avatar.png'}
                       alt={profile.full_name}
-                      className="w-12 h-12 rounded-full object-cover mr-4"
+                      className="w-12 h-12 rounded-full object-cover mr-4 border-2 border-gray-200"
                     />
-                    <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900 dark:text-white text-lg">
                         {profile.full_name}
                       </h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -226,17 +250,60 @@ const Directory = () => {
                     </div>
                   </div>
 
-                  <p className="text-gray-600 dark:text-gray-300 text-sm mb-4">
+                  <p className="text-gray-600 dark:text-gray-300 text-sm mb-4 line-clamp-3">
                     {profile.bio || 'Aucune biographie fournie.'}
                   </p>
 
+                  {/* Compétences */}
                   {profile.skills && (
-                    <div className="mb-4">
-                      {renderSkills(profile.skills)}
+                    <div className="mb-3">
+                      <p className="text-xs font-medium text-gray-500 mb-1">Compétences:</p>
+                      <div className="flex flex-wrap">
+                        {renderSkills(profile.skills)}
+                      </div>
                     </div>
                   )}
 
-                  <div className="flex justify-between items-center">
+                  {/* Passions */}
+                  {profile.passions && profile.passions.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-xs font-medium text-gray-500 mb-1">Passions:</p>
+                      <div className="flex flex-wrap">
+                        {renderPassions(profile.passions)}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Clubs */}
+                  {profile.clubs && profile.clubs.length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-xs font-medium text-gray-500 mb-1">Clubs:</p>
+                      <div className="flex flex-wrap">
+                        {renderClubs(profile.clubs)}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Badges pour les filtres */}
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {profile.is_creator && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                        🎨 Créateur
+                      </span>
+                    )}
+                    {profile.football_interest && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        ⚽ Football
+                      </span>
+                    )}
+                    {profile.is_major && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        👑 Majeur
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-600">
                     <div>
                       {connectionStatus === 'can_connect' && (
                         <VideoPicker
@@ -251,6 +318,7 @@ const Directory = () => {
                         <Button
                           onClick={() => navigate('/auth')}
                           className="bg-primary-600 hover:bg-primary-700 text-white"
+                          size="sm"
                         >
                           Se connecter
                         </Button>
@@ -259,6 +327,7 @@ const Directory = () => {
                         <Button
                           disabled
                           className="bg-gray-300 text-gray-600 cursor-not-allowed"
+                          size="sm"
                         >
                           Demande envoyée ✓
                         </Button>
@@ -268,6 +337,7 @@ const Directory = () => {
                           onClick={() => handleConnect(profile.id)}
                           disabled={connecting}
                           className="bg-primary-600 hover:bg-primary-700 text-white"
+                          size="sm"
                         >
                           {connecting ? 'Envoi...' : 'Se connecter'}
                         </Button>
@@ -281,8 +351,15 @@ const Directory = () => {
         </div>
 
         {users.length === 0 && (
-          <div className="text-center text-gray-500 dark:text-gray-400 mt-10">
-            Aucun utilisateur trouvé.
+          <div className="text-center text-gray-500 dark:text-gray-400 mt-10 py-12">
+            <div className="text-6xl mb-4">🔍</div>
+            <h3 className="text-xl font-semibold mb-2">Aucun utilisateur trouvé</h3>
+            <p className="text-gray-600 dark:text-gray-400">
+              {searchTerm || filter !== 'all' 
+                ? "Essayez de modifier vos critères de recherche ou de filtres." 
+                : "Aucun utilisateur n'est inscrit pour le moment."
+              }
+            </p>
           </div>
         )}
       </div>
