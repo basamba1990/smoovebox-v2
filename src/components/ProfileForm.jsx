@@ -1,12 +1,12 @@
-// components/ProfileForm.jsx
+// components/ProfileForm.jsx - VERSION CORRIGÉE
 import { useState, useEffect } from 'react';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { toast } from 'sonner';
 import { Button } from './ui/button-enhanced.jsx';
 
-const ProfileForm = ({ onProfileUpdated = () => {} }) => {
+const ProfileForm = ({ user, profile, onProfileUpdated = () => {} }) => {
   const [loading, setLoading] = useState(false);
-  const [profile, setProfile] = useState({
+  const [formData, setFormData] = useState({
     genre: '',
     statut: '',
     centres_interet: [],
@@ -22,9 +22,9 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
   ]);
 
   const supabase = useSupabaseClient();
-  const user = useUser();
+  const currentUser = useUser();
 
-  // Centres d'intérêt prédéfinis
+  // Centres d'intérêt prédéfinis - CORRIGÉ pour matcher votre base
   const centresInteretOptions = [
     { value: 'club', label: 'Club' },
     { value: 'passion', label: 'Passion' },
@@ -33,47 +33,49 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
 
   // Charger le profil existant
   useEffect(() => {
-    if (user) {
+    if (currentUser) {
       loadProfile();
     }
-  }, [user]);
+  }, [currentUser]);
 
   const loadProfile = async () => {
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('id', currentUser.id)
         .single();
 
       if (error && error.code !== 'PGRST116') {
         console.error('Erreur chargement profil:', error);
+        toast.error('Erreur lors du chargement du profil');
         return;
       }
 
       if (data) {
-        setProfile({
-          genre: data.genre || '',
-          statut: data.statut || '',
-          centres_interet: data.centres_interet || [],
+        setFormData({
+          genre: data.sex || '', // Votre colonne s'appelle 'sex' pas 'genre'
+          statut: data.is_major ? 'majeur' : 'mineur', // Conversion booléen -> texte
+          centres_interet: data.passions || [], // Votre colonne s'appelle 'passions'
           jingle: data.jingle || '',
-          mots_cles: data.mots_cles || ''
+          mots_cles: Array.isArray(data.skills) ? data.skills.join(', ') : '' // Conversion array -> string
         });
       }
     } catch (error) {
       console.error('Erreur lors du chargement du profil:', error);
+      toast.error('Erreur lors du chargement du profil');
     }
   };
 
   const handleInputChange = (field, value) => {
-    setProfile(prev => ({
+    setFormData(prev => ({
       ...prev,
       [field]: value
     }));
   };
 
   const handleCentresInteretChange = (value) => {
-    setProfile(prev => ({
+    setFormData(prev => ({
       ...prev,
       centres_interet: prev.centres_interet.includes(value)
         ? prev.centres_interet.filter(item => item !== value)
@@ -84,46 +86,57 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!user) {
+    if (!currentUser) {
       toast.error('Vous devez être connecté pour sauvegarder votre profil');
+      return;
+    }
+
+    // Validation
+    if (!formData.genre || !formData.statut || formData.centres_interet.length === 0) {
+      toast.error('Veuillez remplir tous les champs obligatoires');
       return;
     }
 
     setLoading(true);
 
     try {
+      // Préparation des données pour Supabase
       const profileData = {
-        user_id: user.id,
-        genre: profile.genre,
-        statut: profile.statut,
-        centres_interet: profile.centres_interet,
-        jingle: profile.jingle,
-        mots_cles: profile.mots_cles,
+        id: currentUser.id, // Clé primaire
+        sex: formData.genre, // Votre colonne s'appelle 'sex'
+        is_major: formData.statut === 'majeur', // Conversion texte -> booléen
+        passions: formData.centres_interet, // Votre colonne s'appelle 'passions'
+        jingle: formData.jingle,
+        skills: formData.mots_cles.split(',').map(skill => skill.trim()).filter(skill => skill), // Conversion string -> array
         updated_at: new Date().toISOString()
       };
+
+      console.log('Données à sauvegarder:', profileData);
 
       // Upsert du profil
       const { error } = await supabase
         .from('profiles')
         .upsert(profileData, {
-          onConflict: 'user_id'
+          onConflict: 'id'
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erreur Supabase:', error);
+        throw error;
+      }
 
       toast.success('Profil sauvegardé avec succès !');
       onProfileUpdated();
       
     } catch (error) {
       console.error('Erreur sauvegarde profil:', error);
-      toast.error('Erreur lors de la sauvegarde du profil');
+      toast.error(`Erreur lors de la sauvegarde: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
   const previewJingle = (jingleUrl) => {
-    // Implémentation basique de prévisualisation audio
     const audio = new Audio(jingleUrl);
     audio.play().catch(e => console.log('Lecture audio impossible:', e));
   };
@@ -147,7 +160,7 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
                   type="radio"
                   name="genre"
                   value={genre.toLowerCase()}
-                  checked={profile.genre === genre.toLowerCase()}
+                  checked={formData.genre === genre.toLowerCase()}
                   onChange={(e) => handleInputChange('genre', e.target.value)}
                   className="mr-2"
                   required
@@ -170,7 +183,7 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
                   type="radio"
                   name="statut"
                   value={statut}
-                  checked={profile.statut === statut}
+                  checked={formData.statut === statut}
                   onChange={(e) => handleInputChange('statut', e.target.value)}
                   className="mr-2"
                   required
@@ -192,7 +205,7 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
                 <input
                   type="checkbox"
                   value={option.value}
-                  checked={profile.centres_interet.includes(option.value)}
+                  checked={formData.centres_interet.includes(option.value)}
                   onChange={(e) => handleCentresInteretChange(e.target.value)}
                   className="mr-3"
                 />
@@ -212,7 +225,7 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
               <div
                 key={jingle.id}
                 className={`p-3 border-2 rounded-lg cursor-pointer transition-all ${
-                  profile.jingle === jingle.id
+                  formData.jingle === jingle.id
                     ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                     : 'border-gray-300 dark:border-gray-600 hover:border-blue-300'
                 }`}
@@ -245,7 +258,7 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
           </label>
           <input
             type="text"
-            value={profile.mots_cles}
+            value={formData.mots_cles}
             onChange={(e) => handleInputChange('mots_cles', e.target.value)}
             placeholder="ex: football, sport, passion, France, Maroc"
             className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
