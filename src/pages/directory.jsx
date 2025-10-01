@@ -34,7 +34,14 @@ const Directory = () => {
 
       let query = supabase
         .from('profiles')
-        .select('id, full_name, bio, location, skills, avatar_url, age, interests, is_creator, is_football_fan, is_adult');
+        .select(`
+          id, full_name, bio, location, skills, avatar_url, age, interests, 
+          is_creator, is_football_fan, is_adult,
+          questionnaire_responses (
+            disc_color, preferred_activities, work_preferences, current_talent,
+            dream_description, spotbulle_needs
+          )
+        `);
 
       // Appliquer les filtres
       if (filter === 'creators') {
@@ -104,7 +111,6 @@ const Directory = () => {
     try {
       const videoId = selectedVideos[targetUserId] || null;
 
-      // Option 1: Insertion directe dans Supabase (plus simple)
       const { error } = await supabase
         .from('connections')
         .insert({
@@ -116,27 +122,6 @@ const Directory = () => {
         });
 
       if (error) throw error;
-
-      // Option 2: Si vous préférez utiliser l'Edge Function, décommentez ce code :
-      /*
-      const response = await fetch('/functions/match-profiles', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          requester_id: user.id,
-          target_id: targetUserId,
-          video_id: videoId,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Erreur lors de la requête');
-      }
-      */
 
       // Mettre à jour l'état des connexions existantes
       setExistingConnections(prev => new Set([...prev, targetUserId]));
@@ -165,6 +150,30 @@ const Directory = () => {
       ));
     }
     return null;
+  };
+
+  const getDiscColorLabel = (color) => {
+    const colors = {
+      red: { label: 'Leader', emoji: '🔴', color: 'bg-red-100 text-red-800' },
+      yellow: { label: 'Energique', emoji: '🟡', color: 'bg-yellow-100 text-yellow-800' },
+      green: { label: 'Écoute', emoji: '🟢', color: 'bg-green-100 text-green-800' },
+      blue: { label: 'Organisé', emoji: '🔵', color: 'bg-blue-100 text-blue-800' }
+    };
+    return colors[color] || { label: color, emoji: '⚪', color: 'bg-gray-100 text-gray-800' };
+  };
+
+  const getActivityLabel = (activity) => {
+    const activities = {
+      kinesthetic: '🏃 Kinesthésique',
+      musical: '🎵 Musicale',
+      linguistic: '📚 Linguistique',
+      logical: '🧮 Logico-mathématique',
+      naturalist: '🌳 Naturaliste',
+      interpersonal: '👥 Interpersonnelle',
+      intrapersonal: '🧘 Intrapersonnelle',
+      visual: '🎨 Visuo-spatiale'
+    };
+    return activities[activity] || activity;
   };
 
   // Affichage loading
@@ -207,7 +216,7 @@ const Directory = () => {
           <select 
             value={filter} 
             onChange={(e) => setFilter(e.target.value)}
-            className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           >
             <option value="all">Tous les membres</option>
             <option value="creators">Créateurs de contenu</option>
@@ -217,10 +226,10 @@ const Directory = () => {
 
           <input
             type="text"
-            placeholder="Rechercher"
+            placeholder="Rechercher un membre..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white flex-grow"
+            className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white flex-grow focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           />
         </div>
 
@@ -228,17 +237,19 @@ const Directory = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {users.map((profile) => {
             const connectionStatus = getConnectionStatus(profile.id);
+            const questionnaire = profile.questionnaire_responses?.[0];
+            
             return (
-              <div key={profile.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden border border-gray-200 dark:border-gray-700">
+              <div key={profile.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-shadow">
                 <div className="p-6">
                   <div className="flex items-center mb-4">
                     <img
                       src={profile.avatar_url || '/default-avatar.png'}
                       alt={profile.full_name}
-                      className="w-12 h-12 rounded-full object-cover mr-4"
+                      className="w-12 h-12 rounded-full object-cover mr-4 border-2 border-gray-200"
                     />
-                    <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900 dark:text-white text-lg">
                         {profile.full_name}
                       </h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -247,9 +258,50 @@ const Directory = () => {
                     </div>
                   </div>
 
-                  <p className="text-gray-600 dark:text-gray-300 text-sm mb-4">
+                  <p className="text-gray-600 dark:text-gray-300 text-sm mb-4 line-clamp-2">
                     {profile.bio || 'Aucune biographie fournie.'}
                   </p>
+
+                  {/* Affichage des traits de personnalité */}
+                  {questionnaire && (
+                    <div className="mb-4 space-y-2">
+                      {/* Couleur DISC */}
+                      {questionnaire.disc_color && (
+                        <div className="flex items-center space-x-2">
+                          <span className="text-xs font-medium text-gray-500">Profil:</span>
+                          {(() => {
+                            const disc = getDiscColorLabel(questionnaire.disc_color);
+                            return (
+                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${disc.color}`}>
+                                {disc.emoji} {disc.label}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      )}
+
+                      {/* Intelligences principales */}
+                      {questionnaire.preferred_activities && questionnaire.preferred_activities.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {questionnaire.preferred_activities.slice(0, 2).map((activity, index) => (
+                            <span key={index} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                              {getActivityLabel(activity)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Talents */}
+                      {questionnaire.current_talent && (
+                        <div className="mt-2">
+                          <p className="text-xs text-gray-500 mb-1">Talent:</p>
+                          <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
+                            "{questionnaire.current_talent}"
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {profile.skills && (
                     <div className="mb-4">
@@ -257,7 +309,7 @@ const Directory = () => {
                     </div>
                   )}
 
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-600">
                     <div>
                       {connectionStatus === 'can_connect' && (
                         <VideoPicker
@@ -272,6 +324,7 @@ const Directory = () => {
                         <Button
                           onClick={() => navigate('/auth')}
                           className="bg-primary-600 hover:bg-primary-700 text-white"
+                          size="sm"
                         >
                           Se connecter
                         </Button>
@@ -280,6 +333,7 @@ const Directory = () => {
                         <Button
                           disabled
                           className="bg-gray-300 text-gray-600 cursor-not-allowed"
+                          size="sm"
                         >
                           Demande envoyée ✓
                         </Button>
@@ -289,6 +343,7 @@ const Directory = () => {
                           onClick={() => handleConnect(profile.id)}
                           disabled={connecting}
                           className="bg-primary-600 hover:bg-primary-700 text-white"
+                          size="sm"
                         >
                           {connecting ? 'Envoi...' : 'Se connecter'}
                         </Button>
@@ -302,8 +357,12 @@ const Directory = () => {
         </div>
 
         {users.length === 0 && (
-          <div className="text-center text-gray-500 dark:text-gray-400 mt-10">
-            Aucun utilisateur trouvé.
+          <div className="text-center text-gray-500 dark:text-gray-400 mt-10 py-12">
+            <div className="text-6xl mb-4">🔍</div>
+            <h3 className="text-xl font-semibold mb-2">Aucun utilisateur trouvé</h3>
+            <p className="text-gray-600 dark:text-gray-400">
+              Essayez de modifier vos critères de recherche ou de filtres.
+            </p>
           </div>
         )}
       </div>
