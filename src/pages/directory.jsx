@@ -36,7 +36,7 @@ const Directory = () => {
 
       let query = supabase
         .from('profiles')
-        .select('id, full_name, bio, location, skills, avatar_url, is_creator, football_interest, is_major, passions, clubs, sex, jingle');
+        .select('id, full_name, bio, location, skills, avatar_url, is_creator, football_interest, is_major, passions, clubs, sex');
 
       // Appliquer les filtres avec les bonnes colonnes
       if (filter === 'creators') {
