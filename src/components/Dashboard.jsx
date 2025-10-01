@@ -11,7 +11,7 @@ import TranscriptionViewer from './TranscriptionViewer';
 import VideoPlayer from './VideoPlayer';
 import VideoAnalysisResults from './VideoAnalysisResults';
 
-const Dashboard = ({ refreshKey = 0, onDataUpdate }) => {
+const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
   const { user } = useAuth();
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -22,6 +22,7 @@ const Dashboard = ({ refreshKey = 0, onDataUpdate }) => {
   const [transcribing, setTranscribing] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [selectedVideoForAnalysis, setSelectedVideoForAnalysis] = useState(null);
+  const [videoPlayerUrl, setVideoPlayerUrl] = useState(null);
 
   // Recharger les vidéos quand refreshKey change ou utilisateur change
   useEffect(() => {
@@ -31,6 +32,7 @@ const Dashboard = ({ refreshKey = 0, onDataUpdate }) => {
     }
   }, [user, refreshKey]);
 
+  // CORRECTION : Fonction fetchVideos complétée
   const fetchVideos = async () => {
     if (!user) return;
 
@@ -65,6 +67,60 @@ const Dashboard = ({ refreshKey = 0, onDataUpdate }) => {
       setError(`Erreur lors du chargement des vidéos: ${err.message}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // CORRECTION : Fonction pour obtenir l'URL de lecture de la vidéo
+  const getVideoUrl = async (video) => {
+    if (!video) return null;
+
+    try {
+      // Si URL publique disponible
+      if (video.public_url) {
+        return video.public_url;
+      }
+
+      // Sinon générer une URL signée depuis Supabase Storage
+      if (video.file_path) {
+        console.log('📁 Génération URL signée pour:', video.file_path);
+        const { data, error } = await supabase.storage
+          .from('videos')
+          .createSignedUrl(video.file_path, 3600); // 1 heure
+
+        if (error) {
+          console.error('❌ Erreur génération URL signée:', error);
+          throw error;
+        }
+        
+        console.log('✅ URL signée générée:', data.signedUrl);
+        return data.signedUrl;
+      }
+
+      console.warn('⚠️ Aucun file_path disponible pour la vidéo:', video.id);
+      return null;
+    } catch (err) {
+      console.error('❌ Erreur getVideoUrl:', err);
+      return null;
+    }
+  };
+
+  // CORRECTION : Fonction pour lire la vidéo directement dans la page
+  const playVideo = async (video) => {
+    try {
+      console.log('🎬 Tentative de lecture vidéo:', video.id);
+      const url = await getVideoUrl(video);
+      
+      if (url) {
+        console.log('✅ URL vidéo obtenue, ouverture du lecteur');
+        setVideoPlayerUrl(url);
+        setSelectedVideo(video);
+      } else {
+        console.error('❌ Impossible d\'obtenir l\'URL de la vidéo');
+        setError('Impossible de charger la vidéo pour la lecture');
+      }
+    } catch (err) {
+      console.error('❌ Erreur playVideo:', err);
+      setError(`Erreur lors du chargement de la vidéo: ${err.message}`);
     }
   };
 
@@ -285,34 +341,12 @@ const Dashboard = ({ refreshKey = 0, onDataUpdate }) => {
     }
   };
 
-  const getVideoUrl = async (video) => {
-    if (!video) return null;
-
-    try {
-      // Si URL publique disponible
-      if (video.public_url) {
-        return video.public_url;
-      }
-
-      // Sinon générer une URL signée
-      if (video.file_path) {
-        const { data, error } = await supabase.storage
-          .from('videos')
-          .createSignedUrl(video.file_path, 3600); // 1 heure
-
-        if (error) throw error;
-        return data.signedUrl;
-      }
-
-      return null;
-    } catch (err) {
-      console.error('Erreur getVideoUrl:', err);
-      return null;
-    }
-  };
-
+  // CORRECTION : Fonction handleVideoAction améliorée avec lecture vidéo
   const handleVideoAction = async (video, action) => {
     switch (action) {
+      case 'play':
+        await playVideo(video);
+        break;
       case 'view':
         const url = await getVideoUrl(video);
         if (url) {
@@ -394,6 +428,7 @@ const Dashboard = ({ refreshKey = 0, onDataUpdate }) => {
     );
   };
 
+  // CORRECTION : renderVideoList complétée avec boutons de lecture
   const renderVideoList = () => {
     if (loading) {
       return (
@@ -463,6 +498,16 @@ const Dashboard = ({ refreshKey = 0, onDataUpdate }) => {
                     </CardDescription>
                   </div>
                   <div className="flex gap-2">
+                    {/* CORRECTION : Bouton de lecture ajouté */}
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => handleVideoAction(video, 'play')}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      <Play className="h-4 w-4 mr-1" />
+                      Lire
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -597,9 +642,45 @@ const Dashboard = ({ refreshKey = 0, onDataUpdate }) => {
         </TabsContent>
         
         <TabsContent value="upload">
-          <VideoUploader onUploadComplete={fetchVideos} />
+          <VideoUploader onUploadComplete={() => {
+            fetchVideos();
+            if (onVideoUploaded) onVideoUploaded();
+          }} />
         </TabsContent>
       </Tabs>
+
+      {/* CORRECTION : Modal de lecture vidéo */}
+      {selectedVideo && videoPlayerUrl && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+            <div className="p-4 border-b flex justify-between items-center">
+              <h3 className="text-lg font-semibold">
+                Lecture : {selectedVideo.title || 'Sans titre'}
+              </h3>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSelectedVideo(null);
+                  setVideoPlayerUrl(null);
+                }}
+              >
+                Fermer
+              </Button>
+            </div>
+            <div className="p-4">
+              <video 
+                controls 
+                autoPlay 
+                className="w-full h-auto max-h-[70vh]"
+                src={videoPlayerUrl}
+              >
+                Votre navigateur ne supporte pas la lecture vidéo.
+              </video>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de confirmation de suppression */}
       {deleteConfirm && (
