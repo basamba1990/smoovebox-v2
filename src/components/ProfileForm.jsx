@@ -4,27 +4,24 @@ import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { toast } from 'sonner';
 import { Button } from './ui/button-enhanced.jsx';
 
-const ProfileForm = ({ user, profile, onProfileUpdated = () => {} }) => {
+const ProfileForm = ({ onProfileUpdated = () => {} }) => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    sex: '', // CORRECTION: utiliser 'sex' au lieu de 'genre'
-    is_major: null, // CORRECTION: utiliser 'is_major' au lieu de 'statut'
-    passions: [], // CORRECTION: utiliser 'passions' au lieu de 'centres_interet'
-    skills: '' // CORRECTION: utiliser 'skills' au lieu de 'mots_cles'
-    // SUPPRIMER: jingle n'existe pas dans la table
+    sex: '',
+    is_major: null,
+    passions: [],
+    skills: ''
   });
 
   const supabase = useSupabaseClient();
   const currentUser = useUser();
 
-  // Options pour les passions/centres d'intérêt
   const passionsOptions = [
     { value: 'club', label: 'Club' },
     { value: 'passion', label: 'Passion' },
     { value: 'metier_du_foot', label: 'Métier du foot' }
   ];
 
-  // Charger le profil existant
   useEffect(() => {
     if (currentUser) {
       loadProfile();
@@ -37,7 +34,7 @@ const ProfileForm = ({ user, profile, onProfileUpdated = () => {} }) => {
         .from('profiles')
         .select('*')
         .eq('id', currentUser.id)
-        .single();
+        .single(); // ← IMPORTANT: .single() car on attend un seul profil
 
       if (error && error.code !== 'PGRST116') {
         console.error('Erreur chargement profil:', error);
@@ -48,7 +45,7 @@ const ProfileForm = ({ user, profile, onProfileUpdated = () => {} }) => {
       if (data) {
         setFormData({
           sex: data.sex || '',
-          is_major: data.is_major, // peut être null, true ou false
+          is_major: data.is_major,
           passions: data.passions || [],
           skills: Array.isArray(data.skills) ? data.skills.join(', ') : (data.skills || '')
         });
@@ -83,7 +80,6 @@ const ProfileForm = ({ user, profile, onProfileUpdated = () => {} }) => {
       return;
     }
 
-    // Validation
     if (!formData.sex || formData.is_major === null || formData.passions.length === 0) {
       toast.error('Veuillez remplir tous les champs obligatoires');
       return;
@@ -92,7 +88,6 @@ const ProfileForm = ({ user, profile, onProfileUpdated = () => {} }) => {
     setLoading(true);
 
     try {
-      // Préparation des données pour Supabase
       const profileData = {
         id: currentUser.id,
         sex: formData.sex,
@@ -102,19 +97,13 @@ const ProfileForm = ({ user, profile, onProfileUpdated = () => {} }) => {
         updated_at: new Date().toISOString()
       };
 
-      console.log('Données à sauvegarder:', profileData);
-
-      // Upsert du profil
       const { error } = await supabase
         .from('profiles')
         .upsert(profileData, {
           onConflict: 'id'
         });
 
-      if (error) {
-        console.error('Erreur Supabase:', error);
-        throw error;
-      }
+      if (error) throw error;
 
       toast.success('Profil sauvegardé avec succès !');
       onProfileUpdated();
@@ -134,7 +123,7 @@ const ProfileForm = ({ user, profile, onProfileUpdated = () => {} }) => {
       </h2>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Genre - CORRIGÉ: utiliser sex */}
+        {/* Genre */}
         <div className="space-y-3">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Genre *
@@ -157,7 +146,7 @@ const ProfileForm = ({ user, profile, onProfileUpdated = () => {} }) => {
           </div>
         </div>
 
-        {/* Statut - CORRIGÉ: utiliser is_major */}
+        {/* Statut */}
         <div className="space-y-3">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Statut *
@@ -190,7 +179,7 @@ const ProfileForm = ({ user, profile, onProfileUpdated = () => {} }) => {
           </div>
         </div>
 
-        {/* Centres d'intérêt - CORRIGÉ: utiliser passions */}
+        {/* Centres d'intérêt */}
         <div className="space-y-3">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Centres d'intérêt *
@@ -211,7 +200,7 @@ const ProfileForm = ({ user, profile, onProfileUpdated = () => {} }) => {
           </div>
         </div>
 
-        {/* Mots-clés - CORRIGÉ: utiliser skills */}
+        {/* Mots-clés */}
         <div className="space-y-3">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Mots-clés (séparés par des virgules)
@@ -246,18 +235,6 @@ const ProfileForm = ({ user, profile, onProfileUpdated = () => {} }) => {
           </Button>
         </div>
       </form>
-
-      {/* Instructions */}
-      <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-        <h3 className="font-semibold text-blue-800 dark:text-blue-300 mb-2">
-          ℹ️ À propos de votre profil SpotBulle
-        </h3>
-        <p className="text-sm text-blue-700 dark:text-blue-200">
-          Votre profil vous identifie dans la communauté SpotBulle France-Maroc. 
-          Remplissez-le soigneusement pour bénéficier d'une expérience personnalisée 
-          et pour être correctement référencé dans l'annuaire des participants.
-        </p>
-      </div>
     </div>
   );
 };
