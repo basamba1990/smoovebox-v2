@@ -36,13 +36,19 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
 
   const loadExistingResponses = async () => {
     try {
+      // Correction : Utiliser .maybeSingle() pour éviter l'erreur 406 si aucune réponse n'existe
       const { data, error } = await supabase
         .from('questionnaire_responses')
         .select('*')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
-      if (data && !error) {
+      if (error && error.code !== 'PGRST116') {
+        console.error('Erreur chargement réponses:', error);
+        return;
+      }
+
+      if (data) {
         setAnswers({
           discGroupPreference: data.disc_color || '',
           challengeApproach: data.challenge_approach || '',
@@ -55,6 +61,10 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
           inspirationPerson: data.inspiration_person || '',
           spotbulleNeeds: data.spotbulle_needs || []
         });
+        // Si complété, passer directement à l'écran final ou marquer comme terminé
+        if (data.completed_at) {
+          setCurrentStep(4); // Ajouter un step 4 pour "Déjà complété" si besoin
+        }
       }
     } catch (error) {
       console.log('Aucune réponse existante trouvée');
@@ -85,12 +95,16 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
 
     setLoading(true);
     try {
-      // Vérifier s'il existe déjà une réponse
-      const { data: existingResponse } = await supabase
+      // Correction : Utiliser .maybeSingle() pour vérifier l'existence sans erreur 406
+      const { data: existingResponse, error: checkError } = await supabase
         .from('questionnaire_responses')
-        .select('id')
+        .select('id, completed_at')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
 
       let error;
       if (existingResponse) {
@@ -110,7 +124,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
             spotbulle_needs: answers.spotbulleNeeds,
             completed_at: new Date().toISOString()
           })
-          .eq('user_id', user.id));
+          .eq('id', existingResponse.id));
       } else {
         // Insérer
         ({ error } = await supabase
