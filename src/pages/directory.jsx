@@ -13,17 +13,19 @@ const Directory = () => {
   const [connecting, setConnecting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [existingConnections, setExistingConnections] = useState(new Set());
-  const [selectedVideos, setSelectedVideos] = useState({}); // { userId: videoId }
+  const [selectedVideos, setSelectedVideos] = useState({});
+  const [userVideos, setUserVideos] = useState([]); // Nouveau état pour les vidéos de l'utilisateur
 
   const supabase = useSupabaseClient();
   const user = useUser();
   const navigate = useNavigate();
 
-  // Récupération des profils ET des connexions existantes
+  // Récupération des profils, connexions existantes ET des vidéos de l'utilisateur
   useEffect(() => {
     fetchUsers();
     if (user) {
       fetchExistingConnections();
+      fetchUserVideos(); // Charger les vidéos de l'utilisateur
     }
   }, [filter, searchTerm, user]);
 
@@ -32,10 +34,9 @@ const Directory = () => {
       setLoading(true);
       setError(null);
 
-      // CORRECTION : Utiliser les bonnes colonnes qui existent dans votre table
       let query = supabase
         .from('profiles')
-        .select('id, full_name, bio, location, skills, avatar_url, is_creator, football_interest, is_major, passions, clubs');
+        .select('id, full_name, bio, location, skills, avatar_url, is_creator, football_interest, is_major, passions, clubs, sex, jingle');
 
       // Appliquer les filtres avec les bonnes colonnes
       if (filter === 'creators') {
@@ -56,6 +57,7 @@ const Directory = () => {
       if (error) throw error;
       setUsers(data || []);
     } catch (err) {
+      console.error('Erreur détaillée fetchUsers:', err);
       setError(`Erreur chargement annuaire : ${err.message}`);
     } finally {
       setLoading(false);
@@ -64,7 +66,6 @@ const Directory = () => {
 
   const fetchExistingConnections = async () => {
     try {
-      // Récupérer les connexions existantes de l'utilisateur
       const { data, error } = await supabase
         .from('connections')
         .select('target_id, status')
@@ -76,6 +77,23 @@ const Directory = () => {
       setExistingConnections(ids);
     } catch (err) {
       console.error('Erreur fetchExistingConnections:', err.message);
+    }
+  };
+
+  const fetchUserVideos = async () => {
+    try {
+      // Récupérer les vidéos de l'utilisateur depuis la table videos
+      const { data, error } = await supabase
+        .from('videos')
+        .select('id, title, video_url, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setUserVideos(data || []);
+    } catch (err) {
+      console.error('Erreur fetchUserVideos:', err.message);
+      toast.error('Erreur lors du chargement des vidéos');
     }
   };
 
@@ -105,7 +123,14 @@ const Directory = () => {
     try {
       const videoId = selectedVideos[targetUserId] || null;
 
-      const { error } = await supabase
+      console.log('Envoi demande connexion:', {
+        requester_id: user.id,
+        target_id: targetUserId,
+        video_id: videoId
+      });
+
+      // Vérifier que la table connections existe et a les bonnes colonnes
+      const { data, error } = await supabase
         .from('connections')
         .insert({
           requester_id: user.id,
@@ -113,16 +138,33 @@ const Directory = () => {
           video_id: videoId,
           status: 'pending',
           created_at: new Date().toISOString(),
-        });
+        })
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erreur Supabase détaillée:', error);
+        
+        // Si l'erreur est due à une table manquante, proposer une solution
+        if (error.code === '42P01') {
+          toast.error('Table connections manquante. Vérifiez la base de données.');
+          return;
+        }
+        
+        throw error;
+      }
+
+      console.log('Réponse Supabase:', data);
 
       // Mettre à jour l'état des connexions existantes
       setExistingConnections(prev => new Set([...prev, targetUserId]));
       toast.success('Demande de mise en relation envoyée !');
+      
+      // Recharger les connexions
+      fetchExistingConnections();
+      
     } catch (err) {
-      console.error('Erreur:', err);
-      toast.error(`Erreur: ${err.message}`);
+      console.error('Erreur complète handleConnect:', err);
+      toast.error(`Erreur lors de la demande: ${err.message}`);
     } finally {
       setConnecting(false);
     }
@@ -309,6 +351,7 @@ const Directory = () => {
                         <VideoPicker
                           onSelect={(videoId) => handleVideoSelect(profile.id, videoId)}
                           selectedVideo={selectedVideos[profile.id]}
+                          userVideos={userVideos} // Passer les vidéos disponibles
                         />
                       )}
                     </div>
