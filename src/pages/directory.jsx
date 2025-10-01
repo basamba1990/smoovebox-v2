@@ -34,57 +34,28 @@ const Directory = () => {
 
       let query = supabase
         .from('profiles')
-        .select(`
-          id,
-          user_id,
-          username,
-          full_name,
-          avatar_url,
-          bio,
-          email,
-          skills,
-          location,
-          linkedin_url,
-          github_url,
-          is_creator,
-          sex,
-          is_major,
-          passions,
-          clubs,
-          football_interest,
-          created_at
-        `);
+        .select('id, full_name, bio, location, skills, avatar_url, age, interests, is_creator, is_football_fan, is_adult');
 
-      // Exclure l'utilisateur courant de la liste
-      if (user) {
-        query = query.neq('user_id', user.id);
+      // Appliquer les filtres
+      if (filter === 'creators') {
+        query = query.eq('is_creator', true);
+      } else if (filter === 'football') {
+        query = query.eq('is_football_fan', true);
+      } else if (filter === 'adults') {
+        query = query.eq('is_adult', true);
       }
 
-      // Application des filtres
-      if (filter !== 'all') {
-        if (filter === 'creator') {
-          query = query.eq('is_creator', true);
-        } else if (filter === 'football') {
-          query = query.eq('football_interest', true);
-        } else if (filter === 'major') {
-          query = query.eq('is_major', true);
-        }
-      }
-
-      // Application de la recherche
+      // Appliquer la recherche
       if (searchTerm) {
-        query = query.or(`full_name.ilike.%${searchTerm}%,bio.ilike.%${searchTerm}%,passions.cs.{"${searchTerm}"},clubs.cs.{"${searchTerm}"}`);
+        query = query.ilike('full_name', `%${searchTerm}%`);
       }
 
       const { data, error } = await query;
 
       if (error) throw error;
       setUsers(data || []);
-
     } catch (err) {
-      console.error('Erreur fetchUsers:', err);
-      setError(`Erreur lors du chargement: ${err.message}`);
-      toast.error('Impossible de charger les profils');
+      setError(`Erreur chargement annuaire : ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -100,15 +71,10 @@ const Directory = () => {
 
       if (error) throw error;
 
-      // Créer un Set des IDs des utilisateurs déjà connectés
-      const connectionsSet = new Set();
-      data?.forEach(connection => {
-        connectionsSet.add(connection.target_id);
-      });
-      setExistingConnections(connectionsSet);
-
+      const ids = new Set(data.map(connection => connection.target_id));
+      setExistingConnections(ids);
     } catch (err) {
-      console.error('Erreur fetchExistingConnections:', err);
+      console.error('Erreur fetchExistingConnections:', err.message);
     }
   };
 
@@ -126,49 +92,58 @@ const Directory = () => {
       return;
     }
 
-    // Vérifier si déjà connecté
     if (existingConnections.has(targetUserId)) {
-      toast.info('Vous avez déjà envoyé une demande à cet utilisateur');
+      toast.info('Demande déjà envoyée');
       return;
     }
 
+    if (connecting) return;
+
+    setConnecting(true);
+
     try {
-      setConnecting(true);
-      
-      const selectedVideoId = selectedVideos[targetUserId] || null;
-      
-      // Utilisation de la table connections avec video_id optionnel
+      const videoId = selectedVideos[targetUserId] || null;
+
+      // Option 1: Insertion directe dans Supabase (plus simple)
       const { error } = await supabase
         .from('connections')
         .insert({
           requester_id: user.id,
           target_id: targetUserId,
-          video_id: selectedVideoId, // Peut être null
-          status: 'pending'
+          video_id: videoId,
+          status: 'pending',
+          created_at: new Date().toISOString(),
         });
 
       if (error) throw error;
-      
-      // Mettre à jour les connexions existantes
-      setExistingConnections(prev => new Set([...prev, targetUserId]));
-      
-      // Réinitialiser la sélection vidéo pour cet utilisateur
-      setSelectedVideos(prev => {
-        const newSelection = { ...prev };
-        delete newSelection[targetUserId];
-        return newSelection;
+
+      // Option 2: Si vous préférez utiliser l'Edge Function, décommentez ce code :
+      /*
+      const response = await fetch('/functions/match-profiles', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requester_id: user.id,
+          target_id: targetUserId,
+          video_id: videoId,
+        }),
       });
-      
-      toast.success(selectedVideoId ? 'Demande de connexion avec vidéo envoyée !' : 'Demande de connexion envoyée !');
-      
-    } catch (err) {
-      console.error('Erreur handleConnect:', err);
-      if (err.code === '23505') {
-        toast.error('Vous avez déjà envoyé une demande à cet utilisateur');
-        setExistingConnections(prev => new Set([...prev, targetUserId]));
-      } else {
-        toast.error(`Échec de la connexion: ${err.message}`);
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Erreur lors de la requête');
       }
+      */
+
+      // Mettre à jour l'état des connexions existantes
+      setExistingConnections(prev => new Set([...prev, targetUserId]));
+      toast.success('Demande de mise en relation envoyée !');
+    } catch (err) {
+      console.error('Erreur:', err);
+      toast.error(`Erreur: ${err.message}`);
     } finally {
       setConnecting(false);
     }
@@ -227,180 +202,108 @@ const Directory = () => {
           Découvrez la communauté France-Maroc et connectez-vous avec des passionnés
         </p>
 
-        {/* Barre de filtres et de recherche */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 mb-6">
-          <div className="flex flex-wrap gap-4 items-center">
-            <div>
-              <label htmlFor="filter" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Filtres
-              </label>
-              <select
-                id="filter"
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                className="border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              >
-                <option value="all">Tous les membres</option>
-                <option value="creator">Créateurs de contenu</option>
-                <option value="football">Intéressés par le football</option>
-                <option value="major">Majeurs</option>
-              </select>
-            </div>
-            
-            <div className="flex-1 min-w-[200px]">
-              <label htmlFor="search" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Rechercher
-              </label>
-              <input
-                id="search"
-                type="text"
-                placeholder="Nom, bio, passions ou clubs..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-          </div>
+        {/* Filtres et recherche */}
+        <div className="flex flex-wrap gap-4 mb-6">
+          <select 
+            value={filter} 
+            onChange={(e) => setFilter(e.target.value)}
+            className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          >
+            <option value="all">Tous les membres</option>
+            <option value="creators">Créateurs de contenu</option>
+            <option value="football">Intéressés par le football</option>
+            <option value="adults">Majeurs</option>
+          </select>
+
+          <input
+            type="text"
+            placeholder="Rechercher"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white flex-grow"
+          />
         </div>
 
         {/* Liste des utilisateurs */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {users.map((userProfile) => {
-            const connectionStatus = getConnectionStatus(userProfile.user_id || userProfile.id);
-            const isPending = connectionStatus === 'pending';
-            const targetUserId = userProfile.user_id || userProfile.id;
-            
+          {users.map((profile) => {
+            const connectionStatus = getConnectionStatus(profile.id);
             return (
-              <div key={userProfile.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-                {/* En-tête du profil */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    {userProfile.avatar_url ? (
-                      <img 
-                        src={userProfile.avatar_url} 
-                        alt={userProfile.full_name}
-                        className="w-12 h-12 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
-                        <span className="text-primary-600 dark:text-primary-300 font-semibold">
-                          {userProfile.full_name ? userProfile.full_name.charAt(0).toUpperCase() : 'U'}
-                        </span>
-                      </div>
-                    )}
+              <div key={profile.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden border border-gray-200 dark:border-gray-700">
+                <div className="p-6">
+                  <div className="flex items-center mb-4">
+                    <img
+                      src={profile.avatar_url || '/default-avatar.png'}
+                      alt={profile.full_name}
+                      className="w-12 h-12 rounded-full object-cover mr-4"
+                    />
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                        {userProfile.full_name || 'Utilisateur sans nom'}
+                      <h3 className="font-semibold text-gray-900 dark:text-white">
+                        {profile.full_name}
                       </h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {userProfile.location || 'Localisation non précisée'}
+                        {profile.location || 'Localisation non précisée'}
                       </p>
                     </div>
                   </div>
-                  {userProfile.is_creator && (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                      Créateur
-                    </span>
+
+                  <p className="text-gray-600 dark:text-gray-300 text-sm mb-4">
+                    {profile.bio || 'Aucune biographie fournie.'}
+                  </p>
+
+                  {profile.skills && (
+                    <div className="mb-4">
+                      {renderSkills(profile.skills)}
+                    </div>
                   )}
+
+                  <div className="flex justify-between items-center">
+                    <div>
+                      {connectionStatus === 'can_connect' && (
+                        <VideoPicker
+                          onSelect={(videoId) => handleVideoSelect(profile.id, videoId)}
+                          selectedVideo={selectedVideos[profile.id]}
+                        />
+                      )}
+                    </div>
+
+                    <div>
+                      {connectionStatus === 'not_connected' && (
+                        <Button
+                          onClick={() => navigate('/auth')}
+                          className="bg-primary-600 hover:bg-primary-700 text-white"
+                        >
+                          Se connecter
+                        </Button>
+                      )}
+                      {connectionStatus === 'pending' && (
+                        <Button
+                          disabled
+                          className="bg-gray-300 text-gray-600 cursor-not-allowed"
+                        >
+                          Demande envoyée ✓
+                        </Button>
+                      )}
+                      {connectionStatus === 'can_connect' && (
+                        <Button
+                          onClick={() => handleConnect(profile.id)}
+                          disabled={connecting}
+                          className="bg-primary-600 hover:bg-primary-700 text-white"
+                        >
+                          {connecting ? 'Envoi...' : 'Se connecter'}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                
-                {/* Bio */}
-                <p className="text-gray-600 dark:text-gray-300 text-sm mb-4 line-clamp-2">
-                  {userProfile.bio || 'Aucune biographie fournie.'}
-                </p>
-                
-                {/* Passions */}
-                {userProfile.passions && userProfile.passions.length > 0 && (
-                  <div className="mb-3">
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Passions:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {userProfile.passions.map((passion, index) => (
-                        <span 
-                          key={index}
-                          className="inline-block bg-primary-100 dark:bg-primary-900 text-primary-800 dark:text-primary-200 text-xs px-2 py-1 rounded-full"
-                        >
-                          {passion}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                {/* Clubs */}
-                {userProfile.clubs && userProfile.clubs.length > 0 && (
-                  <div className="mb-3">
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Clubs:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {userProfile.clubs.map((club, index) => (
-                        <span 
-                          key={index}
-                          className="inline-block bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs px-2 py-1 rounded-full"
-                        >
-                          {club}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                {/* Compétences */}
-                {userProfile.skills && (
-                  <div className="mb-4">
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Compétences:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {renderSkills(userProfile.skills)}
-                    </div>
-                  </div>
-                )}
-                
-                {/* Sélecteur de vidéo - seulement si connecté et pas déjà connecté */}
-                {user && connectionStatus === 'can_connect' && (
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Associer une vidéo (optionnel) :
-                    </label>
-                    <VideoPicker 
-                      onChange={(videoId) => handleVideoSelect(targetUserId, videoId)}
-                      selectedVideo={selectedVideos[targetUserId]}
-                    />
-                  </div>
-                )}
-                
-                {/* Bouton de connexion avec état */}
-                <Button
-                  onClick={() => handleConnect(targetUserId)}
-                  disabled={connecting || isPending || !user}
-                  className={`w-full ${
-                    isPending 
-                      ? 'bg-gray-400 hover:bg-gray-400 cursor-not-allowed' 
-                      : 'bg-primary-600 hover:bg-primary-700'
-                  } disabled:opacity-50`}
-                >
-                  {!user 
-                    ? 'Connectez-vous' 
-                    : isPending 
-                      ? 'Demande envoyée ✓' 
-                      : connecting 
-                        ? 'Envoi...' 
-                        : 'Envoyer une demande'
-                  }
-                </Button>
               </div>
             );
           })}
         </div>
 
-        {users.length === 0 && !loading && (
-          <div className="text-center py-12">
-            <p className="text-gray-500 dark:text-gray-400 text-lg">
-              Aucun profil trouvé pour vos critères de recherche.
-            </p>
-            <Button 
-              onClick={() => { setFilter('all'); setSearchTerm(''); }}
-              className="mt-4 bg-primary-600 hover:bg-primary-700"
-            >
-              Voir tous les membres
-            </Button>
+        {users.length === 0 && (
+          <div className="text-center text-gray-500 dark:text-gray-400 mt-10">
+            Aucun utilisateur trouvé.
           </div>
         )}
       </div>
