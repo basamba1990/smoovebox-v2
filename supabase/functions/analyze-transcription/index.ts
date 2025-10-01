@@ -111,6 +111,43 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Correction : Tolérance pour 'processing' ou 'uploaded' → déclencher transcription si nécessaire
+    if (video.status === VIDEO_STATUS.UPLOADED || video.status === VIDEO_STATUS.PROCESSING) {
+      console.log(`Statut ${video.status} détecté ; déclenchement transcription pour ${videoId}`);
+      // Mettre à jour en 'processing' si 'uploaded'
+      if (video.status === VIDEO_STATUS.UPLOADED) {
+        await serviceClient
+          .from('videos')
+          .update({ status: VIDEO_STATUS.PROCESSING, updated_at: new Date().toISOString() })
+          .eq('id', videoId);
+      }
+      // Déclencher transcription (assumant edge function 'transcribe-video')
+      const { error: transcribeError } = await serviceClient.functions.invoke(
+        'transcribe-video',
+        { body: { videoId } }
+      );
+      if (transcribeError) {
+        console.error('Erreur déclenchement transcription:', transcribeError);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Transcription déclenchée mais erreur', 
+            details: transcribeError.message,
+            status: 'processing' // Retourner en cours
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 202 } // Accepted, en cours
+        );
+      }
+      // Pas d'analyse immédiate ; retourner en attente (l'analyse sera appelée après transcription via webhook ou polling)
+      return new Response(
+        JSON.stringify({ 
+          message: 'Transcription déclenchée ; réessayez après transcription', 
+          videoId, 
+          nextStatus: 'transcribed' 
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 202 }
+      );
+    }
+
     if (video.status !== VIDEO_STATUS.TRANSCRIBED) {
       console.error(`Mauvais statut de vidéo: ${video.status}, attendu: ${VIDEO_STATUS.TRANSCRIBED}`);
       return new Response(
@@ -197,6 +234,7 @@ Deno.serve(async (req) => {
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
     // Logique d'analyse avancée
+    // Correction : Déplacer le commentaire // en dehors de la template literal pour éviter qu'il soit inclus dans le prompt envoyé à l'IA
     const analysisPrompt = `Analysez la transcription vidéo suivante et fournissez une analyse complète et structurée au format JSON. L'analyse doit inclure :
 - Un 'summary' concis (max 3-4 phrases).
 - Une liste de 'key_topics' (3-5 thèmes/mots-clés principaux).
@@ -209,9 +247,10 @@ Deno.serve(async (req) => {
   - 'engagement_emotionnel': { 'type': string, 'niveau': number }
   - 'formats_visuels_suggeres': [string, string, ...]
 
-Transcription: ${fullText.substring(0, 12000)}  // Limiter la longueur pour éviter les dépassements de token
+Transcription: ${fullText.substring(0, 12000)}
 
 Assurez-vous que la sortie est un objet JSON valide.`;
+// Limiter la longueur pour éviter les dépassements de token
 
     let chatCompletion;
     try {
