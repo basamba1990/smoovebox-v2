@@ -21,7 +21,7 @@ export default function Home({
   loadDashboardData 
 }) {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('dashboard'); // Par défaut sur dashboard
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [profileUpdated, setProfileUpdated] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -32,22 +32,23 @@ export default function Home({
   const handleProfileUpdated = () => {
     setProfileUpdated(true);
     toast.success('Profil mis à jour avec succès !');
-    // Déclencher un rechargement des données
-    setRefreshKey(prev => prev + 1);
+    // Recharger les données du dashboard si nécessaire
     if (loadDashboardData) {
       loadDashboardData();
     }
   };
 
   const handleVideoUploaded = () => {
-    // Recharger les données du dashboard après upload vidéo
+    // Forcer le rafraîchissement du dashboard
     setRefreshKey(prev => prev + 1);
+    toast.success('Vidéo uploadée avec succès !');
+    
+    // Recharger les données du dashboard après upload vidéo
     if (loadDashboardData) {
       setTimeout(() => {
         loadDashboardData();
       }, 2000);
     }
-    toast.success('Vidéo uploadée avec succès!');
   };
 
   // Vérifier si le profil est complet
@@ -57,114 +58,174 @@ export default function Home({
     profile.centres_interet && 
     profile.centres_interet.length > 0;
 
-  // Effet pour basculer vers l'onglet profil si incomplet
+  // Afficher un message si le profil n'est pas complet
   useEffect(() => {
-    if (!isProfileComplete && user) {
-      setActiveTab('profile');
-      toast.info('Veuillez compléter votre profil pour profiter de toutes les fonctionnalités');
+    if (user && profile && !isProfileComplete) {
+      toast.info('Complétez votre profil pour une meilleure expérience', {
+        duration: 5000,
+      });
     }
-  }, [isProfileComplete, user]);
+  }, [user, profile, isProfileComplete]);
+
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'dashboard':
+        return (
+          <div className="space-y-6">
+            {!isProfileComplete && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                <p className="text-yellow-800 text-sm">
+                  📝 <strong>Profil incomplet</strong> - Complétez votre profil pour accéder à toutes les fonctionnalités.
+                </p>
+              </div>
+            )}
+            
+            <Dashboard 
+              data={dashboardData}
+              loading={dashboardLoading}
+              error={dashboardError}
+              refreshKey={refreshKey}
+              onVideoUploaded={handleVideoUploaded}
+            />
+          </div>
+        );
+      
+      case 'record':
+        return (
+          <RecordVideo 
+            user={user}
+            onVideoUploaded={handleVideoUploaded}
+          />
+        );
+      
+      case 'profile':
+        return (
+          <ProfileForm 
+            user={user}
+            profile={profile}
+            onProfileUpdated={handleProfileUpdated}
+          />
+        );
+      
+      case 'seminars':
+        return <SeminarsList user={user} />;
+      
+      case 'certification':
+        return <Certification user={user} />;
+      
+      default:
+        return (
+          <Dashboard 
+            data={dashboardData}
+            loading={dashboardLoading}
+            error={dashboardError}
+            refreshKey={refreshKey}
+          />
+        );
+    }
+  };
 
   return (
     <div className="app-container min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 dark:from-gray-900 dark:to-gray-800">
       {/* Header */}
       <ProfessionalHeader 
-        user={user} 
-        profile={profile} 
-        connectionStatus={connectionStatus} 
-        onSignOut={onSignOut} 
+        user={user}
+        profile={profile}
+        connectionStatus={connectionStatus}
+        onSignOut={onSignOut}
       />
-      
-      <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        {/* Bouton pour l'annuaire */}
-        <div className="mb-6 flex justify-end">
-          <Button 
-            onClick={handleNavigateToDirectory}
-            className="bg-primary-600 hover:bg-primary-700 text-white"
-          >
-            📋 Voir l'Annuaire
-          </Button>
-        </div>
 
-        {/* Indicateur de profil incomplet */}
-        {!isProfileComplete && user && (
-          <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-yellow-800">
-                  Profil incomplet
-                </h3>
-                <div className="mt-2 text-sm text-yellow-700">
-                  <p>
-                    Complétez votre profil pour accéder à toutes les fonctionnalités de SpotBulle.
-                  </p>
-                </div>
-              </div>
+      {/* Main Content */}
+      <main className="container mx-auto px-4 py-8">
+        {/* Navigation Tabs */}
+        <div className="mb-8">
+          <div className="flex flex-wrap gap-2 mb-4">
+            <Button
+              variant={activeTab === 'dashboard' ? 'default' : 'outline'}
+              onClick={() => setActiveTab('dashboard')}
+              className="flex items-center gap-2"
+            >
+              📊 Tableau de bord
+            </Button>
+            
+            <Button
+              variant={activeTab === 'record' ? 'default' : 'outline'}
+              onClick={() => setActiveTab('record')}
+              className="flex items-center gap-2"
+            >
+              🎥 Enregistrer une vidéo
+            </Button>
+            
+            <Button
+              variant={activeTab === 'profile' ? 'default' : 'outline'}
+              onClick={() => setActiveTab('profile')}
+              className="flex items-center gap-2"
+            >
+              👤 Mon profil
+            </Button>
+            
+            <Button
+              variant={activeTab === 'seminars' ? 'default' : 'outline'}
+              onClick={() => setActiveTab('seminars')}
+              className="flex items-center gap-2"
+            >
+              🎓 Séminaires
+            </Button>
+            
+            <Button
+              variant={activeTab === 'certification' ? 'default' : 'outline'}
+              onClick={() => setActiveTab('certification')}
+              className="flex items-center gap-2"
+            >
+              📜 Certification
+            </Button>
+            
+            <Button
+              variant="outline"
+              onClick={handleNavigateToDirectory}
+              className="flex items-center gap-2 ml-auto"
+            >
+              👥 Annuaire
+            </Button>
+          </div>
+
+          {/* Tab Content */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            {renderTabContent()}
+          </div>
+        </div>
+      </main>
+
+      {/* Loading State */}
+      {dashboardLoading && activeTab === 'dashboard' && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 flex items-center gap-3">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+            <span>Chargement des données...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Error State */}
+      {dashboardError && activeTab === 'dashboard' && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center gap-2 text-red-800">
+            <span>⚠️</span>
+            <div>
+              <strong>Erreur lors du chargement :</strong>
+              <p className="text-sm">{dashboardError}</p>
             </div>
-          </div>
-        )}
-
-        {/* Onglets */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 mb-8">
-          <div className="border-b border-gray-200 dark:border-gray-700">
-            <nav className="flex -mb-px">
-              {[
-                { id: 'dashboard', label: '📊 Tableau de Bord', icon: '📊' },
-                { id: 'record', label: '🎥 Enregistrer une vidéo', icon: '🎥' },
-                { id: 'profile', label: '👤 Profil', icon: '👤' },
-                { id: 'seminars', label: '🎓 Séminaires', icon: '🎓' },
-                { id: 'certification', label: '🏆 Certification', icon: '🏆' }
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`py-4 px-6 text-center border-b-2 font-medium text-sm ${
-                    activeTab === tab.id
-                      ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
-          </div>
-
-          <div className="p-6">
-            {activeTab === 'dashboard' && (
-              <Dashboard 
-                refreshKey={refreshKey}
-                onDataUpdate={loadDashboardData}
-              />
-            )}
-            {activeTab === 'record' && (
-              <RecordVideo 
-                onVideoUploaded={handleVideoUploaded}
-                user={user}
-                profile={profile}
-              />
-            )}
-            {activeTab === 'profile' && (
-              <ProfileForm 
-                user={user}
-                profile={profile}
-                onProfileUpdated={handleProfileUpdated}
-              />
-            )}
-            {activeTab === 'seminars' && (
-              <SeminarsList />
-            )}
-            {activeTab === 'certification' && (
-              <Certification />
-            )}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={loadDashboardData}
+              className="ml-auto"
+            >
+              Réessayer
+            </Button>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
