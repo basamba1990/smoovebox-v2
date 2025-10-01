@@ -44,7 +44,9 @@ export default function Home({
     }
   };
 
+  // CORRECTION : Fonction améliorée pour le rechargement après upload
   const handleVideoUploaded = () => {
+    console.log('🔄 Home: Vidéo uploadée, incrémentation refreshKey');
     setRefreshKey(prev => prev + 1);
     toast.success('Vidéo uploadée avec succès !');
     
@@ -73,6 +75,10 @@ export default function Home({
         .eq('user_id', currentUser.id)
         .single();
 
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        console.error('Erreur vérification questionnaire:', error);
+      }
+
       setHasCompletedQuestionnaire(!!data);
       
       // Afficher le questionnaire si pas complété et c'est la première visite
@@ -83,6 +89,7 @@ export default function Home({
         }, 3000);
       }
     } catch (error) {
+      console.error('Erreur checkQuestionnaireStatus:', error);
       setHasCompletedQuestionnaire(false);
     }
   };
@@ -142,10 +149,8 @@ export default function Home({
               </div>
             )}
             
+            {/* CORRECTION : Dashboard avec les bonnes props */}
             <Dashboard 
-              data={dashboardData}
-              loading={dashboardLoading}
-              error={dashboardError}
               refreshKey={refreshKey}
               onVideoUploaded={handleVideoUploaded}
             />
@@ -190,10 +195,8 @@ export default function Home({
       default:
         return (
           <Dashboard 
-            data={dashboardData}
-            loading={dashboardLoading}
-            error={dashboardError}
             refreshKey={refreshKey}
+            onVideoUploaded={handleVideoUploaded}
           />
         );
     }
@@ -281,16 +284,6 @@ export default function Home({
                 isModal={true}
               />
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Loading State */}
-      {dashboardLoading && activeTab === 'dashboard' && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 flex items-center gap-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
-            <span>Chargement des données...</span>
           </div>
         </div>
       )}
