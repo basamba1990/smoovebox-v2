@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { toast } from 'sonner';
 import { Button } from './ui/button-enhanced.jsx';
 
-const Questionnaire = ({ onComplete, showSkip = true }) => {
+const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [answers, setAnswers] = useState({
     // Partie DISC
@@ -27,6 +27,40 @@ const Questionnaire = ({ onComplete, showSkip = true }) => {
   const supabase = useSupabaseClient();
   const user = useUser();
 
+  useEffect(() => {
+    // Charger les réponses existantes si l'utilisateur a déjà complété le questionnaire
+    if (user) {
+      loadExistingResponses();
+    }
+  }, [user]);
+
+  const loadExistingResponses = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('questionnaire_responses')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (data && !error) {
+        setAnswers({
+          discGroupPreference: data.disc_color || '',
+          challengeApproach: data.challenge_approach || '',
+          favoriteActivities: data.preferred_activities || [],
+          workPreferences: data.work_preferences || [],
+          currentTalent: data.current_talent || '',
+          improvementAreas: data.improvement_areas || '',
+          dreamDescription: data.dream_description || '',
+          fiveYearVision: data.five_year_vision || '',
+          inspirationPerson: data.inspiration_person || '',
+          spotbulleNeeds: data.spotbulle_needs || []
+        });
+      }
+    } catch (error) {
+      console.log('Aucune réponse existante trouvée');
+    }
+  };
+
   const handleAnswer = (question, value) => {
     setAnswers(prev => ({
       ...prev,
@@ -38,8 +72,8 @@ const Questionnaire = ({ onComplete, showSkip = true }) => {
     setAnswers(prev => ({
       ...prev,
       [question]: checked 
-        ? [...prev[question], value]
-        : prev[question].filter(item => item !== value)
+        ? [...(prev[question] || []), value]
+        : (prev[question] || []).filter(item => item !== value)
     }));
   };
 
@@ -51,22 +85,51 @@ const Questionnaire = ({ onComplete, showSkip = true }) => {
 
     setLoading(true);
     try {
-      const { error } = await supabase
+      // Vérifier s'il existe déjà une réponse
+      const { data: existingResponse } = await supabase
         .from('questionnaire_responses')
-        .insert({
-          user_id: user.id,
-          disc_color: answers.discGroupPreference,
-          challenge_approach: answers.challengeApproach,
-          preferred_activities: answers.favoriteActivities,
-          work_preferences: answers.workPreferences,
-          current_talent: answers.currentTalent,
-          improvement_areas: answers.improvementAreas,
-          dream_description: answers.dreamDescription,
-          five_year_vision: answers.fiveYearVision,
-          inspiration_person: answers.inspirationPerson,
-          spotbulle_needs: answers.spotbulleNeeds,
-          completed_at: new Date().toISOString()
-        });
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      let error;
+      if (existingResponse) {
+        // Mettre à jour
+        ({ error } = await supabase
+          .from('questionnaire_responses')
+          .update({
+            disc_color: answers.discGroupPreference,
+            challenge_approach: answers.challengeApproach,
+            preferred_activities: answers.favoriteActivities,
+            work_preferences: answers.workPreferences,
+            current_talent: answers.currentTalent,
+            improvement_areas: answers.improvementAreas,
+            dream_description: answers.dreamDescription,
+            five_year_vision: answers.fiveYearVision,
+            inspiration_person: answers.inspirationPerson,
+            spotbulle_needs: answers.spotbulleNeeds,
+            completed_at: new Date().toISOString()
+          })
+          .eq('user_id', user.id));
+      } else {
+        // Insérer
+        ({ error } = await supabase
+          .from('questionnaire_responses')
+          .insert({
+            user_id: user.id,
+            disc_color: answers.discGroupPreference,
+            challenge_approach: answers.challengeApproach,
+            preferred_activities: answers.favoriteActivities,
+            work_preferences: answers.workPreferences,
+            current_talent: answers.currentTalent,
+            improvement_areas: answers.improvementAreas,
+            dream_description: answers.dreamDescription,
+            five_year_vision: answers.fiveYearVision,
+            inspiration_person: answers.inspirationPerson,
+            spotbulle_needs: answers.spotbulleNeeds,
+            completed_at: new Date().toISOString()
+          }));
+      }
 
       if (error) throw error;
 
@@ -84,6 +147,30 @@ const Questionnaire = ({ onComplete, showSkip = true }) => {
   const nextStep = () => setCurrentStep(prev => prev + 1);
   const prevStep = () => setCurrentStep(prev => prev - 1);
 
+  const getDiscColorLabel = (color) => {
+    const colors = {
+      red: '🔴 Rouge - Leader',
+      yellow: '🟡 Jaune - Energique', 
+      green: '🟢 Vert - Écoute',
+      blue: '🔵 Bleu - Organisé'
+    };
+    return colors[color] || color;
+  };
+
+  const getActivityLabel = (activity) => {
+    const activities = {
+      kinesthetic: 'Kinesthésique',
+      musical: 'Musicale',
+      linguistic: 'Linguistique',
+      logical: 'Logico-mathématique',
+      naturalist: 'Naturaliste',
+      interpersonal: 'Interpersonnelle',
+      intrapersonal: 'Intrapersonnelle',
+      visual: 'Visuo-spatiale'
+    };
+    return activities[activity] || activity;
+  };
+
   // Écrans du questionnaire
   const renderStep = () => {
     switch(currentStep) {
@@ -94,27 +181,29 @@ const Questionnaire = ({ onComplete, showSkip = true }) => {
               Partie 1 – DISC (4 couleurs)
             </h3>
             
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div>
                 <p className="font-medium mb-3">1. Quand je fais partie d'un groupe, je préfère :</p>
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {[
                     { value: 'red', label: 'Décider vite et diriger les autres', emoji: '🔴' },
                     { value: 'yellow', label: 'Motiver et inspirer par mon énergie', emoji: '🟡' },
                     { value: 'green', label: 'Écouter et aider chacun à se sentir bien', emoji: '🟢' },
                     { value: 'blue', label: 'Vérifier les détails et organiser les choses', emoji: '🔵' }
                   ].map(option => (
-                    <label key={option.value} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <label key={option.value} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
                       <input
                         type="radio"
                         name="groupPreference"
                         value={option.value}
                         checked={answers.discGroupPreference === option.value}
                         onChange={(e) => handleAnswer('discGroupPreference', e.target.value)}
-                        className="text-primary-600"
+                        className="mt-1 text-primary-600 focus:ring-primary-500"
                       />
-                      <span className="text-lg">{option.emoji}</span>
-                      <span>{option.label}</span>
+                      <div>
+                        <span className="text-lg mr-2">{option.emoji}</span>
+                        <span className="text-gray-700">{option.label}</span>
+                      </div>
                     </label>
                   ))}
                 </div>
@@ -122,23 +211,23 @@ const Questionnaire = ({ onComplete, showSkip = true }) => {
 
               <div>
                 <p className="font-medium mb-3">2. Face à un défi, je réagis en général en :</p>
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {[
                     { value: 'direct', label: 'Agissant directement et rapidement' },
                     { value: 'creative', label: 'Imaginant des solutions créatives' },
                     { value: 'collaborative', label: 'Demandant de l\'aide ou en travaillant avec les autres' },
                     { value: 'analytical', label: 'Analysant calmement avant d\'agir' }
                   ].map(option => (
-                    <label key={option.value} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <label key={option.value} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
                       <input
                         type="radio"
                         name="challengeApproach"
                         value={option.value}
                         checked={answers.challengeApproach === option.value}
                         onChange={(e) => handleAnswer('challengeApproach', e.target.value)}
-                        className="text-primary-600"
+                        className="mt-1 text-primary-600 focus:ring-primary-500"
                       />
-                      <span>{option.label}</span>
+                      <span className="text-gray-700">{option.label}</span>
                     </label>
                   ))}
                 </div>
@@ -157,21 +246,21 @@ const Questionnaire = ({ onComplete, showSkip = true }) => {
             <div className="space-y-6">
               <div>
                 <p className="font-medium mb-3">3. Ce que j'aime le plus faire :</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   {[
-                    { value: 'kinesthetic', label: 'Bouger, courir, manipuler des objets' },
-                    { value: 'musical', label: 'Chanter, écouter de la musique' },
-                    { value: 'linguistic', label: 'Lire, écrire, raconter des histoires' },
-                    { value: 'logical', label: 'Résoudre des problèmes, calculer' }
+                    { value: 'kinesthetic', label: '🏃 Bouger, courir, manipuler des objets (Kinesthésique)' },
+                    { value: 'musical', label: '🎵 Chanter, écouter de la musique (Musicale)' },
+                    { value: 'linguistic', label: '📚 Lire, écrire, raconter des histoires (Linguistique)' },
+                    { value: 'logical', label: '🧮 Résoudre des problèmes, calculer (Logico-mathématique)' }
                   ].map(option => (
-                    <label key={option.value} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <label key={option.value} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
                       <input
                         type="checkbox"
-                        checked={answers.favoriteActivities.includes(option.value)}
+                        checked={(answers.favoriteActivities || []).includes(option.value)}
                         onChange={(e) => handleArrayAnswer('favoriteActivities', option.value, e.target.checked)}
-                        className="text-primary-600"
+                        className="mt-1 text-primary-600 focus:ring-primary-500"
                       />
-                      <span>{option.label}</span>
+                      <span className="text-gray-700">{option.label}</span>
                     </label>
                   ))}
                 </div>
@@ -179,21 +268,21 @@ const Questionnaire = ({ onComplete, showSkip = true }) => {
 
               <div>
                 <p className="font-medium mb-3">4. Quand je travaille, je préfère :</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   {[
-                    { value: 'naturalist', label: 'Être dehors, observer la nature' },
-                    { value: 'interpersonal', label: 'Être avec des amis, discuter' },
-                    { value: 'intrapersonal', label: 'Être seul pour réfléchir' },
-                    { value: 'visual', label: 'Dessiner, construire, imaginer des images' }
+                    { value: 'naturalist', label: '🌳 Être dehors, observer la nature (Naturaliste)' },
+                    { value: 'interpersonal', label: '👥 Être avec des amis, discuter (Interpersonnelle)' },
+                    { value: 'intrapersonal', label: '🧘 Être seul pour réfléchir (Intrapersonnelle)' },
+                    { value: 'visual', label: '🎨 Dessiner, construire, imaginer des images (Visuo-spatiale)' }
                   ].map(option => (
-                    <label key={option.value} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <label key={option.value} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
                       <input
                         type="checkbox"
-                        checked={answers.workPreferences.includes(option.value)}
+                        checked={(answers.workPreferences || []).includes(option.value)}
                         onChange={(e) => handleArrayAnswer('workPreferences', option.value, e.target.checked)}
-                        className="text-primary-600"
+                        className="mt-1 text-primary-600 focus:ring-primary-500"
                       />
-                      <span>{option.label}</span>
+                      <span className="text-gray-700">{option.label}</span>
                     </label>
                   ))}
                 </div>
@@ -211,26 +300,26 @@ const Questionnaire = ({ onComplete, showSkip = true }) => {
 
             <div className="space-y-4">
               {[
-                { key: 'currentTalent', label: '5. Mon plus grand talent aujourd\'hui est :' },
-                { key: 'improvementAreas', label: '6. Ce que je voudrais améliorer chez moi :' },
-                { key: 'dreamDescription', label: '7. Si je devais décrire mon rêve en une phrase :' },
-                { key: 'fiveYearVision', label: '8. Dans 5 ans, je voudrais que les gens disent de moi :' },
-                { key: 'inspirationPerson', label: '9. La personne qui m\'inspire le plus est :' }
+                { key: 'currentTalent', label: '5. Mon plus grand talent aujourd\'hui est :', placeholder: 'Décrivez votre talent principal...' },
+                { key: 'improvementAreas', label: '6. Ce que je voudrais améliorer chez moi :', placeholder: 'Quelles compétences souhaitez-vous développer ?' },
+                { key: 'dreamDescription', label: '7. Si je devais décrire mon rêve en une phrase :', placeholder: 'Votre plus grand rêve...' },
+                { key: 'fiveYearVision', label: '8. Dans 5 ans, je voudrais que les gens disent de moi :', placeholder: 'Comment souhaitez-vous être perçu ?' },
+                { key: 'inspirationPerson', label: '9. La personne qui m\'inspire le plus est :', placeholder: 'Qui vous inspire dans la vie ?' }
               ].map(field => (
                 <div key={field.key}>
-                  <label className="block font-medium mb-2">{field.label}</label>
+                  <label className="block font-medium mb-2 text-gray-700">{field.label}</label>
                   <textarea
-                    value={answers[field.key]}
+                    value={answers[field.key] || ''}
                     onChange={(e) => handleAnswer(field.key, e.target.value)}
-                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
                     rows={3}
-                    placeholder="Votre réponse..."
+                    placeholder={field.placeholder}
                   />
                 </div>
               ))}
 
               <div>
-                <p className="font-medium mb-3">10. Si SpotBulle devait m'aider, j'aimerais que ce soit pour :</p>
+                <p className="font-medium mb-3 text-gray-700">10. Si SpotBulle devait m'aider, j'aimerais que ce soit pour :</p>
                 <div className="space-y-2">
                   {[
                     'M\'exprimer mieux à l\'oral',
@@ -238,14 +327,14 @@ const Questionnaire = ({ onComplete, showSkip = true }) => {
                     'Trouver un mentor ou un modèle',
                     'Construire mon futur métier'
                   ].map(need => (
-                    <label key={need} className="flex items-center space-x-3 p-2 hover:bg-gray-50 cursor-pointer">
+                    <label key={need} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
                       <input
                         type="checkbox"
-                        checked={answers.spotbulleNeeds.includes(need)}
+                        checked={(answers.spotbulleNeeds || []).includes(need)}
                         onChange={(e) => handleArrayAnswer('spotbulleNeeds', need, e.target.checked)}
-                        className="text-primary-600"
+                        className="text-primary-600 focus:ring-primary-500"
                       />
-                      <span>{need}</span>
+                      <span className="text-gray-700">{need}</span>
                     </label>
                   ))}
                 </div>
@@ -260,7 +349,7 @@ const Questionnaire = ({ onComplete, showSkip = true }) => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-lg p-6">
+    <div className={`bg-white rounded-xl shadow-lg ${isModal ? '' : 'p-6 max-w-2xl mx-auto'}`}>
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold text-primary-900 mb-2">
           📝 Questionnaire SpotBulle
@@ -288,11 +377,12 @@ const Questionnaire = ({ onComplete, showSkip = true }) => {
 
       {renderStep()}
 
-      <div className="flex justify-between mt-8 pt-6 border-t">
+      <div className="flex justify-between mt-8 pt-6 border-t border-gray-200">
         <Button
           onClick={prevStep}
           disabled={currentStep === 1}
           variant="outline"
+          className="px-6"
         >
           ← Précédent
         </Button>
@@ -302,6 +392,7 @@ const Questionnaire = ({ onComplete, showSkip = true }) => {
             <Button
               onClick={onComplete}
               variant="outline"
+              className="px-6"
             >
               Passer
             </Button>
@@ -310,7 +401,7 @@ const Questionnaire = ({ onComplete, showSkip = true }) => {
           {currentStep < 3 ? (
             <Button
               onClick={nextStep}
-              className="bg-primary-600 hover:bg-primary-700"
+              className="bg-primary-600 hover:bg-primary-700 px-6"
             >
               Suivant →
             </Button>
@@ -318,7 +409,7 @@ const Questionnaire = ({ onComplete, showSkip = true }) => {
             <Button
               onClick={submitQuestionnaire}
               loading={loading}
-              className="bg-primary-600 hover:bg-primary-700"
+              className="bg-primary-600 hover:bg-primary-700 px-6"
             >
               {loading ? 'Sauvegarde...' : 'Terminer le questionnaire'}
             </Button>
