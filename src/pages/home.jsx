@@ -6,9 +6,11 @@ import ProfessionalHeader from "../components/ProfessionalHeader.jsx";
 import ProfileForm from "../components/ProfileForm.jsx";
 import SeminarsList from "../components/SeminarsList.jsx";
 import Certification from "../components/Certification.jsx";
+import Questionnaire from "../components/Questionnaire.jsx";
 import { Button } from "../components/ui/button-enhanced.jsx";
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 
 export default function Home({ 
   user, 
@@ -24,6 +26,11 @@ export default function Home({
   const [activeTab, setActiveTab] = useState('dashboard');
   const [profileUpdated, setProfileUpdated] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [showQuestionnaire, setShowQuestionnaire] = useState(false);
+  const [hasCompletedQuestionnaire, setHasCompletedQuestionnaire] = useState(false);
+  
+  const supabase = useSupabaseClient();
+  const currentUser = useUser();
 
   const handleNavigateToDirectory = () => {
     navigate('/directory');
@@ -32,18 +39,15 @@ export default function Home({
   const handleProfileUpdated = () => {
     setProfileUpdated(true);
     toast.success('Profil mis à jour avec succès !');
-    // Recharger les données du dashboard si nécessaire
     if (loadDashboardData) {
       loadDashboardData();
     }
   };
 
   const handleVideoUploaded = () => {
-    // Forcer le rafraîchissement du dashboard
     setRefreshKey(prev => prev + 1);
     toast.success('Vidéo uploadée avec succès !');
     
-    // Recharger les données du dashboard après upload vidéo
     if (loadDashboardData) {
       setTimeout(() => {
         loadDashboardData();
@@ -58,7 +62,37 @@ export default function Home({
     profile.centres_interet && 
     profile.centres_interet.length > 0;
 
-  // Afficher un message si le profil n'est pas complet
+  // Vérifier si le questionnaire est complété
+  const checkQuestionnaireStatus = async () => {
+    if (!currentUser) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('questionnaire_responses')
+        .select('id, completed_at')
+        .eq('user_id', currentUser.id)
+        .single();
+
+      setHasCompletedQuestionnaire(!!data);
+      
+      // Afficher le questionnaire si pas complété et c'est la première visite
+      if (!data && !localStorage.getItem('questionnaire_shown')) {
+        setTimeout(() => {
+          setShowQuestionnaire(true);
+          localStorage.setItem('questionnaire_shown', 'true');
+        }, 3000);
+      }
+    } catch (error) {
+      setHasCompletedQuestionnaire(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser) {
+      checkQuestionnaireStatus();
+    }
+  }, [currentUser]);
+
   useEffect(() => {
     if (user && profile && !isProfileComplete) {
       toast.info('Complétez votre profil pour une meilleure expérience', {
@@ -66,6 +100,15 @@ export default function Home({
       });
     }
   }, [user, profile, isProfileComplete]);
+
+  const handleQuestionnaireComplete = () => {
+    setShowQuestionnaire(false);
+    setHasCompletedQuestionnaire(true);
+    toast.success('Questionnaire complété ! Votre profil est maintenant enrichi.');
+    if (loadDashboardData) {
+      loadDashboardData();
+    }
+  };
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -77,6 +120,25 @@ export default function Home({
                 <p className="text-yellow-800 text-sm">
                   📝 <strong>Profil incomplet</strong> - Complétez votre profil pour accéder à toutes les fonctionnalités.
                 </p>
+              </div>
+            )}
+            
+            {!hasCompletedQuestionnaire && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-blue-800 text-sm">
+                      🎯 <strong>Questionnaire de personnalité</strong> - Complétez le questionnaire pour améliorer vos connexions.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => setShowQuestionnaire(true)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    size="sm"
+                  >
+                    Commencer le questionnaire
+                  </Button>
+                </div>
               </div>
             )}
             
@@ -100,11 +162,23 @@ export default function Home({
       
       case 'profile':
         return (
-          <ProfileForm 
-            user={user}
-            profile={profile}
-            onProfileUpdated={handleProfileUpdated}
-          />
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-bold text-gray-900">Mon Profil</h2>
+              <Button
+                onClick={() => setShowQuestionnaire(true)}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                📝 Questionnaire de personnalité
+              </Button>
+            </div>
+            <ProfileForm 
+              user={user}
+              profile={profile}
+              onProfileUpdated={handleProfileUpdated}
+            />
+          </div>
         );
       
       case 'seminars':
@@ -195,6 +269,21 @@ export default function Home({
           </div>
         </div>
       </main>
+
+      {/* Modal Questionnaire */}
+      {showQuestionnaire && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <Questionnaire 
+                onComplete={handleQuestionnaireComplete}
+                showSkip={true}
+                isModal={true}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Loading State */}
       {dashboardLoading && activeTab === 'dashboard' && (
