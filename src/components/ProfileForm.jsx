@@ -22,6 +22,7 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
     { value: 'metier_du_foot', label: 'Métier du foot' }
   ];
 
+  // Charger le profil existant
   useEffect(() => {
     if (currentUser) {
       loadProfile();
@@ -34,7 +35,7 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
         .from('profiles')
         .select('*')
         .eq('id', currentUser.id)
-        .single(); // ← IMPORTANT: .single() car on attend un seul profil
+        .maybeSingle(); // Utiliser maybeSingle() pour éviter les 406
 
       if (error && error.code !== 'PGRST116') {
         console.error('Erreur chargement profil:', error);
@@ -80,6 +81,7 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
       return;
     }
 
+    // Validation
     if (!formData.sex || formData.is_major === null || formData.passions.length === 0) {
       toast.error('Veuillez remplir tous les champs obligatoires');
       return;
@@ -97,13 +99,18 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
         updated_at: new Date().toISOString()
       };
 
+      console.log('Données à sauvegarder:', profileData);
+
       const { error } = await supabase
         .from('profiles')
         .upsert(profileData, {
           onConflict: 'id'
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erreur Supabase:', error);
+        throw error;
+      }
 
       toast.success('Profil sauvegardé avec succès !');
       onProfileUpdated();
@@ -235,6 +242,18 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
           </Button>
         </div>
       </form>
+
+      {/* Instructions */}
+      <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+        <h3 className="font-semibold text-blue-800 dark:text-blue-300 mb-2">
+          ℹ️ À propos de votre profil SpotBulle
+        </h3>
+        <p className="text-sm text-blue-700 dark:text-blue-200">
+          Votre profil vous identifie dans la communauté SpotBulle France-Maroc. 
+          Remplissez-le soigneusement pour bénéficier d'une expérience personnalisée 
+          et pour être correctement référencé dans l'annuaire des participants.
+        </p>
+      </div>
     </div>
   );
 };
