@@ -120,16 +120,16 @@ export default function Home({
             )}
             
             {!hasCompletedQuestionnaire && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <div className="bg-france-50 border border-france-200 rounded-lg p-4 mb-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-blue-800 text-sm">
+                    <p className="text-france-800 text-sm">
                       🎯 <strong>Questionnaire de personnalité</strong> - Complétez le questionnaire pour améliorer vos connexions.
                     </p>
                   </div>
                   <Button
                     onClick={() => setShowQuestionnaire(true)}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    className="btn-spotbulle"
                     size="sm"
                   >
                     Commencer le questionnaire
@@ -160,11 +160,11 @@ export default function Home({
         return (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-gray-900">Mon Profil</h2>
+              <h2 className="text-2xl font-bold text-gray-900 font-french">Mon Profil</h2>
               <Button
                 onClick={() => setShowQuestionnaire(true)}
                 variant="outline"
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 border-france-300 text-france-700 hover:bg-france-50"
               >
                 📝 Questionnaire de personnalité
               </Button>
@@ -196,7 +196,7 @@ export default function Home({
   };
 
   return (
-    <div className="app-container min-h-screen bg-gradient-to-br from-blue-50 via-white to-red-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div className="app-container min-h-screen bg-gradient-to-br from-france-50 via-white to-maroc-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       {/* Header */}
       <ProfessionalHeader 
         user={user}
@@ -213,7 +213,7 @@ export default function Home({
             <Button
               variant={activeTab === 'dashboard' ? 'default' : 'outline'}
               onClick={() => setActiveTab('dashboard')}
-              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-red-600 hover:from-blue-700 hover:to-red-700 text-white border-0"
+              className="flex items-center gap-2 btn-spotbulle"
             >
               📊 Tableau de bord
             </Button>
@@ -221,7 +221,7 @@ export default function Home({
             <Button
               variant={activeTab === 'record' ? 'default' : 'outline'}
               onClick={() => setActiveTab('record')}
-              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-red-600 hover:from-blue-700 hover:to-red-700 text-white border-0"
+              className="flex items-center gap-2 btn-spotbulle"
             >
               🎥 Enregistrer une vidéo
             </Button>
@@ -229,7 +229,7 @@ export default function Home({
             <Button
               variant={activeTab === 'profile' ? 'default' : 'outline'}
               onClick={() => setActiveTab('profile')}
-              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-red-600 hover:from-blue-700 hover:to-red-700 text-white border-0"
+              className="flex items-center gap-2 btn-spotbulle"
             >
               👤 Mon profil
             </Button>
@@ -237,7 +237,7 @@ export default function Home({
             <Button
               variant={activeTab === 'seminars' ? 'default' : 'outline'}
               onClick={() => setActiveTab('seminars')}
-              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-red-600 hover:from-blue-700 hover:to-red-700 text-white border-0"
+              className="flex items-center gap-2 btn-spotbulle"
             >
               🎓 Séminaires
             </Button>
@@ -245,21 +245,21 @@ export default function Home({
             <Button
               variant={activeTab === 'certification' ? 'default' : 'outline'}
               onClick={() => setActiveTab('certification')}
-              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-red-600 hover:from-blue-700 hover:to-red-700 text-white border-0"
+              className="flex items-center gap-2 btn-spotbulle"
             >
               📜 Certification
             </Button>
             
             <Button
               onClick={handleNavigateToDirectory}
-              className="flex items-center gap-2 ml-auto bg-white text-blue-600 border border-blue-600 hover:bg-blue-600 hover:text-white transition-all"
+              className="flex items-center gap-2 ml-auto bg-white text-france-600 border border-france-600 hover:bg-france-600 hover:text-white transition-all font-medium py-2 px-4 rounded-lg"
             >
               👥 Annuaire
             </Button>
           </div>
 
           {/* Tab Content */}
-          <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 p-6">
+          <div className="card-spotbulle p-6">
             {renderTabContent()}
           </div>
         </div>
@@ -284,7 +284,7 @@ export default function Home({
       {dashboardLoading && activeTab === 'dashboard' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
           <div className="bg-white rounded-xl p-6 flex items-center gap-3 shadow-2xl border border-gray-200">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-france-600"></div>
             <span className="text-gray-700">Chargement des données...</span>
           </div>
         </div>
@@ -312,15 +312,18 @@ export default function Home({
       )}
 
       {/* Footer avec thème France-Maroc */}
-      <footer className="mt-12 py-6 border-t border-gray-200/50 dark:border-gray-700/50">
+      <footer className="mt-12 py-6 border-t border-gray-200/50 dark:border-gray-700/50 bg-gradient-to-r from-france-50 to-maroc-50">
         <div className="container mx-auto px-4 text-center">
           <div className="flex justify-center items-center gap-4 mb-4">
-            <div className="w-8 h-8 bg-blue-600 rounded-full"></div>
-            <div className="w-8 h-8 bg-white border border-gray-300 rounded-full"></div>
-            <div className="w-8 h-8 bg-red-600 rounded-full"></div>
+            <div className="w-8 h-8 bg-france-600 rounded-full shadow-france"></div>
+            <div className="w-8 h-8 bg-white border border-gray-300 rounded-full shadow-lg"></div>
+            <div className="w-8 h-8 bg-maroc-600 rounded-full shadow-maroc"></div>
           </div>
-          <p className="text-gray-600 dark:text-gray-400 text-sm">
-            🇫🇷🇲🇦 SpotBulle - Communauté France-Maroc • Partager, inspirer, connecter
+          <p className="text-gray-700 dark:text-gray-300 text-sm font-medium">
+            <span className="gradient-text-france-maroc font-french">SpotBulle</span> - Communauté France-Maroc • Partager, inspirer, connecter
+          </p>
+          <p className="text-gray-600 dark:text-gray-400 text-xs mt-2">
+            🇫🇷🇲🇦 Rejoignez la communauté franco-marocaine des passionnés
           </p>
         </div>
       </footer>
