@@ -112,18 +112,18 @@ export default function Home({
         return (
           <div className="space-y-6">
             {!isProfileComplete && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-                <p className="text-yellow-800 text-sm">
+              <div className="bg-yellow-2 border border-yellow-4 rounded-lg p-4 mb-6">
+                <p className="text-yellow-11 text-sm">
                   📝 <strong>Profil incomplet</strong> - Complétez votre profil pour accéder à toutes les fonctionnalités.
                 </p>
               </div>
             )}
             
             {!hasCompletedQuestionnaire && (
-              <div className="bg-france-50 border border-france-200 rounded-lg p-4 mb-6">
+              <div className="bg-france-2 border border-france-4 rounded-lg p-4 mb-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-france-800 text-sm">
+                    <p className="text-france-11 text-sm">
                       🎯 <strong>Questionnaire de personnalité</strong> - Complétez le questionnaire pour améliorer vos connexions.
                     </p>
                   </div>
@@ -160,11 +160,11 @@ export default function Home({
         return (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-gray-900 font-french">Mon Profil</h2>
+              <h2 className="text-2xl font-bold text-gray-11 font-french">Mon Profil</h2>
               <Button
                 onClick={() => setShowQuestionnaire(true)}
                 variant="outline"
-                className="flex items-center gap-2 border-france-300 text-france-700 hover:bg-france-50"
+                className="flex items-center gap-2 border-france-5 text-france-11 hover:bg-france-3"
               >
                 📝 Questionnaire de personnalité
               </Button>
@@ -196,7 +196,7 @@ export default function Home({
   };
 
   return (
-    <div className="app-container min-h-screen bg-gradient-to-br from-france-50 via-white to-maroc-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div className="app-container min-h-screen bg-gradient-to-br from-france-2 via-white to-maroc-2 dark:from-gray-11 dark:via-gray-10 dark:to-gray-11">
       {/* Header */}
       <ProfessionalHeader 
         user={user}
@@ -252,7 +252,7 @@ export default function Home({
             
             <Button
               onClick={handleNavigateToDirectory}
-              className="flex items-center gap-2 ml-auto bg-white text-france-600 border border-france-600 hover:bg-france-600 hover:text-white transition-all font-medium py-2 px-4 rounded-lg"
+              className="flex items-center gap-2 ml-auto bg-white text-france-11 border border-france-11 hover:bg-france-11 hover:text-white transition-all font-medium py-2 px-4 rounded-lg"
             >
               👥 Annuaire
             </Button>
@@ -268,7 +268,7 @@ export default function Home({
       {/* Modal Questionnaire */}
       {showQuestionnaire && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-4">
             <div className="p-6">
               <Questionnaire 
                 onComplete={handleQuestionnaireComplete}
@@ -283,17 +283,17 @@ export default function Home({
       {/* Loading State */}
       {dashboardLoading && activeTab === 'dashboard' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl p-6 flex items-center gap-3 shadow-2xl border border-gray-200">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-france-600"></div>
-            <span className="text-gray-700">Chargement des données...</span>
+          <div className="bg-white rounded-xl p-6 flex items-center gap-3 shadow-2xl border border-gray-4">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-france-11"></div>
+            <span className="text-gray-11">Chargement des données...</span>
           </div>
         </div>
       )}
 
       {/* Error State */}
       {dashboardError && activeTab === 'dashboard' && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-          <div className="flex items-center gap-2 text-red-800">
+        <div className="bg-red-2 border border-red-4 rounded-lg p-4 mb-6">
+          <div className="flex items-center gap-2 text-red-11">
             <span>⚠️</span>
             <div>
               <strong>Erreur lors du chargement :</strong>
@@ -303,7 +303,7 @@ export default function Home({
               variant="outline" 
               size="sm" 
               onClick={loadDashboardData}
-              className="ml-auto border-red-300 text-red-700 hover:bg-red-100"
+              className="ml-auto border-red-5 text-red-11 hover:bg-red-3"
             >
               Réessayer
             </Button>
@@ -312,17 +312,17 @@ export default function Home({
       )}
 
       {/* Footer avec thème France-Maroc */}
-      <footer className="mt-12 py-6 border-t border-gray-200/50 dark:border-gray-700/50 bg-gradient-to-r from-france-50 to-maroc-50">
+      <footer className="mt-12 py-6 border-t border-gray-4/50 dark:border-gray-9/50 bg-gradient-to-r from-france-2 to-maroc-2">
         <div className="container mx-auto px-4 text-center">
           <div className="flex justify-center items-center gap-4 mb-4">
-            <div className="w-8 h-8 bg-france-600 rounded-full shadow-france"></div>
-            <div className="w-8 h-8 bg-white border border-gray-300 rounded-full shadow-lg"></div>
-            <div className="w-8 h-8 bg-maroc-600 rounded-full shadow-maroc"></div>
+            <div className="w-8 h-8 bg-france-11 rounded-full shadow-france"></div>
+            <div className="w-8 h-8 bg-white border border-gray-5 rounded-full shadow-lg"></div>
+            <div className="w-8 h-8 bg-maroc-11 rounded-full shadow-maroc"></div>
           </div>
-          <p className="text-gray-700 dark:text-gray-300 text-sm font-medium">
+          <p className="text-gray-11 dark:text-gray-4 text-sm font-medium">
             <span className="gradient-text-france-maroc font-french">SpotBulle</span> - Communauté France-Maroc • Partager, inspirer, connecter
           </p>
-          <p className="text-gray-600 dark:text-gray-400 text-xs mt-2">
+          <p className="text-gray-10 dark:text-gray-5 text-xs mt-2">
             🇫🇷🇲🇦 Rejoignez la communauté franco-marocaine des passionnés
           </p>
         </div>
