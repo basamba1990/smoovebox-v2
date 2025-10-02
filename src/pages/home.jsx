@@ -12,15 +12,15 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 
-export default function Home({ 
-  user, 
-  profile, 
-  connectionStatus, 
-  onSignOut, 
-  dashboardData, 
-  dashboardLoading, 
-  dashboardError, 
-  loadDashboardData 
+export default function Home({
+  user,
+  profile,
+  connectionStatus,
+  onSignOut,
+  dashboardData,
+  dashboardLoading,
+  dashboardError,
+  loadDashboardData
 }) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -28,6 +28,9 @@ export default function Home({
   const [refreshKey, setRefreshKey] = useState(0);
   const [showQuestionnaire, setShowQuestionnaire] = useState(false);
   const [hasCompletedQuestionnaire, setHasCompletedQuestionnaire] = useState(false);
+
+  // Thème : france ou maroc
+  const [theme, setTheme] = useState("france");
 
   const supabase = useSupabaseClient();
   const currentUser = useUser();
@@ -44,7 +47,6 @@ export default function Home({
     }
   };
 
-  // CORRECTION : Fonction améliorée pour le rechargement après upload
   const handleVideoUploaded = () => {
     console.log('🔄 Home: Vidéo uploadée, incrémentation refreshKey');
     setRefreshKey(prev => prev + 1);
@@ -52,35 +54,17 @@ export default function Home({
   };
 
   // Vérifier si le profil est complet
-  const isProfileComplete = profile && 
-    profile.sex && 
-    profile.is_major !== null && 
-    profile.passions && 
-    profile.passions.length > 0;
+  const isProfileComplete =
+    profile &&
+    profile.genre &&
+    profile.statut &&
+    profile.centres_interet &&
+    profile.centres_interet.length > 0;
 
   // Vérifier si le questionnaire est complété
   const checkQuestionnaireStatus = async () => {
     if (!currentUser) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('questionnaire_responses')
-        .select('id, completed_at')
-        .eq('user_id', currentUser.id)
-        .single();
-
-      setHasCompletedQuestionnaire(!!data);
-      
-      // Afficher le questionnaire si pas complété et c'est la première visite
-      if (!data && !localStorage.getItem('questionnaire_shown')) {
-        setTimeout(() => {
-          setShowQuestionnaire(true);
-          localStorage.setItem('questionnaire_shown', 'true');
-        }, 3000);
-      }
-    } catch (error) {
-      setHasCompletedQuestionnaire(false);
-    }
+    // TODO: ajouter la logique pour vérifier l’état du questionnaire
   };
 
   useEffect(() => {
@@ -118,215 +102,80 @@ export default function Home({
                 </p>
               </div>
             )}
-            
-            {!hasCompletedQuestionnaire && (
-              <div className="bg-france-50 border border-france-200 rounded-lg p-4 mb-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-france-800 text-sm">
-                      🎯 <strong>Questionnaire de personnalité</strong> - Complétez le questionnaire pour améliorer vos connexions.
-                    </p>
-                  </div>
-                  <Button
-                    onClick={() => setShowQuestionnaire(true)}
-                    className="btn-spotbulle"
-                    size="sm"
-                  >
-                    Commencer le questionnaire
-                  </Button>
-                </div>
-              </div>
-            )}
-            
-            <Dashboard 
-              data={dashboardData}
-              loading={dashboardLoading}
-              error={dashboardError}
-              refreshKey={refreshKey}
-              onVideoUploaded={handleVideoUploaded}
-            />
-          </div>
-        );
-      
-      case 'record':
-        return (
-          <RecordVideo 
-            user={user}
-            onVideoUploaded={handleVideoUploaded}
-          />
-        );
-      
-      case 'profile':
-        return (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-gray-900 font-french">Mon Profil</h2>
-              <Button
-                onClick={() => setShowQuestionnaire(true)}
-                variant="outline"
-                className="flex items-center gap-2 border-france-300 text-france-700 hover:bg-france-50"
-              >
-                📝 Questionnaire de personnalité
-              </Button>
-            </div>
-            <ProfileForm 
+            <Dashboard
               user={user}
-              profile={profile}
-              onProfileUpdated={handleProfileUpdated}
+              refreshKey={refreshKey}
+              dashboardData={dashboardData}
+              dashboardLoading={dashboardLoading}
+              dashboardError={dashboardError}
+              loadDashboardData={loadDashboardData}
             />
           </div>
         );
-      
+
+      case 'record':
+        return <RecordVideo onVideoUploaded={handleVideoUploaded} />;
+
+      case 'profile':
+        return <ProfileForm profile={profile} onProfileUpdated={handleProfileUpdated} />;
+
       case 'seminars':
-        return <SeminarsList user={user} />;
-      
+        return <SeminarsList />;
+
       case 'certification':
-        return <Certification user={user} />;
-      
+        return <Certification />;
+
       default:
-        return (
-          <Dashboard 
-            data={dashboardData}
-            loading={dashboardLoading}
-            error={dashboardError}
-            refreshKey={refreshKey}
-          />
-        );
+        return <p className="text-gray-500">Sélectionnez un onglet.</p>;
     }
   };
 
+  // 🎨 Définir la classe du gradient selon le thème choisi
+  const themeBackground =
+    theme === "france"
+      ? "bg-gradient-to-br from-france-50 via-france-200 to-france-300"
+      : "bg-gradient-to-br from-maroc-50 via-maroc-300 to-maroc-100";
+
   return (
-    <div className="app-container min-h-screen bg-gradient-to-br from-france-50 via-white to-maroc-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div className={`app-container min-h-screen ${themeBackground} dark:from-gray-900 dark:to-gray-800`}>
       {/* Header */}
-      <ProfessionalHeader 
+      <ProfessionalHeader
         user={user}
         profile={profile}
         connectionStatus={connectionStatus}
         onSignOut={onSignOut}
       />
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
-        {/* Navigation Tabs */}
-        <div className="mb-8">
-          <div className="flex flex-wrap gap-2 mb-4">
-            <Button
-              variant={activeTab === 'dashboard' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('dashboard')}
-              className="flex items-center gap-2 btn-spotbulle"
-            >
-              📊 Tableau de bord
-            </Button>
-            
-            <Button
-              variant={activeTab === 'record' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('record')}
-              className="flex items-center gap-2 btn-spotbulle"
-            >
-              🎥 Enregistrer une vidéo
-            </Button>
-            
-            <Button
-              variant={activeTab === 'profile' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('profile')}
-              className="flex items-center gap-2 btn-spotbulle"
-            >
-              👤 Mon profil
-            </Button>
-            
-            <Button
-              variant={activeTab === 'seminars' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('seminars')}
-              className="flex items-center gap-2 btn-spotbulle"
-            >
-              🎓 Séminaires
-            </Button>
-            
-            <Button
-              variant={activeTab === 'certification' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('certification')}
-              className="flex items-center gap-2 btn-spotbulle"
-            >
-              📜 Certification
-            </Button>
-            
-            <Button
-              onClick={handleNavigateToDirectory}
-              className="flex items-center gap-2 ml-auto bg-white text-france-600 border border-france-600 hover:bg-france-600 hover:text-white transition-all font-medium py-2 px-4 rounded-lg"
-            >
-              👥 Annuaire
-            </Button>
-          </div>
+      {/* Toggle France / Maroc */}
+      <div className="flex justify-center mt-4">
+        <Button
+          onClick={() => setTheme(theme === "france" ? "maroc" : "france")}
+        >
+          {theme === "france" ? "🇲🇦 Passer au thème Maroc" : "🇫🇷 Passer au thème France"}
+        </Button>
+      </div>
 
-          {/* Tab Content */}
-          <div className="card-spotbulle p-6">
-            {renderTabContent()}
-          </div>
-        </div>
-      </main>
+      {/* Navigation tabs */}
+      <div className="flex justify-center space-x-4 mt-6">
+        <Button onClick={() => setActiveTab('dashboard')}>Dashboard</Button>
+        <Button onClick={() => setActiveTab('record')}>Enregistrer</Button>
+        <Button onClick={() => setActiveTab('profile')}>Profil</Button>
+        <Button onClick={() => setActiveTab('seminars')}>Séminaires</Button>
+        <Button onClick={() => setActiveTab('certification')}>Certification</Button>
+      </div>
 
-      {/* Modal Questionnaire */}
+      {/* Contenu dynamique */}
+      <div className="p-6">{renderTabContent()}</div>
+
+      {/* Bouton annuaire */}
+      <div className="fixed bottom-6 right-6">
+        <Button onClick={handleNavigateToDirectory}>📖 Annuaire</Button>
+      </div>
+
+      {/* Questionnaire modal */}
       {showQuestionnaire && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200">
-            <div className="p-6">
-              <Questionnaire 
-                onComplete={handleQuestionnaireComplete}
-                showSkip={true}
-                isModal={true}
-              />
-            </div>
-          </div>
-        </div>
+        <Questionnaire onComplete={handleQuestionnaireComplete} />
       )}
-
-      {/* Loading State */}
-      {dashboardLoading && activeTab === 'dashboard' && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl p-6 flex items-center gap-3 shadow-2xl border border-gray-200">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-france-600"></div>
-            <span className="text-gray-700">Chargement des données...</span>
-          </div>
-        </div>
-      )}
-
-      {/* Error State */}
-      {dashboardError && activeTab === 'dashboard' && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-          <div className="flex items-center gap-2 text-red-800">
-            <span>⚠️</span>
-            <div>
-              <strong>Erreur lors du chargement :</strong>
-              <p className="text-sm">{dashboardError}</p>
-            </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={loadDashboardData}
-              className="ml-auto border-red-300 text-red-700 hover:bg-red-100"
-            >
-              Réessayer
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Footer avec thème France-Maroc */}
-      <footer className="mt-12 py-6 border-t border-gray-200/50 dark:border-gray-700/50 bg-gradient-to-r from-france-50 to-maroc-50">
-        <div className="container mx-auto px-4 text-center">
-          <div className="flex justify-center items-center gap-4 mb-4">
-            <div className="w-8 h-8 bg-france-600 rounded-full shadow-france"></div>
-            <div className="w-8 h-8 bg-white border border-gray-300 rounded-full shadow-lg"></div>
-            <div className="w-8 h-8 bg-maroc-600 rounded-full shadow-maroc"></div>
-          </div>
-          <p className="text-gray-700 dark:text-gray-300 text-sm font-medium">
-            <span className="gradient-text-france-maroc font-french">SpotBulle</span> - Communauté France-Maroc • Partager, inspirer, connecter
-          </p>
-          <p className="text-gray-600 dark:text-gray-400 text-xs mt-2">
-            🇫🇷🇲🇦 Rejoignez la communauté franco-marocaine des passionnés
-          </p>
-        </div>
-      </footer>
     </div>
   );
 }
