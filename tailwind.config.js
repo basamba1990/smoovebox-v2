@@ -1,4 +1,6 @@
 // tailwind.config.js
+const colors = require('tailwindcss/colors')
+
 module.exports = {
   content: [
     "./src/**/*.{js,jsx,ts,tsx}",
@@ -6,6 +8,9 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // réimporter la palette grise par défaut
+        gray: colors.gray,
+
         primary: {
           50: '#f0fdfa',
           100: '#ccfbf1',
