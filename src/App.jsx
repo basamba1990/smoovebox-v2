@@ -10,12 +10,14 @@ import LoadingScreen from './components/LoadingScreen.jsx';
 import SupabaseDiagnostic from './components/SupabaseDiagnostic.jsx';
 import AuthCallback from '@/pages/AuthCallback.jsx';
 import ResetPassword from '@/pages/ResetPassword.jsx';
-import RecordVideo from '@/pages/record-video.jsx';
+import EnhancedRecordVideo from '@/pages/enhanced-record-video.jsx';
 import VideoSuccess from '@/pages/video-success.jsx';
 import Directory from '@/pages/directory.jsx';
 import Login from '@/pages/login.jsx';
 import ProfessionalHeader from './components/ProfessionalHeader.jsx';
-import Home from '@/pages/home.jsx'; // Nouvelle importation
+import Home from '@/pages/home.jsx';
+import VideoAnalysisPage from '@/pages/video-analysis.jsx';
+import UserJourneyOnboarding from '@/components/UserJourneyOnboarding.jsx';
 import './App.css';
 import './styles/design-system.css';
 
@@ -242,6 +244,11 @@ function AppContent() {
     }
   };
 
+  const handleVideoUploaded = () => {
+    console.log('🔄 App: Vidéo uploadée, rechargement des données');
+    loadDashboardData();
+  };
+
   const handleRetryConnection = async () => {
     setConnectionStatus('checking');
     setSupabaseError(null);
@@ -286,6 +293,7 @@ function AppContent() {
   return (
     <>
       <Routes>
+        {/* Route racine avec onboarding intégré */}
         <Route path="/" element={
           user ? 
             <RequireAuth>
@@ -293,7 +301,7 @@ function AppContent() {
                 dashboardData={dashboardData}
                 loading={dashboardLoading}
                 error={dashboardError}
-                onRetry={loadDashboardData}
+                loadDashboardData={loadDashboardData}
                 user={user}
                 profile={profile}
                 connectionStatus={connectionStatus}
@@ -304,29 +312,52 @@ function AppContent() {
           : 
             <WelcomeAgent onOpenAuthModal={() => setIsAuthModalOpen(true)} />
         } />
+        
+        {/* Routes d'authentification */}
         <Route path="/login" element={<Login />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        
+        {/* Routes principales de l'application */}
         <Route path="/record-video" element={
           <RequireAuth>
-            <div className="app-container">
-              <ProfessionalHeader 
-                user={user} 
-                profile={profile} 
-                connectionStatus={connectionStatus} 
-                onSignOut={handleSignOut} 
-                onAuthModalOpen={() => setIsAuthModalOpen(true)} 
-              />
-              <RecordVideo />
-            </div>
+            <EnhancedRecordVideo 
+              user={user}
+              profile={profile}
+              onSignOut={handleSignOut}
+              onVideoUploaded={handleVideoUploaded}
+            />
           </RequireAuth>
         } />
-        <Route path="/video-success" element={<VideoSuccess />} />
-        <Route path="/directory" element={<Directory />} />
+        
+        <Route path="/video-analysis/:videoId" element={
+          <RequireAuth>
+            <VideoAnalysisPage 
+              user={user}
+              profile={profile}
+              onSignOut={handleSignOut}
+            />
+          </RequireAuth>
+        } />
+        
+        <Route path="/video-success" element={
+          <RequireAuth>
+            <VideoSuccess />
+          </RequireAuth>
+        } />
+        
+        <Route path="/directory" element={
+          <RequireAuth>
+            <Directory />
+          </RequireAuth>
+        } />
+        
+        {/* Redirections et fallback */}
         <Route path="/dashboard" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       
+      {/* Modal d'authentification */}
       <AuthModal 
         isOpen={isAuthModalOpen} 
         onClose={() => setIsAuthModalOpen(false)}
