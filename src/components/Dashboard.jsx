@@ -281,33 +281,33 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
   };
 
   const getStatusBadge = (status, hasTranscription = false, hasAnalysis = false) => {
-    if (!status) return 'bg-gray-100 text-gray-800';
+    if (!status) return 'bg-gray-3 text-gray-11';
 
     let baseClass = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ';
 
     if (hasAnalysis) {
-      baseClass += 'bg-green-100 text-green-800';
+      baseClass += 'bg-green-3 text-green-11';
     } else if (hasTranscription) {
-      baseClass += 'bg-blue-100 text-blue-800';
+      baseClass += 'bg-blue-3 text-blue-11';
     } else {
       switch (status) {
         case 'uploaded':
-          baseClass += 'bg-yellow-100 text-yellow-800';
+          baseClass += 'bg-yellow-3 text-yellow-11';
           break;
         case 'processing':
         case 'analyzing':
-          baseClass += 'bg-blue-100 text-blue-800';
+          baseClass += 'bg-blue-3 text-blue-11';
           break;
         case 'processed':
         case 'transcribed':
         case 'analyzed':
-          baseClass += 'bg-green-100 text-green-800';
+          baseClass += 'bg-green-3 text-green-11';
           break;
         case 'error':
-          baseClass += 'bg-red-100 text-red-800';
+          baseClass += 'bg-red-3 text-red-11';
           break;
         default:
-          baseClass += 'bg-gray-100 text-gray-800';
+          baseClass += 'bg-gray-3 text-gray-11';
       }
     }
 
@@ -381,10 +381,10 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Vidéos</p>
+                <p className="text-sm font-medium text-gray-10">Total Vidéos</p>
                 <p className="text-2xl font-bold">{stats.total}</p>
               </div>
-              <Video className="h-8 w-8 text-blue-500" />
+              <Video className="h-8 w-8 text-blue-7" />
             </div>
           </CardContent>
         </Card>
@@ -393,10 +393,10 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Traités</p>
+                <p className="text-sm font-medium text-gray-10">Traités</p>
                 <p className="text-2xl font-bold">{stats.processed}</p>
               </div>
-              <CheckCircle className="h-8 w-8 text-green-500" />
+              <CheckCircle className="h-8 w-8 text-green-7" />
             </div>
           </CardContent>
         </Card>
@@ -405,10 +405,10 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Transcrits</p>
+                <p className="text-sm font-medium text-gray-10">Transcrits</p>
                 <p className="text-2xl font-bold">{stats.transcribed}</p>
               </div>
-              <FileText className="h-8 w-8 text-purple-500" />
+              <FileText className="h-8 w-8 text-purple-7" />
             </div>
           </CardContent>
         </Card>
@@ -417,10 +417,10 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Analysés IA</p>
+                <p className="text-sm font-medium text-gray-10">Analysés IA</p>
                 <p className="text-2xl font-bold">{stats.analyzed}</p>
               </div>
-              <BarChart3 className="h-8 w-8 text-orange-500" />
+              <BarChart3 className="h-8 w-8 text-orange-7" />
             </div>
           </CardContent>
         </Card>
@@ -436,8 +436,8 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
           {[1, 2, 3].map((i) => (
             <Card key={i} className="animate-pulse">
               <CardContent className="p-6">
-                <div className="h-4 bg-gray-200 rounded mb-4 w-3/4"></div>
-                <div className="h-20 bg-gray-200 rounded"></div>
+                <div className="h-4 bg-gray-4 rounded mb-4 w-3/4"></div>
+                <div className="h-20 bg-gray-4 rounded"></div>
               </CardContent>
             </Card>
           ))}
@@ -448,9 +448,9 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     if (error) {
       return (
         <div className="text-center py-8">
-          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Erreur de chargement</h3>
-          <p className="text-gray-600 mb-4">{error}</p>
+          <AlertCircle className="h-12 w-12 text-red-7 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-11 mb-2">Erreur de chargement</h3>
+          <p className="text-gray-10 mb-4">{error}</p>
           <Button onClick={fetchVideos}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Réessayer
@@ -462,9 +462,9 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     if (videos.length === 0) {
       return (
         <div className="text-center py-12">
-          <Video className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Aucune vidéo</h3>
-          <p className="text-gray-600 mb-4">Commencez par uploader votre première vidéo</p>
+          <Video className="h-16 w-16 text-gray-7 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-11 mb-2">Aucune vidéo</h3>
+          <p className="text-gray-10 mb-4">Commencez par uploader votre première vidéo</p>
           <Button onClick={() => setActiveTab('upload')}>
             <Upload className="h-4 w-4 mr-2" />
             Uploader une vidéo
@@ -503,7 +503,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
                       variant="default"
                       size="sm"
                       onClick={() => handleVideoAction(video, 'play')}
-                      className="bg-blue-600 hover:bg-blue-700"
+                      className="bg-blue-11 hover:bg-blue-12"
                     >
                       <Play className="h-4 w-4 mr-1" />
                       Lire
@@ -527,7 +527,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
               </CardHeader>
               
               <CardContent>
-                <p className="text-sm text-gray-600 mb-4">
+                <p className="text-sm text-gray-10 mb-4">
                   {video.description || 'Aucune description'}
                 </p>
                 
@@ -539,11 +539,11 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
                       Transcription
                     </h4>
                     {hasTranscription ? (
-                      <div className="text-sm bg-gray-50 rounded p-3 max-h-32 overflow-y-auto">
+                      <div className="text-sm bg-gray-2 rounded p-3 max-h-32 overflow-y-auto">
                         {video.transcription_data?.text || video.transcript?.text || 'Transcription disponible'}
                       </div>
                     ) : (
-                      <div className="text-sm text-gray-500">
+                      <div className="text-sm text-gray-9">
                         {video.status === 'processing' ? (
                           <div className="flex items-center gap-2">
                             <Clock className="h-4 w-4" />
@@ -571,7 +571,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
                     </h4>
                     {hasAnalysis ? (
                       <div className="space-y-2">
-                        <div className="text-sm bg-gray-50 rounded p-3 max-h-24 overflow-y-auto">
+                        <div className="text-sm bg-gray-2 rounded p-3 max-h-24 overflow-y-auto">
                           {video.analysis?.summary || video.ai_result?.insights || 'Analyse disponible'}
                         </div>
                         <div className="flex gap-2">
@@ -594,7 +594,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
                         </div>
                       </div>
                     ) : (
-                      <div className="text-sm text-gray-500">
+                      <div className="text-sm text-gray-9">
                         {hasTranscription ? (
                           <Button
                             size="sm"
