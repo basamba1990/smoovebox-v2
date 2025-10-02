@@ -28,7 +28,7 @@ export default function Home({
   const [refreshKey, setRefreshKey] = useState(0);
   const [showQuestionnaire, setShowQuestionnaire] = useState(false);
   const [hasCompletedQuestionnaire, setHasCompletedQuestionnaire] = useState(false);
-  
+
   const supabase = useSupabaseClient();
   const currentUser = useUser();
 
@@ -49,20 +49,14 @@ export default function Home({
     console.log('🔄 Home: Vidéo uploadée, incrémentation refreshKey');
     setRefreshKey(prev => prev + 1);
     toast.success('Vidéo uploadée avec succès !');
-    
-    if (loadDashboardData) {
-      setTimeout(() => {
-        loadDashboardData();
-      }, 2000);
-    }
   };
 
   // Vérifier si le profil est complet
   const isProfileComplete = profile && 
-    profile.genre && 
-    profile.statut && 
-    profile.centres_interet && 
-    profile.centres_interet.length > 0;
+    profile.sex && 
+    profile.is_major !== null && 
+    profile.passions && 
+    profile.passions.length > 0;
 
   // Vérifier si le questionnaire est complété
   const checkQuestionnaireStatus = async () => {
@@ -75,10 +69,6 @@ export default function Home({
         .eq('user_id', currentUser.id)
         .single();
 
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-        console.error('Erreur vérification questionnaire:', error);
-      }
-
       setHasCompletedQuestionnaire(!!data);
       
       // Afficher le questionnaire si pas complété et c'est la première visite
@@ -89,7 +79,6 @@ export default function Home({
         }, 3000);
       }
     } catch (error) {
-      console.error('Erreur checkQuestionnaireStatus:', error);
       setHasCompletedQuestionnaire(false);
     }
   };
@@ -149,8 +138,10 @@ export default function Home({
               </div>
             )}
             
-            {/* CORRECTION : Dashboard avec les bonnes props */}
             <Dashboard 
+              data={dashboardData}
+              loading={dashboardLoading}
+              error={dashboardError}
               refreshKey={refreshKey}
               onVideoUploaded={handleVideoUploaded}
             />
@@ -195,15 +186,17 @@ export default function Home({
       default:
         return (
           <Dashboard 
+            data={dashboardData}
+            loading={dashboardLoading}
+            error={dashboardError}
             refreshKey={refreshKey}
-            onVideoUploaded={handleVideoUploaded}
           />
         );
     }
   };
 
   return (
-    <div className="app-container min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 dark:from-gray-900 dark:to-gray-800">
+    <div className="app-container min-h-screen bg-gradient-to-br from-blue-50 via-white to-red-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       {/* Header */}
       <ProfessionalHeader 
         user={user}
@@ -220,7 +213,7 @@ export default function Home({
             <Button
               variant={activeTab === 'dashboard' ? 'default' : 'outline'}
               onClick={() => setActiveTab('dashboard')}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-red-600 hover:from-blue-700 hover:to-red-700 text-white border-0"
             >
               📊 Tableau de bord
             </Button>
@@ -228,7 +221,7 @@ export default function Home({
             <Button
               variant={activeTab === 'record' ? 'default' : 'outline'}
               onClick={() => setActiveTab('record')}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-red-600 hover:from-blue-700 hover:to-red-700 text-white border-0"
             >
               🎥 Enregistrer une vidéo
             </Button>
@@ -236,7 +229,7 @@ export default function Home({
             <Button
               variant={activeTab === 'profile' ? 'default' : 'outline'}
               onClick={() => setActiveTab('profile')}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-red-600 hover:from-blue-700 hover:to-red-700 text-white border-0"
             >
               👤 Mon profil
             </Button>
@@ -244,7 +237,7 @@ export default function Home({
             <Button
               variant={activeTab === 'seminars' ? 'default' : 'outline'}
               onClick={() => setActiveTab('seminars')}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-red-600 hover:from-blue-700 hover:to-red-700 text-white border-0"
             >
               🎓 Séminaires
             </Button>
@@ -252,22 +245,21 @@ export default function Home({
             <Button
               variant={activeTab === 'certification' ? 'default' : 'outline'}
               onClick={() => setActiveTab('certification')}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-red-600 hover:from-blue-700 hover:to-red-700 text-white border-0"
             >
               📜 Certification
             </Button>
             
             <Button
-              variant="outline"
               onClick={handleNavigateToDirectory}
-              className="flex items-center gap-2 ml-auto"
+              className="flex items-center gap-2 ml-auto bg-white text-blue-600 border border-blue-600 hover:bg-blue-600 hover:text-white transition-all"
             >
               👥 Annuaire
             </Button>
           </div>
 
           {/* Tab Content */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+          <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 p-6">
             {renderTabContent()}
           </div>
         </div>
@@ -275,8 +267,8 @@ export default function Home({
 
       {/* Modal Questionnaire */}
       {showQuestionnaire && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200">
             <div className="p-6">
               <Questionnaire 
                 onComplete={handleQuestionnaireComplete}
@@ -284,6 +276,16 @@ export default function Home({
                 isModal={true}
               />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading State */}
+      {dashboardLoading && activeTab === 'dashboard' && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl p-6 flex items-center gap-3 shadow-2xl border border-gray-200">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <span className="text-gray-700">Chargement des données...</span>
           </div>
         </div>
       )}
@@ -301,13 +303,27 @@ export default function Home({
               variant="outline" 
               size="sm" 
               onClick={loadDashboardData}
-              className="ml-auto"
+              className="ml-auto border-red-300 text-red-700 hover:bg-red-100"
             >
               Réessayer
             </Button>
           </div>
         </div>
       )}
+
+      {/* Footer avec thème France-Maroc */}
+      <footer className="mt-12 py-6 border-t border-gray-200/50 dark:border-gray-700/50">
+        <div className="container mx-auto px-4 text-center">
+          <div className="flex justify-center items-center gap-4 mb-4">
+            <div className="w-8 h-8 bg-blue-600 rounded-full"></div>
+            <div className="w-8 h-8 bg-white border border-gray-300 rounded-full"></div>
+            <div className="w-8 h-8 bg-red-600 rounded-full"></div>
+          </div>
+          <p className="text-gray-600 dark:text-gray-400 text-sm">
+            🇫🇷🇲🇦 SpotBulle - Communauté France-Maroc • Partager, inspirer, connecter
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }
