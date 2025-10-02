@@ -1,9 +1,11 @@
 // src/components/UserJourneyOnboarding.jsx
 import React, { useState } from 'react';
 import { Button } from './ui/button-enhanced';
+import { useNavigate } from 'react-router-dom';
 
 const UserJourneyOnboarding = ({ onComplete, currentStep = 0 }) => {
   const [step, setStep] = useState(currentStep);
+  const navigate = useNavigate();
 
   const steps = [
     {
@@ -55,14 +57,16 @@ const UserJourneyOnboarding = ({ onComplete, currentStep = 0 }) => {
         }
         break;
       case 'record':
-        // Navigation vers l'enregistrement
-        window.location.href = '/record-video';
+        onComplete();
+        navigate('/record-video');
         break;
       case 'directory':
-        window.location.href = '/directory';
+        onComplete();
+        navigate('/directory');
         break;
       case 'profile':
-        window.location.href = '/profile';
+        onComplete();
+        navigate('/');
         break;
       default:
         onComplete();
