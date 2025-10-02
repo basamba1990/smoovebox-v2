@@ -1,1 +1,99 @@
+/* src/index.css */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&family=Amiri:wght@400;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
+/* Styles de base personnalisés */
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Playfair Display', serif;
+  }
+}
+
+/* Composants personnalisés */
+@layer components {
+  .btn-france {
+    @apply bg-france-600 hover:bg-france-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+  
+  .btn-maroc {
+    @apply bg-maroc-600 hover:bg-maroc-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+  }
+  
+  .btn-spotbulle {
+    @apply bg-gradient-to-r from-france-600 to-maroc-600 hover:from-france-700 hover:to-maroc-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 shadow-spotbulle;
+  }
+  
+  .card-spotbulle {
+    @apply bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-spotbulle shadow-spotbulle border border-gray-200/50 dark:border-gray-700/50;
+  }
+  
+  .gradient-text-france-maroc {
+    @apply bg-gradient-to-r from-france-600 to-maroc-600 bg-clip-text text-transparent;
+  }
+  
+  .border-gradient-france-maroc {
+    @apply border-2 border-transparent bg-gradient-to-r from-france-600 to-maroc-600 bg-origin-border;
+  }
+}
+
+/* Animations personnalisées */
+@layer utilities {
+  @keyframes gradient {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+  
+  .animate-gradient {
+    animation: gradient 15s ease infinite;
+    background-size: 400% 400%;
+  }
+  
+  .text-shadow {
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  .text-shadow-lg {
+    text-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+  }
+}
+
+/* Styles pour le mode sombre */
+@media (prefers-color-scheme: dark) {
+  .dark\:bg-france-maroc-gradient {
+    background: linear-gradient(135deg, #1E40AF 0%, #1E293B 50%, #7B2727 100%);
+  }
+}
+
+/* Scrollbar personnalisée */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-100 dark:bg-gray-800;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-france-400 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-france-600;
+}
