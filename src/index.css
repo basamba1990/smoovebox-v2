@@ -23,15 +23,15 @@
 /* Composants personnalisés */
 @layer components {
   .btn-france {
-    @apply bg-france-600 hover:bg-france-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+    @apply bg-france-100 hover:bg-france-300 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
   }
   
   .btn-maroc {
-    @apply bg-maroc-600 hover:bg-maroc-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
+    @apply bg-maroc-100 hover:bg-maroc-200 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200;
   }
   
   .btn-spotbulle {
-    @apply bg-gradient-to-r from-france-600 to-maroc-600 hover:from-france-700 hover:to-maroc-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 shadow-spotbulle hover:shadow-spotbulle-lg;
+    @apply bg-gradient-to-r from-france-100 to-maroc-100 hover:from-france-300 hover:to-maroc-200 text-white font-medium py-2 px-4 rounded-lg transition-all duration-200 shadow-spotbulle hover:shadow-spotbulle-lg;
   }
   
   .card-spotbulle {
@@ -39,26 +39,20 @@
   }
   
   .gradient-text-france-maroc {
-    @apply bg-gradient-to-r from-france-600 to-maroc-600 bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-france-100 to-maroc-100 bg-clip-text text-transparent;
   }
   
   .border-gradient-france-maroc {
-    @apply border-2 border-transparent bg-gradient-to-r from-france-600 to-maroc-600 bg-origin-border;
+    @apply border-2 border-transparent bg-gradient-to-r from-france-100 to-maroc-100 bg-origin-border;
   }
 }
 
 /* Animations personnalisées */
 @layer utilities {
   @keyframes gradient {
-    0% {
-      background-position: 0% 50%;
-    }
-    50% {
-      background-position: 100% 50%;
-    }
-    100% {
-      background-position: 0% 50%;
-    }
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
   }
   
   .animate-gradient {
@@ -92,11 +86,11 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-france-400 rounded-full;
+  @apply bg-france-100 rounded-full;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-france-600;
+  @apply bg-france-300;
 }
 
 /* Styles pour les avatars */
@@ -123,14 +117,8 @@
 
 /* Animations de feedback */
 @keyframes slide-in-right {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
 }
 
 .slide-in-right {
@@ -148,22 +136,12 @@
 
 /* Responsive design improvements */
 @media (max-width: 768px) {
-  .mobile-stack {
-    flex-direction: column;
-  }
-  
-  .mobile-full {
-    width: 100%;
-  }
+  .mobile-stack { flex-direction: column; }
+  .mobile-full { width: 100%; }
 }
 
 /* Print styles */
 @media print {
-  .no-print {
-    display: none !important;
-  }
-  
-  .print-break {
-    page-break-after: always;
-  }
+  .no-print { display: none !important; }
+  .print-break { page-break-after: always; }
 }
