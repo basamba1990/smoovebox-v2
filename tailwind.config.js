@@ -1,7 +1,7 @@
 // tailwind.config.js
 module.exports = {
   content: [
-    "./src/**/*.{js,jsx,ts,tsx}",   // ton code source
+    "./src/**/*.{js,jsx,ts,tsx}",
   ],
   theme: {
     extend: {
@@ -17,6 +17,18 @@ module.exports = {
           700: '#0f766e',
           800: '#115e59',
           900: '#134e4a',
+        },
+        france: {
+          50: '#eff6ff',  // bleu très clair
+          100: '#3b82f6', // bleu France
+          200: '#ffffff', // blanc
+          300: '#ef4444', // rouge vif
+        },
+        maroc: {
+          50: '#fef2f2',  // rouge clair
+          100: '#dc2626', // rouge vif
+          200: '#16a34a', // vert Maroc
+          300: '#ffffff', // blanc
         },
       },
     },
