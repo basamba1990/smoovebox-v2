@@ -6,8 +6,9 @@ import { toast } from 'sonner';
 import { Button } from '../components/ui/button-enhanced.jsx';
 import { supabase, refreshSession } from '../lib/supabase';
 import { videoService } from '../services/videoService';
+import ProfessionalHeader from '../components/ProfessionalHeader';
 
-const VideoSuccess = () => {
+const VideoSuccess = ({ user, profile, onSignOut }) => {
   const [videoData, setVideoData] = useState(null);
   const [videoUrl, setVideoUrl] = useState('');
   const [loading, setLoading] = useState(true);
@@ -92,7 +93,7 @@ const VideoSuccess = () => {
 
       const { data, error } = await supabase
         .from('videos')
-        .select('id, title, description, storage_path, created_at, public_url')
+        .select('id, title, description, storage_path, created_at, public_url, analysis_result, ai_score')
         .eq('id', videoId)
         .single();
 
@@ -124,10 +125,11 @@ const VideoSuccess = () => {
         toast.error('Erreur lors de la génération de l’URL de la vidéo.');
       } else {
         setVideoUrl(url);
+        
+        // Envoi d'email (optionnel)
         try {
           if (!import.meta.env.VITE_SUPABASE_URL) {
-            setError('Erreur de configuration serveur.');
-            toast.error('Erreur de configuration serveur.');
+            toast.warning('Configuration email non disponible.');
             return;
           }
           const response = await Promise.race([
@@ -183,59 +185,129 @@ const VideoSuccess = () => {
     }
   };
 
+  const navigateToAnalysis = () => {
+    if (videoData?.analysis_result) {
+      navigate(`/video-analysis/${videoId}`);
+    } else {
+      toast.info('L\'analyse de votre vidéo est en cours...');
+    }
+  };
+
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen text-white bg-black">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-        <p>Chargement de votre vidéo...</p>
+      <div className="min-h-screen bg-gradient-to-br from-france-50 to-maroc-50">
+        <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
+        <div className="flex flex-col items-center justify-center min-h-[50vh] text-gray-700">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
+          <p>Chargement de votre vidéo...</p>
+        </div>
       </div>
     );
   }
 
   if (error || !videoData) {
     return (
-      <div className="flex flex-col items-center text-center text-white p-6 min-h-screen bg-black">
-        <p className="text-red-500 mb-4">{error || 'Vidéo non trouvée.'}</p>
-        <Button onClick={fetchVideoData} className="bg-blue-500 hover:bg-blue-600 mb-4">
-          Réessayer
-        </Button>
-        <Button onClick={() => navigate('/login')} className="bg-gray-500 hover:bg-gray-600">
-          Se reconnecter
-        </Button>
+      <div className="min-h-screen bg-gradient-to-br from-france-50 to-maroc-50">
+        <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
+        <div className="flex flex-col items-center text-center p-6 min-h-[50vh] justify-center">
+          <p className="text-red-500 mb-4">{error || 'Vidéo non trouvée.'}</p>
+          <div className="flex gap-4">
+            <Button onClick={fetchVideoData} className="btn-spotbulle">
+              Réessayer
+            </Button>
+            <Button onClick={() => navigate('/')} className="bg-gray-500 hover:bg-gray-600">
+              Retour à l'accueil
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col items-center text-center text-white p-6 min-h-screen bg-black">
-      <h1 className="text-2xl font-bold mb-6">Votre vidéo est en ligne !</h1>
-      <div className="mb-8 p-6 border-2 border-blue-500 rounded-lg bg-white/10 backdrop-blur-md">
-        <h3 className="text-xl mb-4">Partagez votre vidéo avec ce QR code</h3>
-        <div className="flex justify-center mb-4">
-          <QRCode value={videoUrl} size={200} fgColor="#38b2ac" />
+    <div className="min-h-screen bg-gradient-to-br from-france-50 to-maroc-50">
+      <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
+      
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-4xl mx-auto text-center">
+          <h1 className="text-4xl font-french font-bold text-gray-900 mb-2">
+            🎉 Félicitations !
+          </h1>
+          <p className="text-xl text-gray-600 mb-8">
+            Votre vidéo est en ligne et accessible à la communauté
+          </p>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            {/* QR Code */}
+            <div className="card-spotbulle p-6">
+              <h3 className="text-xl font-semibold mb-4">📱 QR Code de partage</h3>
+              <div className="flex justify-center mb-4">
+                <QRCode value={videoUrl} size={200} fgColor="#3b82f6" />
+              </div>
+              <p className="text-sm text-gray-600">
+                Scannez ce QR code pour accéder directement à votre vidéo
+              </p>
+            </div>
+
+            {/* Lien de partage */}
+            <div className="card-spotbulle p-6">
+              <h3 className="text-xl font-semibold mb-4">🔗 Lien de partage</h3>
+              <div className="mb-4">
+                <input
+                  type="text"
+                  value={videoUrl}
+                  readOnly
+                  className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 text-sm"
+                />
+              </div>
+              <div className="flex gap-3">
+                <Button onClick={copyToClipboard} className="flex-1">
+                  📋 Copier le lien
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
+            <Button
+              onClick={navigateToAnalysis}
+              className="btn-spotbulle text-lg py-3 px-6"
+              disabled={!videoData?.analysis_result}
+            >
+              📊 Voir l'analyse détaillée
+            </Button>
+            
+            <Button
+              onClick={() => navigate('/record-video')}
+              className="bg-white text-france-600 border border-france-600 hover:bg-france-50 text-lg py-3 px-6"
+            >
+              🎥 Créer une nouvelle vidéo
+            </Button>
+            
+            <Button
+              onClick={() => navigate('/directory')}
+              className="bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 text-lg py-3 px-6"
+            >
+              👥 Explorer la communauté
+            </Button>
+          </div>
+
+          {/* Informations supplémentaires */}
+          {videoData.analysis_result && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+              <p className="text-green-800">
+                ✅ Votre vidéo a été analysée avec succès. 
+                <strong> Score IA : {videoData.ai_score ? (videoData.ai_score * 10).toFixed(1) : '7.0'}/10</strong>
+              </p>
+            </div>
+          )}
+
+          <div className="text-sm text-gray-600">
+            <p>Votre vidéo est maintenant visible par les membres de la communauté SpotBulle</p>
+          </div>
         </div>
-        <p className="text-sm text-gray-200">
-          Scannez ce QR code pour accéder à votre vidéo
-        </p>
       </div>
-      <div className="mb-6 w-full max-w-md">
-        <p className="mb-2">Lien direct vers votre vidéo :</p>
-        <input
-          type="text"
-          value={videoUrl}
-          readOnly
-          className="w-full p-2 border rounded bg-white/10 text-white mb-4"
-        />
-        <div className="flex gap-4 mt-4 justify-center">
-          <Button onClick={copyToClipboard}>Copier le lien</Button>
-        </div>
-      </div>
-      <Button
-        onClick={() => navigate('/directory')}
-        className="bg-orange-500 hover:bg-orange-600"
-      >
-        Explorer l'annuaire des participants
-      </Button>
     </div>
   );
 };
