@@ -111,7 +111,7 @@ const VideoAnalysisPage = ({ user, profile, onSignOut }) => {
                     👥 Partager avec la communauté
                   </Button>
                   <Button
-                    onClick={() => navigate('/seminars')}
+                    onClick={() => navigate('/')}
                     className="w-full justify-start bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
                   >
                     🎓 Voir les séminaires
