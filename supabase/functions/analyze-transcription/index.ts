@@ -1,7 +1,7 @@
+// supabase/functions/analyze-transcription/index.js
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import OpenAI from 'npm:openai@4.28.0'
 
-// Alignement avec les statuts définis dans constants/videoStatus.js
 const VIDEO_STATUS = {
   UPLOADED: 'uploaded',
   PROCESSING: 'processing',
@@ -9,33 +9,57 @@ const VIDEO_STATUS = {
   ANALYZING: 'analyzing',
   ANALYZED: 'analyzed',
   PUBLISHED: 'published',
-  FAILED: 'failed',
-  DRAFT: 'draft',
-  READY: 'ready'
+  FAILED: 'failed'
 };
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
-
-// Timeout pour l'analyse
-const ANALYSIS_TIMEOUT = 240000; // 4 minutes
 
 Deno.serve(async (req) => {
   // Gérer les requêtes OPTIONS (CORS preflight)
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders });
   }
+
+  let videoId = null;
 
   try {
     console.log("Fonction analyze-transcription appelée");
 
-    const { videoId, transcriptionText, userId } = await req.json();
-    
-    if (!videoId || !transcriptionText) {
+    // CORRECTION : Vérification du corps de la requête
+    let requestBody;
+    try {
+      requestBody = await req.json();
+    } catch (parseError) {
       return new Response(
-        JSON.stringify({ error: 'Paramètres manquants: videoId et transcriptionText requis' }),
+        JSON.stringify({ 
+          error: 'Corps de requête JSON invalide',
+          details: parseError.message 
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    const { videoId: vidId, transcriptionText, userId } = requestBody;
+    videoId = vidId;
+
+    // CORRECTION : Validation des paramètres requis
+    if (!videoId) {
+      return new Response(
+        JSON.stringify({ error: 'Paramètre videoId requis' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!transcriptionText) {
+      return new Response(
+        JSON.stringify({ error: 'Paramètre transcriptionText requis' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -50,6 +74,17 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const openai = new OpenAI({ apiKey: openaiApiKey });
+
+    // Vérifier que la vidéo existe
+    const { data: video, error: videoError } = await supabase
+      .from('videos')
+      .select('*')
+      .eq('id', videoId)
+      .single();
+
+    if (videoError) {
+      throw new Error(`Vidéo non trouvée: ${videoError.message}`);
+    }
 
     // Mettre à jour le statut
     await supabase
@@ -178,24 +213,26 @@ Assurez-vous que la réponse est un JSON valide.`;
     console.error("Erreur générale dans analyze-transcription:", error);
 
     // Mettre à jour le statut d'erreur
-    try {
-      const supabaseUrl = Deno.env.get('SUPABASE_URL');
-      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-      
-      if (supabaseUrl && supabaseServiceKey) {
-        const supabase = createClient(supabaseUrl, supabaseServiceKey);
-        await supabase
-          .from('videos')
-          .update({ 
-            status: VIDEO_STATUS.FAILED,
-            error_message: error.message,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId)
-          .catch(e => console.error('Erreur mise à jour statut erreur:', e));
+    if (videoId) {
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+        
+        if (supabaseUrl && supabaseServiceKey) {
+          const supabase = createClient(supabaseUrl, supabaseServiceKey);
+          await supabase
+            .from('videos')
+            .update({ 
+              status: VIDEO_STATUS.FAILED,
+              error_message: error.message,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', videoId)
+            .catch(e => console.error('Erreur mise à jour statut erreur:', e));
+        }
+      } catch (updateError) {
+        console.error("Erreur lors de la mise à jour du statut d'erreur:", updateError);
       }
-    } catch (updateError) {
-      console.error("Erreur lors de la mise à jour du statut d'erreur:", updateError);
     }
 
     return new Response(
