@@ -55,10 +55,17 @@ export default function Home({
     updateUserJourney('profile', true);
   };
 
+  // CORRECTION : Fonction améliorée pour le rechargement des vidéos
   const handleVideoUploaded = () => {
-    console.log('🔄 Home: Vidéo uploadée, incrémentation refreshKey');
+    console.log('🔄 Home: Vidéo uploadée, rechargement des données');
     setRefreshKey(prev => prev + 1);
     toast.success('Vidéo uploadée avec succès !');
+    
+    // Recharger les données du dashboard
+    if (loadDashboardData) {
+      loadDashboardData();
+    }
+    
     updateUserJourney('first-video', true);
   };
 
@@ -239,6 +246,7 @@ export default function Home({
               )}
             </div>
             
+            {/* CORRECTION : Dashboard avec lecture vidéo */}
             <Dashboard 
               data={dashboardData}
               loading={dashboardLoading}
