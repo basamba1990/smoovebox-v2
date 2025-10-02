@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+import colors from 'tailwindcss/colors'
+
 export default {
   content: [
     "./index.html",
@@ -8,6 +10,13 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Réactivation des couleurs Tailwind classiques
+        gray: colors.gray,
+        blue: colors.blue,
+        red: colors.red,
+        emerald: colors.emerald,
+        neutral: colors.neutral,
+
         // Couleurs France
         france: {
           50: '#EFF6FF',
@@ -36,7 +45,7 @@ export default {
           900: '#7B2727',
           950: '#430F0F'
         },
-        // Couleurs Vert Maroc (pour compléter le thème)
+        // Couleurs Vert Maroc
         marocGreen: {
           50: '#F0FDF4',
           100: '#DCFCE7',
@@ -50,35 +59,35 @@ export default {
           900: '#14532D',
           950: '#052E16'
         },
-        // Couleurs primaires basées sur le thème France-Maroc
+        // Couleurs primaires
         primary: {
-          50: '#EFF6FF', // Bleu France très clair
-          100: '#DBEAFE', // Bleu France clair
-          200: '#BFDBFE', // Bleu France
-          300: '#93C5FD', 
+          50: '#EFF6FF',
+          100: '#DBEAFE',
+          200: '#BFDBFE',
+          300: '#93C5FD',
           400: '#60A5FA',
-          500: '#3B82F6', // Bleu France moyen
-          600: '#2563EB', // Bleu France
-          700: '#1D4ED8', // Bleu France foncé
+          500: '#3B82F6',
+          600: '#2563EB',
+          700: '#1D4ED8',
           800: '#1E40AF',
           900: '#1E3A8A',
           950: '#172554'
         },
-        // Couleurs secondaires basées sur le Maroc
+        // Couleurs secondaires
         secondary: {
-          50: '#FEF7F7', // Rouge Maroc très clair
-          100: '#FEEBEB', // Rouge Maroc clair
-          200: '#FCD6D6', // Rouge Maroc
+          50: '#FEF7F7',
+          100: '#FEEBEB',
+          200: '#FCD6D6',
           300: '#F9B4B4',
           400: '#F48383',
-          500: '#EA5A5A', // Rouge Maroc moyen
-          600: '#D63C3C', // Rouge Maroc
-          700: '#B32D2D', // Rouge Maroc foncé
+          500: '#EA5A5A',
+          600: '#D63C3C',
+          700: '#B32D2D',
           800: '#942929',
           900: '#7B2727',
           950: '#430F0F'
         },
-        // Couleurs d'accent pour le vert Maroc
+        // Accent vert Maroc
         accent: {
           50: '#F0FDF4',
           100: '#DCFCE7',
