@@ -19,6 +19,8 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
+  console.log("🔍 analyze-transcription appelée");
+
   // Gérer les requêtes OPTIONS (CORS preflight)
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -27,13 +29,19 @@ Deno.serve(async (req) => {
   let videoId = null;
 
   try {
-    console.log("Fonction analyze-transcription appelée");
-
-    // CORRECTION : Vérification du corps de la requête
+    // CORRECTION : Log détaillé de la requête
+    console.log("📨 Headers reçus:", Object.fromEntries(req.headers));
+    
     let requestBody;
     try {
       requestBody = await req.json();
+      console.log("📦 Corps reçu:", { 
+        videoId: requestBody.videoId,
+        transcriptionLength: requestBody.transcriptionText?.length,
+        userId: requestBody.userId 
+      });
     } catch (parseError) {
+      console.error("❌ Erreur parsing JSON:", parseError);
       return new Response(
         JSON.stringify({ 
           error: 'Corps de requête JSON invalide',
@@ -49,8 +57,9 @@ Deno.serve(async (req) => {
     const { videoId: vidId, transcriptionText, userId } = requestBody;
     videoId = vidId;
 
-    // CORRECTION : Validation des paramètres requis
+    // CORRECTION : Validation améliorée des paramètres
     if (!videoId) {
+      console.error("❌ videoId manquant");
       return new Response(
         JSON.stringify({ error: 'Paramètre videoId requis' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -58,24 +67,37 @@ Deno.serve(async (req) => {
     }
 
     if (!transcriptionText) {
+      console.error("❌ transcriptionText manquant");
       return new Response(
         JSON.stringify({ error: 'Paramètre transcriptionText requis' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    // CORRECTION : Vérification des variables d'environnement
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
 
-    if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
-      throw new Error('Configuration manquante');
+    console.log("🔑 Vérification configuration:", {
+      hasSupabaseUrl: !!supabaseUrl,
+      hasServiceKey: !!supabaseServiceKey,
+      hasOpenaiKey: !!openaiApiKey
+    });
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Configuration Supabase manquante');
+    }
+
+    if (!openaiApiKey) {
+      throw new Error('Clé API OpenAI manquante');
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    // Vérifier que la vidéo existe
+    // CORRECTION : Vérification que la vidéo existe
+    console.log(`🔍 Recherche vidéo: ${videoId}`);
     const { data: video, error: videoError } = await supabase
       .from('videos')
       .select('*')
@@ -83,11 +105,14 @@ Deno.serve(async (req) => {
       .single();
 
     if (videoError) {
+      console.error("❌ Erreur recherche vidéo:", videoError);
       throw new Error(`Vidéo non trouvée: ${videoError.message}`);
     }
 
+    console.log("✅ Vidéo trouvée, mise à jour statut ANALYZING");
+
     // Mettre à jour le statut
-    await supabase
+    const { error: updateError } = await supabase
       .from('videos')
       .update({ 
         status: VIDEO_STATUS.ANALYZING,
@@ -95,92 +120,75 @@ Deno.serve(async (req) => {
       })
       .eq('id', videoId);
 
-    console.log(`Début analyse pour video ${videoId}, longueur texte: ${transcriptionText.length}`);
+    if (updateError) {
+      console.error("❌ Erreur mise à jour statut:", updateError);
+      throw new Error(`Erreur mise à jour statut: ${updateError.message}`);
+    }
 
-    // Préparer le prompt pour l'analyse avancée
+    console.log(`🔍 Début analyse pour video ${videoId}, longueur texte: ${transcriptionText.length}`);
+
+    // CORRECTION : Utilisation de gpt-3.5-turbo au lieu de gpt-4 pour la fiabilité
     const analysisPrompt = `
-En tant qu'expert en communication et analyse de discours, analysez cette transcription vidéo en français.
+En tant qu'expert en communication, analysez cette transcription vidéo en français.
 
-Fournissez une analyse complète incluant:
-1. Un résumé concis (3-4 phrases maximum)
-2. Les thèmes principaux (3-5 mots-clés)
-3. Les entités importantes mentionnées
-4. Le sentiment général (positif, neutre, négatif)
-5. Des suggestions d'amélioration pour la communication
-6. Une analyse de la structure du discours
-7. Le public cible potentiel
-8. Le niveau d'expertise perçu
-9. L'engagement émotionnel
+Transcription: ${transcriptionText.substring(0, 8000)} // Réduction pour économiser les tokens
 
-Transcription: ${transcriptionText.substring(0, 12000)}
+Fournissez une analyse structurée en JSON:
 
-Format de réponse requis (JSON uniquement):
 {
-  "summary": "résumé concis",
-  "key_topics": ["thème1", "thème2"],
-  "important_entities": ["entité1", "entité2"],
+  "summary": "résumé en 2-3 phrases",
+  "key_topics": ["thème1", "thème2", "thème3"],
   "sentiment": "positif/neutre/négatif",
-  "sentiment_score": 0.85,
-  "structure_analysis": {
-    "introduction": "qualité",
-    "development": "qualité", 
-    "conclusion": "qualité",
-    "overall_structure": "excellent/bon/moyen/faible"
-  },
-  "communication_advice": [
-    "conseil1",
-    "conseil2"
-  ],
+  "sentiment_score": 0.8,
+  "communication_advice": ["conseil1", "conseil2"],
   "tone_analysis": {
     "emotion": "enthousiaste/calme/energique",
     "pace": "rapide/moderé/lent",
-    "clarity": "excellente/bonne/moyenne/faible",
-    "confidence_level": 0.8
-  },
-  "target_audience": ["public1", "public2"],
-  "expertise_level": "débutant/intermédiaire/avancé",
-  "emotional_engagement": {
-    "type": "inspirant/informatif/divertissant",
-    "level": 0.75
-  },
-  "visual_suggestions": ["suggestion1", "suggestion2"]
-}
+    "clarity": "excellente/bonne/moyenne/faible"
+  }
+}`;
 
-Assurez-vous que la réponse est un JSON valide.`;
-
-    // Appel à l'API OpenAI pour l'analyse
+    console.log("🤖 Appel OpenAI...");
+    
+    // CORRECTION : Utilisation de gpt-3.5-turbo pour plus de fiabilité
     const completion = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-3.5-turbo", // Plus fiable que gpt-4
       messages: [
         {
           role: "system",
-          content: "Vous êtes un expert en analyse de communication et de discours. Répondez uniquement en JSON valide."
+          content: "Vous êtes un expert en analyse de communication. Répondez UNIQUEMENT en JSON valide, sans texte supplémentaire."
         },
         {
           role: "user",
           content: analysisPrompt
         }
       ],
-      max_tokens: 2000,
-      temperature: 0.3
+      max_tokens: 1500,
+      temperature: 0.3,
+      response_format: { type: "json_object" } // FORCE le format JSON
     });
 
-    const analysisText = completion.choices[0].message.content;
-    let analysisResult;
+    console.log("✅ Réponse OpenAI reçue");
 
+    const analysisText = completion.choices[0].message.content;
+    console.log("📄 Réponse OpenAI:", analysisText.substring(0, 200) + "...");
+
+    let analysisResult;
     try {
       analysisResult = JSON.parse(analysisText);
+      console.log("✅ Analyse JSON parsée avec succès");
     } catch (parseError) {
-      console.error("Erreur parsing JSON:", parseError);
-      // Fallback: créer une analyse basique
+      console.error("❌ Erreur parsing JSON, utilisation fallback:", parseError);
       analysisResult = createBasicAnalysis(transcriptionText);
     }
 
     // Calculer le score IA
     const aiScore = calculateAIScore(analysisResult);
+    console.log(`📊 Score IA calculé: ${aiScore}`);
 
     // Mettre à jour la vidéo avec les résultats d'analyse
-    const { error: updateError } = await supabase
+    console.log("💾 Sauvegarde résultats analyse...");
+    const { error: finalUpdateError } = await supabase
       .from('videos')
       .update({
         status: VIDEO_STATUS.ANALYZED,
@@ -190,11 +198,12 @@ Assurez-vous que la réponse est un JSON valide.`;
       })
       .eq('id', videoId);
 
-    if (updateError) {
-      throw new Error(`Erreur mise à jour analyse: ${updateError.message}`);
+    if (finalUpdateError) {
+      console.error("❌ Erreur sauvegarde analyse:", finalUpdateError);
+      throw new Error(`Erreur sauvegarde analyse: ${finalUpdateError.message}`);
     }
 
-    console.log("Analyse terminée avec succès pour video:", videoId);
+    console.log("🎉 Analyse terminée avec succès");
 
     return new Response(
       JSON.stringify({ 
@@ -210,7 +219,7 @@ Assurez-vous que la réponse est un JSON valide.`;
     );
 
   } catch (error) {
-    console.error("Erreur générale dans analyze-transcription:", error);
+    console.error("💥 Erreur générale dans analyze-transcription:", error);
 
     // Mettre à jour le statut d'erreur
     if (videoId) {
@@ -227,18 +236,19 @@ Assurez-vous que la réponse est un JSON valide.`;
               error_message: error.message,
               updated_at: new Date().toISOString()
             })
-            .eq('id', videoId)
-            .catch(e => console.error('Erreur mise à jour statut erreur:', e));
+            .eq('id', videoId);
+          console.log("📝 Statut erreur sauvegardé");
         }
       } catch (updateError) {
-        console.error("Erreur lors de la mise à jour du statut d'erreur:", updateError);
+        console.error("❌ Erreur sauvegarde statut erreur:", updateError);
       }
     }
 
     return new Response(
       JSON.stringify({ 
         error: 'Erreur lors de l\'analyse', 
-        details: error.message 
+        details: error.message,
+        stack: error.stack
       }),
       { 
         status: 500, 
@@ -254,20 +264,20 @@ function createBasicAnalysis(text) {
   const sentenceCount = text.split(/[.!?]+/).length - 1;
   
   return {
-    summary: "Analyse basique effectuée. Texte de " + wordCount + " mots.",
-    key_topics: ["communication", "échange"],
+    summary: `Analyse basique: ${wordCount} mots, ${sentenceCount} phrases.`,
+    key_topics: ["communication", "partage"],
     important_entities: [],
     sentiment: "neutre",
     sentiment_score: 0.5,
     structure_analysis: {
-      introduction: "basique",
-      development: "basique",
-      conclusion: "basique",
-      overall_structure: "moyen"
+      introduction: "détectée",
+      development: "présent", 
+      conclusion: "détectée",
+      overall_structure: "correct"
     },
     communication_advice: [
-      "Développez davantage vos points principaux",
-      "Variez le rythme de votre discours"
+      "Continuez à pratiquer régulièrement",
+      "Variez le débit pour maintenir l'attention"
     ],
     tone_analysis: {
       emotion: "neutre",
@@ -275,13 +285,13 @@ function createBasicAnalysis(text) {
       clarity: "bonne",
       confidence_level: 0.6
     },
-    target_audience: ["général"],
+    target_audience: ["communauté SpotBulle"],
     expertise_level: "intermédiaire",
     emotional_engagement: {
       type: "informatif",
       level: 0.5
     },
-    visual_suggestions: ["Utilisez des supports visuels", "Maintenez un contact visuel"]
+    visual_suggestions: ["Éclairage naturel recommandé", "Fond neutre préférable"]
   };
 }
 
@@ -289,15 +299,11 @@ function createBasicAnalysis(text) {
 function calculateAIScore(analysisResult) {
   let score = 7.0; // Score de base
 
-  // Augmenter le score en fonction de la qualité de l'analyse
-  if (analysisResult.summary && analysisResult.summary.length > 50) score += 0.5;
-  if (analysisResult.key_topics && analysisResult.key_topics.length >= 3) score += 0.5;
-  if (analysisResult.important_entities && analysisResult.important_entities.length > 0) score += 0.5;
+  if (analysisResult.summary && analysisResult.summary.length > 30) score += 0.5;
+  if (analysisResult.key_topics && analysisResult.key_topics.length >= 2) score += 0.5;
   if (analysisResult.communication_advice && analysisResult.communication_advice.length > 0) score += 0.5;
   if (analysisResult.tone_analysis) score += 0.5;
-  if (analysisResult.sentiment_score > 0.7) score += 0.5;
-  if (analysisResult.structure_analysis && analysisResult.structure_analysis.overall_structure === "excellent") score += 1.0;
+  if (analysisResult.sentiment_score > 0.6) score += 0.5;
 
-  // Limiter à 10.0
   return Math.min(score, 10.0);
 }
