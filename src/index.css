@@ -2,9 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Ajout d’un style global */
 @layer base {
   body {
-    @apply bg-gray-100 text-gray-900;
+    @apply text-gray-900 antialiased;
+
+    /* Dégradé France-Maroc */
+    background: linear-gradient(
+      135deg,
+      #3b82f6 0%,   /* bleu France */
+      #ffffff 20%, /* blanc */
+      #ef4444 40%, /* rouge France */
+      #dc2626 60%, /* rouge Maroc */
+      #ffffff 80%, /* blanc */
+      #16a34a 100% /* vert Maroc */
+    );
+    background-attachment: fixed;
+    background-size: cover;
+    min-height: 100vh;
   }
 }
