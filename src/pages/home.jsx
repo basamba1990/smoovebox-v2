@@ -7,10 +7,12 @@ import ProfileForm from "../components/ProfileForm.jsx";
 import SeminarsList from "../components/SeminarsList.jsx";
 import Certification from "../components/Certification.jsx";
 import Questionnaire from "../components/Questionnaire.jsx";
+import GiftExperience from '../components/GiftExperience';
 import { Button } from "../components/ui/button-enhanced.jsx";
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
+import { useGiftMoments } from '../hooks/useGiftMoments';
 
 export default function Home({ 
   user, 
@@ -32,6 +34,14 @@ export default function Home({
 
   const supabase = useSupabaseClient();
   const currentUser = useUser();
+
+  // Système de cadeaux
+  const { 
+    showGift, 
+    giftTrigger, 
+    setShowGift, 
+    markGiftAsReceived 
+  } = useGiftMoments();
 
   // Parcours utilisateur guidé
   const userJourneySteps = [
@@ -76,7 +86,7 @@ export default function Home({
     profile.passions && 
     profile.passions.length > 0;
 
-  // Vérifier si le questionnaire est complété
+  // CORRECTION : Fonction checkQuestionnaireStatus améliorée avec maybeSingle()
   const checkQuestionnaireStatus = async () => {
     if (!currentUser) return;
 
@@ -85,7 +95,7 @@ export default function Home({
         .from('questionnaire_responses')
         .select('id, completed_at')
         .eq('user_id', currentUser.id)
-        .single();
+        .maybeSingle(); // Utilisation de maybeSingle() au lieu de single()
 
       const hasCompleted = !!data;
       setHasCompletedQuestionnaire(hasCompleted);
@@ -98,6 +108,7 @@ export default function Home({
         }, 3000);
       }
     } catch (error) {
+      console.error('Erreur checkQuestionnaireStatus:', error);
       setHasCompletedQuestionnaire(false);
       updateUserJourney('questionnaire', false);
     }
@@ -422,6 +433,16 @@ export default function Home({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Composant GiftExperience */}
+      {showGift && (
+        <GiftExperience 
+          trigger={giftTrigger}
+          user={user}
+          onClose={() => setShowGift(false)}
+          onGiftReceived={markGiftAsReceived}
+        />
       )}
 
       {/* Loading State */}
