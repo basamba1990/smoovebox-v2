@@ -32,7 +32,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     }
   }, [user, refreshKey]);
 
-  // CORRECTION : Fonction fetchVideos complétée
+  // CORRECTION CRITIQUE : Fonction fetchVideos sans commentaire dans la query
   const fetchVideos = async () => {
     if (!user) return;
 
@@ -50,7 +50,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
           analysis,
           transcript,
           ai_result,
-          transcription_text  // AJOUT: Récupération du texte de transcription
+          transcription_text
         `)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
@@ -71,22 +71,20 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     }
   };
 
-  // CORRECTION : Fonction pour obtenir l'URL de lecture de la vidéo
+  // Fonction pour obtenir l'URL de lecture de la vidéo
   const getVideoUrl = async (video) => {
     if (!video) return null;
 
     try {
-      // Si URL publique disponible
       if (video.public_url) {
         return video.public_url;
       }
 
-      // Sinon générer une URL signée depuis Supabase Storage
       if (video.file_path) {
         console.log('📁 Génération URL signée pour:', video.file_path);
         const { data, error } = await supabase.storage
           .from('videos')
-          .createSignedUrl(video.file_path, 3600); // 1 heure
+          .createSignedUrl(video.file_path, 3600);
 
         if (error) {
           console.error('❌ Erreur génération URL signée:', error);
@@ -105,7 +103,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     }
   };
 
-  // CORRECTION : Fonction pour lire la vidéo directement dans la page
+  // Fonction pour lire la vidéo directement dans la page
   const playVideo = async (video) => {
     try {
       console.log('🎬 Tentative de lecture vidéo:', video.id);
@@ -131,7 +129,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     try {
       setLoading(true);
       
-      // Supprimer le fichier de stockage
       const video = videos.find(v => v.id === videoId);
       if (video?.file_path) {
         const { error: storageError } = await supabase.storage
@@ -143,7 +140,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
         }
       }
 
-      // Supprimer l'enregistrement de la base
       const { error } = await supabase
         .from('videos')
         .delete()
@@ -151,7 +147,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
 
       if (error) throw error;
 
-      // Mettre à jour l'état local
       setVideos(prev => prev.filter(video => video.id !== videoId));
       setDeleteConfirm(null);
       
@@ -169,14 +164,12 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     try {
       setTranscribing(true);
       
-      // Mettre à jour le statut immédiatement
       setVideos(prev => prev.map(video => 
         video.id === videoId 
           ? { ...video, status: 'processing', transcription_status: 'processing' }
           : video
       ));
 
-      // Appeler l'edge function pour la transcription
       const { data, error } = await supabase.functions.invoke('transcribe-video', {
         body: { videoId }
       });
@@ -185,7 +178,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
 
       console.log('✅ Transcription lancée:', data);
       
-      // Recharger les vidéos après un délai
       setTimeout(() => {
         fetchVideos();
       }, 5000);
@@ -194,7 +186,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
       console.error('❌ Erreur startTranscription:', err);
       setError(`Erreur transcription: ${err.message}`);
       
-      // Revenir au statut précédent en cas d'erreur
       setVideos(prev => prev.map(video => 
         video.id === videoId 
           ? { ...video, status: 'error', transcription_status: 'error' }
@@ -205,12 +196,11 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     }
   };
 
-  // CORRECTION CRITIQUE : Fonction startAnalysis corrigée pour envoyer transcriptionText
+  // CORRECTION : Fonction startAnalysis avec transcriptionText
   const startAnalysis = async (videoId, transcriptionText, userId) => {
     try {
       setAnalyzing(true);
       
-      // Mettre à jour le statut immédiatement
       setVideos(prev => prev.map(video => 
         video.id === videoId 
           ? { ...video, status: 'analyzing' }
@@ -220,12 +210,10 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
       console.log('🟡 Début analyse IA pour video:', videoId);
       console.log('📝 Texte de transcription:', transcriptionText?.length, 'caractères');
 
-      // Validation du texte de transcription
       if (!transcriptionText?.trim()) {
         throw new Error('Texte de transcription manquant ou vide');
       }
 
-      // Appeler l'edge function pour l'analyse IA avec TOUS les paramètres
       const { data, error } = await supabase.functions.invoke('analyze-transcription', {
         body: { 
           videoId: videoId,
@@ -241,7 +229,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
 
       console.log('✅ Analyse IA lancée:', data);
       
-      // Recharger les vidéos après un délai
       setTimeout(() => {
         fetchVideos();
       }, 5000);
@@ -250,7 +237,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
       console.error('❌ Erreur startAnalysis:', err);
       setError(`Erreur analyse IA: ${err.message}`);
       
-      // Revenir au statut précédent en cas d'erreur
       setVideos(prev => prev.map(video => 
         video.id === videoId 
           ? { ...video, status: 'error' }
@@ -358,7 +344,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     }
   };
 
-  // CORRECTION CRITIQUE : Fonction handleVideoAction améliorée avec récupération de transcriptionText
+  // CORRECTION : handleVideoAction avec récupération de transcriptionText
   const handleVideoAction = async (video, action) => {
     switch (action) {
       case 'play':
@@ -374,7 +360,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
         await startTranscription(video.id);
         break;
       case 'analyze':
-        // CORRECTION : Récupérer le texte de transcription depuis différentes sources possibles
         const transcriptionText = video.transcription_text || 
                                 video.transcription_data?.text || 
                                 video.transcript?.text || '';
@@ -455,7 +440,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     );
   };
 
-  // CORRECTION : renderVideoList complétée avec boutons de lecture
   const renderVideoList = () => {
     if (loading) {
       return (
@@ -559,7 +543,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
                 </p>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Transcription */}
                   <div>
                     <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
                       <FileText className="h-4 w-4" />
@@ -590,7 +573,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
                     )}
                   </div>
 
-                  {/* Analyse IA */}
                   <div>
                     <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
                       <BarChart3 className="h-4 w-4" />
@@ -676,7 +658,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
         </TabsContent>
       </Tabs>
 
-      {/* CORRECTION : Modal de lecture vidéo */}
       {selectedVideo && videoPlayerUrl && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
@@ -709,7 +690,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
         </div>
       )}
 
-      {/* Modal de confirmation de suppression */}
       {deleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <Card className="w-full max-w-md">
@@ -735,7 +715,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
         </div>
       )}
 
-      {/* Modal d'analyse détaillée */}
       {selectedVideoForAnalysis && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
