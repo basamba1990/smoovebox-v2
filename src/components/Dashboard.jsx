@@ -49,7 +49,8 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
           transcription_data,
           analysis,
           transcript,
-          ai_result
+          ai_result,
+          transcription_text  // AJOUT: Récupération du texte de transcription
         `)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
@@ -204,7 +205,8 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     }
   };
 
-  const startAnalysis = async (videoId) => {
+  // CORRECTION CRITIQUE : Fonction startAnalysis corrigée pour envoyer transcriptionText
+  const startAnalysis = async (videoId, transcriptionText, userId) => {
     try {
       setAnalyzing(true);
       
@@ -215,12 +217,27 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
           : video
       ));
 
-      // Appeler l'edge function pour l'analyse IA
+      console.log('🟡 Début analyse IA pour video:', videoId);
+      console.log('📝 Texte de transcription:', transcriptionText?.length, 'caractères');
+
+      // Validation du texte de transcription
+      if (!transcriptionText?.trim()) {
+        throw new Error('Texte de transcription manquant ou vide');
+      }
+
+      // Appeler l'edge function pour l'analyse IA avec TOUS les paramètres
       const { data, error } = await supabase.functions.invoke('analyze-transcription', {
-        body: { videoId }
+        body: { 
+          videoId: videoId,
+          transcriptionText: transcriptionText,
+          userId: userId
+        }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erreur fonction Edge:', error);
+        throw new Error(`Erreur fonction Edge: ${error.message}`);
+      }
 
       console.log('✅ Analyse IA lancée:', data);
       
@@ -341,7 +358,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     }
   };
 
-  // CORRECTION : Fonction handleVideoAction améliorée avec lecture vidéo
+  // CORRECTION CRITIQUE : Fonction handleVideoAction améliorée avec récupération de transcriptionText
   const handleVideoAction = async (video, action) => {
     switch (action) {
       case 'play':
@@ -357,7 +374,17 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
         await startTranscription(video.id);
         break;
       case 'analyze':
-        await startAnalysis(video.id);
+        // CORRECTION : Récupérer le texte de transcription depuis différentes sources possibles
+        const transcriptionText = video.transcription_text || 
+                                video.transcription_data?.text || 
+                                video.transcript?.text || '';
+        
+        if (!transcriptionText.trim()) {
+          setError('Aucune transcription disponible pour l\'analyse. Transcrivez d\'abord la vidéo.');
+          return;
+        }
+        
+        await startAnalysis(video.id, transcriptionText, user.id);
         break;
       case 'view-analysis':
         setSelectedVideoForAnalysis(video);
@@ -371,7 +398,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     const stats = {
       total: videos.length,
       processed: videos.filter(v => v.status === 'processed' || v.status === 'transcribed' || v.status === 'analyzed').length,
-      transcribed: videos.filter(v => v.transcription_data || v.transcript).length,
+      transcribed: videos.filter(v => v.transcription_data || v.transcript || v.transcription_text).length,
       analyzed: videos.filter(v => v.analysis || v.ai_result).length
     };
 
@@ -476,8 +503,9 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     return (
       <div className="space-y-6">
         {videos.map((video) => {
-          const hasTranscription = !!(video.transcription_data || video.transcript);
+          const hasTranscription = !!(video.transcription_data || video.transcript || video.transcription_text);
           const hasAnalysis = !!(video.analysis || video.ai_result);
+          const transcriptionText = video.transcription_text || video.transcription_data?.text || video.transcript?.text || '';
           
           return (
             <Card key={video.id} className="hover:shadow-md transition-shadow">
@@ -498,7 +526,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
                     </CardDescription>
                   </div>
                   <div className="flex gap-2">
-                    {/* CORRECTION : Bouton de lecture ajouté */}
                     <Button
                       variant="default"
                       size="sm"
@@ -540,7 +567,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
                     </h4>
                     {hasTranscription ? (
                       <div className="text-sm bg-gray-2 rounded p-3 max-h-32 overflow-y-auto">
-                        {video.transcription_data?.text || video.transcript?.text || 'Transcription disponible'}
+                        {transcriptionText.substring(0, 200)}...
                       </div>
                     ) : (
                       <div className="text-sm text-gray-9">
@@ -586,7 +613,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
                           <Button
                             size="sm"
                             onClick={() => handleVideoAction(video, 'analyze')}
-                            disabled={analyzing}
+                            disabled={analyzing || !hasTranscription}
                           >
                             <RefreshCw className="h-3 w-3 mr-1" />
                             {analyzing ? 'Analyse...' : 'Ré-analyser'}
