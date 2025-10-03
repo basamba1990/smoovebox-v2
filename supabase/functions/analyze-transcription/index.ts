@@ -1,9 +1,7 @@
 // supabase/functions/analyze-transcription/index.js
-
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import OpenAI from 'npm:openai@4.28.0'
 
-// Statuts des vidéos
 const VIDEO_STATUS = {
   UPLOADED: 'uploaded',
   PROCESSING: 'processing',
@@ -12,94 +10,143 @@ const VIDEO_STATUS = {
   ANALYZED: 'analyzed',
   PUBLISHED: 'published',
   FAILED: 'failed'
-}
+};
 
-// En-têtes CORS
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
-}
+};
 
-// Fonction principale Deno
 Deno.serve(async (req) => {
-  console.log("🔍 Fonction analyze-transcription appelée")
+  console.log("🔍 Fonction analyze-transcription appelée");
 
   // Gérer les requêtes OPTIONS (CORS preflight)
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders });
   }
 
-  let videoId = null
-  let userId = null
+  let videoId = null;
 
   try {
-    console.log("📨 Headers reçus:", Object.fromEntries(req.headers))
-
-    // Vérifier la méthode HTTP
-    if (req.method !== 'POST') {
-      throw new Error('Méthode non autorisée. Utilisez POST.')
+    // Log détaillé de la requête
+    console.log("📨 Headers reçus:", Object.fromEntries(req.headers));
+    
+    let requestBody;
+    try {
+      requestBody = await req.json();
+      console.log("📦 Corps reçu:", { 
+        videoId: requestBody.videoId,
+        transcriptionLength: requestBody.transcriptionText?.length,
+        userId: requestBody.userId 
+      });
+    } catch (parseError) {
+      console.error("❌ Erreur parsing JSON:", parseError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Corps de requête JSON invalide',
+          details: parseError.message 
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
-    // Parser le corps de la requête
-    const { videoId: reqVideoId, transcriptionText, userId: reqUserId } = await req.json()
+    const { videoId: vidId, transcriptionText, userId } = requestBody;
+    videoId = vidId;
 
-    // Validation des paramètres obligatoires
-    if (!reqVideoId) {
-      throw new Error('Paramètre videoId manquant')
+    // Validation améliorée des paramètres
+    if (!videoId) {
+      console.error("❌ videoId manquant");
+      return new Response(
+        JSON.stringify({ error: 'Paramètre videoId requis' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
-    if (!transcriptionText) {
-      throw new Error('Paramètre transcriptionText manquant')
+
+    // Fetch transcription si manquante (fallback DB)
+    let textToAnalyze = transcriptionText;
+    if (!textToAnalyze) {
+      console.log("📄 Fetch transcription depuis DB...");
+      const supabaseUrl = Deno.env.get('SUPABASE_URL');
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      const { data: video } = await supabase
+        .from('videos')
+        .select('transcription_text')
+        .eq('id', videoId)
+        .single();
+      textToAnalyze = video?.transcription_text;
     }
 
-    videoId = reqVideoId
-    userId = reqUserId
+    if (!textToAnalyze?.trim()) {
+      console.error("❌ transcriptionText manquant");
+      return new Response(
+        JSON.stringify({ error: 'Paramètre transcriptionText requis' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    console.log("🎯 Analyse demandée pour videoId:", videoId)
-    console.log("📝 Longueur transcription:", transcriptionText.length, "caractères")
+    // Vérification des variables d'environnement
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
 
-    // Initialiser le client Supabase
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    console.log("🔑 Vérification configuration:", {
+      hasSupabaseUrl: !!supabaseUrl,
+      hasServiceKey: !!supabaseServiceKey,
+      hasOpenaiKey: !!openaiApiKey
+    });
 
-    // Vérifier que la clé API OpenAI est configurée
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Configuration Supabase manquante');
+    }
+
     if (!openaiApiKey) {
-      throw new Error('OPENAI_API_KEY non configurée')
+      throw new Error('Clé API OpenAI manquante');
     }
 
-    // Initialiser le client OpenAI
-    const openai = new OpenAI({ apiKey: openaiApiKey })
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    // Mettre à jour le statut de la vidéo en "analyzing"
-    console.log("🔄 Mise à jour statut vidéo en 'analyzing'")
-    const { error: updateError } = await supabaseClient
+    // Vérification que la vidéo existe
+    console.log(`🔍 Recherche vidéo: ${videoId}`);
+    const { data: video, error: videoError } = await supabase
+      .from('videos')
+      .select('*')
+      .eq('id', videoId)
+      .single();
+
+    if (videoError) {
+      console.error("❌ Erreur recherche vidéo:", videoError);
+      throw new Error(`Vidéo non trouvée: ${videoError.message}`);
+    }
+
+    console.log("✅ Vidéo trouvée, mise à jour statut ANALYZING");
+
+    // Mettre à jour le statut
+    const { error: updateError } = await supabase
       .from('videos')
       .update({ 
         status: VIDEO_STATUS.ANALYZING,
         updated_at: new Date().toISOString()
       })
-      .eq('id', videoId)
+      .eq('id', videoId);
 
     if (updateError) {
-      console.error("❌ Erreur mise à jour statut:", updateError)
-      throw new Error(`Erreur base de données: ${updateError.message}`)
+      console.error("❌ Erreur mise à jour statut:", updateError);
+      throw new Error(`Erreur mise à jour statut: ${updateError.message}`);
     }
 
-    // Préparer le texte pour l'analyse (limiter la taille)
-    const textToAnalyze = transcriptionText.substring(0, 8000)
-    console.log("📊 Texte préparé pour analyse:", textToAnalyze.length, "caractères")
+    console.log(`🔍 Début analyse pour video ${videoId}, longueur texte: ${textToAnalyze.length}`);
 
-    // Appeler l'API OpenAI pour l'analyse
-    console.log("🤖 Appel à l'API OpenAI...")
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [
-        {
-          role: "system",
-          content: `En tant qu'expert en communication, analysez cette transcription vidéo en français.
+    // Prompt OpenAI (limité pour tokens)
+    const analysisPrompt = `
+En tant qu'expert en communication, analysez cette transcription vidéo en français.
+
+Transcription: ${textToAnalyze.substring(0, 8000)}
 
 Fournissez une analyse structurée en JSON avec le format suivant:
 {
@@ -115,127 +162,126 @@ Fournissez une analyse structurée en JSON avec le format suivant:
   }
 }
 
-Répondez UNIQUEMENT avec le JSON, sans texte supplémentaire.`
+Répondez UNIQUEMENT avec le JSON, sans texte supplémentaire.
+`;
+
+    console.log("🤖 Appel OpenAI...");
+    
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content: "Vous êtes un expert en analyse de communication. Répondez UNIQUEMENT en JSON valide, sans texte supplémentaire."
         },
         {
           role: "user",
-          content: `Transcription: ${textToAnalyze}`
+          content: analysisPrompt
         }
       ],
-      response_format: { type: "json_object" },
+      max_tokens: 1500,
       temperature: 0.3,
-      max_tokens: 1500
-    })
+      response_format: { type: "json_object" }
+    });
 
-    console.log("✅ Réponse OpenAI reçue")
+    console.log("✅ Réponse OpenAI reçue");
 
-    // Parser la réponse JSON
-    let analysisResult
+    const analysisText = completion.choices[0].message.content;
+    console.log("📄 Réponse OpenAI:", analysisText.substring(0, 200) + "...");
+
+    let analysisResult;
     try {
-      const content = completion.choices[0]?.message?.content
-      if (!content) {
-        throw new Error('Réponse OpenAI vide')
-      }
-      analysisResult = JSON.parse(content)
-      console.log("📊 Analyse parsée avec succès")
+      analysisResult = JSON.parse(analysisText);
+      console.log("✅ Analyse JSON parsée avec succès");
     } catch (parseError) {
-      console.error("❌ Erreur parsing JSON OpenAI:", parseError)
-      // Utiliser l'analyse basique en fallback
-      analysisResult = createBasicAnalysis(textToAnalyze)
+      console.error("❌ Erreur parsing JSON, utilisation fallback:", parseError);
+      analysisResult = createBasicAnalysis(textToAnalyze);
     }
 
     // Calculer le score IA
-    const aiScore = calculateAIScore(analysisResult)
-    console.log("📈 Score IA calculé:", aiScore)
+    const aiScore = calculateAIScore(analysisResult);
+    console.log(`📊 Score IA calculé: ${aiScore}`);
 
-    // Préparer les données pour la sauvegarde
-    const analysisData = {
-      analysis: analysisResult,
-      ai_score: aiScore,
-      raw_openai_response: completion.choices[0]?.message?.content,
-      analyzed_at: new Date().toISOString()
-    }
+    // Mettre à jour la vidéo avec les résultats (mapper vers colonnes existantes)
+    console.log("💾 Sauvegarde résultats analyse...");
+    const updatePayload = {
+      status: VIDEO_STATUS.ANALYZED,
+      analysis: analysisResult,  // Mapper vers 'analysis' (existant JSONB)
+      ai_score: aiScore,  // Si colonne ajoutée
+      updated_at: new Date().toISOString()
+    };
 
-    // Sauvegarder l'analyse dans la base de données
-    console.log("💾 Sauvegarde dans la base de données...")
-    const { error: saveError } = await supabaseClient
+    const { error: finalUpdateError } = await supabase
       .from('videos')
-      .update({ 
-        status: VIDEO_STATUS.ANALYZED,
-        analysis_data: analysisData,
-        ai_result: analysisResult,
-        ai_score: aiScore,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', videoId)
+      .update(updatePayload)
+      .eq('id', videoId);
 
-    if (saveError) {
-      console.error("❌ Erreur sauvegarde analyse:", saveError)
-      throw new Error(`Erreur sauvegarde: ${saveError.message}`)
+    if (finalUpdateError) {
+      console.error("❌ Erreur sauvegarde analyse:", finalUpdateError);
+      throw new Error(`Erreur sauvegarde: ${finalUpdateError.message}`);
     }
 
-    console.log("✅ Analyse sauvegardée avec succès")
+    console.log("🎉 Analyse terminée avec succès");
 
-    // Retourner la réponse réussie
     return new Response(
-      JSON.stringify({
-        success: true,
+      JSON.stringify({ 
+        success: true, 
+        message: 'Analyse terminée avec succès',
         videoId: videoId,
-        analysis: analysisResult,
-        aiScore: aiScore,
-        message: "Analyse terminée avec succès"
+        aiScore: aiScore
       }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
-    )
+    );
 
   } catch (error) {
-    console.error("💥 Erreur générale dans analyze-transcription:", error)
+    console.error("💥 Erreur générale dans analyze-transcription:", error);
 
-    // Mettre à jour le statut en "failed" si on a le videoId
+    // Mettre à jour le statut d'erreur
     if (videoId) {
       try {
-        const supabaseClient = createClient(
-          Deno.env.get('SUPABASE_URL') ?? '',
-          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-        )
+        const supabaseUrl = Deno.env.get('SUPABASE_URL');
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
         
-        await supabaseClient
-          .from('videos')
-          .update({ 
-            status: VIDEO_STATUS.FAILED,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoId)
-      } catch (dbError) {
-        console.error("❌ Impossible de mettre à jour le statut d'échec:", dbError)
+        if (supabaseUrl && supabaseServiceKey) {
+          const supabase = createClient(supabaseUrl, supabaseServiceKey);
+          await supabase
+            .from('videos')
+            .update({ 
+              status: VIDEO_STATUS.FAILED,
+              error_message: error.message,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', videoId);
+          console.log("📝 Statut erreur sauvegardé");
+        }
+      } catch (updateError) {
+        console.error("❌ Erreur sauvegarde statut erreur:", updateError);
       }
     }
 
-    // Retourner l'erreur
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: error.message,
-        videoId: videoId,
-        message: "Échec de l'analyse IA"
+      JSON.stringify({ 
+        error: 'Erreur lors de l\'analyse', 
+        details: error.message,
+        stack: error.stack
       }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
-    )
+    );
   }
-})
+});
 
 // Fonction de fallback pour créer une analyse basique
 function createBasicAnalysis(text) {
-  const wordCount = text.split(/\s+/).filter(word => word.length > 0).length
-  const sentenceCount = text.split(/[.!?]+/).length - 1
-  const paragraphCount = text.split(/\n\s*\n/).length
-
+  const wordCount = text.split(/\s+/).filter(word => word.length > 0).length;
+  const sentenceCount = text.split(/[.!?]+/).length - 1;
+  const paragraphCount = text.split(/\n\s*\n/).length;
+  
   return {
     summary: `Analyse basique: ${wordCount} mots, ${sentenceCount} phrases, ${paragraphCount} paragraphes.`,
     key_topics: ["communication", "partage", "expression"],
@@ -244,7 +290,7 @@ function createBasicAnalysis(text) {
     sentiment_score: 0.5,
     structure_analysis: {
       introduction: wordCount > 100 ? "détectée" : "courte",
-      development: wordCount > 200 ? "présent" : "limité",
+      development: wordCount > 200 ? "présent" : "limité", 
       conclusion: wordCount > 150 ? "détectée" : "courte",
       overall_structure: wordCount > 300 ? "complet" : "basique"
     },
@@ -266,23 +312,23 @@ function createBasicAnalysis(text) {
       level: 0.5
     },
     visual_suggestions: [
-      "Éclairage naturel recommandé",
+      "Éclairage naturel recommandé", 
       "Fond neutre préférable",
       "Contact visuel avec la caméra"
     ]
-  }
+  };
 }
 
 // Fonction helper pour calculer un score IA basé sur l'analyse
 function calculateAIScore(analysisResult) {
-  let score = 7.0 // Score de base
+  let score = 7.0; // Score de base
 
-  if (analysisResult.summary && analysisResult.summary.length > 30) score += 0.5
-  if (analysisResult.key_topics && analysisResult.key_topics.length >= 2) score += 0.5
-  if (analysisResult.communication_advice && analysisResult.communication_advice.length > 0) score += 0.5
-  if (analysisResult.tone_analysis) score += 0.5
-  if (analysisResult.sentiment_score > 0.6) score += 0.5
-  if (analysisResult.structure_analysis) score += 0.5
+  if (analysisResult.summary && analysisResult.summary.length > 30) score += 0.5;
+  if (analysisResult.key_topics && analysisResult.key_topics.length >= 2) score += 0.5;
+  if (analysisResult.communication_advice && analysisResult.communication_advice.length > 0) score += 0.5;
+  if (analysisResult.tone_analysis) score += 0.5;
+  if (analysisResult.sentiment_score > 0.6) score += 0.5;
+  if (analysisResult.structure_analysis) score += 0.5;
 
-  return Math.min(Math.max(score, 0), 10.0) // Limiter entre 0 et 10
+  return Math.min(Math.max(score, 0), 10.0); // Limiter entre 0 et 10
 }
