@@ -29,7 +29,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
   const [useAvatar, setUseAvatar] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [toneAnalysis, setToneAnalysis] = useState(null);
-  const [user, setUser] = useState(null); // ✅ État pour l'utilisateur
+  const [user, setUser] = useState(null);
 
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -38,9 +38,9 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const navigate = useNavigate();
-  const maxRecordingTime = 120; // 2 minutes
+  const maxRecordingTime = 120;
 
-  // Nettoyage des ressources à la destruction du composant
+  // Nettoyage des ressources
   useEffect(() => {
     return () => {
       if (recordedVideo?.url) URL.revokeObjectURL(recordedVideo.url);
@@ -65,7 +65,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
           return;
         }
 
-        setUser(user); // ✅ Stocke l'utilisateur dans l'état
+        setUser(user);
         await refreshSession();
         await requestCameraAccess();
       } catch (err) {
@@ -136,7 +136,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     };
 
     intervalId = setInterval(checkProgress, 3000);
-    checkProgress(); // Vérifier immédiatement
+    checkProgress();
 
     return () => clearInterval(intervalId);
   }, [uploadedVideoId, navigate, onVideoUploaded]);
@@ -278,7 +278,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       toast.success('Enregistrement démarré !');
     } catch (err) {
       console.error('❌ Erreur démarrage enregistrement:', err);
-      setError('Erreur lors du démarrage de l\'enregistrement.'); // ✅ CORRIGÉ : apostrophe échappée
+      setError('Erreur lors du démarrage de l\'enregistrement.');
     }
   };
 
@@ -291,9 +291,8 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     }
   };
 
-  // Analyse basique de la tonalité (exemple simplifié)
+  // Analyse basique de la tonalité
   const analyzeToneBasic = () => {
-    // Dans une vraie implémentation, cela analyserait l'audio
     const mockToneAnalysis = {
       confidence: 0.85,
       emotion: 'enthousiaste',
@@ -308,7 +307,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     setToneAnalysis(mockToneAnalysis);
   };
 
-  // ✅ CORRIGÉ : Uploader la vidéo avec gestion correcte de l'utilisateur
+  // ✅ CORRIGÉ : Uploader la vidéo avec URL publique
   const uploadVideo = async () => {
     if (!recordedVideo) {
       setError('Vous devez enregistrer une vidéo.');
@@ -316,7 +315,6 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       return;
     }
 
-    // ✅ Vérification renforcée de l'utilisateur
     if (!user) {
       setError('Vous devez être connecté pour uploader une vidéo.');
       toast.error('Utilisateur non connecté');
@@ -343,12 +341,12 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
 
       console.log('✅ Fichier uploadé avec succès');
 
-      // 2. Récupérer l'URL publique
+      // 2. Récupérer l'URL publique COMPLÈTE
       const { data: urlData } = supabase.storage
         .from('videos')
         .getPublicUrl(filePath);
 
-      // 3. ✅ CORRIGÉ : Insérer la vidéo avec l'utilisateur disponible
+      // 3. Insérer la vidéo avec l'URL publique
       const { data: videoData, error: videoError } = await supabase
         .from('videos')
         .insert({
@@ -378,29 +376,31 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       setUploadedVideoId(videoData.id);
       toast.success('Vidéo uploadée avec succès !');
 
-      // 4. Déclencher la transcription
-      await triggerTranscription(videoData.id, user.id, filePath);
+      // ✅ CORRIGÉ : Envoyer l'URL publique complète à la transcription
+      await triggerTranscription(videoData.id, user.id, urlData.publicUrl);
 
     } catch (err) {
       console.error('❌ Erreur upload:', err);
       setError(`Erreur lors de l'upload: ${err.message}`);
-      toast.error('Échec de l\'upload.'); // ✅ CORRIGÉ : apostrophe échappée
+      toast.error('Échec de l\'upload.');
     } finally {
       setUploading(false);
     }
   };
 
-  // Fonction pour déclencher la transcription
-  const triggerTranscription = async (videoId, userId, videoUrl) => {
+  // ✅ CORRIGÉ : Fonction pour déclencher la transcription avec URL valide
+  const triggerTranscription = async (videoId, userId, videoPublicUrl) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Session non valide');
+
+      console.log('🚀 Déclenchement transcription avec URL:', videoPublicUrl);
 
       const { data, error } = await supabase.functions.invoke('transcribe-video', {
         body: {
           videoId,
           userId,
-          videoUrl
+          videoUrl: videoPublicUrl // ✅ URL publique complète
         }
       });
 
