@@ -67,7 +67,7 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
       console.warn('Aucune URL accessible générée');
       return '';
     } catch (e) {
-      console.warn('Erreur lors de la génération de l’URL de la vidéo:', e);
+      console.warn('Erreur lors de la génération de l'URL de la vidéo:', e);
       return '';
     }
   }, []);
@@ -103,7 +103,7 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
           toast.error('Vidéo non trouvée.');
         } else if (error.code === '42501') {
           setError('Accès non autorisé à la vidéo.');
-          toast.error('Vous n’avez pas l’autorisation d’accéder à cette vidéo.');
+          toast.error('Vous n'avez pas l'autorisation d'accéder à cette vidéo.');
         } else {
           setError('Erreur lors du chargement de la vidéo.');
           toast.error('Erreur lors du chargement de la vidéo.');
@@ -116,13 +116,13 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
       try {
         await videoService.incrementViews(videoId);
       } catch (viewError) {
-        toast.warning('Vidéo chargée, mais échec de l’incrémentation des vues.');
+        toast.warning('Vidéo chargée, mais échec de l'incrémentation des vues.');
       }
 
       const url = await buildAccessibleUrl(data);
       if (!url) {
-        setError('Impossible de générer l’URL de la vidéo.');
-        toast.error('Erreur lors de la génération de l’URL de la vidéo.');
+        setError('Impossible de générer l'URL de la vidéo.');
+        toast.error('Erreur lors de la génération de l'URL de la vidéo.');
       } else {
         setVideoUrl(url);
         
@@ -149,12 +149,12 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
             new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout envoi email')), 10000)),
           ]);
           if (!response.ok) {
-            toast.warning('Vidéo chargée, mais échec de l’envoi de l’email.');
+            toast.warning('Vidéo chargée, mais échec de l'envoi de l'email.');
           } else {
             toast.success('Un email avec le lien de votre vidéo a été envoyé.');
           }
         } catch {
-          toast.warning('Vidéo chargée, mais échec de l’envoi de l’email.');
+          toast.warning('Vidéo chargée, mais échec de l'envoi de l'email.');
         }
       }
     } catch {
@@ -189,13 +189,22 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
     if (videoData?.analysis_result) {
       navigate(`/video-analysis/${videoId}`);
     } else {
-      toast.info('L\'analyse de votre vidéo est en cours...');
+      toast.info('L'analyse de votre vidéo est en cours...');
     }
+  };
+
+  // ✅ CORRIGÉ : Navigation manuelle au lieu de redirection automatique
+  const navigateToDirectory = () => {
+    navigate('/directory');
+  };
+
+  const navigateToHome = () => {
+    navigate('/');
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-france-50 to-maroc-50">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
         <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
         <div className="flex flex-col items-center justify-center min-h-[50vh] text-gray-700">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
@@ -207,7 +216,7 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
 
   if (error || !videoData) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-france-50 to-maroc-50">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
         <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
         <div className="flex flex-col items-center text-center p-6 min-h-[50vh] justify-center">
           <p className="text-red-500 mb-4">{error || 'Vidéo non trouvée.'}</p>
@@ -215,7 +224,7 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
             <Button onClick={fetchVideoData} className="btn-spotbulle">
               Réessayer
             </Button>
-            <Button onClick={() => navigate('/')} className="bg-gray-500 hover:bg-gray-600">
+            <Button onClick={navigateToHome} className="bg-gray-500 hover:bg-gray-600">
               Retour à l'accueil
             </Button>
           </div>
@@ -225,7 +234,7 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-france-50 to-maroc-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
       <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
       
       <div className="container mx-auto px-4 py-8">
@@ -268,7 +277,7 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
             </div>
           </div>
 
-          {/* Actions */}
+          {/* ✅ CORRIGÉ : Actions avec bouton pour directory au lieu de redirection automatique */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
             <Button
               onClick={navigateToAnalysis}
@@ -280,16 +289,23 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
             
             <Button
               onClick={() => navigate('/record-video')}
-              className="bg-white text-france-600 border border-france-600 hover:bg-france-50 text-lg py-3 px-6"
+              className="bg-white text-blue-600 border border-blue-600 hover:bg-blue-50 text-lg py-3 px-6"
             >
               🎥 Créer une nouvelle vidéo
             </Button>
             
             <Button
-              onClick={() => navigate('/directory')}
+              onClick={navigateToDirectory}
               className="bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 text-lg py-3 px-6"
             >
               👥 Explorer la communauté
+            </Button>
+
+            <Button
+              onClick={navigateToHome}
+              className="bg-blue-600 text-white border border-blue-600 hover:bg-blue-700 text-lg py-3 px-6"
+            >
+              🏠 Retour à l'accueil
             </Button>
           </div>
 
