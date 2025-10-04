@@ -325,7 +325,7 @@ export default function Home({
   };
 
   return (
-    <div className="app-container min-h-screen bg-gradient-to-br from-france-50 via-white to-maroc-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div className="app-container min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       {/* Header */}
       <ProfessionalHeader 
         user={user}
@@ -381,7 +381,7 @@ export default function Home({
             
             <Button
               onClick={handleNavigateToDirectory}
-              className="flex items-center gap-2 ml-auto bg-white text-france-600 border border-france-600 hover:bg-france-600 hover:text-white transition-all font-medium py-2 px-4 rounded-lg"
+              className="flex items-center gap-2 ml-auto bg-white text-blue-600 border border-blue-600 hover:bg-blue-600 hover:text-white transition-all font-medium py-2 px-4 rounded-lg"
             >
               👥 Explorer l'annuaire
             </Button>
@@ -389,7 +389,7 @@ export default function Home({
 
           {/* Indicateur d'étape suivante */}
           {nextStep && !nextStep.completed && (
-            <div className="bg-gradient-to-r from-france-500 to-maroc-500 text-white p-4 rounded-lg mb-4 animate-pulse">
+            <div className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white p-4 rounded-lg mb-4 animate-pulse">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <span className="text-xl">🎯</span>
@@ -405,7 +405,7 @@ export default function Home({
                     if (nextStep.id === 'first-video') navigate('/record-video');
                     if (nextStep.id === 'first-connection' || nextStep.id === 'community') navigate('/directory');
                   }}
-                  className="bg-white text-france-600 hover:bg-gray-100 border-0"
+                  className="bg-white text-blue-600 hover:bg-gray-100 border-0"
                 >
                   Commencer
                 </Button>
@@ -449,7 +449,7 @@ export default function Home({
       {dashboardLoading && activeTab === 'dashboard' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
           <div className="bg-white rounded-xl p-6 flex items-center gap-3 shadow-2xl border border-gray-200">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-france-600"></div>
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
             <span className="text-gray-700">Chargement de vos données...</span>
           </div>
         </div>
@@ -476,19 +476,19 @@ export default function Home({
         </div>
       )}
 
-      {/* Footer avec thème France-Maroc */}
-      <footer className="mt-12 py-6 border-t border-gray-200/50 dark:border-gray-700/50 bg-gradient-to-r from-france-50 to-maroc-50">
+      {/* Footer */}
+      <footer className="mt-12 py-6 border-t border-gray-200/50 bg-gradient-to-r from-blue-50 to-indigo-50">
         <div className="container mx-auto px-4 text-center">
           <div className="flex justify-center items-center gap-4 mb-4">
-            <div className="w-8 h-8 bg-france-600 rounded-full shadow-france"></div>
+            <div className="w-8 h-8 bg-blue-600 rounded-full shadow-lg"></div>
             <div className="w-8 h-8 bg-white border border-gray-300 rounded-full shadow-lg"></div>
-            <div className="w-8 h-8 bg-maroc-600 rounded-full shadow-maroc"></div>
+            <div className="w-8 h-8 bg-indigo-600 rounded-full shadow-lg"></div>
           </div>
-          <p className="text-gray-700 dark:text-gray-300 text-sm font-medium">
-            <span className="gradient-text-france-maroc font-french">SpotBulle</span> - Communauté France-Maroc • Partager, inspirer, connecter
+          <p className="text-gray-700 text-sm font-medium">
+            <span className="gradient-text font-french">SpotBulle</span> - Communauté • Partager, inspirer, connecter
           </p>
-          <p className="text-gray-600 dark:text-gray-400 text-xs mt-2">
-            🇫🇷🇲🇦 Votre plateforme pour des connexions authentiques
+          <p className="text-gray-600 text-xs mt-2">
+            Votre plateforme pour des connexions authentiques
           </p>
         </div>
       </footer>
