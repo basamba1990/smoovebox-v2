@@ -101,7 +101,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     return () => clearInterval(timer);
   }, [recording]);
 
-  // Suivi de la progression de l'analyse
+  // ✅ CORRIGÉ : Suivi de la progression avec redirection vers video-success
   useEffect(() => {
     if (!uploadedVideoId) return;
 
@@ -122,7 +122,10 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
           toast.success('Analyse terminée avec succès !');
           clearInterval(intervalId);
           onVideoUploaded();
-          navigate('/dashboard');
+          
+          // ✅ CORRECTION : Redirection vers video-success au lieu de dashboard
+          navigate(`/video-success?id=${uploadedVideoId}`);
+          
         } else if (video.status === VIDEO_STATUS.FAILED) {
           setAnalysisProgress(VIDEO_STATUS.FAILED);
           setError('L\'analyse de la vidéo a échoué.');
