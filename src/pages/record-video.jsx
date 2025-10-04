@@ -278,7 +278,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       toast.success('Enregistrement démarré !');
     } catch (err) {
       console.error('❌ Erreur démarrage enregistrement:', err);
-      setError('Erreur lors du démarrage de l'enregistrement.');
+      setError('Erreur lors du démarrage de l\'enregistrement.'); // ✅ CORRIGÉ : apostrophe échappée
     }
   };
 
@@ -384,7 +384,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     } catch (err) {
       console.error('❌ Erreur upload:', err);
       setError(`Erreur lors de l'upload: ${err.message}`);
-      toast.error('Échec de l\'upload.');
+      toast.error('Échec de l\'upload.'); // ✅ CORRIGÉ : apostrophe échappée
     } finally {
       setUploading(false);
     }
