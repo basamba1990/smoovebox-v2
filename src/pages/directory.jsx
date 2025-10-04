@@ -14,19 +14,23 @@ const Directory = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [existingConnections, setExistingConnections] = useState(new Set());
   const [selectedVideos, setSelectedVideos] = useState({});
-  const [userVideos, setUserVideos] = useState([]); // Nouveau état pour les vidéos de l'utilisateur
+  const [userVideos, setUserVideos] = useState([]);
 
   const supabase = useSupabaseClient();
   const user = useUser();
   const navigate = useNavigate();
 
-  // Récupération des profils, connexions existantes ET des vidéos de l'utilisateur
+  // Récupération des données
   useEffect(() => {
-    fetchUsers();
-    if (user) {
-      fetchExistingConnections();
-      fetchUserVideos(); // Charger les vidéos de l'utilisateur
-    }
+    const fetchData = async () => {
+      await Promise.all([
+        fetchUsers(),
+        user ? fetchExistingConnections() : Promise.resolve(),
+        user ? fetchUserVideos() : Promise.resolve()
+      ]);
+    };
+
+    fetchData();
   }, [filter, searchTerm, user]);
 
   const fetchUsers = async () => {
@@ -34,11 +38,15 @@ const Directory = () => {
       setLoading(true);
       setError(null);
 
+      console.log('🔍 Récupération des utilisateurs avec filtre:', filter);
+
       let query = supabase
         .from('profiles')
-        .select('id, full_name, bio, location, skills, avatar_url, is_creator, football_interest, is_major, passions, clubs, sex');
+        .select('id, full_name, bio, location, skills, avatar_url, is_creator, football_interest, is_major, passions, clubs, sex, created_at')
+        .neq('id', user?.id) // Exclure l'utilisateur actuel
+        .order('created_at', { ascending: false });
 
-      // Appliquer les filtres avec les bonnes colonnes
+      // Appliquer les filtres
       if (filter === 'creators') {
         query = query.eq('is_creator', true);
       } else if (filter === 'football') {
@@ -49,16 +57,22 @@ const Directory = () => {
 
       // Appliquer la recherche
       if (searchTerm) {
-        query = query.ilike('full_name', `%${searchTerm}%`);
+        query = query.or(`full_name.ilike.%${searchTerm}%,bio.ilike.%${searchTerm}%,skills.cs.{${searchTerm}}`);
       }
 
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erreur fetchUsers:', error);
+        throw error;
+      }
+
+      console.log(`✅ ${data?.length || 0} utilisateurs trouvés`);
       setUsers(data || []);
     } catch (err) {
-      console.error('Erreur détaillée fetchUsers:', err);
-      setError(`Erreur chargement annuaire : ${err.message}`);
+      console.error('❌ Erreur fetchUsers:', err);
+      setError(`Erreur chargement annuaire: ${err.message}`);
+      toast.error('Erreur lors du chargement des utilisateurs');
     } finally {
       setLoading(false);
     }
@@ -73,27 +87,30 @@ const Directory = () => {
 
       if (error) throw error;
 
-      const ids = new Set(data.map(connection => connection.target_id));
+      const ids = new Set(data?.map(connection => connection.target_id) || []);
       setExistingConnections(ids);
+      console.log(`✅ ${ids.size} connexions existantes chargées`);
     } catch (err) {
-      console.error('Erreur fetchExistingConnections:', err.message);
+      console.error('❌ Erreur fetchExistingConnections:', err.message);
     }
   };
 
   const fetchUserVideos = async () => {
     try {
-      // Récupérer les vidéos de l'utilisateur depuis la table videos
       const { data, error } = await supabase
         .from('videos')
-        .select('id, title, video_url, created_at')
+        .select('id, title, public_url, storage_path, created_at, status')
         .eq('user_id', user.id)
+        .eq('status', 'analyzed') // Seulement les vidéos analysées
         .order('created_at', { ascending: false });
 
       if (error) throw error;
+
+      console.log(`✅ ${data?.length || 0} vidéos utilisateur chargées`);
       setUserVideos(data || []);
     } catch (err) {
-      console.error('Erreur fetchUserVideos:', err.message);
-      toast.error('Erreur lors du chargement des vidéos');
+      console.error('❌ Erreur fetchUserVideos:', err.message);
+      toast.error('Erreur lors du chargement de vos vidéos');
     }
   };
 
@@ -102,6 +119,7 @@ const Directory = () => {
       ...prev,
       [targetUserId]: videoId
     }));
+    console.log(`🎥 Vidéo ${videoId} sélectionnée pour l'utilisateur ${targetUserId}`);
   };
 
   const handleConnect = async (targetUserId) => {
@@ -112,7 +130,7 @@ const Directory = () => {
     }
 
     if (existingConnections.has(targetUserId)) {
-      toast.info('Demande déjà envoyée');
+      toast.info('Demande de connexion déjà envoyée à cet utilisateur');
       return;
     }
 
@@ -122,14 +140,15 @@ const Directory = () => {
 
     try {
       const videoId = selectedVideos[targetUserId] || null;
+      const targetUser = users.find(u => u.id === targetUserId);
 
-      console.log('Envoi demande connexion:', {
+      console.log('📤 Envoi demande connexion:', {
         requester_id: user.id,
         target_id: targetUserId,
+        target_name: targetUser?.full_name,
         video_id: videoId
       });
 
-      // Vérifier que la table connections existe et a les bonnes colonnes
       const { data, error } = await supabase
         .from('connections')
         .insert({
@@ -142,28 +161,37 @@ const Directory = () => {
         .select();
 
       if (error) {
-        console.error('Erreur Supabase détaillée:', error);
+        console.error('❌ Erreur Supabase:', error);
         
-        // Si l'erreur est due à une table manquante, proposer une solution
+        if (error.code === '23505') { // Violation de contrainte unique
+          toast.error('Demande de connexion déjà existante');
+          return;
+        }
+        
         if (error.code === '42P01') {
-          toast.error('Table connections manquante. Vérifiez la base de données.');
+          toast.error('Table des connexions non disponible');
           return;
         }
         
         throw error;
       }
 
-      console.log('Réponse Supabase:', data);
+      console.log('✅ Réponse connexion:', data);
 
-      // Mettre à jour l'état des connexions existantes
+      // Mettre à jour l'état local
       setExistingConnections(prev => new Set([...prev, targetUserId]));
-      toast.success('Demande de mise en relation envoyée !');
       
-      // Recharger les connexions
-      fetchExistingConnections();
+      // Réinitialiser la sélection vidéo pour cet utilisateur
+      setSelectedVideos(prev => {
+        const newSelection = { ...prev };
+        delete newSelection[targetUserId];
+        return newSelection;
+      });
+
+      toast.success(`Demande de connexion envoyée à ${targetUser?.full_name || 'l\'utilisateur'} !`);
       
     } catch (err) {
-      console.error('Erreur complète handleConnect:', err);
+      console.error('❌ Erreur handleConnect:', err);
       toast.error(`Erreur lors de la demande: ${err.message}`);
     } finally {
       setConnecting(false);
@@ -179,7 +207,7 @@ const Directory = () => {
   const renderSkills = (skills) => {
     if (!skills) return null;
     if (Array.isArray(skills)) {
-      return skills.map((skill, index) => (
+      return skills.slice(0, 3).map((skill, index) => (
         <span key={index} className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full mr-1 mb-1">
           {skill}
         </span>
@@ -191,7 +219,7 @@ const Directory = () => {
   const renderPassions = (passions) => {
     if (!passions) return null;
     if (Array.isArray(passions)) {
-      return passions.map((passion, index) => (
+      return passions.slice(0, 3).map((passion, index) => (
         <span key={index} className="inline-block bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full mr-1 mb-1">
           {passion}
         </span>
@@ -203,7 +231,7 @@ const Directory = () => {
   const renderClubs = (clubs) => {
     if (!clubs) return null;
     if (Array.isArray(clubs)) {
-      return clubs.map((club, index) => (
+      return clubs.slice(0, 2).map((club, index) => (
         <span key={index} className="inline-block bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full mr-1 mb-1">
           {club}
         </span>
@@ -212,13 +240,21 @@ const Directory = () => {
     return null;
   };
 
-  // Affichage loading
+  // Fonction pour obtenir l'avatar par défaut basé sur le sexe
+  const getDefaultAvatar = (sex) => {
+    return sex === 'female' 
+      ? 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=64&h=64&fit=crop&crop=face'
+      : 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=64&h=64&fit=crop&crop=face';
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 dark:from-gray-900 dark:to-gray-800 p-8">
-        <div className="text-center mt-10">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-          <p className="mt-3 text-primary-700 dark:text-primary-300">Chargement de l'annuaire...</p>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mt-10">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <p className="mt-4 text-blue-700 text-lg">Chargement de l'annuaire...</p>
+          </div>
         </div>
       </div>
     );
@@ -226,47 +262,89 @@ const Directory = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 dark:from-gray-900 dark:to-gray-800 p-8">
-        <div className="text-red-500 text-center mt-10">
-          {error}
-          <Button onClick={fetchUsers} className="ml-4 bg-primary-600 hover:bg-primary-700">
-            Réessayer
-          </Button>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+            <div className="text-red-500 text-4xl mb-4">❌</div>
+            <h3 className="text-red-800 text-xl font-semibold mb-2">Erreur de chargement</h3>
+            <p className="text-red-600 mb-4">{error}</p>
+            <Button onClick={fetchUsers} className="bg-red-600 hover:bg-red-700 text-white">
+              🔄 Réessayer
+            </Button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 dark:from-gray-900 dark:to-gray-800 p-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-8">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-primary-900 dark:text-white mb-2">
-          📋 Annuaire SpotBulle
-        </h1>
-        <p className="text-primary-700 dark:text-primary-300 mb-6">
-          Découvrez la communauté France-Maroc et connectez-vous avec des passionnés
-        </p>
+        {/* En-tête */}
+        <div className="text-center mb-8">
+          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
+            📋 Annuaire SpotBulle
+          </h1>
+          <p className="text-gray-600 text-lg max-w-2xl mx-auto">
+            Découvrez la communauté et connectez-vous avec des passionnés partageant vos intérêts
+          </p>
+        </div>
 
         {/* Filtres et recherche */}
-        <div className="flex flex-wrap gap-4 mb-6">
-          <select 
-            value={filter} 
-            onChange={(e) => setFilter(e.target.value)}
-            className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          >
-            <option value="all">Tous les membres</option>
-            <option value="creators">Créateurs de contenu</option>
-            <option value="football">Intéressés par le football</option>
-            <option value="adults">Majeurs</option>
-          </select>
+        <div className="flex flex-col sm:flex-row gap-4 mb-8 p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+          <div className="flex flex-col sm:flex-row gap-4 flex-1">
+            <select 
+              value={filter} 
+              onChange={(e) => setFilter(e.target.value)}
+              className="px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+            >
+              <option value="all">👥 Tous les membres</option>
+              <option value="creators">🎨 Créateurs de contenu</option>
+              <option value="football">⚽ Passionnés de football</option>
+              <option value="adults">👑 Membres majeurs</option>
+            </select>
 
-          <input
-            type="text"
-            placeholder="Rechercher un membre par nom..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white flex-grow focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          />
+            <input
+              type="text"
+              placeholder="🔍 Rechercher par nom, compétences..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 flex-grow focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+            />
+          </div>
+          
+          <Button
+            onClick={fetchUsers}
+            className="bg-blue-600 hover:bg-blue-700 text-white py-3 px-6"
+          >
+            🔄 Actualiser
+          </Button>
+        </div>
+
+        {/* Statistiques */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+          <div className="bg-white rounded-lg p-4 text-center border border-gray-200">
+            <div className="text-2xl font-bold text-blue-600">{users.length}</div>
+            <div className="text-sm text-gray-600">Membres</div>
+          </div>
+          <div className="bg-white rounded-lg p-4 text-center border border-gray-200">
+            <div className="text-2xl font-bold text-green-600">
+              {users.filter(u => u.is_creator).length}
+            </div>
+            <div className="text-sm text-gray-600">Créateurs</div>
+          </div>
+          <div className="bg-white rounded-lg p-4 text-center border border-gray-200">
+            <div className="text-2xl font-bold text-purple-600">
+              {users.filter(u => u.football_interest).length}
+            </div>
+            <div className="text-sm text-gray-600">Football</div>
+          </div>
+          <div className="bg-white rounded-lg p-4 text-center border border-gray-200">
+            <div className="text-2xl font-bold text-orange-600">
+              {existingConnections.size}
+            </div>
+            <div className="text-sm text-gray-600">Connexions</div>
+          </div>
         </div>
 
         {/* Liste des utilisateurs */}
@@ -274,34 +352,47 @@ const Directory = () => {
           {users.map((profile) => {
             const connectionStatus = getConnectionStatus(profile.id);
             return (
-              <div key={profile.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-shadow">
+              <div key={profile.id} className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-200 hover:shadow-lg transition-all duration-300 hover:translate-y-[-2px]">
                 <div className="p-6">
-                  <div className="flex items-center mb-4">
+                  {/* En-tête profil */}
+                  <div className="flex items-start mb-4">
                     <img
-                      src={profile.avatar_url || '/default-avatar.png'}
+                      src={profile.avatar_url || getDefaultAvatar(profile.sex)}
                       alt={profile.full_name}
-                      className="w-12 h-12 rounded-full object-cover mr-4 border-2 border-gray-200"
+                      className="w-14 h-14 rounded-full object-cover mr-4 border-2 border-blue-200"
+                      onError={(e) => {
+                        e.target.src = getDefaultAvatar(profile.sex);
+                      }}
                     />
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900 dark:text-white text-lg">
-                        {profile.full_name}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-900 text-lg truncate">
+                        {profile.full_name || 'Utilisateur sans nom'}
                       </h3>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {profile.location || 'Localisation non précisée'}
+                      <p className="text-sm text-gray-500 truncate">
+                        {profile.location || '📍 Localisation non précisée'}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Inscrit le {new Date(profile.created_at).toLocaleDateString('fr-FR')}
                       </p>
                     </div>
                   </div>
 
-                  <p className="text-gray-600 dark:text-gray-300 text-sm mb-4 line-clamp-3">
+                  {/* Bio */}
+                  <p className="text-gray-600 text-sm mb-4 line-clamp-2">
                     {profile.bio || 'Aucune biographie fournie.'}
                   </p>
 
                   {/* Compétences */}
-                  {profile.skills && (
+                  {profile.skills && profile.skills.length > 0 && (
                     <div className="mb-3">
-                      <p className="text-xs font-medium text-gray-500 mb-1">Compétences:</p>
+                      <p className="text-xs font-medium text-gray-500 mb-1">🛠️ Compétences</p>
                       <div className="flex flex-wrap">
                         {renderSkills(profile.skills)}
+                        {profile.skills.length > 3 && (
+                          <span className="inline-block bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">
+                            +{profile.skills.length - 3}
+                          </span>
+                        )}
                       </div>
                     </div>
                   )}
@@ -309,7 +400,7 @@ const Directory = () => {
                   {/* Passions */}
                   {profile.passions && profile.passions.length > 0 && (
                     <div className="mb-3">
-                      <p className="text-xs font-medium text-gray-500 mb-1">Passions:</p>
+                      <p className="text-xs font-medium text-gray-500 mb-1">❤️ Passions</p>
                       <div className="flex flex-wrap">
                         {renderPassions(profile.passions)}
                       </div>
@@ -319,14 +410,14 @@ const Directory = () => {
                   {/* Clubs */}
                   {profile.clubs && profile.clubs.length > 0 && (
                     <div className="mb-4">
-                      <p className="text-xs font-medium text-gray-500 mb-1">Clubs:</p>
+                      <p className="text-xs font-medium text-gray-500 mb-1">🏆 Clubs</p>
                       <div className="flex flex-wrap">
                         {renderClubs(profile.clubs)}
                       </div>
                     </div>
                   )}
 
-                  {/* Badges pour les filtres */}
+                  {/* Badges */}
                   <div className="flex flex-wrap gap-2 mb-4">
                     {profile.is_creator && (
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
@@ -343,49 +434,59 @@ const Directory = () => {
                         👑 Majeur
                       </span>
                     )}
+                    {profile.sex === 'female' && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-pink-100 text-pink-800">
+                        👩 Femme
+                      </span>
+                    )}
+                    {profile.sex === 'male' && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        👨 Homme
+                      </span>
+                    )}
                   </div>
 
-                  <div className="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-600">
-                    <div>
-                      {connectionStatus === 'can_connect' && (
+                  {/* Actions de connexion */}
+                  <div className="flex flex-col gap-3 pt-4 border-t border-gray-200">
+                    {connectionStatus === 'can_connect' && (
+                      <>
                         <VideoPicker
                           onSelect={(videoId) => handleVideoSelect(profile.id, videoId)}
                           selectedVideo={selectedVideos[profile.id]}
-                          userVideos={userVideos} // Passer les vidéos disponibles
+                          userVideos={userVideos}
                         />
-                      )}
-                    </div>
-
-                    <div>
-                      {connectionStatus === 'not_connected' && (
-                        <Button
-                          onClick={() => navigate('/auth')}
-                          className="bg-primary-600 hover:bg-primary-700 text-white"
-                          size="sm"
-                        >
-                          Se connecter
-                        </Button>
-                      )}
-                      {connectionStatus === 'pending' && (
-                        <Button
-                          disabled
-                          className="bg-gray-300 text-gray-600 cursor-not-allowed"
-                          size="sm"
-                        >
-                          Demande envoyée ✓
-                        </Button>
-                      )}
-                      {connectionStatus === 'can_connect' && (
                         <Button
                           onClick={() => handleConnect(profile.id)}
                           disabled={connecting}
-                          className="bg-primary-600 hover:bg-primary-700 text-white"
-                          size="sm"
+                          className="bg-blue-600 hover:bg-blue-700 text-white py-2"
                         >
-                          {connecting ? 'Envoi...' : 'Se connecter'}
+                          {connecting ? (
+                            <span className="flex items-center gap-2">
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                              Envoi...
+                            </span>
+                          ) : (
+                            '🤝 Se connecter'
+                          )}
                         </Button>
-                      )}
-                    </div>
+                      </>
+                    )}
+                    {connectionStatus === 'pending' && (
+                      <Button
+                        disabled
+                        className="bg-gray-300 text-gray-600 cursor-not-allowed py-2"
+                      >
+                        ✅ Demande envoyée
+                      </Button>
+                    )}
+                    {connectionStatus === 'not_connected' && (
+                      <Button
+                        onClick={() => navigate('/auth')}
+                        className="bg-blue-600 hover:bg-blue-700 text-white py-2"
+                      >
+                        🔐 Se connecter
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -393,16 +494,28 @@ const Directory = () => {
           })}
         </div>
 
+        {/* Message vide */}
         {users.length === 0 && (
-          <div className="text-center text-gray-500 dark:text-gray-400 mt-10 py-12">
+          <div className="text-center text-gray-500 py-16">
             <div className="text-6xl mb-4">🔍</div>
-            <h3 className="text-xl font-semibold mb-2">Aucun utilisateur trouvé</h3>
-            <p className="text-gray-600 dark:text-gray-400">
+            <h3 className="text-2xl font-semibold mb-3">Aucun utilisateur trouvé</h3>
+            <p className="text-gray-600 max-w-md mx-auto mb-6">
               {searchTerm || filter !== 'all' 
-                ? "Essayez de modifier vos critères de recherche ou de filtres." 
-                : "Aucun utilisateur n'est inscrit pour le moment."
+                ? "Essayez de modifier vos critères de recherche ou vos filtres pour trouver plus de membres." 
+                : "L'annuaire est vide pour le moment. Revenez plus tard !"
               }
             </p>
+            {(searchTerm || filter !== 'all') && (
+              <Button
+                onClick={() => {
+                  setSearchTerm('');
+                  setFilter('all');
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                🔄 Afficher tous les membres
+              </Button>
+            )}
           </div>
         )}
       </div>
