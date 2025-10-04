@@ -1,4 +1,3 @@
-// supabase/functions/transcribe-video/index.js
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import OpenAI from 'npm:openai@4.28.0'
 
@@ -33,10 +32,21 @@ Deno.serve(async (req) => {
     const { videoId: vidId, userId, videoUrl } = await req.json();
     videoId = vidId;
 
-    console.log("📦 Paramètres:", { videoId, userId, videoUrl: videoUrl?.substring(0, 100) + "..." });
+    console.log("📦 Paramètres reçus:", { 
+      videoId, 
+      userId, 
+      videoUrl: videoUrl ? videoUrl.substring(0, 100) + "..." : "NULL" 
+    });
 
+    // ✅ CORRIGÉ : Validation améliorée de l'URL
     if (!videoId || !userId || !videoUrl) {
       throw new Error('Paramètres manquants: videoId, userId, videoUrl requis');
+    }
+
+    try {
+      new URL(videoUrl);
+    } catch (urlError) {
+      throw new Error(`URL vidéo invalide: ${videoUrl}. Erreur: ${urlError.message}`);
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -55,7 +65,7 @@ Deno.serve(async (req) => {
 
     // Mettre à jour le statut de la vidéo
     console.log("🔄 Mise à jour statut PROCESSING");
-    await supabase
+    const { error: statusError } = await supabase
       .from('videos')
       .update({ 
         status: VIDEO_STATUS.PROCESSING,
@@ -63,27 +73,39 @@ Deno.serve(async (req) => {
       })
       .eq('id', videoId)
 
-    console.log('🎙️ Début transcription pour la vidéo:', videoId);
+    if (statusError) {
+      throw new Error(`Erreur mise à jour statut: ${statusError.message}`);
+    }
 
-    // CORRECTION : Téléchargement et vérification du fichier
+    console.log('🎙️ Début transcription pour la vidéo:', videoId);
+    console.log("📹 URL vidéo à traiter:", videoUrl);
+
+    // ✅ CORRIGÉ : Téléchargement avec gestion d'erreur améliorée
     console.log("📥 Téléchargement vidéo...");
-    const videoResponse = await fetch(videoUrl);
+    const videoResponse = await fetch(videoUrl, {
+      headers: {
+        'User-Agent': 'SpotBulle-Transcription/1.0'
+      }
+    });
     
     if (!videoResponse.ok) {
-      throw new Error(`Erreur téléchargement vidéo: ${videoResponse.status} ${videoResponse.statusText}`);
+      const errorText = await videoResponse.text();
+      throw new Error(`Erreur téléchargement vidéo: ${videoResponse.status} ${videoResponse.statusText}. Détails: ${errorText}`);
     }
 
     const videoBlob = await videoResponse.blob();
-    console.log(`📊 Taille vidéo: ${videoBlob.size} bytes`);
+    console.log(`📊 Taille vidéo téléchargée: ${videoBlob.size} bytes`);
 
     if (videoBlob.size === 0) {
-      throw new Error('Fichier vidéo vide');
+      throw new Error('Fichier vidéo vide ou inaccessible');
     }
 
     // Transcrire l'audio avec OpenAI Whisper
     console.log("🤖 Appel Whisper...");
     const transcriptionResponse = await openai.audio.transcriptions.create({
-      file: new File([videoBlob], `video-${videoId}.mp4`, { type: 'video/mp4' }),
+      file: new File([videoBlob], `video-${videoId}.webm`, { 
+        type: 'video/webm' 
+      }),
       model: 'whisper-1',
       language: 'fr',
       response_format: 'verbose_json'
