@@ -67,7 +67,8 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
       console.warn('Aucune URL accessible générée');
       return '';
     } catch (e) {
-      console.warn('Erreur lors de la génération de l'URL de la vidéo:', e);
+      // ✅ CORRIGÉ : Apostrophe échappée
+      console.warn('Erreur lors de la génération de l\'URL de la vidéo:', e);
       return '';
     }
   }, []);
@@ -103,7 +104,8 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
           toast.error('Vidéo non trouvée.');
         } else if (error.code === '42501') {
           setError('Accès non autorisé à la vidéo.');
-          toast.error('Vous n'avez pas l'autorisation d'accéder à cette vidéo.');
+          // ✅ CORRIGÉ : Apostrophe échappée
+          toast.error('Vous n\'avez pas l\'autorisation d\'accéder à cette vidéo.');
         } else {
           setError('Erreur lors du chargement de la vidéo.');
           toast.error('Erreur lors du chargement de la vidéo.');
@@ -116,13 +118,15 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
       try {
         await videoService.incrementViews(videoId);
       } catch (viewError) {
-        toast.warning('Vidéo chargée, mais échec de l'incrémentation des vues.');
+        // ✅ CORRIGÉ : Apostrophe échappée
+        toast.warning('Vidéo chargée, mais échec de l\'incrémentation des vues.');
       }
 
       const url = await buildAccessibleUrl(data);
       if (!url) {
-        setError('Impossible de générer l'URL de la vidéo.');
-        toast.error('Erreur lors de la génération de l'URL de la vidéo.');
+        // ✅ CORRIGÉ : Apostrophe échappée
+        setError('Impossible de générer l\'URL de la vidéo.');
+        toast.error('Erreur lors de la génération de l\'URL de la vidéo.');
       } else {
         setVideoUrl(url);
         
@@ -149,12 +153,14 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
             new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout envoi email')), 10000)),
           ]);
           if (!response.ok) {
-            toast.warning('Vidéo chargée, mais échec de l'envoi de l'email.');
+            // ✅ CORRIGÉ : Apostrophe échappée
+            toast.warning('Vidéo chargée, mais échec de l\'envoi de l\'email.');
           } else {
             toast.success('Un email avec le lien de votre vidéo a été envoyé.');
           }
         } catch {
-          toast.warning('Vidéo chargée, mais échec de l'envoi de l'email.');
+          // ✅ CORRIGÉ : Apostrophe échappée
+          toast.warning('Vidéo chargée, mais échec de l\'envoi de l\'email.');
         }
       }
     } catch {
@@ -189,7 +195,8 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
     if (videoData?.analysis_result) {
       navigate(`/video-analysis/${videoId}`);
     } else {
-      toast.info('L'analyse de votre vidéo est en cours...');
+      // ✅ CORRIGÉ : Apostrophe échappée
+      toast.info('L\'analyse de votre vidéo est en cours...');
     }
   };
 
