@@ -5,7 +5,6 @@ import QRCode from 'qrcode.react';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button-enhanced.jsx';
 import { supabase, refreshSession } from '../lib/supabase';
-import { videoService } from '../services/videoService';
 import ProfessionalHeader from '../components/ProfessionalHeader';
 
 const VideoSuccess = ({ user, profile, onSignOut }) => {
@@ -17,169 +16,168 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
   const navigate = useNavigate();
   const videoId = useMemo(() => searchParams.get('id'), [searchParams]);
 
+  // ✅ CORRIGÉ : Fonction améliorée pour construire l'URL
   const buildAccessibleUrl = useCallback(async (video) => {
     try {
+      console.log('🔗 Construction URL pour vidéo:', video);
+
+      // Priorité 1: URL publique existante
       if (video?.public_url) {
-        console.log('Utilisation de public_url depuis la base:', video.public_url);
+        console.log('✅ Utilisation public_url existant:', video.public_url);
         return video.public_url;
       }
 
+      // Priorité 2: Générer URL publique depuis storage_path
       if (video?.storage_path) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const headers = {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token || ''}`,
-          'X-Client-Info': 'spotbulle',
-        };
-        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-signed-url`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ storage_path: video.storage_path, expires_in: 365 * 24 * 60 * 60 }),
-        });
-
-        if (!response.ok) {
-          console.warn('Erreur génération URL signée:', await response.text());
-          const { data: signed, error: signedErr } = await supabase
-            .storage
-            .from('videos')
-            .createSignedUrl(video.storage_path, 365 * 24 * 60 * 60);
-          if (signedErr) {
-            console.warn('Erreur createSignedUrl:', signedErr);
-          } else if (signed?.signedUrl) {
-            console.log('URL signée générée:', signed.signedUrl);
-            return signed.signedUrl;
-          }
-        } else {
-          const { signed_url } = await response.json();
-          if (signed_url) {
-            console.log('URL signée via fonction Edge:', signed_url);
-            return signed_url;
-          }
-        }
-
-        const { data: pub } = supabase.storage.from('videos').getPublicUrl(video.storage_path);
-        if (pub?.publicUrl) {
-          console.log('URL publique générée:', pub.publicUrl);
-          return pub.publicUrl;
+        console.log('📁 Génération URL depuis storage_path:', video.storage_path);
+        const { data: urlData } = supabase.storage
+          .from('videos')
+          .getPublicUrl(video.storage_path);
+        
+        if (urlData?.publicUrl) {
+          console.log('✅ URL publique générée:', urlData.publicUrl);
+          return urlData.publicUrl;
         }
       }
 
-      console.warn('Aucune URL accessible générée');
+      // Priorité 3: Générer URL signée
+      if (video?.file_path) {
+        console.log('🔐 Génération URL signée depuis file_path:', video.file_path);
+        const { data: signedData, error: signedError } = await supabase.storage
+          .from('videos')
+          .createSignedUrl(video.file_path, 3600); // 1 heure
+
+        if (!signedError && signedData?.signedUrl) {
+          console.log('✅ URL signée générée');
+          return signedData.signedUrl;
+        }
+      }
+
+      console.warn('❌ Aucune URL accessible générée');
       return '';
     } catch (e) {
-      // ✅ CORRIGÉ : Apostrophe échappée
-      console.warn('Erreur lors de la génération de l\'URL de la vidéo:', e);
+      console.error('❌ Erreur buildAccessibleUrl:', e);
       return '';
     }
   }, []);
 
+  // ✅ CORRIGÉ : Fonction fetchVideoData améliorée avec plus de colonnes
   const fetchVideoData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const isSessionValid = await refreshSession();
-      if (!isSessionValid) {
-        setError('Veuillez vous reconnecter.');
-        toast.error('Session invalide, veuillez vous reconnecter.');
+      console.log('🎬 Recherche vidéo ID:', videoId);
+
+      if (!videoId) {
+        setError('ID de vidéo manquant');
+        setLoading(false);
         return;
       }
 
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError || !user) {
-        setError('Veuillez vous reconnecter.');
-        toast.error('Utilisateur non authentifié.');
+      // Vérification de session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        console.error('❌ Erreur session:', sessionError);
+        setError('Session invalide');
+        toast.error('Veuillez vous reconnecter');
         return;
       }
 
+      // ✅ CORRIGÉ : Sélection de TOUTES les colonnes possibles
       const { data, error } = await supabase
         .from('videos')
-        .select('id, title, description, storage_path, created_at, public_url, analysis_result, ai_score')
+        .select(`
+          id, 
+          title, 
+          description, 
+          storage_path,
+          file_path,
+          public_url, 
+          created_at, 
+          status,
+          analysis,
+          ai_result,
+          transcription_text,
+          transcription_data,
+          user_id,
+          duration,
+          file_size,
+          format,
+          tags,
+          tone_analysis,
+          use_avatar
+        `)
         .eq('id', videoId)
         .single();
 
       if (error) {
+        console.error('❌ Erreur Supabase détaillée:', error);
+        
         if (error.code === 'PGRST116') {
-          setError('Vidéo non trouvée.');
-          toast.error('Vidéo non trouvée.');
+          setError(`Vidéo non trouvée (ID: ${videoId})`);
+          toast.error('Vidéo non trouvée dans la base de données');
         } else if (error.code === '42501') {
-          setError('Accès non autorisé à la vidéo.');
-          // ✅ CORRIGÉ : Apostrophe échappée
-          toast.error('Vous n\'avez pas l\'autorisation d\'accéder à cette vidéo.');
+          setError('Accès non autorisé à cette vidéo');
+          toast.error('Vous n\'avez pas l\'autorisation d\'accéder à cette vidéo');
         } else {
-          setError('Erreur lors du chargement de la vidéo.');
-          toast.error('Erreur lors du chargement de la vidéo.');
+          setError(`Erreur base de données: ${error.message}`);
+          toast.error('Erreur lors du chargement de la vidéo');
         }
-        throw error;
+        return;
       }
 
+      if (!data) {
+        setError('Aucune donnée vidéo retournée');
+        toast.error('Vidéo introuvable');
+        return;
+      }
+
+      console.log('✅ Vidéo trouvée:', data);
       setVideoData(data);
 
-      try {
-        await videoService.incrementViews(videoId);
-      } catch (viewError) {
-        // ✅ CORRIGÉ : Apostrophe échappée
-        toast.warning('Vidéo chargée, mais échec de l\'incrémentation des vues.');
-      }
-
+      // Génération de l'URL
       const url = await buildAccessibleUrl(data);
       if (!url) {
-        // ✅ CORRIGÉ : Apostrophe échappée
-        setError('Impossible de générer l\'URL de la vidéo.');
-        toast.error('Erreur lors de la génération de l\'URL de la vidéo.');
+        console.warn('⚠️ Impossible de générer l\'URL de la vidéo');
+        setError('Impossible de générer le lien de partage');
+        toast.warning('Vidéo trouvée mais lien de partage indisponible');
       } else {
+        console.log('✅ URL vidéo générée:', url);
         setVideoUrl(url);
+      }
+
+      // Tentative d'incrémentation des vues (silencieuse)
+      try {
+        const { error: viewError } = await supabase
+          .from('videos')
+          .update({ views: (data.views || 0) + 1 })
+          .eq('id', videoId);
         
-        // Envoi d'email (optionnel)
-        try {
-          if (!import.meta.env.VITE_SUPABASE_URL) {
-            toast.warning('Configuration email non disponible.');
-            return;
-          }
-          const response = await Promise.race([
-            fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${user.access_token}`,
-                'X-Client-Info': 'spotbulle',
-              },
-              body: JSON.stringify({
-                user_id: user.id,
-                video_id: videoId,
-                video_url: url,
-              }),
-            }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout envoi email')), 10000)),
-          ]);
-          if (!response.ok) {
-            // ✅ CORRIGÉ : Apostrophe échappée
-            toast.warning('Vidéo chargée, mais échec de l\'envoi de l\'email.');
-          } else {
-            toast.success('Un email avec le lien de votre vidéo a été envoyé.');
-          }
-        } catch {
-          // ✅ CORRIGÉ : Apostrophe échappée
-          toast.warning('Vidéo chargée, mais échec de l\'envoi de l\'email.');
+        if (viewError) {
+          console.warn('⚠️ Impossible d\'incrémenter les vues:', viewError);
         }
+      } catch (viewError) {
+        console.warn('⚠️ Erreur incrémentation vues:', viewError);
       }
-    } catch {
-      if (!error) {
-        setError('Impossible de charger les données de la vidéo.');
-        toast.error('Erreur lors du chargement de la vidéo.');
-      }
+
+    } catch (err) {
+      console.error('❌ Erreur fetchVideoData:', err);
+      setError(`Erreur inattendue: ${err.message}`);
+      toast.error('Erreur lors du chargement de la vidéo');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (!videoId) {
-      setError('Paramètre id manquant.');
+    if (videoId) {
+      console.log('🔄 Initialisation avec videoId:', videoId);
+      fetchVideoData();
+    } else {
+      setError('Paramètre ID manquant dans l\'URL');
       setLoading(false);
-      return;
     }
-    fetchVideoData();
   }, [videoId]);
 
   const copyToClipboard = () => {
@@ -187,20 +185,18 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
       navigator.clipboard.writeText(videoUrl);
       toast.success('Lien copié dans le presse-papiers !');
     } else {
-      toast.error('Aucun lien disponible à copier.');
+      toast.error('Aucun lien disponible à copier');
     }
   };
 
   const navigateToAnalysis = () => {
-    if (videoData?.analysis_result) {
+    if (videoData?.analysis || videoData?.ai_result) {
       navigate(`/video-analysis/${videoId}`);
     } else {
-      // ✅ CORRIGÉ : Apostrophe échappée
-      toast.info('L\'analyse de votre vidéo est en cours...');
+      toast.info('L\'analyse de votre vidéo est en cours ou non disponible');
     }
   };
 
-  // ✅ CORRIGÉ : Navigation manuelle au lieu de redirection automatique
   const navigateToDirectory = () => {
     navigate('/directory');
   };
@@ -209,13 +205,30 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
     navigate('/');
   };
 
+  const navigateToRecord = () => {
+    navigate('/record-video');
+  };
+
+  // ✅ CORRIGÉ : Fonction pour formater la date
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Date inconnue';
+    return new Date(dateString).toLocaleDateString('fr-FR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
         <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
         <div className="flex flex-col items-center justify-center min-h-[50vh] text-gray-700">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-          <p>Chargement de votre vidéo...</p>
+          <p className="text-lg">Chargement de votre vidéo...</p>
+          <p className="text-sm text-gray-500 mt-2">ID: {videoId}</p>
         </div>
       </div>
     );
@@ -226,13 +239,19 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
         <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
         <div className="flex flex-col items-center text-center p-6 min-h-[50vh] justify-center">
-          <p className="text-red-500 mb-4">{error || 'Vidéo non trouvée.'}</p>
-          <div className="flex gap-4">
+          <div className="text-red-500 text-6xl mb-4">❌</div>
+          <h2 className="text-2xl font-bold text-red-600 mb-2">Erreur</h2>
+          <p className="text-red-500 mb-4 max-w-md">{error || 'Vidéo non trouvée'}</p>
+          <p className="text-gray-600 text-sm mb-6">ID vidéo: {videoId}</p>
+          <div className="flex flex-col sm:flex-row gap-4">
             <Button onClick={fetchVideoData} className="btn-spotbulle">
-              Réessayer
+              🔄 Réessayer
             </Button>
-            <Button onClick={navigateToHome} className="bg-gray-500 hover:bg-gray-600">
-              Retour à l'accueil
+            <Button onClick={navigateToHome} className="bg-blue-600 text-white hover:bg-blue-700">
+              🏠 Accueil
+            </Button>
+            <Button onClick={navigateToRecord} className="bg-green-600 text-white hover:bg-green-700">
+              🎥 Nouvelle vidéo
             </Button>
           </div>
         </div>
@@ -245,89 +264,150 @@ const VideoSuccess = ({ user, profile, onSignOut }) => {
       <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
       
       <div className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto text-center">
-          <h1 className="text-4xl font-french font-bold text-gray-900 mb-2">
-            🎉 Félicitations !
-          </h1>
-          <p className="text-xl text-gray-600 mb-8">
-            Votre vidéo est en ligne et accessible à la communauté
-          </p>
+        <div className="max-w-4xl mx-auto">
+          {/* En-tête de succès */}
+          <div className="text-center mb-8">
+            <div className="text-6xl mb-4">🎉</div>
+            <h1 className="text-4xl font-french font-bold text-gray-900 mb-2">
+              Félicitations !
+            </h1>
+            <p className="text-xl text-gray-600 mb-4">
+              Votre vidéo est en ligne et accessible à la communauté
+            </p>
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 inline-block">
+              <p className="text-green-800 font-semibold">
+                ✅ Vidéo publiée avec succès
+              </p>
+            </div>
+          </div>
 
+          {/* Informations de la vidéo */}
+          <div className="card-spotbulle p-6 mb-8">
+            <h2 className="text-2xl font-semibold mb-4">📹 Informations de la vidéo</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p><strong>Titre:</strong> {videoData.title || 'Sans titre'}</p>
+                <p><strong>Description:</strong> {videoData.description || 'Aucune description'}</p>
+                <p><strong>Durée:</strong> {videoData.duration ? `${videoData.duration} secondes` : 'Inconnue'}</p>
+              </div>
+              <div>
+                <p><strong>Statut:</strong> {videoData.status || 'Inconnu'}</p>
+                <p><strong>Créée le:</strong> {formatDate(videoData.created_at)}</p>
+                <p><strong>Format:</strong> {videoData.format || 'webm'}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* QR Code et Partage */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
             {/* QR Code */}
             <div className="card-spotbulle p-6">
-              <h3 className="text-xl font-semibold mb-4">📱 QR Code de partage</h3>
+              <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                📱 QR Code de partage
+              </h3>
               <div className="flex justify-center mb-4">
-                <QRCode value={videoUrl} size={200} fgColor="#3b82f6" />
+                {videoUrl ? (
+                  <QRCode value={videoUrl} size={200} fgColor="#3b82f6" />
+                ) : (
+                  <div className="w-200 h-200 flex items-center justify-center bg-gray-100 rounded">
+                    <p className="text-gray-500">URL non disponible</p>
+                  </div>
+                )}
               </div>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-600 text-center">
                 Scannez ce QR code pour accéder directement à votre vidéo
               </p>
             </div>
 
             {/* Lien de partage */}
             <div className="card-spotbulle p-6">
-              <h3 className="text-xl font-semibold mb-4">🔗 Lien de partage</h3>
+              <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                🔗 Lien de partage
+              </h3>
               <div className="mb-4">
                 <input
                   type="text"
-                  value={videoUrl}
+                  value={videoUrl || 'URL non disponible'}
                   readOnly
                   className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 text-sm"
                 />
               </div>
               <div className="flex gap-3">
-                <Button onClick={copyToClipboard} className="flex-1">
+                <Button 
+                  onClick={copyToClipboard} 
+                  className="flex-1"
+                  disabled={!videoUrl}
+                >
                   📋 Copier le lien
                 </Button>
               </div>
+              {!videoUrl && (
+                <p className="text-yellow-600 text-sm mt-2">
+                  ⚠️ Le lien de partage n'est pas encore disponible
+                </p>
+              )}
             </div>
           </div>
 
-          {/* ✅ CORRIGÉ : Actions avec bouton pour directory au lieu de redirection automatique */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
-            <Button
-              onClick={navigateToAnalysis}
-              className="btn-spotbulle text-lg py-3 px-6"
-              disabled={!videoData?.analysis_result}
-            >
-              📊 Voir l'analyse détaillée
-            </Button>
-            
-            <Button
-              onClick={() => navigate('/record-video')}
-              className="bg-white text-blue-600 border border-blue-600 hover:bg-blue-50 text-lg py-3 px-6"
-            >
-              🎥 Créer une nouvelle vidéo
-            </Button>
-            
-            <Button
-              onClick={navigateToDirectory}
-              className="bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 text-lg py-3 px-6"
-            >
-              👥 Explorer la communauté
-            </Button>
+          {/* Actions principales */}
+          <div className="card-spotbulle p-6 mb-8">
+            <h3 className="text-xl font-semibold mb-4">🚀 Actions disponibles</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Button
+                onClick={navigateToAnalysis}
+                className="bg-purple-600 hover:bg-purple-700 text-white py-3"
+                disabled={!videoData?.analysis && !videoData?.ai_result}
+              >
+                📊 Analyse détaillée
+              </Button>
+              
+              <Button
+                onClick={navigateToRecord}
+                className="bg-green-600 hover:bg-green-700 text-white py-3"
+              >
+                🎥 Nouvelle vidéo
+              </Button>
+              
+              <Button
+                onClick={navigateToDirectory}
+                className="bg-blue-600 hover:bg-blue-700 text-white py-3"
+              >
+                👥 Explorer
+              </Button>
 
-            <Button
-              onClick={navigateToHome}
-              className="bg-blue-600 text-white border border-blue-600 hover:bg-blue-700 text-lg py-3 px-6"
-            >
-              🏠 Retour à l'accueil
-            </Button>
+              <Button
+                onClick={navigateToHome}
+                className="bg-gray-600 hover:bg-gray-700 text-white py-3"
+              >
+                🏠 Accueil
+              </Button>
+            </div>
           </div>
 
-          {/* Informations supplémentaires */}
-          {videoData.analysis_result && (
+          {/* Statut d'analyse */}
+          {(videoData.analysis || videoData.ai_result) && (
             <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-              <p className="text-green-800">
-                ✅ Votre vidéo a été analysée avec succès. 
-                <strong> Score IA : {videoData.ai_score ? (videoData.ai_score * 10).toFixed(1) : '7.0'}/10</strong>
+              <p className="text-green-800 font-semibold">
+                ✅ Analyse terminée - Votre vidéo a été analysée avec succès
               </p>
             </div>
           )}
 
-          <div className="text-sm text-gray-600">
+          {videoData.status === 'processing' && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                <p className="text-blue-800">
+                  🔄 Analyse en cours - Votre vidéo est en cours de traitement
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Footer informatif */}
+          <div className="text-center text-sm text-gray-600">
             <p>Votre vidéo est maintenant visible par les membres de la communauté SpotBulle</p>
+            <p className="mt-1">Partagez-la avec vos amis et collègues !</p>
           </div>
         </div>
       </div>
