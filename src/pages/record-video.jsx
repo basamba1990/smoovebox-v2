@@ -310,7 +310,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     setToneAnalysis(mockToneAnalysis);
   };
 
-  // ✅ CORRIGÉ : Uploader la vidéo avec URL publique
+  // ✅ CORRIGÉ : Uploader la vidéo avec gestion robuste du chemin de stockage
   const uploadVideo = async () => {
     if (!recordedVideo) {
       setError('Vous devez enregistrer une vidéo.');
@@ -334,6 +334,11 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
 
       console.log('📤 Upload du fichier vers:', filePath);
 
+      // ✅ VÉRIFICATION CRITIQUE : S'assurer que filePath n'est pas null
+      if (!filePath || filePath.trim() === '') {
+        throw new Error('Le chemin de stockage ne peut pas être vide');
+      }
+
       const { error: uploadError } = await supabase.storage
         .from('videos')
         .upload(filePath, recordedVideo.blob);
@@ -349,29 +354,46 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
         .from('videos')
         .getPublicUrl(filePath);
 
-      // 3. Insérer la vidéo avec l'URL publique
+      // ✅ CORRECTION : Structure de données compatible avec la base de données
+      const videoInsertData = {
+        title: `Vidéo ${new Date().toLocaleDateString('fr-FR')}`,
+        description: 'Vidéo enregistrée depuis la caméra',
+        // ✅ CHAMPS CRITIQUES : S'assurer que storage_path et file_path sont bien définis
+        file_path: filePath,
+        storage_path: filePath,
+        file_size: recordedVideo.blob.size,
+        duration: Math.round(recordingTime),
+        user_id: user.id,
+        status: VIDEO_STATUS.UPLOADED,
+        use_avatar: useAvatar,
+        public_url: urlData.publicUrl,
+        // ✅ Champ supplémentaire pour compatibilité
+        video_url: urlData.publicUrl,
+        format: 'webm',
+        tone_analysis: toneAnalysis,
+        tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag),
+        // ✅ Champs requis par la base de données
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      console.log('📝 Données à insérer:', videoInsertData);
+
+      // 3. Insérer la vidéo avec TOUS les champs requis
       const { data: videoData, error: videoError } = await supabase
         .from('videos')
-        .insert({
-          title: `Vidéo ${new Date().toLocaleDateString('fr-FR')}`,
-          description: 'Vidéo enregistrée depuis la caméra',
-          file_path: filePath,
-          storage_path: filePath,
-          file_size: recordedVideo.blob.size,
-          duration: Math.round(recordingTime),
-          user_id: user.id,
-          status: VIDEO_STATUS.UPLOADED,
-          use_avatar: useAvatar,
-          public_url: urlData.publicUrl,
-          format: 'webm',
-          tone_analysis: toneAnalysis,
-          tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag),
-        })
+        .insert(videoInsertData)
         .select()
         .single();
 
       if (videoError) {
         console.error('❌ Erreur insertion vidéo:', videoError);
+        
+        // ✅ Gestion spécifique de l'erreur de chemin NULL
+        if (videoError.message.includes('stockage') || videoError.message.includes('NULL')) {
+          throw new Error('Erreur de configuration du chemin de stockage. Veuillez réessayer.');
+        }
+        
         throw new Error(`Erreur création vidéo: ${videoError.message}`);
       }
 
@@ -384,7 +406,14 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
 
     } catch (err) {
       console.error('❌ Erreur upload:', err);
-      setError(`Erreur lors de l'upload: ${err.message}`);
+      
+      // ✅ Gestion d'erreur améliorée
+      let errorMessage = `Erreur lors de l'upload: ${err.message}`;
+      if (err.message.includes('stockage') || err.message.includes('NULL')) {
+        errorMessage = 'Erreur de configuration du stockage. Le chemin de la vidéo est invalide.';
+      }
+      
+      setError(errorMessage);
       toast.error('Échec de l\'upload.');
     } finally {
       setUploading(false);
