@@ -7,9 +7,10 @@ import ProfileForm from "../components/ProfileForm.jsx";
 import SeminarsList from "../components/SeminarsList.jsx";
 import Certification from "../components/Certification.jsx";
 import Questionnaire from "../components/Questionnaire.jsx";
+import ImmersionSimulator from '../components/ImmersionSimulator.jsx';
 import GiftExperience from '../components/GiftExperience';
 import { Button } from "../components/ui/button-enhanced.jsx";
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { useGiftMoments } from '../hooks/useGiftMoments';
@@ -25,20 +26,17 @@ export default function Home({
   loadDashboardData 
 }) {
   const navigate = useNavigate();
-  const location = useLocation();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeImmersionTab, setActiveImmersionTab] = useState('parcours');
   const [profileUpdated, setProfileUpdated] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [showQuestionnaire, setShowQuestionnaire] = useState(false);
   const [hasCompletedQuestionnaire, setHasCompletedQuestionnaire] = useState(false);
   const [userJourney, setUserJourney] = useState([]);
-  const [breadcrumb, setBreadcrumb] = useState(['Accueil']);
+  const [isDarkMode, setIsDarkMode] = useState(true);
 
   const supabase = useSupabaseClient();
   const currentUser = useUser();
-
-  // ✅ CORRIGÉ : Système de navigation avec historique
-  const navigationHistory = React.useRef(['/']);
 
   // Système de cadeaux
   const { 
@@ -48,71 +46,67 @@ export default function Home({
     markGiftAsReceived 
   } = useGiftMoments();
 
-  // Parcours utilisateur guidé
+  // Parcours utilisateur guidé - Mise à jour selon les suggestions d'Estelle
   const userJourneySteps = [
-    { id: 'profile', name: 'Compléter le profil', completed: false, priority: 1 },
-    { id: 'questionnaire', name: 'Questionnaire personnalité', completed: false, priority: 2 },
-    { id: 'first-video', name: 'Première vidéo', completed: false, priority: 3 },
-    { id: 'first-connection', name: 'Première connexion', completed: false, priority: 4 },
-    { id: 'community', name: 'Explorer la communauté', completed: false, priority: 5 }
+    { id: 'profile', name: 'Compléter le profil', completed: false, priority: 1, section: 'profile' },
+    { id: 'personality', name: 'Test personnalité 4 couleurs', completed: false, priority: 2, section: 'personality' },
+    { id: 'immersion', name: 'Immersion simulateur', completed: false, priority: 3, section: 'immersion' },
+    { id: 'expression', name: 'Expression orale', completed: false, priority: 4, section: 'expression' },
+    { id: 'restitution', name: 'Restitution & badge', completed: false, priority: 5, section: 'restitution' }
   ];
 
-  // ✅ CORRIGÉ : Gestion améliorée de la navigation
-  useEffect(() => {
-    // Synchroniser l'onglet actif avec l'URL
-    const pathToTab = {
-      '/': 'dashboard',
-      '/record-video': 'record',
-      '/profile': 'profile',
-      '/seminars': 'seminars',
-      '/certification': 'certification'
-    };
+  const immersionActivities = [
+    {
+      id: 'football',
+      name: '⚽ Football',
+      description: 'Améliore ton geste technique et ta concentration',
+      duration: '2-3 min',
+      color: 'from-green-500 to-emerald-600'
+    },
+    {
+      id: 'golf',
+      name: '🏌️ Golf',
+      description: 'Travaille ta précision et ton calme intérieur',
+      duration: '2-3 min',
+      color: 'from-blue-500 to-cyan-600'
+    },
+    {
+      id: 'tennis',
+      name: '🎾 Tennis',
+      description: 'Développe tes réflexes et ta coordination',
+      duration: '2-3 min',
+      color: 'from-yellow-500 to-orange-600'
+    },
+    {
+      id: 'basketball',
+      name: '🏀 Basketball',
+      description: 'Améliore ton adresse et ton esprit d\'équipe',
+      duration: '2-3 min',
+      color: 'from-orange-500 to-red-600'
+    }
+  ];
 
-    const currentTab = pathToTab[location.pathname] || 'dashboard';
-    setActiveTab(currentTab);
-
-    // Mettre à jour le fil d'Ariane
-    updateBreadcrumb(currentTab);
-  }, [location.pathname]);
-
-  // ✅ CORRIGÉ : Fil d'Ariane pour une meilleure navigation
-  const updateBreadcrumb = (tab) => {
-    const breadcrumbMap = {
-      'dashboard': ['Accueil', 'Tableau de bord'],
-      'record': ['Accueil', 'Enregistrer une vidéo'],
-      'profile': ['Accueil', 'Mon profil'],
-      'seminars': ['Accueil', 'Séminaires'],
-      'certification': ['Accueil', 'Certification']
-    };
-    setBreadcrumb(breadcrumbMap[tab] || ['Accueil']);
+  const recordingScenarios = {
+    enfants: [
+      "🎙 Dis-moi pourquoi tu aimes ton sport préféré.",
+      "🎙 Qu'est-ce que tu ressens quand tu marques un but / réussis ton coup ?",
+      "🎙 Si tu devais inventer ton club idéal, à quoi ressemblerait-il ?"
+    ],
+    adolescents: [
+      "🎙 Comment le foot (ou ton sport) t'aide à grandir dans la vie ?",
+      "🎙 Raconte un moment où tu as douté, mais où tu t'es relevé.",
+      "🎙 Où te vois-tu dans 5 ans grâce à ta passion ?",
+      "🎙 Quel joueur ou joueuse t'inspire le plus, et pourquoi ?"
+    ],
+    adultes: [
+      "🎙 Comment ton sport reflète ta personnalité ?",
+      "🎙 Quel lien fais-tu entre ton sport et ta vie professionnelle ?",
+      "🎙 Que t'apprend ton sport sur la gestion de la pression, de l'échec ou du leadership ?"
+    ]
   };
 
   const handleNavigateToDirectory = () => {
-    navigationHistory.current.push('/directory');
     navigate('/directory');
-  };
-
-  // ✅ CORRIGÉ : Navigation avec historique
-  const handleNavigation = (path, tabName = null) => {
-    navigationHistory.current.push(path);
-    
-    if (tabName) {
-      setActiveTab(tabName);
-      updateBreadcrumb(tabName);
-    }
-    
-    navigate(path);
-  };
-
-  // ✅ CORRIGÉ : Bouton retour fonctionnel
-  const handleGoBack = () => {
-    if (navigationHistory.current.length > 1) {
-      navigationHistory.current.pop(); // Retirer la page actuelle
-      const previousPath = navigationHistory.current[navigationHistory.current.length - 1];
-      navigate(previousPath);
-    } else {
-      navigate('/');
-    }
   };
 
   const handleProfileUpdated = () => {
@@ -124,28 +118,29 @@ export default function Home({
     updateUserJourney('profile', true);
   };
 
-  // CORRECTION : Fonction améliorée pour le rechargement des vidéos
   const handleVideoUploaded = () => {
     console.log('🔄 Home: Vidéo uploadée, rechargement des données');
     setRefreshKey(prev => prev + 1);
     toast.success('Vidéo uploadée avec succès !');
     
-    // Recharger les données du dashboard
     if (loadDashboardData) {
       loadDashboardData();
     }
     
-    updateUserJourney('first-video', true);
+    updateUserJourney('expression', true);
   };
 
-  // Vérifier si le profil est complet
+  const handleImmersionCompleted = (activityId) => {
+    toast.success(`Immersion ${activityId} terminée avec succès !`);
+    updateUserJourney('immersion', true);
+  };
+
   const isProfileComplete = profile && 
     profile.sex && 
     profile.is_major !== null && 
     profile.passions && 
     profile.passions.length > 0;
 
-  // CORRECTION : Fonction checkQuestionnaireStatus améliorée avec maybeSingle()
   const checkQuestionnaireStatus = async () => {
     if (!currentUser) return;
 
@@ -158,7 +153,7 @@ export default function Home({
 
       const hasCompleted = !!data;
       setHasCompletedQuestionnaire(hasCompleted);
-      updateUserJourney('questionnaire', hasCompleted);
+      updateUserJourney('personality', hasCompleted);
       
       if (!data && !localStorage.getItem('questionnaire_shown')) {
         setTimeout(() => {
@@ -169,34 +164,16 @@ export default function Home({
     } catch (error) {
       console.error('Erreur checkQuestionnaireStatus:', error);
       setHasCompletedQuestionnaire(false);
-      updateUserJourney('questionnaire', false);
+      updateUserJourney('personality', false);
     }
   };
 
-  // Mettre à jour le parcours utilisateur
   const updateUserJourney = (stepId, completed) => {
     setUserJourney(prev => 
       prev.map(step => 
         step.id === stepId ? { ...step, completed } : step
       )
     );
-  };
-
-  // Vérifier les connexions existantes
-  const checkUserConnections = async () => {
-    if (!currentUser) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('connections')
-        .select('id')
-        .eq('requester_id', currentUser.id)
-        .limit(1);
-
-      updateUserJourney('first-connection', !!data && data.length > 0);
-    } catch (error) {
-      console.error('Erreur vérification connexions:', error);
-    }
   };
 
   useEffect(() => {
@@ -206,7 +183,6 @@ export default function Home({
   useEffect(() => {
     if (currentUser) {
       checkQuestionnaireStatus();
-      checkUserConnections();
       updateUserJourney('profile', isProfileComplete);
     }
   }, [currentUser, isProfileComplete]);
@@ -222,7 +198,7 @@ export default function Home({
   const handleQuestionnaireComplete = () => {
     setShowQuestionnaire(false);
     setHasCompletedQuestionnaire(true);
-    updateUserJourney('questionnaire', true);
+    updateUserJourney('personality', true);
     toast.success('Questionnaire complété ! Votre profil est maintenant enrichi.');
     if (loadDashboardData) {
       loadDashboardData();
@@ -235,62 +211,141 @@ export default function Home({
 
   const nextStep = getNextStep();
 
+  const renderImmersionContent = () => {
+    switch (activeImmersionTab) {
+      case 'parcours':
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {immersionActivities.map((activity) => (
+                <div 
+                  key={activity.id}
+                  className={`bg-gradient-to-br ${activity.color} rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg`}
+                  onClick={() => setActiveImmersionTab(activity.id)}
+                >
+                  <div className="text-3xl mb-3">{activity.name.split(' ')[0]}</div>
+                  <h3 className="font-bold text-lg mb-2">{activity.name}</h3>
+                  <p className="text-white/90 text-sm mb-3">{activity.description}</p>
+                  <div className="text-xs bg-white/20 rounded-full px-3 py-1 inline-block">
+                    ⏱️ {activity.duration}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Parcours guidé */}
+            <div className="card-spotbulle-dark p-6 bg-gray-800 border-gray-700">
+              <h3 className="text-xl font-french font-bold text-white mb-4">
+                🧭 Parcours SpotBulle Immersion
+              </h3>
+              
+              <div className="space-y-4">
+                {[
+                  { step: 1, title: "Test de personnalité", description: "Découvre ton profil émotionnel (4 couleurs)", duration: "2-3 min", emoji: "🎨" },
+                  { step: 2, title: "Immersion simulateur", description: "Libère tes tensions, active ta concentration", duration: "2-3 min", emoji: "⚽" },
+                  { step: 3, title: "Expression orale", description: "Transforme l'émotion en parole", duration: "2 min", emoji: "🎙️" },
+                  { step: 4, title: "Restitution & badge", description: "Reçois ton analyse personnalisée", duration: "1 min", emoji: "🏆" }
+                ].map((step) => (
+                  <div key={step.step} className="flex items-center gap-4 p-4 bg-gray-700/50 rounded-lg border border-gray-600">
+                    <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
+                      {step.emoji}
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-white">{step.title}</h4>
+                      <p className="text-gray-300 text-sm">{step.description}</p>
+                    </div>
+                    <div className="text-gray-400 text-sm">
+                      {step.duration}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'scenarios':
+        return (
+          <div className="space-y-6">
+            <h3 className="text-xl font-french font-bold text-white mb-4">
+              🎬 Scénarios d'enregistrement
+            </h3>
+            
+            {Object.entries(recordingScenarios).map(([ageGroup, scenarios]) => (
+              <div key={ageGroup} className="card-spotbulle-dark p-6 bg-gray-800 border-gray-700">
+                <h4 className="text-lg font-semibold text-white mb-4 capitalize">
+                  {ageGroup === 'enfants' ? '👦 Enfants (8-12 ans)' : 
+                   ageGroup === 'adolescents' ? '👨‍🎓 Adolescents (13-17 ans)' : 
+                   '👨‍💼 Jeunes adultes (18+)'}
+                </h4>
+                <div className="space-y-3">
+                  {scenarios.map((scenario, index) => (
+                    <div key={index} className="p-4 bg-gray-700/50 rounded-lg border border-gray-600">
+                      <p className="text-gray-200">{scenario}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+
+      default:
+        return (
+          <ImmersionSimulator 
+            activity={immersionActivities.find(a => a.id === activeImmersionTab)}
+            onComplete={() => handleImmersionCompleted(activeImmersionTab)}
+            onBack={() => setActiveImmersionTab('parcours')}
+          />
+        );
+    }
+  };
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'dashboard':
         return (
           <div className="space-y-6">
-            {/* ✅ CORRIGÉ : Fil d'Ariane visible */}
-            <div className="flex items-center gap-2 text-sm text-gray-600 mb-4">
-              {breadcrumb.map((item, index) => (
-                <React.Fragment key={item}>
-                  <span className={index === breadcrumb.length - 1 ? 'text-gray-900 font-semibold' : ''}>
-                    {item}
-                  </span>
-                  {index < breadcrumb.length - 1 && <span>›</span>}
-                </React.Fragment>
-              ))}
-            </div>
-
             {/* Parcours utilisateur */}
-            <div className="card-spotbulle p-6">
-              <h2 className="text-2xl font-french font-bold text-gray-900 mb-4">
-                🗺️ Votre Aventure SpotBulle
+            <div className="card-spotbulle-dark p-6 bg-gray-800 border-gray-700">
+              <h2 className="text-2xl font-french font-bold text-white mb-4">
+                🗺️ Votre Aventure SpotBulle Immersion
               </h2>
               
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-800">Progression</h3>
-                  <span className="text-sm text-gray-600">
+                  <h3 className="text-lg font-semibold text-gray-200">Progression</h3>
+                  <span className="text-sm text-gray-400">
                     {userJourney.filter(s => s.completed).length} / {userJourney.length} étapes
                   </span>
                 </div>
                 
                 <div className="space-y-3">
                   {userJourney.map((step, index) => (
-                    <div key={step.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-white">
+                    <div key={step.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-700 bg-gray-900">
                       <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${
                         step.completed 
                           ? 'bg-green-500 text-white' 
                           : step.id === nextStep?.id
                             ? 'bg-blue-500 text-white animate-pulse'
-                            : 'bg-gray-200 text-gray-600'
+                            : 'bg-gray-700 text-gray-300'
                       }`}>
                         {step.completed ? '✓' : index + 1}
                       </div>
-                      <span className={`flex-1 ${step.completed ? 'text-gray-600' : 'text-gray-800'}`}>
+                      <span className={`flex-1 ${step.completed ? 'text-gray-400' : 'text-gray-200'}`}>
                         {step.name}
                       </span>
                       {step.id === nextStep?.id && !step.completed && (
                         <Button 
                           size="sm"
                           onClick={() => {
-                            if (step.id === 'profile') handleNavigation('/', 'profile');
-                            if (step.id === 'questionnaire') setShowQuestionnaire(true);
-                            if (step.id === 'first-video') handleNavigation('/record-video', 'record');
-                            if (step.id === 'first-connection' || step.id === 'community') handleNavigation('/directory');
+                            if (step.id === 'profile') setActiveTab('profile');
+                            if (step.id === 'personality') setShowQuestionnaire(true);
+                            if (step.id === 'immersion') setActiveTab('immersion');
+                            if (step.id === 'expression') navigate('/record-video');
+                            if (step.id === 'restitution') navigate('/directory');
                           }}
-                          className="btn-spotbulle text-xs"
+                          className="btn-spotbulle-dark text-xs bg-blue-600 hover:bg-blue-700 text-white"
                         >
                           Commencer
                         </Button>
@@ -301,34 +356,33 @@ export default function Home({
               </div>
 
               {!isProfileComplete && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-                  <p className="text-yellow-800 text-sm">
+                <div className="bg-yellow-900 border border-yellow-700 rounded-lg p-4 mb-6">
+                  <p className="text-yellow-200 text-sm">
                     📝 <strong>Profil incomplet</strong> - Complétez votre profil pour accéder à toutes les fonctionnalités.
                   </p>
                 </div>
               )}
               
               {!hasCompletedQuestionnaire && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <div className="bg-blue-900 border border-blue-700 rounded-lg p-4 mb-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-blue-800 text-sm">
-                        🎯 <strong>Questionnaire de personnalité</strong> - Complétez le questionnaire pour améliorer vos connexions.
+                      <p className="text-blue-200 text-sm">
+                        🎯 <strong>Test de personnalité 4 couleurs</strong> - Découvrez votre profil émotionnel.
                       </p>
                     </div>
                     <Button
                       onClick={() => setShowQuestionnaire(true)}
-                      className="btn-spotbulle"
+                      className="btn-spotbulle-dark bg-blue-600 hover:bg-blue-700 text-white"
                       size="sm"
                     >
-                      Commencer le questionnaire
+                      Commencer le test
                     </Button>
                   </div>
                 </div>
               )}
             </div>
             
-            {/* CORRECTION : Dashboard avec lecture vidéo */}
             <Dashboard 
               data={dashboardData}
               loading={dashboardLoading}
@@ -339,56 +393,65 @@ export default function Home({
           </div>
         );
       
-      case 'record':
+      case 'immersion':
         return (
           <div className="space-y-6">
-            {/* ✅ CORRIGÉ : Navigation claire pour record-video */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <button onClick={handleGoBack} className="hover:text-blue-600 transition-colors">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-french font-bold text-white">🎮 Immersion Simulateurs</h2>
+              <div className="flex gap-2">
+                <Button
+                  variant={activeImmersionTab === 'parcours' ? 'default' : 'outline'}
+                  onClick={() => setActiveImmersionTab('parcours')}
+                  className="btn-spotbulle-dark"
+                >
+                  🧭 Parcours
+                </Button>
+                <Button
+                  variant={activeImmersionTab === 'scenarios' ? 'default' : 'outline'}
+                  onClick={() => setActiveImmersionTab('scenarios')}
+                  className="btn-spotbulle-dark"
+                >
+                  🎬 Scénarios
+                </Button>
+                <Button
+                  onClick={() => setActiveTab('dashboard')}
+                  variant="outline"
+                  className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
                   ← Retour
-                </button>
-                <span>›</span>
-                <span className="text-gray-900 font-semibold">Enregistrer une vidéo</span>
+                </Button>
               </div>
-              <Button
-                onClick={() => handleNavigation('/', 'dashboard')}
-                variant="outline"
-                size="sm"
-              >
-                🏠 Accueil
-              </Button>
             </div>
-            <RecordVideo 
-              user={user}
-              onVideoUploaded={handleVideoUploaded}
-            />
+            {renderImmersionContent()}
           </div>
+        );
+      
+      case 'record':
+        return (
+          <RecordVideo 
+            user={user}
+            onVideoUploaded={handleVideoUploaded}
+            scenarios={recordingScenarios}
+          />
         );
       
       case 'profile':
         return (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <button onClick={handleGoBack} className="hover:text-blue-600 transition-colors">
-                  ← Retour
-                </button>
-                <span>›</span>
-                <span className="text-gray-900 font-semibold text-lg">👤 Mon Profil</span>
-              </div>
+              <h2 className="text-2xl font-french font-bold text-white">👤 Mon Profil</h2>
               <div className="flex gap-2">
                 <Button
                   onClick={() => setShowQuestionnaire(true)}
                   variant="outline"
-                  className="flex items-center gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+                  className="flex items-center gap-2 border-blue-400 text-blue-300 hover:bg-blue-900"
                 >
-                  📝 Questionnaire
+                  🎨 Test personnalité
                 </Button>
                 <Button
-                  onClick={() => handleNavigation('/', 'dashboard')}
+                  onClick={() => setActiveTab('dashboard')}
                   variant="outline"
-                  className="flex items-center gap-2 border-gray-300 text-gray-700 hover:bg-gray-50"
+                  className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
                 >
                   ← Retour
                 </Button>
@@ -403,50 +466,10 @@ export default function Home({
         );
       
       case 'seminars':
-        return (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <button onClick={handleGoBack} className="hover:text-blue-600 transition-colors">
-                  ← Retour
-                </button>
-                <span>›</span>
-                <span className="text-gray-900 font-semibold">Séminaires</span>
-              </div>
-              <Button
-                onClick={() => handleNavigation('/', 'dashboard')}
-                variant="outline"
-                size="sm"
-              >
-                🏠 Accueil
-              </Button>
-            </div>
-            <SeminarsList user={user} />
-          </div>
-        );
+        return <SeminarsList user={user} />;
       
       case 'certification':
-        return (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <button onClick={handleGoBack} className="hover:text-blue-600 transition-colors">
-                  ← Retour
-                </button>
-                <span>›</span>
-                <span className="text-gray-900 font-semibold">Certification</span>
-              </div>
-              <Button
-                onClick={() => handleNavigation('/', 'dashboard')}
-                variant="outline"
-                size="sm"
-              >
-                🏠 Accueil
-              </Button>
-            </div>
-            <Certification user={user} />
-          </div>
-        );
+        return <Certification user={user} />;
       
       default:
         return (
@@ -461,63 +484,72 @@ export default function Home({
   };
 
   return (
-    <div className="app-container min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+    <div className="app-container min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
       {/* Header */}
       <ProfessionalHeader 
         user={user}
         profile={profile}
         connectionStatus={connectionStatus}
         onSignOut={onSignOut}
+        currentSection={activeTab}
       />
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        {/* ✅ CORRIGÉ : Navigation Tabs améliorée */}
+        {/* Navigation Tabs */}
         <div className="mb-8">
           <div className="flex flex-wrap gap-2 mb-4">
             <Button
               variant={activeTab === 'dashboard' ? 'default' : 'outline'}
-              onClick={() => handleNavigation('/', 'dashboard')}
-              className="flex items-center gap-2 btn-spotbulle"
+              onClick={() => setActiveTab('dashboard')}
+              className="btn-spotbulle-dark"
             >
               📊 Tableau de bord
             </Button>
             
             <Button
-              variant={activeTab === 'record' ? 'default' : 'outline'}
-              onClick={() => handleNavigation('/record-video', 'record')}
-              className="flex items-center gap-2 btn-spotbulle"
+              variant={activeTab === 'immersion' ? 'default' : 'outline'}
+              onClick={() => setActiveTab('immersion')}
+              className="btn-spotbulle-dark"
             >
-              🎥 Enregistrer une vidéo
+              🎮 Immersion
+            </Button>
+            
+            <Button
+              variant={activeTab === 'record' ? 'default' : 'outline'}
+              onClick={() => setActiveTab('record')}
+              className="btn-spotbulle-dark"
+            >
+              🎥 Expression orale
             </Button>
             
             <Button
               variant={activeTab === 'profile' ? 'default' : 'outline'}
-              onClick={() => handleNavigation('/', 'profile')}
-              className="flex items-center gap-2 btn-spotbulle"
+              onClick={() => setActiveTab('profile')}
+              className="btn-spotbulle-dark"
             >
               👤 Mon profil
             </Button>
             
             <Button
               variant={activeTab === 'seminars' ? 'default' : 'outline'}
-              onClick={() => handleNavigation('/', 'seminars')}
-              className="flex items-center gap-2 btn-spotbulle"
+              onClick={() => setActiveTab('seminars')}
+              className="btn-spotbulle-dark"
             >
               🎓 Séminaires
             </Button>
             
             <Button
               variant={activeTab === 'certification' ? 'default' : 'outline'}
-              onClick={() => handleNavigation('/', 'certification')}
-              className="flex items-center gap-2 btn-spotbulle"
+              onClick={() => setActiveTab('certification')}
+              className="btn-spotbulle-dark"
             >
               📜 Certification
             </Button>
             
             <Button
               onClick={handleNavigateToDirectory}
-              className="flex items-center gap-2 ml-auto bg-white text-blue-600 border border-blue-600 hover:bg-blue-600 hover:text-white transition-all font-medium py-2 px-4 rounded-lg"
+              className="btn-spotbulle-dark ml-auto"
             >
               👥 Explorer l'annuaire
             </Button>
@@ -525,21 +557,22 @@ export default function Home({
 
           {/* Indicateur d'étape suivante */}
           {nextStep && !nextStep.completed && (
-            <div className="bg-gradient-to-r from-blue-500 to-purple-500 text-white p-4 rounded-lg mb-4 animate-pulse">
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 rounded-lg mb-4 animate-pulse">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <span className="text-xl">🎯</span>
                   <div>
                     <p className="font-semibold">Prochaine étape : {nextStep.name}</p>
-                    <p className="text-sm opacity-90">Continuez votre aventure SpotBulle</p>
+                    <p className="text-sm opacity-90">Continuez votre aventure SpotBulle Immersion</p>
                   </div>
                 </div>
                 <Button
                   onClick={() => {
-                    if (nextStep.id === 'profile') handleNavigation('/', 'profile');
-                    if (nextStep.id === 'questionnaire') setShowQuestionnaire(true);
-                    if (nextStep.id === 'first-video') handleNavigation('/record-video', 'record');
-                    if (nextStep.id === 'first-connection' || nextStep.id === 'community') handleNavigation('/directory');
+                    if (nextStep.id === 'profile') setActiveTab('profile');
+                    if (nextStep.id === 'personality') setShowQuestionnaire(true);
+                    if (nextStep.id === 'immersion') setActiveTab('immersion');
+                    if (nextStep.id === 'expression') navigate('/record-video');
+                    if (nextStep.id === 'restitution') navigate('/directory');
                   }}
                   className="bg-white text-blue-600 hover:bg-gray-100 border-0"
                 >
@@ -550,7 +583,7 @@ export default function Home({
           )}
 
           {/* Tab Content */}
-          <div className="card-spotbulle p-6">
+          <div className="card-spotbulle-dark p-6 bg-gray-800 border-gray-700">
             {renderTabContent()}
           </div>
         </div>
@@ -558,8 +591,8 @@ export default function Home({
 
       {/* Modal Questionnaire */}
       {showQuestionnaire && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-200">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-gray-800 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-700">
             <div className="p-6">
               <Questionnaire 
                 onComplete={handleQuestionnaireComplete}
@@ -581,50 +614,19 @@ export default function Home({
         />
       )}
 
-      {/* Loading State */}
-      {dashboardLoading && activeTab === 'dashboard' && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl p-6 flex items-center gap-3 shadow-2xl border border-gray-200">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-            <span className="text-gray-700">Chargement de vos données...</span>
-          </div>
-        </div>
-      )}
-
-      {/* Error State */}
-      {dashboardError && activeTab === 'dashboard' && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-          <div className="flex items-center gap-2 text-red-800">
-            <span>⚠️</span>
-            <div>
-              <strong>Erreur lors du chargement :</strong>
-              <p className="text-sm">{dashboardError}</p>
-            </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={loadDashboardData}
-              className="ml-auto border-red-300 text-red-700 hover:bg-red-100"
-            >
-              Réessayer
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Footer avec thème amélioré */}
-      <footer className="mt-12 py-6 border-t border-gray-200/50 bg-gradient-to-r from-blue-50 to-indigo-50">
+      {/* Footer */}
+      <footer className="mt-12 py-6 border-t border-gray-700/50 bg-gradient-to-r from-gray-800 to-gray-900">
         <div className="container mx-auto px-4 text-center">
           <div className="flex justify-center items-center gap-4 mb-4">
             <div className="w-8 h-8 bg-blue-600 rounded-full shadow-lg"></div>
-            <div className="w-8 h-8 bg-white border border-gray-300 rounded-full shadow-lg"></div>
-            <div className="w-8 h-8 bg-indigo-600 rounded-full shadow-lg"></div>
+            <div className="w-8 h-8 bg-gray-700 border border-gray-600 rounded-full shadow-lg"></div>
+            <div className="w-8 h-8 bg-purple-600 rounded-full shadow-lg"></div>
           </div>
-          <p className="text-gray-700 text-sm font-medium">
-            <span className="gradient-text font-french">SpotBulle</span> - Communauté • Partager, inspirer, connecter
+          <p className="text-gray-300 text-sm font-medium">
+            <span className="gradient-text-dark font-french">SpotBulle Immersion</span> - Expression • Geste technique • Orientation
           </p>
-          <p className="text-gray-600 text-xs mt-2">
-            Votre plateforme pour des connexions authentiques
+          <p className="text-gray-400 text-xs mt-2">
+            Votre plateforme pour des connexions authentiques France-Maroc
           </p>
         </div>
       </footer>
