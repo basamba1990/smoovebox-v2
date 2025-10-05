@@ -102,6 +102,14 @@ Prêt à commencer votre aventure ?`;
     setShowOnboarding(true);
   };
 
+  const handleGoBack = () => {
+    if (showFeatures) {
+      setShowFeatures(false);
+    } else if (showOnboarding) {
+      setShowOnboarding(false);
+    }
+  };
+
   useEffect(() => {
     return () => {
       if (audioUrl) URL.revokeObjectURL(audioUrl);
@@ -109,35 +117,46 @@ Prêt à commencer votre aventure ?`;
   }, [audioUrl]);
 
   return (
-    <div className="relative min-h-screen flex flex-col items-center justify-center text-white bg-gradient-to-br from-france-600 via-france-500 to-maroc-600 p-8">
-      {/* Background Pattern */}
-      <div className="absolute inset-0 bg-black/20"></div>
+    <div className="relative min-h-screen flex flex-col items-center justify-center text-gray-900 bg-gradient-to-br from-blue-50 via-white to-indigo-100 p-8">
+      {/* Background Pattern léger */}
+      <div className="absolute inset-0 bg-white/60"></div>
       
-      <div className="relative max-w-6xl w-full bg-white/10 backdrop-blur-md rounded-3xl p-8 md:p-12 border-2 border-white/30 shadow-2xl text-center">
-        {!showFeatures ? (
-          // Écran d'accueil initial
+      <div className="relative max-w-6xl w-full bg-white/80 backdrop-blur-md rounded-3xl p-8 md:p-12 border-2 border-white shadow-2xl text-center">
+        
+        {/* ✅ CORRIGÉ : Bouton retour visible */}
+        {(showFeatures || showOnboarding) && (
+          <button 
+            onClick={handleGoBack}
+            className="absolute top-6 left-6 text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-2 bg-white/80 rounded-full px-4 py-2 shadow-sm border border-gray-200"
+          >
+            ← Retour
+          </button>
+        )}
+
+        {!showFeatures && !showOnboarding ? (
+          // Écran d'accueil initial - ✅ CORRIGÉ : Couleurs claires
           <>
             <div className="mb-8">
               <div className="flex justify-center items-center gap-4 mb-6">
-                <div className="w-12 h-12 bg-france-600 rounded-full"></div>
-                <div className="w-12 h-12 bg-white rounded-full border-2 border-gold"></div>
-                <div className="w-12 h-12 bg-maroc-600 rounded-full"></div>
+                <div className="w-12 h-12 bg-blue-500 rounded-full shadow-md"></div>
+                <div className="w-12 h-12 bg-white rounded-full border-2 border-yellow-400 shadow-md"></div>
+                <div className="w-12 h-12 bg-indigo-500 rounded-full shadow-md"></div>
               </div>
-              <h1 className="text-5xl md:text-6xl font-french font-bold mb-6 text-white">
+              <h1 className="text-5xl md:text-6xl font-french font-bold mb-6 text-gray-900">
                 🇫🇷🇲🇦 SpotBulle
               </h1>
-              <p className="text-xl md:text-2xl text-gold mb-4 font-medium">
+              <p className="text-xl md:text-2xl text-blue-600 mb-4 font-medium">
                 La communauté qui connecte la France et le Maroc
               </p>
             </div>
 
-            <div className="text-lg md:text-xl mb-8 leading-relaxed bg-white/10 p-8 rounded-2xl border border-white/20">
+            <div className="text-lg md:text-xl mb-8 leading-relaxed bg-white/60 p-8 rounded-2xl border border-gray-200 shadow-sm">
               <p className="mb-4">🎉 <strong>Bienvenue sous le dôme SpotBulle !</strong></p>
-              <p className="mb-4">
+              <p className="mb-4 text-gray-700">
                 Votre plateforme pour rencontrer des passionnés, partager vos talents 
                 et développer votre réseau au sein de la communauté France-Maroc.
               </p>
-              <p className="text-gold font-semibold">
+              <p className="text-blue-600 font-semibold">
                 Prêt à découvrir une nouvelle façon de vous connecter ?
               </p>
             </div>
@@ -145,7 +164,7 @@ Prêt à commencer votre aventure ?`;
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <Button 
                 onClick={handleDiscoverPlatform}
-                className="btn-spotbulle text-lg py-4 px-8 rounded-full group relative overflow-hidden"
+                className="btn-spotbulle text-lg py-4 px-8 rounded-full group relative overflow-hidden bg-blue-600 hover:bg-blue-700 text-white border-0"
               >
                 <span className="relative z-10 flex items-center justify-center">
                   🚀 Découvrir SpotBulle
@@ -155,62 +174,61 @@ Prêt à commencer votre aventure ?`;
               <Button 
                 onClick={handleStartExperience}
                 disabled={isLoading}
-                className="bg-white/20 hover:bg-white/30 text-white border border-white/40 text-lg py-4 px-8 rounded-full transition-all duration-300"
+                className="bg-white text-blue-600 hover:bg-blue-50 border border-blue-600 text-lg py-4 px-8 rounded-full transition-all duration-300"
               >
                 🎤 Démarrer l'expérience
               </Button>
 
               <Button 
                 onClick={handleSkipToAuth}
-                className="bg-transparent hover:bg-white/10 text-white border border-white/40 text-lg py-4 px-8 rounded-full transition-all duration-300"
+                className="bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300 text-lg py-4 px-8 rounded-full transition-all duration-300"
               >
                 Se connecter
               </Button>
             </div>
 
-            <div className="mt-8 text-white/70 text-sm">
+            <div className="mt-8 text-gray-600 text-sm">
               <p>Déjà membre ? Connectez-vous pour accéder à votre espace personnel</p>
             </div>
           </>
+        ) : showOnboarding ? (
+          // Onboarding
+          <UserJourneyOnboarding 
+            onComplete={() => setShowOnboarding(false)}
+            currentStep={0}
+          />
         ) : (
-          // Écran des fonctionnalités
+          // Écran des fonctionnalités - ✅ CORRIGÉ : Navigation claire
           <>
-            <button 
-              onClick={() => setShowFeatures(false)}
-              className="absolute top-4 left-4 text-white/70 hover:text-white transition-colors"
-            >
-              ← Retour
-            </button>
-
-            <h2 className="text-3xl md:text-4xl font-french font-bold mb-8 text-white">
+            <h2 className="text-3xl md:text-4xl font-french font-bold mb-8 text-gray-900">
               Découvrez SpotBulle
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
               {features.map((feature, index) => (
-                <div key={index} className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20 hover:border-white/40 transition-all duration-300">
+                <div key={index} className="bg-white rounded-xl p-6 border border-gray-200 hover:border-blue-300 hover:shadow-lg transition-all duration-300">
                   <div className="text-3xl mb-3">{feature.icon}</div>
-                  <h3 className="text-xl font-semibold text-white mb-2">{feature.title}</h3>
-                  <p className="text-white/80">{feature.description}</p>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">{feature.title}</h3>
+                  <p className="text-gray-600">{feature.description}</p>
                 </div>
               ))}
             </div>
 
-            <div className="bg-white/10 rounded-xl p-6 mb-8 border border-white/20">
-              <h3 className="text-xl font-semibold text-white mb-4">🎙️ Votre accueil personnalisé</h3>
-              <p className="text-white/80 mb-4">
+            <div className="bg-white rounded-xl p-6 mb-8 border border-gray-200 shadow-sm">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">🎙️ Votre accueil personnalisé</h3>
+              <p className="text-gray-600 mb-4">
                 Écoutez le message de bienvenue généré spécialement pour vous !
               </p>
               <div className="flex items-center justify-center gap-4">
                 <Button
                   onClick={generateSpeech}
                   disabled={isLoading}
-                  className="bg-white/20 hover:bg-white/30 text-white border-0"
+                  className="bg-blue-600 hover:bg-blue-700 text-white border-0"
                 >
                   {isPlaying ? '🎵 En cours...' : '🔊 Réécouter'}
                 </Button>
                 {isPlaying && (
-                  <span className="text-gold animate-pulse">Lecture en cours...</span>
+                  <span className="text-blue-600 animate-pulse">Lecture en cours...</span>
                 )}
               </div>
             </div>
@@ -218,14 +236,14 @@ Prêt à commencer votre aventure ?`;
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button 
                 onClick={() => navigate('/record-video')}
-                className="btn-spotbulle text-lg py-4 px-8 rounded-full"
+                className="btn-spotbulle text-lg py-4 px-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white border-0"
               >
                 🚀 Commencer mon aventure
               </Button>
               
               <Button 
                 onClick={onOpenAuthModal}
-                className="bg-white/20 hover:bg-white/30 text-white border border-white/40 text-lg py-4 px-8 rounded-full"
+                className="bg-white text-blue-600 hover:bg-blue-50 border border-blue-600 text-lg py-4 px-8 rounded-full"
               >
                 📝 Créer mon profil
               </Button>
@@ -233,14 +251,6 @@ Prêt à commencer votre aventure ?`;
           </>
         )}
       </div>
-
-      {/* Composant d'onboarding */}
-      {showOnboarding && (
-        <UserJourneyOnboarding 
-          onComplete={() => setShowOnboarding(false)}
-          currentStep={0}
-        />
-      )}
 
       <audio 
         ref={audioRef} 
@@ -253,7 +263,7 @@ Prêt à commencer votre aventure ?`;
       />
 
       {/* Footer */}
-      <div className="absolute bottom-4 text-center text-white/60 text-sm">
+      <div className="absolute bottom-4 text-center text-gray-600 text-sm">
         <p>SpotBulle - Connecter, Partager, Grandir ensemble 🇫🇷🇲🇦</p>
       </div>
     </div>
