@@ -1,14 +1,15 @@
 import React from 'react';
 import { Button } from './ui/button.jsx';
 import { Badge } from './ui/badge.jsx';
-import { Video, LogOut, Wifi, WifiOff, User, Settings } from 'lucide-react';
+import { Video, LogOut, Wifi, WifiOff, User, Settings, Home, Users, Camera, Award, Map } from 'lucide-react';
 
 const ProfessionalHeader = ({ 
   user, 
   profile, 
   connectionStatus = 'connected', 
   onSignOut, 
-  onAuthModalOpen 
+  onAuthModalOpen,
+  currentSection = 'dashboard'
 }) => {
   return (
     <header className="bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-100 sticky top-0 z-50">
@@ -25,13 +26,81 @@ const ProfessionalHeader = ({
             
             <div className="hidden xs:block">
               <h1 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-                SpotBulle
+                SpotBulle Immersion
               </h1>
               <p className="text-xs text-gray-500 -mt-1 font-medium hidden sm:block">
-                Analyse IA • Pitch Vidéo
+                Expression • Geste technique • Orientation
               </p>
             </div>
           </div>
+          
+          {/* Navigation principale */}
+          <nav className="hidden md:flex items-center gap-1 lg:gap-2">
+            <Button
+              variant={currentSection === 'dashboard' ? 'default' : 'ghost'}
+              size="sm"
+              className={`flex items-center gap-2 ${
+                currentSection === 'dashboard' 
+                  ? 'bg-blue-100 text-blue-700' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Home className="h-4 w-4" />
+              Tableau de bord
+            </Button>
+            
+            <Button
+              variant={currentSection === 'simulateurs' ? 'default' : 'ghost'}
+              size="sm"
+              className={`flex items-center gap-2 ${
+                currentSection === 'simulateurs' 
+                  ? 'bg-green-100 text-green-700' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Award className="h-4 w-4" />
+              Simulateurs
+            </Button>
+            
+            <Button
+              variant={currentSection === 'expression' ? 'default' : 'ghost'}
+              size="sm"
+              className={`flex items-center gap-2 ${
+                currentSection === 'expression' 
+                  ? 'bg-purple-100 text-purple-700' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Camera className="h-4 w-4" />
+              Expression orale
+            </Button>
+            
+            <Button
+              variant={currentSection === 'orientation' ? 'default' : 'ghost'}
+              size="sm"
+              className={`flex items-center gap-2 ${
+                currentSection === 'orientation' 
+                  ? 'bg-orange-100 text-orange-700' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Map className="h-4 w-4" />
+              Orientation
+            </Button>
+            
+            <Button
+              variant={currentSection === 'communaute' ? 'default' : 'ghost'}
+              size="sm"
+              className={`flex items-center gap-2 ${
+                currentSection === 'communaute' 
+                  ? 'bg-pink-100 text-pink-700' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Users className="h-4 w-4" />
+              Communauté
+            </Button>
+          </nav>
           
           {/* Navigation et actions */}
           <div className="flex items-center gap-1 sm:gap-2 lg:gap-4">
@@ -126,4 +195,3 @@ const ProfessionalHeader = ({
 };
 
 export default ProfessionalHeader;
-
