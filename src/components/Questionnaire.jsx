@@ -26,7 +26,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
   const supabase = useSupabaseClient();
   const user = useUser();
 
-  // Questions du test 4 couleurs
+  // Questions du test 4 couleurs - CORRIGÉES
   const colorQuizQuestions = [
     {
       question: "Quand un défi se présente, tu :",
@@ -70,7 +70,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
         { value: 'red', label: 'tu décides vite', emoji: '🔴' },
         { value: 'blue', label: 'tu listes les pour/contre', emoji: '🔵' },
         { value: 'green', label: 'tu demandes leur avis aux autres', emoji: '🟢' },
-        { value: 'yellow', label: 'tu su ton intuition', emoji: '🟡' }
+        { value: 'yellow', label: 'tu suis ton intuition', emoji: '🟡' }
       ]
     },
     {
@@ -96,7 +96,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
       options: [
         { value: 'red', label: 'tu fonces tête baissée', emoji: '🔴' },
         { value: 'blue', label: 'tu planifies étape par étape', emoji: '🔵' },
-        { value: 'green', label: 'tu t'entoures des bonnes personnes', emoji: '🟢' },
+        { value: 'green', label: 'tu t\'entoures des bonnes personnes', emoji: '🟢' }, // CORRIGÉ : apostrophe échappée
         { value: 'yellow', label: 'tu trouves des moyens originaux', emoji: '🟡' }
       ]
     }
@@ -194,6 +194,13 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
     });
     
     return dominantColor;
+  };
+
+  const handleAnswer = (question, value) => {
+    setAnswers(prev => ({
+      ...prev,
+      [question]: value
+    }));
   };
 
   const handleArrayAnswer = (question, value, checked) => {
@@ -405,7 +412,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
               ))}
 
               <div>
-                <p className="font-medium mb-3 text-gray-700">16. Si SpotBulle devait m'aider, j'aimerais que ce soit pour :</p>
+                <p className="font-medium mb-3 text-gray-700">16. Si SpotBulle devait m\'aider, j\'aimerais que ce soit pour :</p>
                 <div className="space-y-2">
                   {[
                     'M\'exprimer mieux à l\'oral',
@@ -474,13 +481,6 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
       default:
         return null;
     }
-  };
-
-  const handleAnswer = (question, value) => {
-    setAnswers(prev => ({
-      ...prev,
-      [question]: value
-    }));
   };
 
   const allColorQuestionsAnswered = answers.colorQuiz.every(answer => answer !== '');
