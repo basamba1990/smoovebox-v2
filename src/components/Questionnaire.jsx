@@ -6,9 +6,8 @@ import { Button } from './ui/button-enhanced.jsx';
 const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [answers, setAnswers] = useState({
-    // Partie DISC
-    discGroupPreference: '',
-    challengeApproach: '',
+    // Test 4 couleurs - 8 questions comme suggéré par Estelle
+    colorQuiz: Array(8).fill(''),
     
     // Intelligences multiples
     favoriteActivities: [],
@@ -27,8 +26,106 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
   const supabase = useSupabaseClient();
   const user = useUser();
 
+  // Questions du test 4 couleurs
+  const colorQuizQuestions = [
+    {
+      question: "Quand un défi se présente, tu :",
+      options: [
+        { value: 'red', label: 'fonces sans hésiter', emoji: '🔴' },
+        { value: 'blue', label: 'réfléchis avant d\'agir', emoji: '🔵' },
+        { value: 'green', label: 'encourages ton équipe', emoji: '🟢' },
+        { value: 'yellow', label: 'imagines une autre solution', emoji: '🟡' }
+      ]
+    },
+    {
+      question: "Dans ton équipe, tu préfères :",
+      options: [
+        { value: 'red', label: 'être capitaine', emoji: '🔴' },
+        { value: 'blue', label: 'observer la stratégie', emoji: '🔵' },
+        { value: 'green', label: 'soutenir les autres', emoji: '🟢' },
+        { value: 'yellow', label: 'créer l\'ambiance', emoji: '🟡' }
+      ]
+    },
+    {
+      question: "Ce que ton sport t'apprend le plus :",
+      options: [
+        { value: 'red', label: 'le courage', emoji: '🔴' },
+        { value: 'blue', label: 'la discipline', emoji: '🔵' },
+        { value: 'green', label: 'la solidarité', emoji: '🟢' },
+        { value: 'yellow', label: 'la créativité', emoji: '🟡' }
+      ]
+    },
+    {
+      question: "Quand tu perds un match :",
+      options: [
+        { value: 'red', label: 'tu veux rejouer tout de suite', emoji: '🔴' },
+        { value: 'blue', label: 'tu analyses ton erreur', emoji: '🔵' },
+        { value: 'green', label: 'tu consoles ton coéquipier', emoji: '🟢' },
+        { value: 'yellow', label: 'tu en rigoles pour relativiser', emoji: '🟡' }
+      ]
+    },
+    {
+      question: "Quand tu dois prendre une décision importante :",
+      options: [
+        { value: 'red', label: 'tu décides vite', emoji: '🔴' },
+        { value: 'blue', label: 'tu listes les pour/contre', emoji: '🔵' },
+        { value: 'green', label: 'tu demandes leur avis aux autres', emoji: '🟢' },
+        { value: 'yellow', label: 'tu su ton intuition', emoji: '🟡' }
+      ]
+    },
+    {
+      question: "Face à une nouvelle règle ou consigne :",
+      options: [
+        { value: 'red', label: 'tu l\'appliques directement', emoji: '🔴' },
+        { value: 'blue', label: 'tu vérifies chaque détail', emoji: '🔵' },
+        { value: 'green', label: 'tu aides les autres à comprendre', emoji: '🟢' },
+        { value: 'yellow', label: 'tu cherches à l\'améliorer', emoji: '🟡' }
+      ]
+    },
+    {
+      question: "Quand tu travailles en groupe :",
+      options: [
+        { value: 'red', label: 'tu prends le leadership', emoji: '🔴' },
+        { value: 'blue', label: 'tu organises le travail', emoji: '🔵' },
+        { value: 'green', label: 'tu facilites la communication', emoji: '🟢' },
+        { value: 'yellow', label: 'tu proposes des idées innovantes', emoji: '🟡' }
+      ]
+    },
+    {
+      question: "Quand tu veux atteindre un objectif :",
+      options: [
+        { value: 'red', label: 'tu fonces tête baissée', emoji: '🔴' },
+        { value: 'blue', label: 'tu planifies étape par étape', emoji: '🔵' },
+        { value: 'green', label: 'tu t'entoures des bonnes personnes', emoji: '🟢' },
+        { value: 'yellow', label: 'tu trouves des moyens originaux', emoji: '🟡' }
+      ]
+    }
+  ];
+
+  const colorProfiles = {
+    red: { 
+      name: 'Rouge - Leader passionné', 
+      description: 'Décideur rapide, orienté action et résultats',
+      traits: ['Leadership', 'Courage', 'Détermination']
+    },
+    blue: { 
+      name: 'Bleu - Stratège rigoureux', 
+      description: 'Analytique, organisé et soucieux des détails',
+      traits: ['Rigueur', 'Discipline', 'Précision']
+    },
+    green: { 
+      name: 'Vert - Équipier empathique', 
+      description: 'Coopératif, à l\'écoute et solidaire',
+      traits: ['Empathie', 'Coopération', 'Soutien']
+    },
+    yellow: { 
+      name: 'Jaune - Créatif enthousiaste', 
+      description: 'Innovant, optimiste et plein d\'idées',
+      traits: ['Créativité', 'Innovation', 'Enthousiasme']
+    }
+  };
+
   useEffect(() => {
-    // Charger les réponses existantes si l'utilisateur a déjà complété le questionnaire
     if (user) {
       loadExistingResponses();
     }
@@ -36,7 +133,6 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
 
   const loadExistingResponses = async () => {
     try {
-      // Correction : Utiliser .maybeSingle() pour éviter l'erreur 406 si aucune réponse n'existe
       const { data, error } = await supabase
         .from('questionnaire_responses')
         .select('*')
@@ -50,8 +146,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
 
       if (data) {
         setAnswers({
-          discGroupPreference: data.disc_color || '',
-          challengeApproach: data.challenge_approach || '',
+          colorQuiz: data.color_quiz || Array(8).fill(''),
           favoriteActivities: data.preferred_activities || [],
           workPreferences: data.work_preferences || [],
           currentTalent: data.current_talent || '',
@@ -61,9 +156,9 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
           inspirationPerson: data.inspiration_person || '',
           spotbulleNeeds: data.spotbulle_needs || []
         });
-        // Si complété, passer directement à l'écran final ou marquer comme terminé
+        
         if (data.completed_at) {
-          setCurrentStep(4); // Ajouter un step 4 pour "Déjà complété" si besoin
+          setCurrentStep(4);
         }
       }
     } catch (error) {
@@ -71,11 +166,34 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
     }
   };
 
-  const handleAnswer = (question, value) => {
+  const handleColorQuizAnswer = (questionIndex, value) => {
+    const newColorQuiz = [...answers.colorQuiz];
+    newColorQuiz[questionIndex] = value;
     setAnswers(prev => ({
       ...prev,
-      [question]: value
+      colorQuiz: newColorQuiz
     }));
+  };
+
+  const calculateDominantColor = () => {
+    const counts = { red: 0, blue: 0, green: 0, yellow: 0 };
+    answers.colorQuiz.forEach(answer => {
+      if (answer && counts[answer] !== undefined) {
+        counts[answer]++;
+      }
+    });
+    
+    let dominantColor = 'red';
+    let maxCount = 0;
+    
+    Object.entries(counts).forEach(([color, count]) => {
+      if (count > maxCount) {
+        maxCount = count;
+        dominantColor = color;
+      }
+    });
+    
+    return dominantColor;
   };
 
   const handleArrayAnswer = (question, value, checked) => {
@@ -95,7 +213,8 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
 
     setLoading(true);
     try {
-      // Correction : Utiliser .maybeSingle() pour vérifier l'existence sans erreur 406
+      const dominantColor = calculateDominantColor();
+      
       const { data: existingResponse, error: checkError } = await supabase
         .from('questionnaire_responses')
         .select('id, completed_at')
@@ -108,12 +227,11 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
 
       let error;
       if (existingResponse) {
-        // Mettre à jour
         ({ error } = await supabase
           .from('questionnaire_responses')
           .update({
-            disc_color: answers.discGroupPreference,
-            challenge_approach: answers.challengeApproach,
+            color_quiz: answers.colorQuiz,
+            dominant_color: dominantColor,
             preferred_activities: answers.favoriteActivities,
             work_preferences: answers.workPreferences,
             current_talent: answers.currentTalent,
@@ -126,13 +244,12 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
           })
           .eq('id', existingResponse.id));
       } else {
-        // Insérer
         ({ error } = await supabase
           .from('questionnaire_responses')
           .insert({
             user_id: user.id,
-            disc_color: answers.discGroupPreference,
-            challenge_approach: answers.challengeApproach,
+            color_quiz: answers.colorQuiz,
+            dominant_color: dominantColor,
             preferred_activities: answers.favoriteActivities,
             work_preferences: answers.workPreferences,
             current_talent: answers.currentTalent,
@@ -147,7 +264,10 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
 
       if (error) throw error;
 
-      toast.success('Questionnaire sauvegardé avec succès !');
+      // Afficher le résultat du profil
+      const profile = colorProfiles[dominantColor];
+      toast.success(`Profil ${profile.name} identifié !`);
+      
       if (onComplete) onComplete();
       
     } catch (error) {
@@ -161,30 +281,6 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
   const nextStep = () => setCurrentStep(prev => prev + 1);
   const prevStep = () => setCurrentStep(prev => prev - 1);
 
-  const getDiscColorLabel = (color) => {
-    const colors = {
-      red: '🔴 Rouge - Leader',
-      yellow: '🟡 Jaune - Energique', 
-      green: '🟢 Vert - Écoute',
-      blue: '🔵 Bleu - Organisé'
-    };
-    return colors[color] || color;
-  };
-
-  const getActivityLabel = (activity) => {
-    const activities = {
-      kinesthetic: 'Kinesthésique',
-      musical: 'Musicale',
-      linguistic: 'Linguistique',
-      logical: 'Logico-mathématique',
-      naturalist: 'Naturaliste',
-      interpersonal: 'Interpersonnelle',
-      intrapersonal: 'Intrapersonnelle',
-      visual: 'Visuo-spatiale'
-    };
-    return activities[activity] || activity;
-  };
-
   // Écrans du questionnaire
   const renderStep = () => {
     switch(currentStep) {
@@ -192,60 +288,36 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
         return (
           <div className="space-y-6">
             <h3 className="text-xl font-semibold text-primary-900 mb-4">
-              Partie 1 – DISC (4 couleurs)
+              Partie 1 – Test de personnalité 4 couleurs
             </h3>
+            <p className="text-gray-600 mb-6">
+              Répondez à ces 8 questions pour découvrir votre profil émotionnel dominant
+            </p>
             
             <div className="space-y-6">
-              <div>
-                <p className="font-medium mb-3">1. Quand je fais partie d'un groupe, je préfère :</p>
-                <div className="space-y-3">
-                  {[
-                    { value: 'red', label: 'Décider vite et diriger les autres', emoji: '🔴' },
-                    { value: 'yellow', label: 'Motiver et inspirer par mon énergie', emoji: '🟡' },
-                    { value: 'green', label: 'Écouter et aider chacun à se sentir bien', emoji: '🟢' },
-                    { value: 'blue', label: 'Vérifier les détails et organiser les choses', emoji: '🔵' }
-                  ].map(option => (
-                    <label key={option.value} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
-                      <input
-                        type="radio"
-                        name="groupPreference"
-                        value={option.value}
-                        checked={answers.discGroupPreference === option.value}
-                        onChange={(e) => handleAnswer('discGroupPreference', e.target.value)}
-                        className="mt-1 text-primary-600 focus:ring-primary-500"
-                      />
-                      <div>
-                        <span className="text-lg mr-2">{option.emoji}</span>
-                        <span className="text-gray-700">{option.label}</span>
-                      </div>
-                    </label>
-                  ))}
+              {colorQuizQuestions.map((quiz, index) => (
+                <div key={index} className="p-4 border rounded-lg bg-white">
+                  <p className="font-medium mb-3">{index + 1}. {quiz.question}</p>
+                  <div className="space-y-3">
+                    {quiz.options.map(option => (
+                      <label key={option.value} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                        <input
+                          type="radio"
+                          name={`colorQuiz-${index}`}
+                          value={option.value}
+                          checked={answers.colorQuiz[index] === option.value}
+                          onChange={() => handleColorQuizAnswer(index, option.value)}
+                          className="mt-1 text-primary-600 focus:ring-primary-500"
+                        />
+                        <div>
+                          <span className="text-lg mr-2">{option.emoji}</span>
+                          <span className="text-gray-700">{option.label}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
-
-              <div>
-                <p className="font-medium mb-3">2. Face à un défi, je réagis en général en :</p>
-                <div className="space-y-3">
-                  {[
-                    { value: 'direct', label: 'Agissant directement et rapidement' },
-                    { value: 'creative', label: 'Imaginant des solutions créatives' },
-                    { value: 'collaborative', label: 'Demandant de l\'aide ou en travaillant avec les autres' },
-                    { value: 'analytical', label: 'Analysant calmement avant d\'agir' }
-                  ].map(option => (
-                    <label key={option.value} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
-                      <input
-                        type="radio"
-                        name="challengeApproach"
-                        value={option.value}
-                        checked={answers.challengeApproach === option.value}
-                        onChange={(e) => handleAnswer('challengeApproach', e.target.value)}
-                        className="mt-1 text-primary-600 focus:ring-primary-500"
-                      />
-                      <span className="text-gray-700">{option.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         );
@@ -259,7 +331,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
 
             <div className="space-y-6">
               <div>
-                <p className="font-medium mb-3">3. Ce que j'aime le plus faire :</p>
+                <p className="font-medium mb-3">9. Ce que j'aime le plus faire :</p>
                 <div className="grid grid-cols-1 gap-3">
                   {[
                     { value: 'kinesthetic', label: '🏃 Bouger, courir, manipuler des objets (Kinesthésique)' },
@@ -281,7 +353,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
               </div>
 
               <div>
-                <p className="font-medium mb-3">4. Quand je travaille, je préfère :</p>
+                <p className="font-medium mb-3">10. Quand je travaille, je préfère :</p>
                 <div className="grid grid-cols-1 gap-3">
                   {[
                     { value: 'naturalist', label: '🌳 Être dehors, observer la nature (Naturaliste)' },
@@ -314,11 +386,11 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
 
             <div className="space-y-4">
               {[
-                { key: 'currentTalent', label: '5. Mon plus grand talent aujourd\'hui est :', placeholder: 'Décrivez votre talent principal...' },
-                { key: 'improvementAreas', label: '6. Ce que je voudrais améliorer chez moi :', placeholder: 'Quelles compétences souhaitez-vous développer ?' },
-                { key: 'dreamDescription', label: '7. Si je devais décrire mon rêve en une phrase :', placeholder: 'Votre plus grand rêve...' },
-                { key: 'fiveYearVision', label: '8. Dans 5 ans, je voudrais que les gens disent de moi :', placeholder: 'Comment souhaitez-vous être perçu ?' },
-                { key: 'inspirationPerson', label: '9. La personne qui m\'inspire le plus est :', placeholder: 'Qui vous inspire dans la vie ?' }
+                { key: 'currentTalent', label: '11. Mon plus grand talent aujourd\'hui est :', placeholder: 'Décrivez votre talent principal...' },
+                { key: 'improvementAreas', label: '12. Ce que je voudrais améliorer chez moi :', placeholder: 'Quelles compétences souhaitez-vous développer ?' },
+                { key: 'dreamDescription', label: '13. Si je devais décrire mon rêve en une phrase :', placeholder: 'Votre plus grand rêve...' },
+                { key: 'fiveYearVision', label: '14. Dans 5 ans, je voudrais que les gens disent de moi :', placeholder: 'Comment souhaitez-vous être perçu ?' },
+                { key: 'inspirationPerson', label: '15. La personne qui m\'inspire le plus est :', placeholder: 'Qui vous inspire dans la vie ?' }
               ].map(field => (
                 <div key={field.key}>
                   <label className="block font-medium mb-2 text-gray-700">{field.label}</label>
@@ -333,7 +405,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
               ))}
 
               <div>
-                <p className="font-medium mb-3 text-gray-700">10. Si SpotBulle devait m'aider, j'aimerais que ce soit pour :</p>
+                <p className="font-medium mb-3 text-gray-700">16. Si SpotBulle devait m'aider, j'aimerais que ce soit pour :</p>
                 <div className="space-y-2">
                   {[
                     'M\'exprimer mieux à l\'oral',
@@ -357,79 +429,148 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
           </div>
         );
 
+      case 4:
+        const dominantColor = calculateDominantColor();
+        const profile = colorProfiles[dominantColor];
+        
+        return (
+          <div className="text-center space-y-6">
+            <div className={`p-8 rounded-2xl bg-gradient-to-br ${
+              dominantColor === 'red' ? 'from-red-100 to-red-200 border-red-300' :
+              dominantColor === 'blue' ? 'from-blue-100 to-blue-200 border-blue-300' :
+              dominantColor === 'green' ? 'from-green-100 to-green-200 border-green-300' :
+              'from-yellow-100 to-yellow-200 border-yellow-300'
+            } border-2`}>
+              <div className="text-6xl mb-4">
+                {dominantColor === 'red' ? '🔴' :
+                 dominantColor === 'blue' ? '🔵' :
+                 dominantColor === 'green' ? '🟢' : '🟡'}
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">{profile.name}</h3>
+              <p className="text-gray-700 mb-4">{profile.description}</p>
+              
+              <div className="flex justify-center gap-2 mb-4">
+                {profile.traits.map((trait, index) => (
+                  <span key={index} className="px-3 py-1 bg-white/80 rounded-full text-sm font-medium">
+                    {trait}
+                  </span>
+                ))}
+              </div>
+              
+              <p className="text-sm text-gray-600">
+                Votre QR code de restitution est disponible dans votre tableau de bord
+              </p>
+            </div>
+            
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-blue-700 text-sm">
+                🎯 <strong>Votre parcours SpotBulle Immersion est maintenant personnalisé</strong><br/>
+                Accédez aux simulateurs et scénarios adaptés à votre profil
+              </p>
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
   };
 
+  const handleAnswer = (question, value) => {
+    setAnswers(prev => ({
+      ...prev,
+      [question]: value
+    }));
+  };
+
+  const allColorQuestionsAnswered = answers.colorQuiz.every(answer => answer !== '');
+  const canProceed = currentStep === 1 ? allColorQuestionsAnswered : true;
+
   return (
     <div className={`bg-white rounded-xl shadow-lg ${isModal ? '' : 'p-6 max-w-2xl mx-auto'}`}>
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold text-primary-900 mb-2">
-          📝 Questionnaire SpotBulle
+          {currentStep === 4 ? '🎉 Profil Identifié !' : '📝 Questionnaire SpotBulle Immersion'}
         </h2>
         <p className="text-gray-600">
-          Complétez votre profil pour mieux vous connecter avec la communauté
+          {currentStep === 4 ? 'Découvrez votre profil personnalité' : 'Complétez votre profil pour mieux vous connecter avec la communauté'}
         </p>
         
         {/* Indicateur de progression */}
-        <div className="flex justify-center space-x-2 mt-4">
-          {[1, 2, 3].map(step => (
-            <div
-              key={step}
-              className={`w-3 h-3 rounded-full ${
-                step === currentStep 
-                  ? 'bg-primary-600' 
-                  : step < currentStep 
-                    ? 'bg-primary-300' 
-                    : 'bg-gray-300'
-              }`}
-            />
-          ))}
-        </div>
+        {currentStep < 4 && (
+          <div className="flex justify-center space-x-2 mt-4">
+            {[1, 2, 3].map(step => (
+              <div
+                key={step}
+                className={`w-3 h-3 rounded-full ${
+                  step === currentStep 
+                    ? 'bg-primary-600' 
+                    : step < currentStep 
+                      ? 'bg-primary-300' 
+                      : 'bg-gray-300'
+                }`}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {renderStep()}
 
-      <div className="flex justify-between mt-8 pt-6 border-t border-gray-200">
-        <Button
-          onClick={prevStep}
-          disabled={currentStep === 1}
-          variant="outline"
-          className="px-6"
-        >
-          ← Précédent
-        </Button>
+      {currentStep < 4 && (
+        <div className="flex justify-between mt-8 pt-6 border-t border-gray-200">
+          <Button
+            onClick={prevStep}
+            disabled={currentStep === 1}
+            variant="outline"
+            className="px-6"
+          >
+            ← Précédent
+          </Button>
 
-        <div className="space-x-3">
-          {showSkip && (
-            <Button
-              onClick={onComplete}
-              variant="outline"
-              className="px-6"
-            >
-              Passer
-            </Button>
-          )}
-          
-          {currentStep < 3 ? (
-            <Button
-              onClick={nextStep}
-              className="bg-primary-600 hover:bg-primary-700 px-6"
-            >
-              Suivant →
-            </Button>
-          ) : (
-            <Button
-              onClick={submitQuestionnaire}
-              loading={loading}
-              className="bg-primary-600 hover:bg-primary-700 px-6"
-            >
-              {loading ? 'Sauvegarde...' : 'Terminer le questionnaire'}
-            </Button>
-          )}
+          <div className="space-x-3">
+            {showSkip && (
+              <Button
+                onClick={onComplete}
+                variant="outline"
+                className="px-6"
+              >
+                Passer
+              </Button>
+            )}
+            
+            {currentStep < 3 ? (
+              <Button
+                onClick={nextStep}
+                disabled={!canProceed}
+                className="bg-primary-600 hover:bg-primary-700 px-6"
+              >
+                Suivant →
+              </Button>
+            ) : (
+              <Button
+                onClick={submitQuestionnaire}
+                loading={loading}
+                disabled={!canProceed}
+                className="bg-primary-600 hover:bg-primary-700 px-6"
+              >
+                {loading ? 'Sauvegarde...' : 'Terminer le questionnaire'}
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {currentStep === 4 && (
+        <div className="flex justify-center mt-8 pt-6 border-t border-gray-200">
+          <Button
+            onClick={onComplete}
+            className="bg-primary-600 hover:bg-primary-700 px-8"
+          >
+            Commencer l'aventure →
+          </Button>
+        </div>
+      )}
     </div>
   );
 };
