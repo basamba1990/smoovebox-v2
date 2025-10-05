@@ -24,15 +24,15 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
   const [selectedVideoForAnalysis, setSelectedVideoForAnalysis] = useState(null);
   const [videoPlayerUrl, setVideoPlayerUrl] = useState(null);
 
-  // Recharger les vidéos quand refreshKey change ou utilisateur change
+  // ✅ CORRECTION : Rechargement amélioré avec dépendances complètes
   useEffect(() => {
     console.log('🔄 Dashboard: refreshKey changé, rechargement des vidéos...', refreshKey);
     if (user) {
       fetchVideos();
     }
-  }, [user, refreshKey]);
+  }, [user, refreshKey, onVideoUploaded]);
 
-  // CORRECTION CRITIQUE : Fonction fetchVideos sans commentaire dans la query
+  // ✅ CORRECTION : Fonction fetchVideos optimisée
   const fetchVideos = async () => {
     if (!user) return;
 
@@ -60,7 +60,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
         throw error;
       }
 
-      console.log(`✅ ${data?.length || 0} vidéos trouvées:`, data);
+      console.log(`✅ ${data?.length || 0} vidéos trouvées`);
       setVideos(data || []);
 
     } catch (err) {
@@ -71,51 +71,86 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     }
   };
 
-  // Fonction pour obtenir l'URL de lecture de la vidéo
+  // ✅ CORRECTION CRITIQUE : Fonction getVideoUrl améliorée avec gestion robuste
   const getVideoUrl = async (video) => {
     if (!video) return null;
 
     try {
+      // ✅ PRIORITÉ 1: URL publique directe
       if (video.public_url) {
+        console.log('✅ Utilisation URL publique:', video.public_url);
         return video.public_url;
       }
 
-      if (video.file_path) {
-        console.log('📁 Génération URL signée pour:', video.file_path);
-        const { data, error } = await supabase.storage
-          .from('videos')
-          .createSignedUrl(video.file_path, 3600);
-
-        if (error) {
-          console.error('❌ Erreur génération URL signée:', error);
-          throw error;
-        }
-        
-        console.log('✅ URL signée générée:', data.signedUrl);
-        return data.signedUrl;
+      // ✅ PRIORITÉ 2: storage_path (NON NULL) avant file_path
+      const path = video.storage_path || video.file_path;
+      
+      if (!path) {
+        console.error('❌ Aucun chemin de stockage disponible pour la vidéo:', video.id);
+        return null;
       }
 
-      console.warn('⚠️ Aucun file_path disponible pour la vidéo:', video.id);
-      return null;
+      console.log('📁 Génération URL signée pour:', path);
+      
+      // ✅ Vérification que le bucket existe
+      const { data: bucketData, error: bucketError } = await supabase.storage
+        .from('videos')
+        .list('', { limit: 1 });
+      
+      if (bucketError) {
+        console.error('❌ Erreur accès bucket:', bucketError);
+        throw new Error(`Bucket inaccessible: ${bucketError.message}`);
+      }
+
+      // ✅ Génération URL signée
+      const { data, error } = await supabase.storage
+        .from('videos')
+        .createSignedUrl(path, 3600); // 1 heure
+
+      if (error) {
+        console.error('❌ Erreur génération URL signée:', error);
+        throw error;
+      }
+      
+      console.log('✅ URL signée générée');
+      return data.signedUrl;
+
     } catch (err) {
       console.error('❌ Erreur getVideoUrl:', err);
+      
+      // ✅ Fallback: essayer de régénérer l'URL publique
+      if (video.storage_path) {
+        const { data: fallbackUrl } = supabase.storage
+          .from('videos')
+          .getPublicUrl(video.storage_path);
+        console.log('🔄 Fallback URL publique');
+        return fallbackUrl.publicUrl;
+      }
+      
       return null;
     }
   };
 
-  // Fonction pour lire la vidéo directement dans la page
+  // ✅ CORRECTION : Fonction playVideo améliorée
   const playVideo = async (video) => {
     try {
       console.log('🎬 Tentative de lecture vidéo:', video.id);
+      console.log('📊 Données vidéo:', {
+        id: video.id,
+        file_path: video.file_path,
+        storage_path: video.storage_path,
+        public_url: video.public_url
+      });
+      
       const url = await getVideoUrl(video);
       
       if (url) {
-        console.log('✅ URL vidéo obtenue, ouverture du lecteur');
+        console.log('✅ URL vidéo obtenue');
         setVideoPlayerUrl(url);
         setSelectedVideo(video);
       } else {
         console.error('❌ Impossible d\'obtenir l\'URL de la vidéo');
-        setError('Impossible de charger la vidéo pour la lecture');
+        setError('Impossible de charger la vidéo. Vérifiez que le fichier existe dans le stockage.');
       }
     } catch (err) {
       console.error('❌ Erreur playVideo:', err);
@@ -196,7 +231,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     }
   };
 
-  // CORRECTION : Fonction startAnalysis avec transcriptionText
+  // ✅ CORRECTION : Fonction startAnalysis avec gestion robuste
   const startAnalysis = async (videoId, transcriptionText, userId) => {
     try {
       setAnalyzing(true);
@@ -344,38 +379,45 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     }
   };
 
-  // CORRECTION : handleVideoAction avec récupération de transcriptionText
+  // ✅ CORRECTION : handleVideoAction avec gestion d'erreur améliorée
   const handleVideoAction = async (video, action) => {
-    switch (action) {
-      case 'play':
-        await playVideo(video);
-        break;
-      case 'view':
-        const url = await getVideoUrl(video);
-        if (url) {
-          window.open(url, '_blank');
-        }
-        break;
-      case 'transcribe':
-        await startTranscription(video.id);
-        break;
-      case 'analyze':
-        const transcriptionText = video.transcription_text || 
-                                video.transcription_data?.text || 
-                                video.transcript?.text || '';
-        
-        if (!transcriptionText.trim()) {
-          setError('Aucune transcription disponible pour l\'analyse. Transcrivez d\'abord la vidéo.');
-          return;
-        }
-        
-        await startAnalysis(video.id, transcriptionText, user.id);
-        break;
-      case 'view-analysis':
-        setSelectedVideoForAnalysis(video);
-        break;
-      default:
-        break;
+    try {
+      switch (action) {
+        case 'play':
+          await playVideo(video);
+          break;
+        case 'view':
+          const url = await getVideoUrl(video);
+          if (url) {
+            window.open(url, '_blank');
+          } else {
+            setError('Impossible d\'ouvrir la vidéo. URL non disponible.');
+          }
+          break;
+        case 'transcribe':
+          await startTranscription(video.id);
+          break;
+        case 'analyze':
+          const transcriptionText = video.transcription_text || 
+                                  video.transcription_data?.text || 
+                                  video.transcript?.text || '';
+          
+          if (!transcriptionText.trim()) {
+            setError('Aucune transcription disponible pour l\'analyse. Transcrivez d\'abord la vidéo.');
+            return;
+          }
+          
+          await startAnalysis(video.id, transcriptionText, user.id);
+          break;
+        case 'view-analysis':
+          setSelectedVideoForAnalysis(video);
+          break;
+        default:
+          break;
+      }
+    } catch (err) {
+      console.error(`❌ Erreur action ${action}:`, err);
+      setError(`Erreur lors de l'action ${action}: ${err.message}`);
     }
   };
 
