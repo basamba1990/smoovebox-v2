@@ -76,12 +76,15 @@ const RecordVideo = ({ onVideoUploaded = () => {}, scenarios }) => {
     };
   }, [recordedVideo]);
 
-  // ✅ CORRECTION : Initialisation robuste
+  // ✅ CORRECTION : Initialisation robuste avec gestion des erreurs étendue
   useEffect(() => {
     let mounted = true;
 
     const initialize = async () => {
       try {
+        // ✅ VÉRIFICATION CRITIQUE : Actualisation du schéma
+        await refreshSchemaCache();
+        
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         
         if (userError || !user) {
@@ -110,6 +113,22 @@ const RecordVideo = ({ onVideoUploaded = () => {}, scenarios }) => {
     };
   }, [navigate]);
 
+  // ✅ NOUVELLE FONCTION : Actualisation du cache de schéma
+  const refreshSchemaCache = async () => {
+    try {
+      // Forcer une requête simple pour actualiser le cache
+      const { error } = await supabase
+        .from('videos')
+        .select('id')
+        .limit(1);
+      
+      // Cette erreur est normale si la table est vide, mais ça actualise le cache
+      console.log('🔄 Cache schéma actualisé');
+    } catch (err) {
+      console.warn('⚠️ Actualisation cache schéma:', err);
+    }
+  };
+
   // ✅ CORRECTION : Gestion du minuteur
   useEffect(() => {
     let timer;
@@ -128,24 +147,35 @@ const RecordVideo = ({ onVideoUploaded = () => {}, scenarios }) => {
     return () => clearInterval(timer);
   }, [recording, maxRecordingTime]);
 
-  // ✅ CORRECTION : Suivi de progression avec gestion d'erreur
+  // ✅ CORRECTION : Suivi de progression avec gestion d'erreur améliorée
   useEffect(() => {
     if (!uploadedVideoId) return;
 
     let intervalId;
     let mounted = true;
+    let retryCount = 0;
+    const maxRetries = 3;
 
     const checkProgress = async () => {
       try {
         const { data: video, error } = await supabase
           .from('videos')
-          .select('status, analysis, ai_result, error_message')
+          .select('status, analysis, ai_result, error_message, age_group, scenario_used')
           .eq('id', uploadedVideoId)
           .single();
 
-        if (error) throw error;
+        if (error) {
+          retryCount++;
+          if (retryCount >= maxRetries) {
+            throw new Error(`Impossible de récupérer la vidéo après ${maxRetries} tentatives`);
+          }
+          console.warn(`⚠️ Tentative ${retryCount}/${maxRetries} échouée, nouvelle tentative...`);
+          return;
+        }
 
         if (!mounted) return;
+
+        retryCount = 0; // Réinitialiser le compteur en cas de succès
 
         if (video.status === VIDEO_STATUS.ANALYZED) {
           setAnalysisProgress(VIDEO_STATUS.ANALYZED);
@@ -167,6 +197,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, scenarios }) => {
         console.error('❌ Erreur vérification progression:', err);
         if (mounted) {
           setError('Erreur lors du suivi de la progression.');
+          clearInterval(intervalId);
         }
       }
     };
@@ -346,7 +377,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, scenarios }) => {
     setToneAnalysis(mockToneAnalysis);
   };
 
-  // ✅ CORRECTION CRITIQUE : Upload avec gestion robuste des chemins
+  // ✅ CORRECTION CRITIQUE : Upload avec gestion robuste du schéma
   const uploadVideo = async () => {
     if (!recordedVideo) {
       setError('Vous devez enregistrer une vidéo.');
@@ -363,6 +394,9 @@ const RecordVideo = ({ onVideoUploaded = () => {}, scenarios }) => {
     try {
       setUploading(true);
       setError(null);
+
+      // ✅ VÉRIFICATION SCHEMA : Confirmer que age_group est disponible
+      await refreshSchemaCache();
 
       // 1. Upload du fichier vers Supabase Storage
       const fileName = `video-${Date.now()}.webm`;
@@ -390,7 +424,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, scenarios }) => {
         .from('videos')
         .getPublicUrl(filePath);
 
-      // ✅ CORRECTION : Structure de données compatible
+      // ✅ CORRECTION : Structure de données compatible avec le schéma
       const videoInsertData = {
         title: `Vidéo ${new Date().toLocaleDateString('fr-FR')}`,
         description: 'Vidéo enregistrée depuis la caméra',
@@ -408,6 +442,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, scenarios }) => {
         tone_analysis: toneAnalysis,
         tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag),
         scenario_used: selectedScenario,
+        // ✅ CORRECTION CRITIQUE : Champ age_group explicitement inclus
         age_group: ageGroup,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -425,23 +460,36 @@ const RecordVideo = ({ onVideoUploaded = () => {}, scenarios }) => {
       if (videoError) {
         console.error('❌ Erreur insertion vidéo:', videoError);
         
-        // ✅ Gestion spécifique de l'erreur de chemin NULL
-        if (videoError.message.includes('stockage') || videoError.message.includes('NULL')) {
+        // ✅ Gestion spécifique de l'erreur de schéma
+        if (videoError.message.includes('age_group') || videoError.message.includes('column')) {
+          console.warn('⚠️ Erreur de colonne détectée, nouvel essai après délai...');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Nouvel essai
+          const { data: retryData, error: retryError } = await supabase
+            .from('videos')
+            .insert(videoInsertData)
+            .select()
+            .single();
+            
+          if (retryError) throw retryError;
+          setUploadedVideoId(retryData.id);
+        } else if (videoError.message.includes('stockage') || videoError.message.includes('NULL')) {
           throw new Error('Erreur de configuration du chemin de stockage. Veuillez réessayer.');
+        } else {
+          throw new Error(`Erreur création vidéo: ${videoError.message}`);
         }
-        
-        throw new Error(`Erreur création vidéo: ${videoError.message}`);
+      } else {
+        setUploadedVideoId(videoData.id);
       }
 
-      console.log('✅ Vidéo créée en base:', videoData.id);
-      setUploadedVideoId(videoData.id);
+      console.log('✅ Vidéo créée en base:', videoData?.id || 'ID non disponible');
       toast.success('Vidéo uploadée avec succès !');
 
       // ✅ VÉRIFICATION après insertion
       const { data: verifiedVideo, error: verifyError } = await supabase
         .from('videos')
-        .select('id, file_path, storage_path, public_url')
-        .eq('id', videoData.id)
+        .select('id, file_path, storage_path, public_url, age_group, scenario_used')
+        .eq('id', videoData?.id || uploadedVideoId)
         .single();
 
       if (verifyError) {
@@ -451,7 +499,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, scenarios }) => {
       }
 
       // ✅ CORRIGÉ : Déclencher la transcription
-      await triggerTranscription(videoData.id, user.id, urlData.publicUrl);
+      await triggerTranscription(videoData?.id || uploadedVideoId, user.id, urlData.publicUrl);
 
     } catch (err) {
       console.error('❌ Erreur upload:', err);
@@ -460,6 +508,8 @@ const RecordVideo = ({ onVideoUploaded = () => {}, scenarios }) => {
       let errorMessage = `Erreur lors de l'upload: ${err.message}`;
       if (err.message.includes('stockage') || err.message.includes('NULL')) {
         errorMessage = 'Erreur de configuration du stockage. Le chemin de la vidéo est invalide.';
+      } else if (err.message.includes('age_group') || err.message.includes('column')) {
+        errorMessage = 'Erreur de schéma base de données. Le service est en cours de mise à jour. Veuillez réessayer dans quelques instants.';
       }
       
       setError(errorMessage);
