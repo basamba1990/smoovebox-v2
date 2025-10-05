@@ -18,6 +18,8 @@ import ProfessionalHeader from './components/ProfessionalHeader.jsx';
 import Home from '@/pages/home.jsx';
 import VideoAnalysisPage from '@/pages/video-analysis.jsx';
 import UserJourneyOnboarding from '@/components/UserJourneyOnboarding.jsx';
+import VideoVault from '@/pages/video-vault.jsx'; // ✅ NOUVEAU : Coffre-fort vidéo
+import FourColorsTest from '@/components/FourColorsTest.jsx'; // ✅ NOUVEAU : Test 4 couleurs amélioré
 import './App.css';
 import './styles/design-system.css';
 
@@ -34,8 +36,30 @@ function AppContent() {
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('connected');
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const { user, loading, signOut, profile } = useAuth();
   const navigate = useNavigate();
+
+  // ✅ NOUVEAU : Vérifier si l'utilisateur a complété l'onboarding
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      if (user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('onboarding_completed')
+          .eq('id', user.id)
+          .single();
+        
+        if (!data?.onboarding_completed) {
+          setShowOnboarding(true);
+        }
+      }
+    };
+    
+    if (user) {
+      checkOnboarding();
+    }
+  }, [user]);
 
   const loadDashboardData = async () => {
     if (!user) {
@@ -85,6 +109,20 @@ function AppContent() {
         console.warn('Exception lors de la récupération des statistiques:', statsError);
       }
 
+      // ✅ AMÉLIORATION : Récupérer les données du test 4 couleurs
+      let colorProfile = null;
+      try {
+        const { data: profileData } = await supabase
+          .from('questionnaire_responses')
+          .select('dominant_color, completed_at')
+          .eq('user_id', user.id)
+          .single();
+        
+        colorProfile = profileData;
+      } catch (error) {
+        console.log('Aucun profil couleur trouvé');
+      }
+
       const dashboardData = {
         totalVideos: videos.length,
         recentVideos: videos.slice(0, 5),
@@ -113,7 +151,8 @@ function AppContent() {
                  (v.ai_result && v.ai_result.length > 0);
         }).length,
         videoPerformance: stats?.performance_data || [],
-        progressStats: stats?.progress_stats || { completed: 0, inProgress: 0, totalTime: 0 }
+        progressStats: stats?.progress_stats || { completed: 0, inProgress: 0, totalTime: 0 },
+        colorProfile: colorProfile // ✅ NOUVEAU : Profil couleur intégré
       };
       
       setDashboardData(dashboardData);
@@ -236,16 +275,30 @@ function AppContent() {
       console.log('Déconnexion demandée');
       await signOut();
       setDashboardData(null);
+      setShowOnboarding(false);
       navigate('/');
     } catch (error) {
       console.error('Erreur de déconnexion:', error);
       setDashboardData(null);
+      setShowOnboarding(false);
       navigate('/');
     }
   };
 
   const handleVideoUploaded = () => {
     console.log('🔄 App: Vidéo uploadée, rechargement des données');
+    loadDashboardData();
+  };
+
+  // ✅ NOUVEAU : Gestion de la complétion de l'onboarding
+  const handleOnboardingComplete = async () => {
+    setShowOnboarding(false);
+    if (user) {
+      await supabase
+        .from('profiles')
+        .update({ onboarding_completed: true })
+        .eq('id', user.id);
+    }
     loadDashboardData();
   };
 
@@ -290,6 +343,17 @@ function AppContent() {
     );
   }
 
+  // ✅ NOUVEAU : Afficher l'onboarding si nécessaire
+  if (showOnboarding && user) {
+    return (
+      <UserJourneyOnboarding 
+        user={user}
+        onComplete={handleOnboardingComplete}
+        onSkip={handleOnboardingComplete}
+      />
+    );
+  }
+
   return (
     <>
       <Routes>
@@ -326,6 +390,27 @@ function AppContent() {
               profile={profile}
               onSignOut={handleSignOut}
               onVideoUploaded={handleVideoUploaded}
+            />
+          </RequireAuth>
+        } />
+        
+        {/* ✅ NOUVELLE ROUTE : Test 4 couleurs amélioré */}
+        <Route path="/personality-test" element={
+          <RequireAuth>
+            <FourColorsTest 
+              user={user}
+              onComplete={handleOnboardingComplete}
+            />
+          </RequireAuth>
+        } />
+        
+        {/* ✅ NOUVELLE ROUTE : Coffre-fort vidéo */}
+        <Route path="/video-vault" element={
+          <RequireAuth>
+            <VideoVault 
+              user={user}
+              profile={profile}
+              onSignOut={handleSignOut}
             />
           </RequireAuth>
         } />
