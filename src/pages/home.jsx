@@ -9,6 +9,7 @@ import Certification from "../components/Certification.jsx";
 import Questionnaire from "../components/Questionnaire.jsx";
 import ImmersionSimulator from '../components/ImmersionSimulator.jsx';
 import GiftExperience from '../components/GiftExperience';
+import VideoVault from './video-vault.jsx'; // ✅ NOUVEAU : Import du coffre-fort
 import { Button } from "../components/ui/button-enhanced.jsx";
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -52,7 +53,8 @@ export default function Home({
     { id: 'personality', name: 'Test personnalité 4 couleurs', completed: false, priority: 2, section: 'personality' },
     { id: 'immersion', name: 'Immersion simulateur', completed: false, priority: 3, section: 'immersion' },
     { id: 'expression', name: 'Expression orale', completed: false, priority: 4, section: 'expression' },
-    { id: 'restitution', name: 'Restitution & badge', completed: false, priority: 5, section: 'restitution' }
+    { id: 'vault', name: 'Coffre-fort vidéo', completed: false, priority: 5, section: 'vault' }, // ✅ NOUVEAU : Étape coffre-fort
+    { id: 'restitution', name: 'Restitution & badge', completed: false, priority: 6, section: 'restitution' }
   ];
 
   const immersionActivities = [
@@ -109,6 +111,10 @@ export default function Home({
     navigate('/directory');
   };
 
+  const handleNavigateToVideoVault = () => {
+    setActiveTab('vault'); // ✅ NOUVEAU : Navigation vers le coffre-fort
+  };
+
   const handleProfileUpdated = () => {
     setProfileUpdated(true);
     toast.success('Profil mis à jour avec succès !');
@@ -128,11 +134,20 @@ export default function Home({
     }
     
     updateUserJourney('expression', true);
+    updateUserJourney('vault', true); // ✅ Mise à jour : Vidéo ajoutée au coffre-fort
   };
 
   const handleImmersionCompleted = (activityId) => {
     toast.success(`Immersion ${activityId} terminée avec succès !`);
     updateUserJourney('immersion', true);
+  };
+
+  const handleVaultVideoAdded = () => {
+    toast.success('Vidéo ajoutée au coffre-fort !');
+    updateUserJourney('vault', true);
+    if (loadDashboardData) {
+      loadDashboardData();
+    }
   };
 
   const isProfileComplete = profile && 
@@ -184,6 +199,25 @@ export default function Home({
     if (currentUser) {
       checkQuestionnaireStatus();
       updateUserJourney('profile', isProfileComplete);
+      
+      // ✅ Vérifier si l'utilisateur a des vidéos dans le coffre-fort
+      const checkVaultStatus = async () => {
+        try {
+          const { data: videos, error } = await supabase
+            .from('videos')
+            .select('id')
+            .eq('user_id', currentUser.id)
+            .limit(1);
+          
+          if (videos && videos.length > 0) {
+            updateUserJourney('vault', true);
+          }
+        } catch (error) {
+          console.log('Erreur vérification coffre-fort:', error);
+        }
+      };
+      
+      checkVaultStatus();
     }
   }, [currentUser, isProfileComplete]);
 
@@ -244,7 +278,8 @@ export default function Home({
                   { step: 1, title: "Test de personnalité", description: "Découvre ton profil émotionnel (4 couleurs)", duration: "2-3 min", emoji: "🎨" },
                   { step: 2, title: "Immersion simulateur", description: "Libère tes tensions, active ta concentration", duration: "2-3 min", emoji: "⚽" },
                   { step: 3, title: "Expression orale", description: "Transforme l'émotion en parole", duration: "2 min", emoji: "🎙️" },
-                  { step: 4, title: "Restitution & badge", description: "Reçois ton analyse personnalisée", duration: "1 min", emoji: "🏆" }
+                  { step: 4, title: "Coffre-fort vidéo", description: "Stocke et compare tes progrès", duration: "1 min", emoji: "📁" }, // ✅ MIS À JOUR
+                  { step: 5, title: "Restitution & badge", description: "Reçois ton analyse personnalisée", duration: "1 min", emoji: "🏆" }
                 ].map((step) => (
                   <div key={step.step} className="flex items-center gap-4 p-4 bg-gray-700/50 rounded-lg border border-gray-600">
                     <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
@@ -343,6 +378,7 @@ export default function Home({
                             if (step.id === 'personality') setShowQuestionnaire(true);
                             if (step.id === 'immersion') setActiveTab('immersion');
                             if (step.id === 'expression') navigate('/record-video');
+                            if (step.id === 'vault') setActiveTab('vault'); // ✅ NOUVEAU : Navigation coffre-fort
                             if (step.id === 'restitution') navigate('/directory');
                           }}
                           className="btn-spotbulle-dark text-xs bg-blue-600 hover:bg-blue-700 text-white"
@@ -471,6 +507,31 @@ export default function Home({
       case 'certification':
         return <Certification user={user} />;
       
+      // ✅ NOUVEAU : Onglet Coffre-fort vidéo
+      case 'vault':
+        return (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-french font-bold text-white">📁 Mon Coffre-fort Vidéo</h2>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setActiveTab('dashboard')}
+                  variant="outline"
+                  className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  ← Retour au tableau de bord
+                </Button>
+              </div>
+            </div>
+            <VideoVault 
+              user={user}
+              profile={profile}
+              onSignOut={onSignOut}
+              onVideoAdded={handleVaultVideoAdded}
+            />
+          </div>
+        );
+      
       default:
         return (
           <Dashboard 
@@ -523,6 +584,15 @@ export default function Home({
               🎥 Expression orale
             </Button>
             
+            {/* ✅ NOUVEAU : Bouton Coffre-fort vidéo */}
+            <Button
+              variant={activeTab === 'vault' ? 'default' : 'outline'}
+              onClick={() => setActiveTab('vault')}
+              className="btn-spotbulle-dark"
+            >
+              📁 Coffre-fort
+            </Button>
+            
             <Button
               variant={activeTab === 'profile' ? 'default' : 'outline'}
               onClick={() => setActiveTab('profile')}
@@ -572,6 +642,7 @@ export default function Home({
                     if (nextStep.id === 'personality') setShowQuestionnaire(true);
                     if (nextStep.id === 'immersion') setActiveTab('immersion');
                     if (nextStep.id === 'expression') navigate('/record-video');
+                    if (nextStep.id === 'vault') setActiveTab('vault'); // ✅ NOUVEAU : Navigation coffre-fort
                     if (nextStep.id === 'restitution') navigate('/directory');
                   }}
                   className="bg-white text-blue-600 hover:bg-gray-100 border-0"
