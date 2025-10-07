@@ -13,7 +13,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
   const [filter, setFilter] = useState('all');
   const [actionLoading, setActionLoading] = useState(null);
 
-  // ✅ CORRECTION : Chargement réel des vidéos
+  // ✅ CORRECTION : Chargement robuste des vidéos avec gestion d'erreur
   const loadVideos = useCallback(async () => {
     if (!user) {
       console.log('❌ Aucun utilisateur connecté');
@@ -24,51 +24,77 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
       setLoading(true);
       console.log('🔄 Chargement des vidéos pour:', user.id);
       
-      // ✅ RÉEL : Charger TOUTES les vidéos de l'utilisateur
-      const { data: userVideos, error } = await supabase
-        .from('videos')
-        .select(`
-          *,
-          transcriptions(*),
-          analysis_data
-        `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      let userVideos = [];
+      let error = null;
 
-      if (error) {
-        console.error('❌ Erreur Supabase:', error);
-        throw error;
+      try {
+        // Essayer d'abord avec les jointures complètes
+        const response = await supabase
+          .from('videos')
+          .select(`
+            *,
+            transcriptions(*),
+            analysis_data
+          `)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        userVideos = response.data || [];
+        error = response.error;
+      } catch (dbError) {
+        console.error('❌ Erreur base de données avec jointures:', dbError);
+        // Fallback: essayer sans les jointures
+        try {
+          const simpleResponse = await supabase
+            .from('videos')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false });
+          
+          userVideos = simpleResponse.data || [];
+          error = simpleResponse.error;
+        } catch (simpleError) {
+          console.error('❌ Erreur même avec requête simple:', simpleError);
+          userVideos = [];
+        }
       }
 
-      console.log('✅ Vidéos chargées:', userVideos?.length || 0);
+      if (error) {
+        console.error('❌ Erreur chargement vidéos:', error);
+        // Continuer avec un tableau vide plutôt que de bloquer
+      }
 
-      // ✅ RÉEL : Transformer les données pour l'affichage
+      console.log('✅ Vidéos chargées:', userVideos.length);
+
+      // ✅ CORRECTION : Transformation robuste des données
       const formattedVideos = (userVideos || []).map(video => ({
         id: video.id,
         title: video.title || `Vidéo ${new Date(video.created_at).toLocaleDateString('fr-FR')}`,
-        type: 'spotbulle', // Toutes les vidéos viennent de SpotBulle
-        description: video.description,
+        type: 'spotbulle',
+        description: video.description || 'Aucune description',
         thumbnail_url: video.thumbnail_url,
-        duration: video.duration,
+        duration: video.duration || 0,
         file_size: video.file_size,
         created_at: video.created_at,
-        status: video.status,
+        status: video.status || 'uploaded',
         public_url: video.public_url,
         video_url: video.video_url || video.public_url,
-        format: video.format,
+        format: video.format || 'mp4',
         performance_score: video.performance_score || 
                           (video.analysis_data ? Math.round((video.analysis_data.confidence || 0) * 100) : null),
         tags: video.tags || [],
         analysis_data: video.analysis_data,
         transcription_data: video.transcription_data,
-        user_id: video.user_id
+        user_id: video.user_id,
+        file_path: video.file_path || video.storage_path
       }));
 
       setVideos(formattedVideos);
       
     } catch (error) {
-      console.error('❌ Erreur chargement vidéos:', error);
+      console.error('❌ Erreur critique chargement vidéos:', error);
       toast.error('Erreur lors du chargement des vidéos');
+      setVideos([]); // Assurer que videos n'est jamais undefined
     } finally {
       setLoading(false);
     }
@@ -79,7 +105,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
     loadVideos();
   }, [loadVideos]);
 
-  // ✅ CORRECTION : Upload réel vers Supabase
+  // ✅ CORRECTION : Upload robuste avec gestion des contraintes de clés étrangères
   const handleFileUpload = async (event) => {
     const files = Array.from(event.target.files);
     if (!files.length || !user) {
@@ -111,8 +137,8 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
 
         console.log('📤 Upload du fichier:', file.name, file.size);
 
-        // ✅ RÉEL : Upload vers Supabase Storage
-        const fileName = `external-${Date.now()}-${file.name.replace(/\s+/g, '-')}`;
+        // ✅ CORRECTION : Upload vers Supabase Storage avec nom unique
+        const fileName = `external-${Date.now()}-${Math.random().toString(36).substring(2, 15)}-${file.name.replace(/\s+/g, '-')}`;
         const filePath = `${user.id}/external/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
@@ -127,21 +153,21 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
           throw new Error(`Erreur upload: ${uploadError.message}`);
         }
 
-        // ✅ RÉEL : Récupérer l'URL publique
+        // ✅ CORRECTION : Récupérer l'URL publique
         const { data: urlData } = supabase.storage
           .from('videos')
           .getPublicUrl(filePath);
 
         console.log('✅ Fichier uploadé:', urlData.publicUrl);
 
-        // ✅ RÉEL : Création dans la table videos
+        // ✅ CORRECTION : Création dans la table videos avec données minimales et sécurisées
         const videoInsertData = {
           title: file.name.replace(/\.[^/.]+$/, ""), // Retirer l'extension
           description: `Vidéo importée - ${file.name}`,
           file_path: filePath,
           storage_path: filePath,
           file_size: file.size,
-          duration: null, // À déterminer côté serveur
+          duration: null,
           user_id: user.id,
           status: 'uploaded',
           public_url: urlData.publicUrl,
@@ -152,6 +178,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
           updated_at: new Date().toISOString()
         };
 
+        // ✅ CORRECTION : Insertion avec gestion d'erreur robuste
         const { data: videoData, error: insertError } = await supabase
           .from('videos')
           .insert(videoInsertData)
@@ -161,18 +188,30 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
         if (insertError) {
           console.error('❌ Erreur insertion vidéo:', insertError);
           
-          // ✅ Gestion d'erreur améliorée
-          if (insertError.message.includes('age_group')) {
-            // Réessayer sans les champs problématiques
-            const { video_url, public_url, ...cleanData } = videoInsertData;
+          // Gestion spécifique des erreurs de contrainte
+          if (insertError.code === '23503') { // Foreign key violation
+            console.warn('⚠️ Violation de clé étrangère, réessayer avec données minimales');
+            
+            // Réessayer avec uniquement les champs essentiels
+            const minimalData = {
+              title: file.name.replace(/\.[^/.]+$/, ""),
+              user_id: user.id,
+              status: 'uploaded',
+              file_path: filePath,
+              created_at: new Date().toISOString()
+            };
+            
             const { data: retryData, error: retryError } = await supabase
               .from('videos')
-              .insert(cleanData)
+              .insert(minimalData)
               .select()
               .single();
               
-            if (retryError) throw retryError;
-            toast.success(`Vidéo ${file.name} uploadée avec succès !`);
+            if (retryError) {
+              throw new Error(`Échec création vidéo même avec données minimales: ${retryError.message}`);
+            }
+            
+            toast.success(`Vidéo ${file.name} uploadée avec données minimales !`);
           } else {
             throw new Error(`Erreur création vidéo: ${insertError.message}`);
           }
@@ -195,17 +234,19 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
       toast.error(`Échec de l'upload: ${error.message}`);
     } finally {
       setUploading(false);
-      event.target.value = '';
+      // Réinitialiser l'input file
+      if (event.target) {
+        event.target.value = '';
+      }
     }
   };
 
-  // ✅ FONCTION : Voir une vidéo
+  // ✅ CORRECTION : Voir une vidéo avec gestion d'erreur
   const handleViewVideo = async (video) => {
     console.log('👁️ Voir vidéo:', video.id);
     setActionLoading(video.id);
     
     try {
-      // ✅ RÉEL : Ouvrir l'URL de la vidéo
       const videoUrl = video.video_url || video.public_url;
       if (videoUrl) {
         window.open(videoUrl, '_blank');
@@ -221,13 +262,17 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
     }
   };
 
-  // ✅ FONCTION : Analyser une vidéo
+  // ✅ CORRECTION : Analyser une vidéo
   const handleAnalyzeVideo = async (video) => {
     console.log('📊 Analyser vidéo:', video.id);
     setActionLoading(video.id);
     
     try {
-      // ✅ RÉEL : Déclencher l'analyse via fonction Supabase
+      // Vérifier que la vidéo existe et a une URL
+      if (!video.video_url && !video.public_url) {
+        throw new Error('URL vidéo manquante pour l\'analyse');
+      }
+
       const { data, error } = await supabase.functions.invoke('analyze-video', {
         body: {
           videoId: video.id,
@@ -257,7 +302,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
     }
   };
 
-  // ✅ FONCTION : Comparer des vidéos
+  // ✅ CORRECTION : Comparer des vidéos
   const compareVideos = () => {
     if (selectedVideos.length !== 2) {
       toast.error('Sélectionnez exactement 2 vidéos pour comparer');
@@ -271,8 +316,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
       
       console.log('🔍 Comparaison entre:', video1?.title, 'et', video2?.title);
       
-      // ✅ RÉEL : Redirection vers une page de comparaison
-      // navigate(`/video-comparison?id1=${video1.id}&id2=${video2.id}`);
+      // Pour l'instant, simple notification - à implémenter avec une page dédiée
       toast.success(`Comparaison lancée entre "${video1?.title}" et "${video2?.title}"`);
       
     } catch (error) {
@@ -283,16 +327,41 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
     }
   };
 
-  // ✅ FONCTION : Supprimer une vidéo
+  // ✅ CORRECTION : Supprimer une vidéo avec gestion des contraintes
   const handleDeleteVideo = async (video) => {
-    if (!confirm(`Êtes-vous sûr de vouloir supprimer "${video.title}" ?`)) {
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer "${video.title}" ? Cette action est irréversible.`)) {
       return;
     }
 
     setActionLoading(video.id);
     
     try {
-      // ✅ RÉEL : Supprimer le fichier storage
+      // ✅ CORRECTION : Vérifier d'abord les dépendances de clé étrangère
+      const { data: connections, error: connectionsError } = await supabase
+        .from('connections')
+        .select('id')
+        .eq('video_id', video.id)
+        .limit(1);
+
+      if (connectionsError) {
+        console.warn('⚠️ Erreur vérification connections:', connectionsError);
+      }
+
+      if (connections && connections.length > 0) {
+        toast.warning('Cette vidéo est utilisée dans des connections. Suppression des références...');
+        
+        // ✅ CORRECTION : Supprimer d'abord les références dans connections
+        const { error: deleteConnectionsError } = await supabase
+          .from('connections')
+          .delete()
+          .eq('video_id', video.id);
+
+        if (deleteConnectionsError) {
+          throw new Error(`Impossible de supprimer les références: ${deleteConnectionsError.message}`);
+        }
+      }
+
+      // ✅ CORRECTION : Supprimer le fichier storage s'il existe
       if (video.file_path) {
         const { error: storageError } = await supabase.storage
           .from('videos')
@@ -300,16 +369,23 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
 
         if (storageError) {
           console.warn('⚠️ Impossible de supprimer le fichier storage:', storageError);
+          // Continuer quand même avec la suppression en base
         }
       }
 
-      // ✅ RÉEL : Supprimer l'enregistrement en base
+      // ✅ CORRECTION : Supprimer l'enregistrement en base
       const { error: deleteError } = await supabase
         .from('videos')
         .delete()
         .eq('id', video.id);
 
-      if (deleteError) throw deleteError;
+      if (deleteError) {
+        // Gestion spécifique des erreurs de contrainte
+        if (deleteError.code === '23503') {
+          throw new Error('Impossible de supprimer: vidéo utilisée dans d\'autres tables');
+        }
+        throw deleteError;
+      }
 
       toast.success('Vidéo supprimée avec succès');
       
@@ -318,7 +394,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
 
     } catch (error) {
       console.error('Erreur suppression vidéo:', error);
-      toast.error('Erreur lors de la suppression');
+      toast.error(`Erreur lors de la suppression: ${error.message}`);
     } finally {
       setActionLoading(null);
     }
@@ -344,7 +420,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
     return true;
   });
 
-  // ✅ RÉEL : Calcul des statistiques réelles
+  // ✅ CORRECTION : Calcul des statistiques avec gestion des données manquantes
   const getVideoStats = () => {
     const totalVideos = videos.length;
     const analyzedCount = videos.filter(v => v.analysis_data).length;
@@ -386,7 +462,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
             </div>
             
             <div className="flex items-center space-x-4">
-              {/* ✅ RÉEL : Bouton d'upload fonctionnel */}
               <label className="cursor-pointer">
                 <input
                   type="file"
@@ -406,7 +481,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
             </div>
           </div>
 
-          {/* ✅ RÉEL : Statistiques réelles */}
+          {/* Statistiques */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className="bg-white p-4 rounded-lg shadow-sm border">
               <div className="text-2xl font-bold text-primary-600">{stats.totalVideos}</div>
@@ -416,11 +491,11 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
               <div className="text-2xl font-bold text-blue-600">{stats.analyzedCount}</div>
               <div className="text-gray-600">Vidéos analysées</div>
             </div>
-            <div className="bg-white p-4 rounded-lg shadow-sm border">
+            <div className="bg-white p-4 rounded-lg border">
               <div className="text-2xl font-bold text-green-600">{stats.transcribedCount}</div>
               <div className="text-gray-600">Transcriptions</div>
             </div>
-            <div className="bg-white p-4 rounded-lg shadow-sm border">
+            <div className="bg-white p-4 rounded-lg border">
               <div className="text-2xl font-bold text-purple-600">
                 {Math.round(stats.totalDuration / 60)}min
               </div>
@@ -433,7 +508,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
         <div className="bg-white rounded-lg shadow-sm border p-4 mb-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center space-x-4">
-              {/* Filtres réels */}
               <select 
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
@@ -445,7 +519,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                 <option value="transcribed">Vidéos transcrites</option>
               </select>
 
-              {/* Mode d'affichage */}
               <div className="flex border rounded-lg overflow-hidden">
                 <button
                   onClick={() => setViewMode('grid')}
@@ -470,7 +543,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
               </div>
             </div>
 
-            {/* Actions de comparaison */}
             {selectedVideos.length > 0 && (
               <div className="flex items-center space-x-3">
                 <span className="text-sm text-gray-600">
@@ -496,7 +568,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
           </div>
         </div>
 
-        {/* ✅ RÉEL : Liste des vidéos réelles */}
+        {/* Liste des vidéos */}
         {filteredVideos.length === 0 ? (
           <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
             <div className="text-6xl mb-4">🎥</div>
@@ -520,7 +592,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
             </label>
           </div>
         ) : viewMode === 'grid' ? (
-          // Affichage Grille avec données réelles
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredVideos.map(video => (
               <div
@@ -537,7 +608,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                       className="w-full h-full object-cover"
                       onError={(e) => {
                         e.target.style.display = 'none';
-                        e.target.nextSibling.style.display = 'flex';
                       }}
                     />
                   ) : null}
@@ -545,7 +615,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                     <span className="text-4xl">🎬</span>
                   </div>
                   
-                  {/* Badge statut */}
                   <div className={`absolute top-2 left-2 px-2 py-1 rounded-full text-xs font-medium ${
                     video.status === 'analyzed' ? 'bg-green-500 text-white' :
                     video.status === 'analyzing' ? 'bg-yellow-500 text-white' :
@@ -555,7 +624,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                      video.status === 'analyzing' ? 'En analyse' : 'Uploadée'}
                   </div>
 
-                  {/* Checkbox sélection */}
                   <div className="absolute top-2 right-2">
                     <input
                       type="checkbox"
@@ -565,7 +633,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                     />
                   </div>
 
-                  {/* Durée */}
                   {video.duration && (
                     <div className="absolute bottom-2 right-2 bg-black/80 text-white px-2 py-1 rounded text-sm">
                       {Math.floor(video.duration / 60)}:{(video.duration % 60).toString().padStart(2, '0')}
@@ -643,7 +710,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
             ))}
           </div>
         ) : (
-          // Affichage Liste avec données réelles
           <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
             <table className="w-full">
               <thead className="bg-gray-50">
