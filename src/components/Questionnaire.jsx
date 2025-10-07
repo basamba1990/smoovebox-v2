@@ -6,14 +6,9 @@ import { Button } from './ui/button-enhanced.jsx';
 const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [answers, setAnswers] = useState({
-    // Test 4 couleurs - 8 questions CORRIGÉES sans influence des couleurs
     colorQuiz: Array(8).fill(''),
-    
-    // Intelligences multiples
     favoriteActivities: [],
     workPreferences: [],
-    
-    // Talent & Projection
     currentTalent: '',
     improvementAreas: '',
     dreamDescription: '',
@@ -26,7 +21,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
   const supabase = useSupabaseClient();
   const user = useUser();
 
-  // ✅ CORRECTION : Questions du test 4 couleurs SANS COULEURS VISIBLES
+  // ✅ CORRECTION : Questions avec valeurs sécurisées
   const colorQuizQuestions = [
     {
       question: "Quand un défi se présente, tu :",
@@ -163,20 +158,34 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
     }
   }, [user]);
 
+  // ✅ CORRECTION : Chargement sécurisé des réponses existantes
   const loadExistingResponses = async () => {
+    if (!user) return;
+    
     try {
+      console.log('📥 Chargement des réponses existantes pour:', user.id);
+      
+      // ✅ CORRECTION : Utiliser maybeSingle() pour éviter les erreurs 406
       const { data, error } = await supabase
         .from('questionnaire_responses')
         .select('*')
         .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Erreur chargement réponses:', error);
+      if (error) {
+        // ✅ Gestion spécifique des erreurs 406
+        if (error.code === '406' || error.message?.includes('406')) {
+          console.log('ℹ️ Aucune réponse existante trouvée (erreur 406 normale)');
+          return;
+        }
+        console.error('❌ Erreur chargement réponses:', error);
         return;
       }
 
       if (data) {
+        console.log('✅ Réponses existantes chargées:', data.id);
         setAnswers({
           colorQuiz: data.color_quiz || Array(8).fill(''),
           favoriteActivities: data.preferred_activities || [],
@@ -190,11 +199,12 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
         });
         
         if (data.completed_at) {
+          console.log('📝 Questionnaire déjà complété, passage à l\'étape 4');
           setCurrentStep(4);
         }
       }
     } catch (error) {
-      console.log('Aucune réponse existante trouvée');
+      console.error('❌ Erreur lors du chargement des réponses:', error);
     }
   };
 
@@ -244,6 +254,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
     }));
   };
 
+  // ✅ CORRECTION : Sauvegarde robuste avec gestion d'erreur améliorée
   const submitQuestionnaire = async () => {
     if (!user) {
       toast.error('Veuillez vous connecter pour sauvegarder le questionnaire');
@@ -252,8 +263,11 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
 
     setLoading(true);
     try {
+      console.log('💾 Sauvegarde du questionnaire pour:', user.id);
+      
       const dominantColor = calculateDominantColor();
       
+      // ✅ CORRECTION : Vérifier l'existence avec maybeSingle()
       const { data: existingResponse, error: checkError } = await supabase
         .from('questionnaire_responses')
         .select('id, completed_at')
@@ -261,62 +275,76 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
         .maybeSingle();
 
       if (checkError && checkError.code !== 'PGRST116') {
-        throw checkError;
+        console.error('❌ Erreur vérification réponse existante:', checkError);
+        // Continuer malgré l'erreur
       }
 
       let error;
-      if (existingResponse) {
+      const questionnaireData = {
+        color_quiz: answers.colorQuiz,
+        dominant_color: dominantColor,
+        preferred_activities: answers.favoriteActivities,
+        work_preferences: answers.workPreferences,
+        current_talent: answers.currentTalent,
+        improvement_areas: answers.improvementAreas,
+        dream_description: answers.dreamDescription,
+        five_year_vision: answers.fiveYearVision,
+        inspiration_person: answers.inspirationPerson,
+        spotbulle_needs: answers.spotbulleNeeds,
+        completed_at: new Date().toISOString()
+      };
+
+      if (existingResponse?.id) {
+        console.log('📝 Mise à jour réponse existante:', existingResponse.id);
         ({ error } = await supabase
           .from('questionnaire_responses')
-          .update({
-            color_quiz: answers.colorQuiz,
-            dominant_color: dominantColor,
-            preferred_activities: answers.favoriteActivities,
-            work_preferences: answers.workPreferences,
-            current_talent: answers.currentTalent,
-            improvement_areas: answers.improvementAreas,
-            dream_description: answers.dreamDescription,
-            five_year_vision: answers.fiveYearVision,
-            inspiration_person: answers.inspirationPerson,
-            spotbulle_needs: answers.spotbulleNeeds,
-            completed_at: new Date().toISOString()
-          })
+          .update(questionnaireData)
           .eq('id', existingResponse.id));
       } else {
+        console.log('🆕 Création nouvelle réponse questionnaire');
         ({ error } = await supabase
           .from('questionnaire_responses')
           .insert({
             user_id: user.id,
-            color_quiz: answers.colorQuiz,
-            dominant_color: dominantColor,
-            preferred_activities: answers.favoriteActivities,
-            work_preferences: answers.workPreferences,
-            current_talent: answers.currentTalent,
-            improvement_areas: answers.improvementAreas,
-            dream_description: answers.dreamDescription,
-            five_year_vision: answers.fiveYearVision,
-            inspiration_person: answers.inspirationPerson,
-            spotbulle_needs: answers.spotbulleNeeds,
-            completed_at: new Date().toISOString()
+            ...questionnaireData
           }));
       }
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erreur sauvegarde questionnaire:', error);
+        
+        // ✅ CORRECTION : Gestion spécifique des erreurs 406
+        if (error.code === '406') {
+          toast.error('Erreur de format de données. Veuillez réessayer.');
+          return;
+        }
+        
+        throw error;
+      }
 
-      // ✅ AMÉLIORATION : Mise à jour du profil utilisateur avec la couleur dominante
-      await supabase
-        .from('profiles')
-        .update({ dominant_color: dominantColor })
-        .eq('id', user.id);
+      // ✅ CORRECTION : Mise à jour du profil utilisateur avec gestion d'erreur
+      try {
+        await supabase
+          .from('profiles')
+          .update({ 
+            dominant_color: dominantColor,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', user.id);
+      } catch (profileError) {
+        console.warn('⚠️ Impossible de mettre à jour le profil:', profileError);
+        // Continuer même si la mise à jour du profil échoue
+      }
 
       // Afficher le résultat du profil
       const profile = colorProfiles[dominantColor];
+      console.log('🎉 Questionnaire sauvegardé avec profil:', profile.name);
       toast.success(`Profil ${profile.name} identifié !`);
       
       if (onComplete) onComplete();
       
     } catch (error) {
-      console.error('Erreur sauvegarde questionnaire:', error);
+      console.error('❌ Erreur sauvegarde questionnaire:', error);
       toast.error('Erreur lors de la sauvegarde du questionnaire');
     } finally {
       setLoading(false);
@@ -326,7 +354,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
   const nextStep = () => setCurrentStep(prev => prev + 1);
   const prevStep = () => setCurrentStep(prev => prev - 1);
 
-  // ✅ AMÉLIORATION : Écrans du questionnaire avec meilleur UX
+  // Rendu des étapes (identique à votre code actuel)
   const renderStep = () => {
     switch(currentStep) {
       case 1:
@@ -598,7 +626,6 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
           {currentStep === 4 ? 'Découvre ta personnalité unique et commence ton aventure' : 'Complète ton profil pour un parcours 100% personnalisé'}
         </p>
         
-        {/* ✅ AMÉLIORATION : Indicateur de progression moderne */}
         {currentStep < 4 && (
           <div className="flex justify-center space-x-3 mt-6">
             {[1, 2, 3].map(step => (
