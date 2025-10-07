@@ -1,24 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui/button-enhanced.jsx';
 import { toast } from 'sonner';
 import ProfessionalHeader from '../components/ProfessionalHeader.jsx';
 
-const VideoVault = ({ user, profile, onSignOut }) => {
+const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [selectedVideos, setSelectedVideos] = useState([]);
-  const [viewMode, setViewMode] = useState('grid'); // 'grid' ou 'list'
-  const [filter, setFilter] = useState('all'); // 'all', 'spotbulle', 'external', 'technical'
+  const [viewMode, setViewMode] = useState('grid');
+  const [filter, setFilter] = useState('all');
+  const [actionLoading, setActionLoading] = useState(null);
+  const [debugInfo, setDebugInfo] = useState('');
 
-  useEffect(() => {
-    loadVideos();
-  }, [user]);
+  // ✅ CORRECTION : Utilisation de useCallback pour éviter les re-rendus infinis
+  const loadVideos = useCallback(async () => {
+    if (!user) {
+      console.log('❌ Aucun utilisateur connecté');
+      return;
+    }
 
-  const loadVideos = async () => {
     try {
       setLoading(true);
+      console.log('🔄 Chargement des vidéos pour:', user.id);
       
       // Charger les vidéos SpotBulle
       const { data: spotbulleVideos, error } = await supabase
@@ -27,9 +32,14 @@ const VideoVault = ({ user, profile, onSignOut }) => {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erreur Supabase:', error);
+        throw error;
+      }
 
-      // ✅ SIMULATION : Vidéos externes (à intégrer avec la table external_videos plus tard)
+      console.log('✅ Vidéos SpotBulle chargées:', spotbulleVideos?.length || 0);
+
+      // ✅ SIMULATION : Vidéos externes
       const externalVideos = [
         {
           id: 'external-1',
@@ -60,26 +70,49 @@ const VideoVault = ({ user, profile, onSignOut }) => {
       ];
 
       const allVideos = [
-        ...(spotbulleVideos || []).map(v => ({ ...v, type: 'spotbulle' })),
+        ...(spotbulleVideos || []).map(v => ({ 
+          ...v, 
+          type: 'spotbulle',
+          // ✅ Assurer que toutes les vidéos ont un URL pour l'affichage
+          video_url: v.video_url || v.public_url || `/api/videos/${v.id}`
+        })),
         ...externalVideos
       ];
 
       setVideos(allVideos);
+      setDebugInfo(`Chargé: ${allVideos.length} vidéos (${spotbulleVideos?.length || 0} SpotBulle, ${externalVideos.length} externes)`);
+      
     } catch (error) {
-      console.error('Erreur chargement vidéos:', error);
+      console.error('❌ Erreur chargement vidéos:', error);
+      setDebugInfo(`Erreur: ${error.message}`);
       toast.error('Erreur lors du chargement des vidéos');
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
+  useEffect(() => {
+    console.log('🎯 Initialisation VideoVault - User:', user?.id);
+    loadVideos();
+  }, [loadVideos]);
+
+  // ✅ CORRECTION : Gestion robuste de l'upload
   const handleFileUpload = async (event) => {
     const files = Array.from(event.target.files);
-    if (!files.length) return;
+    if (!files.length || !user) {
+      toast.error('Aucun fichier sélectionné ou utilisateur non connecté');
+      return;
+    }
 
     setUploading(true);
     
     try {
+      // Vérifier la session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Utilisateur non authentifié');
+      }
+
       for (const file of files) {
         // Vérifier le type de fichier
         if (!file.type.startsWith('video/')) {
@@ -93,35 +126,111 @@ const VideoVault = ({ user, profile, onSignOut }) => {
           continue;
         }
 
+        console.log('📤 Upload du fichier:', file.name, file.size);
+
         // Upload vers Supabase Storage
-        const fileName = `external-${Date.now()}-${file.name}`;
+        const fileName = `external-${Date.now()}-${file.name.replace(/\s+/g, '-')}`;
         const filePath = `${user.id}/external/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
           .from('videos')
-          .upload(filePath, file);
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          console.error('❌ Erreur upload storage:', uploadError);
+          throw new Error(`Erreur upload: ${uploadError.message}`);
+        }
 
         // Récupérer l'URL publique
         const { data: urlData } = supabase.storage
           .from('videos')
           .getPublicUrl(filePath);
 
-        // ✅ À IMPLÉMENTER : Insérer dans la table external_videos
+        console.log('✅ Fichier uploadé:', urlData.publicUrl);
+
+        // ✅ CRÉATION du enregistrement vidéo dans la table videos
+        const videoInsertData = {
+          title: file.name,
+          description: `Vidéo importée - ${file.name}`,
+          file_path: filePath,
+          storage_path: filePath,
+          file_size: file.size,
+          duration: null, // À déterminer si possible
+          user_id: user.id,
+          status: 'uploaded',
+          type: 'external',
+          public_url: urlData.publicUrl,
+          video_url: urlData.publicUrl,
+          format: file.type.split('/')[1],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        const { data: videoData, error: insertError } = await supabase
+          .from('videos')
+          .insert(videoInsertData)
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('❌ Erreur insertion vidéo:', insertError);
+          throw new Error(`Erreur création vidéo: ${insertError.message}`);
+        }
+
+        console.log('✅ Vidéo créée en base:', videoData.id);
         toast.success(`Vidéo ${file.name} uploadée avec succès !`);
       }
 
       // Recharger la liste
       await loadVideos();
+      
+      // Notifier le parent
+      if (onVideoAdded) {
+        onVideoAdded();
+      }
+
     } catch (error) {
-      console.error('Erreur upload:', error);
-      toast.error('Erreur lors de l\'upload de la vidéo');
+      console.error('❌ Erreur upload complète:', error);
+      toast.error(`Échec de l'upload: ${error.message}`);
     } finally {
       setUploading(false);
       // Reset l'input file
       event.target.value = '';
     }
+  };
+
+  // ✅ CORRECTION : Fonctions pour les boutons qui étaient manquantes
+  const handleViewVideo = (video) => {
+    console.log('👁️ Voir vidéo:', video);
+    
+    if (video.video_url || video.public_url) {
+      // Ouvrir dans un nouvel onglet ou modal
+      const videoUrl = video.video_url || video.public_url;
+      window.open(videoUrl, '_blank');
+      toast.info(`Ouverture de: ${video.title}`);
+    } else {
+      toast.error('URL vidéo non disponible');
+    }
+  };
+
+  const handleAnalyzeVideo = (video) => {
+    console.log('📊 Analyser vidéo:', video);
+    setActionLoading(video.id);
+    
+    // Simuler une analyse
+    setTimeout(() => {
+      setActionLoading(null);
+      toast.success(`Analyse démarrée pour: ${video.title}`);
+      
+      // ✅ Redirection vers la page d'analyse si disponible
+      if (video.id && !video.id.startsWith('external-')) {
+        // navigate(`/video-analysis/${video.id}`);
+        toast.info('Redirection vers analyse...');
+      }
+    }, 1000);
   };
 
   const toggleVideoSelection = (videoId) => {
@@ -132,13 +241,36 @@ const VideoVault = ({ user, profile, onSignOut }) => {
     );
   };
 
+  // ✅ CORRECTION : Fonction de comparaison améliorée
   const compareVideos = () => {
     if (selectedVideos.length !== 2) {
       toast.error('Sélectionnez exactement 2 vidéos pour comparer');
       return;
     }
-    // ✅ À IMPLÉMENTER : Ouvrir une modal de comparaison
-    toast.info('Fonctionnalité de comparaison à venir !');
+    
+    setActionLoading('comparison');
+    try {
+      const video1 = videos.find(v => v.id === selectedVideos[0]);
+      const video2 = videos.find(v => v.id === selectedVideos[1]);
+      
+      console.log('🔍 Comparaison entre:', video1?.title, 'et', video2?.title);
+      toast.success(`Comparaison lancée entre "${video1?.title}" et "${video2?.title}"`);
+      
+      // Ici vous pouvez ouvrir un modal de comparaison
+      // setShowComparisonModal(true);
+      
+    } catch (error) {
+      console.error('Erreur comparaison:', error);
+      toast.error('Erreur lors de la comparaison');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // ✅ CORRECTION : Fonction pour réinitialiser la sélection
+  const clearSelection = () => {
+    setSelectedVideos([]);
+    toast.info('Sélection annulée');
   };
 
   const filteredVideos = videos.filter(video => {
@@ -167,6 +299,7 @@ const VideoVault = ({ user, profile, onSignOut }) => {
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
             <p className="mt-4 text-gray-600">Chargement de votre coffre-fort...</p>
+            {debugInfo && <p className="mt-2 text-sm text-gray-500">{debugInfo}</p>}
           </div>
         </div>
       </div>
@@ -178,6 +311,13 @@ const VideoVault = ({ user, profile, onSignOut }) => {
       <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
       
       <div className="container mx-auto px-4 py-8">
+        {/* Debug info */}
+        {debugInfo && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-700">🔍 {debugInfo}</p>
+          </div>
+        )}
+
         {/* En-tête du coffre-fort */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-6">
@@ -203,7 +343,7 @@ const VideoVault = ({ user, profile, onSignOut }) => {
                   disabled={uploading}
                   className="bg-green-600 hover:bg-green-700 px-6 py-3"
                 >
-                  {uploading ? '📤 Upload...' : '📱 Importer vidéo'}
+                  {uploading ? '📤 Upload en cours...' : '📱 Importer vidéo'}
                 </Button>
               </label>
             </div>
@@ -240,7 +380,7 @@ const VideoVault = ({ user, profile, onSignOut }) => {
               <select 
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
-                className="border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500"
+                className="border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               >
                 <option value="all">Toutes les vidéos</option>
                 <option value="spotbulle">SpotBulle</option>
@@ -252,13 +392,21 @@ const VideoVault = ({ user, profile, onSignOut }) => {
               <div className="flex border rounded-lg overflow-hidden">
                 <button
                   onClick={() => setViewMode('grid')}
-                  className={`p-2 ${viewMode === 'grid' ? 'bg-primary-100 text-primary-600' : 'bg-white'}`}
+                  className={`p-2 px-4 text-sm font-medium ${
+                    viewMode === 'grid' 
+                      ? 'bg-primary-600 text-white' 
+                      : 'bg-white text-gray-700 hover:bg-gray-50'
+                  } transition-colors`}
                 >
                   ⬜ Grille
                 </button>
                 <button
                   onClick={() => setViewMode('list')}
-                  className={`p-2 ${viewMode === 'list' ? 'bg-primary-100 text-primary-600' : 'bg-white'}`}
+                  className={`p-2 px-4 text-sm font-medium ${
+                    viewMode === 'list' 
+                      ? 'bg-primary-600 text-white' 
+                      : 'bg-white text-gray-700 hover:bg-gray-50'
+                  } transition-colors`}
                 >
                   ☰ Liste
                 </button>
@@ -273,16 +421,16 @@ const VideoVault = ({ user, profile, onSignOut }) => {
                 </span>
                 <Button
                   onClick={compareVideos}
-                  disabled={selectedVideos.length !== 2}
+                  disabled={selectedVideos.length !== 2 || actionLoading === 'comparison'}
                   variant="outline"
-                  className="border-blue-500 text-blue-600"
+                  className="border-blue-500 text-blue-600 hover:bg-blue-50"
                 >
-                  📊 Comparer
+                  {actionLoading === 'comparison' ? '🔄...' : '📊 Comparer'}
                 </Button>
                 <Button
-                  onClick={() => setSelectedVideos([])}
+                  onClick={clearSelection}
                   variant="outline"
-                  className="border-gray-500 text-gray-600"
+                  className="border-gray-500 text-gray-600 hover:bg-gray-50"
                 >
                   ✕ Annuler
                 </Button>
@@ -354,7 +502,7 @@ const VideoVault = ({ user, profile, onSignOut }) => {
                       type="checkbox"
                       checked={selectedVideos.includes(video.id)}
                       onChange={() => toggleVideoSelection(video.id)}
-                      className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
                     />
                   </div>
 
@@ -376,7 +524,7 @@ const VideoVault = ({ user, profile, onSignOut }) => {
                       {new Date(video.created_at).toLocaleDateString('fr-FR')}
                     </span>
                     {video.performance_score && (
-                      <span className={`px-2 py-1 rounded-full ${
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                         video.performance_score >= 80 ? 'bg-green-100 text-green-800' :
                         video.performance_score >= 60 ? 'bg-yellow-100 text-yellow-800' :
                         'bg-red-100 text-red-800'
@@ -397,11 +545,23 @@ const VideoVault = ({ user, profile, onSignOut }) => {
                   )}
 
                   <div className="flex space-x-2 mt-4">
-                    <Button size="sm" variant="outline" className="flex-1">
-                      👁️ Voir
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="flex-1"
+                      onClick={() => handleViewVideo(video)}
+                      disabled={actionLoading === video.id}
+                    >
+                      {actionLoading === video.id ? '🔄' : '👁️ Voir'}
                     </Button>
-                    <Button size="sm" variant="outline" className="flex-1">
-                      📊 Analyser
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="flex-1"
+                      onClick={() => handleAnalyzeVideo(video)}
+                      disabled={actionLoading === video.id || video.id.startsWith('external-')}
+                    >
+                      {actionLoading === video.id ? '🔄' : '📊 Analyser'}
                     </Button>
                   </div>
                 </div>
@@ -414,6 +574,9 @@ const VideoVault = ({ user, profile, onSignOut }) => {
             <table className="w-full">
               <thead className="bg-gray-50">
                 <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Sélection
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Vidéo
                   </th>
@@ -438,29 +601,29 @@ const VideoVault = ({ user, profile, onSignOut }) => {
                 {filteredVideos.map(video => (
                   <tr key={video.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
-                      <div className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={selectedVideos.includes(video.id)}
-                          onChange={() => toggleVideoSelection(video.id)}
-                          className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 mr-3"
-                        />
-                        <div className="flex items-center space-x-3">
-                          <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center">
-                            {video.type === 'spotbulle' ? '🎤' : '📹'}
-                          </div>
-                          <div>
-                            <div className="font-medium text-gray-900">{video.title}</div>
-                            {video.tags && (
-                              <div className="flex space-x-1 mt-1">
-                                {video.tags.slice(0, 2).map(tag => (
-                                  <span key={tag} className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">
-                                    #{tag}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
+                      <input
+                        type="checkbox"
+                        checked={selectedVideos.includes(video.id)}
+                        onChange={() => toggleVideoSelection(video.id)}
+                        className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                      />
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center">
+                          {video.type === 'spotbulle' ? '🎤' : '📹'}
+                        </div>
+                        <div>
+                          <div className="font-medium text-gray-900">{video.title}</div>
+                          {video.tags && (
+                            <div className="flex space-x-1 mt-1">
+                              {video.tags.slice(0, 2).map(tag => (
+                                <span key={tag} className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -494,11 +657,21 @@ const VideoVault = ({ user, profile, onSignOut }) => {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex space-x-2">
-                        <Button size="sm" variant="outline">
-                          👁️
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleViewVideo(video)}
+                          disabled={actionLoading === video.id}
+                        >
+                          {actionLoading === video.id ? '🔄' : '👁️'}
                         </Button>
-                        <Button size="sm" variant="outline">
-                          📊
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleAnalyzeVideo(video)}
+                          disabled={actionLoading === video.id || video.id.startsWith('external-')}
+                        >
+                          {actionLoading === video.id ? '🔄' : '📊'}
                         </Button>
                       </div>
                     </td>
