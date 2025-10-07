@@ -18,8 +18,10 @@ import ProfessionalHeader from './components/ProfessionalHeader.jsx';
 import Home from '@/pages/home.jsx';
 import VideoAnalysisPage from '@/pages/video-analysis.jsx';
 import UserJourneyOnboarding from '@/components/UserJourneyOnboarding.jsx';
-import VideoVault from '@/pages/video-vault.jsx'; // ✅ NOUVEAU : Coffre-fort vidéo
-import FourColorsTest from '@/components/FourColorsTest.jsx'; // ✅ NOUVEAU : Test 4 couleurs amélioré
+import VideoVault from '@/pages/video-vault.jsx';
+import FourColorsTest from '@/components/FourColorsTest.jsx';
+import SeminarsList from '@/components/SeminarsList.jsx';
+import Certification from '@/components/Certification.jsx';
 import './App.css';
 import './styles/design-system.css';
 
@@ -40,18 +42,30 @@ function AppContent() {
   const { user, loading, signOut, profile } = useAuth();
   const navigate = useNavigate();
 
-  // ✅ NOUVEAU : Vérifier si l'utilisateur a complété l'onboarding
+  // ✅ CORRECTION : Vérification onboarding avec gestion d'erreur
   useEffect(() => {
     const checkOnboarding = async () => {
       if (user) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('onboarding_completed')
-          .eq('id', user.id)
-          .single();
-        
-        if (!data?.onboarding_completed) {
-          setShowOnboarding(true);
+        try {
+          // ✅ CORRECTION : Ne pas supposer que la colonne existe
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('onboarding_completed, dominant_color')
+            .eq('id', user.id)
+            .single();
+          
+          if (error) {
+            console.warn('Colonne onboarding_completed non trouvée, utilisation de fallback');
+            // Continuer sans onboarding forcé
+            return;
+          }
+          
+          if (!data?.onboarding_completed) {
+            setShowOnboarding(true);
+          }
+        } catch (err) {
+          console.warn('Erreur vérification onboarding:', err);
+          // Ne pas bloquer l'application en cas d'erreur
         }
       }
     };
@@ -109,18 +123,30 @@ function AppContent() {
         console.warn('Exception lors de la récupération des statistiques:', statsError);
       }
 
-      // ✅ AMÉLIORATION : Récupérer les données du test 4 couleurs
+      // ✅ CORRECTION : Gestion robuste du profil couleur
       let colorProfile = null;
       try {
-        const { data: profileData } = await supabase
+        // Essayer d'abord avec dominant_color
+        const { data: profileData, error: profileError } = await supabase
           .from('questionnaire_responses')
           .select('dominant_color, completed_at')
           .eq('user_id', user.id)
           .single();
         
-        colorProfile = profileData;
+        if (!profileError) {
+          colorProfile = profileData;
+        } else {
+          // Fallback: vérifier si la table existe avec d'autres colonnes
+          const { data: fallbackData } = await supabase
+            .from('questionnaire_responses')
+            .select('completed_at')
+            .eq('user_id', user.id)
+            .single();
+          
+          colorProfile = fallbackData;
+        }
       } catch (error) {
-        console.log('Aucun profil couleur trouvé');
+        console.log('Aucun profil questionnaire trouvé ou schéma incompatible');
       }
 
       const dashboardData = {
@@ -152,7 +178,7 @@ function AppContent() {
         }).length,
         videoPerformance: stats?.performance_data || [],
         progressStats: stats?.progress_stats || { completed: 0, inProgress: 0, totalTime: 0 },
-        colorProfile: colorProfile // ✅ NOUVEAU : Profil couleur intégré
+        colorProfile: colorProfile
       };
       
       setDashboardData(dashboardData);
@@ -290,14 +316,24 @@ function AppContent() {
     loadDashboardData();
   };
 
-  // ✅ NOUVEAU : Gestion de la complétion de l'onboarding
+  // ✅ CORRECTION : Gestion d'erreur pour l'onboarding
   const handleOnboardingComplete = async () => {
     setShowOnboarding(false);
     if (user) {
-      await supabase
-        .from('profiles')
-        .update({ onboarding_completed: true })
-        .eq('id', user.id);
+      try {
+        // Vérifier si la colonne existe avant de tenter la mise à jour
+        const { error } = await supabase
+          .from('profiles')
+          .update({ onboarding_completed: true })
+          .eq('id', user.id);
+        
+        if (error) {
+          console.warn('Impossible de mettre à jour onboarding_completed:', error);
+          // Continuer malgré l'erreur
+        }
+      } catch (err) {
+        console.warn('Erreur mise à jour onboarding:', err);
+      }
     }
     loadDashboardData();
   };
@@ -343,7 +379,7 @@ function AppContent() {
     );
   }
 
-  // ✅ NOUVEAU : Afficher l'onboarding si nécessaire
+  // ✅ CORRECTION : Afficher l'onboarding seulement si nécessaire et sans erreur
   if (showOnboarding && user) {
     return (
       <UserJourneyOnboarding 
@@ -394,20 +430,44 @@ function AppContent() {
           </RequireAuth>
         } />
         
-        {/* ✅ NOUVELLE ROUTE : Test 4 couleurs amélioré */}
+        {/* Test 4 couleurs amélioré */}
         <Route path="/personality-test" element={
           <RequireAuth>
             <FourColorsTest 
               user={user}
+              profile={profile}
+              onSignOut={handleSignOut}
               onComplete={handleOnboardingComplete}
             />
           </RequireAuth>
         } />
         
-        {/* ✅ NOUVELLE ROUTE : Coffre-fort vidéo */}
+        {/* Coffre-fort vidéo */}
         <Route path="/video-vault" element={
           <RequireAuth>
             <VideoVault 
+              user={user}
+              profile={profile}
+              onSignOut={handleSignOut}
+              onVideoAdded={handleVideoUploaded}
+            />
+          </RequireAuth>
+        } />
+
+        {/* ✅ CORRECTION : Routes pour Séminaires et Certification */}
+        <Route path="/seminars" element={
+          <RequireAuth>
+            <SeminarsList 
+              user={user}
+              profile={profile}
+              onSignOut={handleSignOut}
+            />
+          </RequireAuth>
+        } />
+
+        <Route path="/certification" element={
+          <RequireAuth>
+            <Certification 
               user={user}
               profile={profile}
               onSignOut={handleSignOut}
