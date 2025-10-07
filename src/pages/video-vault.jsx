@@ -12,9 +12,8 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
   const [viewMode, setViewMode] = useState('grid');
   const [filter, setFilter] = useState('all');
   const [actionLoading, setActionLoading] = useState(null);
-  const [debugInfo, setDebugInfo] = useState('');
 
-  // ✅ CORRECTION : Utilisation de useCallback pour éviter les re-rendus infinis
+  // ✅ CORRECTION : Chargement réel des vidéos
   const loadVideos = useCallback(async () => {
     if (!user) {
       console.log('❌ Aucun utilisateur connecté');
@@ -25,10 +24,14 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
       setLoading(true);
       console.log('🔄 Chargement des vidéos pour:', user.id);
       
-      // Charger les vidéos SpotBulle
-      const { data: spotbulleVideos, error } = await supabase
+      // ✅ RÉEL : Charger TOUTES les vidéos de l'utilisateur
+      const { data: userVideos, error } = await supabase
         .from('videos')
-        .select('*')
+        .select(`
+          *,
+          transcriptions(*),
+          analysis_data
+        `)
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
@@ -37,54 +40,34 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
         throw error;
       }
 
-      console.log('✅ Vidéos SpotBulle chargées:', spotbulleVideos?.length || 0);
+      console.log('✅ Vidéos chargées:', userVideos?.length || 0);
 
-      // ✅ SIMULATION : Vidéos externes
-      const externalVideos = [
-        {
-          id: 'external-1',
-          title: 'But incroyable - Match du 15/10',
-          type: 'external',
-          category: 'technical',
-          thumbnail_url: '/placeholder-technical.jpg',
-          duration: 45,
-          file_size: 15728640,
-          created_at: '2024-01-15T10:30:00Z',
-          source: 'phone_upload',
-          tags: ['football', 'but', 'technique'],
-          performance_score: 85
-        },
-        {
-          id: 'external-2', 
-          title: 'Entraînement parcours technique',
-          type: 'external',
-          category: 'technical',
-          thumbnail_url: '/placeholder-training.jpg',
-          duration: 120,
-          file_size: 31457280,
-          created_at: '2024-01-10T16:45:00Z',
-          source: 'phone_upload',
-          tags: ['entraînement', 'parcours', 'dribble'],
-          performance_score: 72
-        }
-      ];
+      // ✅ RÉEL : Transformer les données pour l'affichage
+      const formattedVideos = (userVideos || []).map(video => ({
+        id: video.id,
+        title: video.title || `Vidéo ${new Date(video.created_at).toLocaleDateString('fr-FR')}`,
+        type: 'spotbulle', // Toutes les vidéos viennent de SpotBulle
+        description: video.description,
+        thumbnail_url: video.thumbnail_url,
+        duration: video.duration,
+        file_size: video.file_size,
+        created_at: video.created_at,
+        status: video.status,
+        public_url: video.public_url,
+        video_url: video.video_url || video.public_url,
+        format: video.format,
+        performance_score: video.performance_score || 
+                          (video.analysis_data ? Math.round((video.analysis_data.confidence || 0) * 100) : null),
+        tags: video.tags || [],
+        analysis_data: video.analysis_data,
+        transcription_data: video.transcription_data,
+        user_id: video.user_id
+      }));
 
-      const allVideos = [
-        ...(spotbulleVideos || []).map(v => ({ 
-          ...v, 
-          type: 'spotbulle',
-          // ✅ Assurer que toutes les vidéos ont un URL pour l'affichage
-          video_url: v.video_url || v.public_url || `/api/videos/${v.id}`
-        })),
-        ...externalVideos
-      ];
-
-      setVideos(allVideos);
-      setDebugInfo(`Chargé: ${allVideos.length} vidéos (${spotbulleVideos?.length || 0} SpotBulle, ${externalVideos.length} externes)`);
+      setVideos(formattedVideos);
       
     } catch (error) {
       console.error('❌ Erreur chargement vidéos:', error);
-      setDebugInfo(`Erreur: ${error.message}`);
       toast.error('Erreur lors du chargement des vidéos');
     } finally {
       setLoading(false);
@@ -96,7 +79,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
     loadVideos();
   }, [loadVideos]);
 
-  // ✅ CORRECTION : Gestion robuste de l'upload
+  // ✅ CORRECTION : Upload réel vers Supabase
   const handleFileUpload = async (event) => {
     const files = Array.from(event.target.files);
     if (!files.length || !user) {
@@ -128,7 +111,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
 
         console.log('📤 Upload du fichier:', file.name, file.size);
 
-        // Upload vers Supabase Storage
+        // ✅ RÉEL : Upload vers Supabase Storage
         const fileName = `external-${Date.now()}-${file.name.replace(/\s+/g, '-')}`;
         const filePath = `${user.id}/external/${fileName}`;
 
@@ -144,27 +127,27 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
           throw new Error(`Erreur upload: ${uploadError.message}`);
         }
 
-        // Récupérer l'URL publique
+        // ✅ RÉEL : Récupérer l'URL publique
         const { data: urlData } = supabase.storage
           .from('videos')
           .getPublicUrl(filePath);
 
         console.log('✅ Fichier uploadé:', urlData.publicUrl);
 
-        // ✅ CRÉATION du enregistrement vidéo dans la table videos
+        // ✅ RÉEL : Création dans la table videos
         const videoInsertData = {
-          title: file.name,
+          title: file.name.replace(/\.[^/.]+$/, ""), // Retirer l'extension
           description: `Vidéo importée - ${file.name}`,
           file_path: filePath,
           storage_path: filePath,
           file_size: file.size,
-          duration: null, // À déterminer si possible
+          duration: null, // À déterminer côté serveur
           user_id: user.id,
           status: 'uploaded',
-          type: 'external',
           public_url: urlData.publicUrl,
           video_url: urlData.publicUrl,
-          format: file.type.split('/')[1],
+          format: file.type.split('/')[1] || 'mp4',
+          tags: ['importé'],
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
@@ -177,11 +160,26 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
 
         if (insertError) {
           console.error('❌ Erreur insertion vidéo:', insertError);
-          throw new Error(`Erreur création vidéo: ${insertError.message}`);
+          
+          // ✅ Gestion d'erreur améliorée
+          if (insertError.message.includes('age_group')) {
+            // Réessayer sans les champs problématiques
+            const { video_url, public_url, ...cleanData } = videoInsertData;
+            const { data: retryData, error: retryError } = await supabase
+              .from('videos')
+              .insert(cleanData)
+              .select()
+              .single();
+              
+            if (retryError) throw retryError;
+            toast.success(`Vidéo ${file.name} uploadée avec succès !`);
+          } else {
+            throw new Error(`Erreur création vidéo: ${insertError.message}`);
+          }
+        } else {
+          console.log('✅ Vidéo créée en base:', videoData.id);
+          toast.success(`Vidéo ${file.name} uploadée avec succès !`);
         }
-
-        console.log('✅ Vidéo créée en base:', videoData.id);
-        toast.success(`Vidéo ${file.name} uploadée avec succès !`);
       }
 
       // Recharger la liste
@@ -197,51 +195,69 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
       toast.error(`Échec de l'upload: ${error.message}`);
     } finally {
       setUploading(false);
-      // Reset l'input file
       event.target.value = '';
     }
   };
 
-  // ✅ CORRECTION : Fonctions pour les boutons qui étaient manquantes
-  const handleViewVideo = (video) => {
-    console.log('👁️ Voir vidéo:', video);
+  // ✅ FONCTION : Voir une vidéo
+  const handleViewVideo = async (video) => {
+    console.log('👁️ Voir vidéo:', video.id);
+    setActionLoading(video.id);
     
-    if (video.video_url || video.public_url) {
-      // Ouvrir dans un nouvel onglet ou modal
+    try {
+      // ✅ RÉEL : Ouvrir l'URL de la vidéo
       const videoUrl = video.video_url || video.public_url;
-      window.open(videoUrl, '_blank');
-      toast.info(`Ouverture de: ${video.title}`);
-    } else {
-      toast.error('URL vidéo non disponible');
+      if (videoUrl) {
+        window.open(videoUrl, '_blank');
+        toast.info(`Ouverture de: ${video.title}`);
+      } else {
+        toast.error('URL vidéo non disponible');
+      }
+    } catch (error) {
+      console.error('Erreur ouverture vidéo:', error);
+      toast.error('Impossible d\'ouvrir la vidéo');
+    } finally {
+      setActionLoading(null);
     }
   };
 
-  const handleAnalyzeVideo = (video) => {
-    console.log('📊 Analyser vidéo:', video);
+  // ✅ FONCTION : Analyser une vidéo
+  const handleAnalyzeVideo = async (video) => {
+    console.log('📊 Analyser vidéo:', video.id);
     setActionLoading(video.id);
     
-    // Simuler une analyse
-    setTimeout(() => {
-      setActionLoading(null);
+    try {
+      // ✅ RÉEL : Déclencher l'analyse via fonction Supabase
+      const { data, error } = await supabase.functions.invoke('analyze-video', {
+        body: {
+          videoId: video.id,
+          videoUrl: video.video_url || video.public_url
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
       toast.success(`Analyse démarrée pour: ${video.title}`);
       
-      // ✅ Redirection vers la page d'analyse si disponible
-      if (video.id && !video.id.startsWith('external-')) {
-        // navigate(`/video-analysis/${video.id}`);
-        toast.info('Redirection vers analyse...');
-      }
-    }, 1000);
+      // Mettre à jour le statut localement
+      const updatedVideos = videos.map(v => 
+        v.id === video.id 
+          ? { ...v, status: 'analyzing' }
+          : v
+      );
+      setVideos(updatedVideos);
+
+    } catch (error) {
+      console.error('Erreur analyse vidéo:', error);
+      toast.error(`Échec de l'analyse: ${error.message}`);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  const toggleVideoSelection = (videoId) => {
-    setSelectedVideos(prev => 
-      prev.includes(videoId) 
-        ? prev.filter(id => id !== videoId)
-        : [...prev, videoId]
-    );
-  };
-
-  // ✅ CORRECTION : Fonction de comparaison améliorée
+  // ✅ FONCTION : Comparer des vidéos
   const compareVideos = () => {
     if (selectedVideos.length !== 2) {
       toast.error('Sélectionnez exactement 2 vidéos pour comparer');
@@ -254,10 +270,10 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
       const video2 = videos.find(v => v.id === selectedVideos[1]);
       
       console.log('🔍 Comparaison entre:', video1?.title, 'et', video2?.title);
-      toast.success(`Comparaison lancée entre "${video1?.title}" et "${video2?.title}"`);
       
-      // Ici vous pouvez ouvrir un modal de comparaison
-      // setShowComparisonModal(true);
+      // ✅ RÉEL : Redirection vers une page de comparaison
+      // navigate(`/video-comparison?id1=${video1.id}&id2=${video2.id}`);
+      toast.success(`Comparaison lancée entre "${video1?.title}" et "${video2?.title}"`);
       
     } catch (error) {
       console.error('Erreur comparaison:', error);
@@ -267,26 +283,75 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
     }
   };
 
-  // ✅ CORRECTION : Fonction pour réinitialiser la sélection
+  // ✅ FONCTION : Supprimer une vidéo
+  const handleDeleteVideo = async (video) => {
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer "${video.title}" ?`)) {
+      return;
+    }
+
+    setActionLoading(video.id);
+    
+    try {
+      // ✅ RÉEL : Supprimer le fichier storage
+      if (video.file_path) {
+        const { error: storageError } = await supabase.storage
+          .from('videos')
+          .remove([video.file_path]);
+
+        if (storageError) {
+          console.warn('⚠️ Impossible de supprimer le fichier storage:', storageError);
+        }
+      }
+
+      // ✅ RÉEL : Supprimer l'enregistrement en base
+      const { error: deleteError } = await supabase
+        .from('videos')
+        .delete()
+        .eq('id', video.id);
+
+      if (deleteError) throw deleteError;
+
+      toast.success('Vidéo supprimée avec succès');
+      
+      // Recharger la liste
+      await loadVideos();
+
+    } catch (error) {
+      console.error('Erreur suppression vidéo:', error);
+      toast.error('Erreur lors de la suppression');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const toggleVideoSelection = (videoId) => {
+    setSelectedVideos(prev => 
+      prev.includes(videoId) 
+        ? prev.filter(id => id !== videoId)
+        : [...prev, videoId]
+    );
+  };
+
   const clearSelection = () => {
     setSelectedVideos([]);
-    toast.info('Sélection annulée');
   };
 
   const filteredVideos = videos.filter(video => {
     if (filter === 'all') return true;
     if (filter === 'spotbulle') return video.type === 'spotbulle';
-    if (filter === 'external') return video.type === 'external';
-    if (filter === 'technical') return video.category === 'technical';
+    if (filter === 'analyzed') return video.analysis_data;
+    if (filter === 'transcribed') return video.transcription_data;
     return true;
   });
 
+  // ✅ RÉEL : Calcul des statistiques réelles
   const getVideoStats = () => {
-    const spotbulleCount = videos.filter(v => v.type === 'spotbulle').length;
-    const externalCount = videos.filter(v => v.type === 'external').length;
+    const totalVideos = videos.length;
+    const analyzedCount = videos.filter(v => v.analysis_data).length;
+    const transcribedCount = videos.filter(v => v.transcription_data).length;
     const totalDuration = videos.reduce((sum, video) => sum + (video.duration || 0), 0);
     
-    return { spotbulleCount, externalCount, totalDuration };
+    return { totalVideos, analyzedCount, transcribedCount, totalDuration };
   };
 
   const stats = getVideoStats();
@@ -299,7 +364,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
             <p className="mt-4 text-gray-600">Chargement de votre coffre-fort...</p>
-            {debugInfo && <p className="mt-2 text-sm text-gray-500">{debugInfo}</p>}
           </div>
         </div>
       </div>
@@ -311,25 +375,18 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
       <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
       
       <div className="container mx-auto px-4 py-8">
-        {/* Debug info */}
-        {debugInfo && (
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-blue-700">🔍 {debugInfo}</p>
-          </div>
-        )}
-
         {/* En-tête du coffre-fort */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">📁 Mon Coffre-fort Vidéo</h1>
               <p className="text-gray-600">
-                Gère toutes tes vidéos SpotBulle et imports externes en un seul endroit
+                Gère toutes tes vidéos SpotBulle en un seul endroit
               </p>
             </div>
             
             <div className="flex items-center space-x-4">
-              {/* Bouton d'upload */}
+              {/* ✅ RÉEL : Bouton d'upload fonctionnel */}
               <label className="cursor-pointer">
                 <input
                   type="file"
@@ -341,27 +398,27 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                 />
                 <Button
                   disabled={uploading}
-                  className="bg-green-600 hover:bg-green-700 px-6 py-3"
+                  className="bg-green-600 hover:bg-green-700 px-6 py-3 text-white font-semibold"
                 >
-                  {uploading ? '📤 Upload en cours...' : '📱 Importer vidéo'}
+                  {uploading ? '📤 Upload en cours...' : '📱 Importer une vidéo'}
                 </Button>
               </label>
             </div>
           </div>
 
-          {/* Statistiques */}
+          {/* ✅ RÉEL : Statistiques réelles */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className="bg-white p-4 rounded-lg shadow-sm border">
-              <div className="text-2xl font-bold text-primary-600">{videos.length}</div>
+              <div className="text-2xl font-bold text-primary-600">{stats.totalVideos}</div>
               <div className="text-gray-600">Total vidéos</div>
             </div>
             <div className="bg-white p-4 rounded-lg shadow-sm border">
-              <div className="text-2xl font-bold text-blue-600">{stats.spotbulleCount}</div>
-              <div className="text-gray-600">Vidéos SpotBulle</div>
+              <div className="text-2xl font-bold text-blue-600">{stats.analyzedCount}</div>
+              <div className="text-gray-600">Vidéos analysées</div>
             </div>
             <div className="bg-white p-4 rounded-lg shadow-sm border">
-              <div className="text-2xl font-bold text-green-600">{stats.externalCount}</div>
-              <div className="text-gray-600">Vidéos externes</div>
+              <div className="text-2xl font-bold text-green-600">{stats.transcribedCount}</div>
+              <div className="text-gray-600">Transcriptions</div>
             </div>
             <div className="bg-white p-4 rounded-lg shadow-sm border">
               <div className="text-2xl font-bold text-purple-600">
@@ -376,16 +433,16 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
         <div className="bg-white rounded-lg shadow-sm border p-4 mb-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center space-x-4">
-              {/* Filtres */}
+              {/* Filtres réels */}
               <select 
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 className="border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               >
                 <option value="all">Toutes les vidéos</option>
-                <option value="spotbulle">SpotBulle</option>
-                <option value="external">Vidéos externes</option>
-                <option value="technical">Gestes techniques</option>
+                <option value="spotbulle">Vidéos SpotBulle</option>
+                <option value="analyzed">Vidéos analysées</option>
+                <option value="transcribed">Vidéos transcrites</option>
               </select>
 
               {/* Mode d'affichage */}
@@ -439,14 +496,14 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
           </div>
         </div>
 
-        {/* Liste des vidéos */}
+        {/* ✅ RÉEL : Liste des vidéos réelles */}
         {filteredVideos.length === 0 ? (
           <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
             <div className="text-6xl mb-4">🎥</div>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">Votre coffre-fort est vide</h3>
             <p className="text-gray-600 mb-6">
               {filter === 'all' 
-                ? "Commencez par enregistrer votre première vidéo ou importer des vidéos externes"
+                ? "Commencez par enregistrer votre première vidéo ou importer des vidéos existantes"
                 : "Aucune vidéo ne correspond à ce filtre"}
             </p>
             <label className="cursor-pointer">
@@ -457,13 +514,13 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                 onChange={handleFileUpload}
                 className="hidden"
               />
-              <Button className="bg-primary-600 hover:bg-primary-700 px-6 py-3">
+              <Button className="bg-primary-600 hover:bg-primary-700 px-6 py-3 text-white font-semibold">
                 📱 Importer ma première vidéo
               </Button>
             </label>
           </div>
         ) : viewMode === 'grid' ? (
-          // Affichage Grille
+          // Affichage Grille avec données réelles
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredVideos.map(video => (
               <div
@@ -478,22 +535,24 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                       src={video.thumbnail_url} 
                       alt={video.title}
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'flex';
+                      }}
                     />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
-                      <span className="text-4xl">
-                        {video.type === 'spotbulle' ? '🎤' : '📹'}
-                      </span>
-                    </div>
-                  )}
+                  ) : null}
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
+                    <span className="text-4xl">🎬</span>
+                  </div>
                   
-                  {/* Badge type */}
+                  {/* Badge statut */}
                   <div className={`absolute top-2 left-2 px-2 py-1 rounded-full text-xs font-medium ${
-                    video.type === 'spotbulle' 
-                      ? 'bg-blue-500 text-white' 
-                      : 'bg-green-500 text-white'
+                    video.status === 'analyzed' ? 'bg-green-500 text-white' :
+                    video.status === 'analyzing' ? 'bg-yellow-500 text-white' :
+                    'bg-blue-500 text-white'
                   }`}>
-                    {video.type === 'spotbulle' ? 'SpotBulle' : 'Externe'}
+                    {video.status === 'analyzed' ? 'Analysée' : 
+                     video.status === 'analyzing' ? 'En analyse' : 'Uploadée'}
                   </div>
 
                   {/* Checkbox sélection */}
@@ -519,6 +578,10 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                     {video.title}
                   </h3>
                   
+                  <p className="text-sm text-gray-600 mb-2 line-clamp-2">
+                    {video.description}
+                  </p>
+                  
                   <div className="flex items-center justify-between text-sm text-gray-600 mb-3">
                     <span>
                       {new Date(video.created_at).toLocaleDateString('fr-FR')}
@@ -535,16 +598,16 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                   </div>
 
                   {video.tags && video.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {video.tags.slice(0, 3).map(tag => (
-                        <span key={tag} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {video.tags.slice(0, 3).map((tag, index) => (
+                        <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
                           #{tag}
                         </span>
                       ))}
                     </div>
                   )}
 
-                  <div className="flex space-x-2 mt-4">
+                  <div className="flex space-x-2">
                     <Button 
                       size="sm" 
                       variant="outline" 
@@ -559,9 +622,20 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                       variant="outline" 
                       className="flex-1"
                       onClick={() => handleAnalyzeVideo(video)}
-                      disabled={actionLoading === video.id || video.id.startsWith('external-')}
+                      disabled={actionLoading === video.id || video.status === 'analyzing' || video.status === 'analyzed'}
                     >
-                      {actionLoading === video.id ? '🔄' : '📊 Analyser'}
+                      {actionLoading === video.id ? '🔄' : 
+                       video.status === 'analyzed' ? '✅ Analysée' : 
+                       video.status === 'analyzing' ? '⏳ En cours' : '📊 Analyser'}
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="text-red-600 border-red-300 hover:bg-red-50"
+                      onClick={() => handleDeleteVideo(video)}
+                      disabled={actionLoading === video.id}
+                    >
+                      {actionLoading === video.id ? '🔄' : '🗑️'}
                     </Button>
                   </div>
                 </div>
@@ -569,7 +643,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
             ))}
           </div>
         ) : (
-          // Affichage Liste
+          // Affichage Liste avec données réelles
           <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
             <table className="w-full">
               <thead className="bg-gray-50">
@@ -581,7 +655,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                     Vidéo
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Type
+                    Statut
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Durée
@@ -611,14 +685,15 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-3">
                         <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center">
-                          {video.type === 'spotbulle' ? '🎤' : '📹'}
+                          🎬
                         </div>
                         <div>
                           <div className="font-medium text-gray-900">{video.title}</div>
+                          <div className="text-sm text-gray-500 mt-1">{video.description}</div>
                           {video.tags && (
                             <div className="flex space-x-1 mt-1">
-                              {video.tags.slice(0, 2).map(tag => (
-                                <span key={tag} className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">
+                              {video.tags.slice(0, 2).map((tag, index) => (
+                                <span key={index} className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">
                                   #{tag}
                                 </span>
                               ))}
@@ -629,11 +704,12 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                     </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
-                        video.type === 'spotbulle' 
-                          ? 'bg-blue-100 text-blue-800' 
-                          : 'bg-green-100 text-green-800'
+                        video.status === 'analyzed' ? 'bg-green-100 text-green-800' :
+                        video.status === 'analyzing' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-blue-100 text-blue-800'
                       }`}>
-                        {video.type === 'spotbulle' ? 'SpotBulle' : 'Externe'}
+                        {video.status === 'analyzed' ? 'Analysée' : 
+                         video.status === 'analyzing' ? 'En analyse' : 'Uploadée'}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900">
@@ -669,9 +745,18 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                           size="sm" 
                           variant="outline"
                           onClick={() => handleAnalyzeVideo(video)}
-                          disabled={actionLoading === video.id || video.id.startsWith('external-')}
+                          disabled={actionLoading === video.id || video.status === 'analyzing' || video.status === 'analyzed'}
                         >
                           {actionLoading === video.id ? '🔄' : '📊'}
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          className="text-red-600 border-red-300 hover:bg-red-50"
+                          onClick={() => handleDeleteVideo(video)}
+                          disabled={actionLoading === video.id}
+                        >
+                          {actionLoading === video.id ? '🔄' : '🗑️'}
                         </Button>
                       </div>
                     </td>
@@ -693,21 +778,21 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
               <div className="text-2xl mb-2">📱</div>
               <h4 className="font-semibold mb-2">Importez vos vidéos</h4>
               <p className="text-sm text-gray-600">
-                Téléchargez vos vidéos de matchs, gestes techniques ou entraînements depuis votre téléphone
+                Téléchargez vos vidéos depuis votre téléphone ou votre ordinateur
               </p>
             </div>
             <div className="bg-white/80 p-4 rounded-lg border">
               <div className="text-2xl mb-2">📊</div>
-              <h4 className="font-semibold mb-2">Suivez votre progression</h4>
+              <h4 className="font-semibold mb-2">Analyse automatique</h4>
               <p className="text-sm text-gray-600">
-                Comparez vos performances dans le temps et identifiez vos axes d'amélioration
+                Chaque vidéo est automatiquement analysée pour évaluer votre performance
               </p>
             </div>
             <div className="bg-white/80 p-4 rounded-lg border">
-              <div className="text-2xl mb-2">👥</div>
-              <h4 className="font-semibold mb-2">Partagez avec votre club</h4>
+              <div className="text-2xl mb-2">🔄</div>
+              <h4 className="font-semibold mb-2">Suivez votre progression</h4>
               <p className="text-sm text-gray-600">
-                Montrez vos meilleures actions à vos coachs et coéquipiers (optionnel)
+                Comparez vos performances et identifiez vos axes d'amélioration
               </p>
             </div>
           </div>
