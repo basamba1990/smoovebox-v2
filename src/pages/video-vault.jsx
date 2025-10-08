@@ -13,11 +13,11 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
   const [filter, setFilter] = useState('all');
   const [actionLoading, setActionLoading] = useState(null);
 
-  // ✅ CORRECTION CRITIQUE : Référence pour l'input file
+  // ✅ Références pour les inputs file
   const fileInputRef = useRef(null);
   const emptyFileInputRef = useRef(null);
 
-  // ✅ CORRECTION : Fonction pour déclencher l'input file
+  // ✅ Fonction pour déclencher l'input file
   const triggerFileInput = (isEmptySection = false) => {
     console.log('🎯 Déclenchement du file input');
     const inputRef = isEmptySection ? emptyFileInputRef : fileInputRef;
@@ -31,7 +31,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
     }
   };
 
-  // ✅ CORRECTION : Chargement robuste des vidéos
+  // ✅ Chargement des vidéos
   const loadVideos = useCallback(async () => {
     if (!user) {
       console.log('❌ Aucun utilisateur connecté');
@@ -119,7 +119,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
     loadVideos();
   }, [loadVideos]);
 
-  // ✅ CORRECTION : Fonction d'upload robuste avec logs améliorés
+  // ✅ Fonction d'upload
   const handleFileUpload = async (event) => {
     console.log('✅✅✅ onChange DÉCLENCHÉ ! Fichiers:', event.target.files?.length);
     
@@ -272,7 +272,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
     }
   };
 
-  // ✅ CORRECTION : Ajout des fonctions manquantes qui causent l'erreur
+  // ✅ Voir une vidéo
   const handleViewVideo = async (video) => {
     console.log('👁️ Voir vidéo:', video.id);
     setActionLoading(video.id);
@@ -293,6 +293,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
     }
   };
 
+  // ✅ Analyser une vidéo
   const handleAnalyzeVideo = async (video) => {
     console.log('📊 Analyser vidéo:', video.id);
     setActionLoading(video.id);
@@ -330,7 +331,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
     }
   };
 
-  // ✅ CORRECTION CRITIQUE : Fonction compareVideos qui était manquante
+  // ✅ FONCTION COMPARER - CRITIQUE
   const compareVideos = () => {
     if (selectedVideos.length !== 2) {
       toast.error('Sélectionnez exactement 2 vidéos pour comparer');
@@ -344,12 +345,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
       
       console.log('🔍 Comparaison entre:', video1?.title, 'et', video2?.title);
       
-      // Ici vous pouvez implémenter la logique de comparaison
-      // Par exemple, naviguer vers une page de comparaison ou ouvrir un modal
       toast.success(`Comparaison lancée entre "${video1?.title}" et "${video2?.title}"`);
-      
-      // Exemple: redirection vers une page de comparaison
-      // window.location.href = `/compare?video1=${selectedVideos[0]}&video2=${selectedVideos[1]}`;
       
     } catch (error) {
       console.error('Erreur comparaison:', error);
@@ -359,6 +355,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
     }
   };
 
+  // ✅ Supprimer une vidéo
   const handleDeleteVideo = async (video) => {
     if (!confirm(`Êtes-vous sûr de vouloir supprimer "${video.title}" ? Cette action est irréversible.`)) {
       return;
@@ -586,6 +583,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                 <span className="text-sm text-gray-600">
                   {selectedVideos.length} vidéo(s) sélectionnée(s)
                 </span>
+                {/* ✅ CORRECTION : Commentaire déplacé avant le bouton */}
                 <Button
                   onClick={compareVideos}
                   disabled={selectedVideos.length !== 2 || actionLoading === 'comparison'}
