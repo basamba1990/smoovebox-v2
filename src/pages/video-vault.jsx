@@ -487,33 +487,36 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
             </div>
             
             <div className="flex items-center space-x-4">
-              {/* ✅ CORRECTION CRITIQUE : Bouton d'upload fonctionnel */}
+              {/* ✅ CORRECTION CRITIQUE : Solution avec label htmlFor pour un bouton fonctionnel */}
               <div className="relative">
+                <label htmlFor="file-upload">
+                  <Button
+                    as="span"
+                    disabled={uploading}
+                    className={`bg-green-600 hover:bg-green-700 px-6 py-3 text-white font-semibold transition-all ${
+                      uploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                    }`}
+                  >
+                    {uploading ? (
+                      <span className="flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        📤 Upload en cours...
+                      </span>
+                    ) : (
+                      '📱 Importer une vidéo'
+                    )}
+                  </Button>
+                </label>
+                {/* ✅ CORRECTION : Input masqué avec className="hidden" au lieu de opacity:0 */}
                 <input
                   id="file-upload"
                   type="file"
                   multiple
                   accept="video/*"
                   onChange={handleFileUpload}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  className="hidden"
                   disabled={uploading}
                 />
-                <Button
-                  as="span"
-                  disabled={uploading}
-                  className={`bg-green-600 hover:bg-green-700 px-6 py-3 text-white font-semibold transition-all ${
-                    uploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-                  }`}
-                >
-                  {uploading ? (
-                    <span className="flex items-center gap-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      📤 Upload en cours...
-                    </span>
-                  ) : (
-                    '📱 Importer une vidéo'
-                  )}
-                </Button>
               </div>
             </div>
           </div>
@@ -615,23 +618,25 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                 ? "Commencez par enregistrer votre première vidéo ou importer des vidéos existantes"
                 : "Aucune vidéo ne correspond à ce filtre"}
             </p>
-            {/* ✅ CORRECTION : Bouton d'import dans la section vide */}
-            <div className="relative inline-block">
+            {/* ✅ CORRECTION : Même solution pour le bouton dans la section vide */}
+            <div className="inline-block">
+              <label htmlFor="empty-upload">
+                <Button 
+                  as="span"
+                  className="bg-primary-600 hover:bg-primary-700 px-6 py-3 text-white font-semibold"
+                >
+                  📱 Importer ma première vidéo
+                </Button>
+              </label>
               <input
                 id="empty-upload"
                 type="file"
                 multiple
                 accept="video/*"
                 onChange={handleFileUpload}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                className="hidden"
                 disabled={uploading}
               />
-              <Button 
-                as="span"
-                className="bg-primary-600 hover:bg-primary-700 px-6 py-3 text-white font-semibold"
-              >
-                📱 Importer ma première vidéo
-              </Button>
             </div>
           </div>
         ) : viewMode === 'grid' ? (
