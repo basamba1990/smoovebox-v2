@@ -587,7 +587,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                   {selectedVideos.length} vidéo(s) sélectionnée(s)
                 </span>
                 <Button
-                  onClick={compareVideos} {/* ✅ MAINTENANT CETTE FONCTION EXISTE */}
+                  onClick={compareVideos}
                   disabled={selectedVideos.length !== 2 || actionLoading === 'comparison'}
                   variant="outline"
                   className="border-blue-500 text-blue-600 hover:bg-blue-50"
