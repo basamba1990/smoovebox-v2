@@ -23,7 +23,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
     const inputRef = isEmptySection ? emptyFileInputRef : fileInputRef;
     
     if (inputRef.current) {
-      // Réactiver l'input au cas où il serait désactivé
       inputRef.current.disabled = false;
       inputRef.current.click();
       console.log('✅ Input file déclenché avec succès');
@@ -131,7 +130,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
       return;
     }
 
-    // ✅ CORRECTION : Reset de l'input file APRÈS avoir capturé les fichiers
     setTimeout(() => {
       event.target.value = '';
     }, 100);
@@ -274,7 +272,156 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
     }
   };
 
-  // ... (garder les autres fonctions handleViewVideo, handleAnalyzeVideo, compareVideos, handleDeleteVideo inchangées)
+  // ✅ CORRECTION : Ajout des fonctions manquantes qui causent l'erreur
+  const handleViewVideo = async (video) => {
+    console.log('👁️ Voir vidéo:', video.id);
+    setActionLoading(video.id);
+    
+    try {
+      const videoUrl = video.video_url || video.public_url;
+      if (videoUrl) {
+        window.open(videoUrl, '_blank');
+        toast.info(`Ouverture de: ${video.title}`);
+      } else {
+        toast.error('URL vidéo non disponible');
+      }
+    } catch (error) {
+      console.error('Erreur ouverture vidéo:', error);
+      toast.error('Impossible d\'ouvrir la vidéo');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleAnalyzeVideo = async (video) => {
+    console.log('📊 Analyser vidéo:', video.id);
+    setActionLoading(video.id);
+    
+    try {
+      if (!video.video_url && !video.public_url) {
+        throw new Error('URL vidéo manquante pour l\'analyse');
+      }
+
+      const { data, error } = await supabase.functions.invoke('analyze-video', {
+        body: {
+          videoId: video.id,
+          videoUrl: video.video_url || video.public_url
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      toast.success(`Analyse démarrée pour: ${video.title}`);
+      
+      const updatedVideos = videos.map(v => 
+        v.id === video.id 
+          ? { ...v, status: 'analyzing' }
+          : v
+      );
+      setVideos(updatedVideos);
+
+    } catch (error) {
+      console.error('Erreur analyse vidéo:', error);
+      toast.error(`Échec de l'analyse: ${error.message}`);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // ✅ CORRECTION CRITIQUE : Fonction compareVideos qui était manquante
+  const compareVideos = () => {
+    if (selectedVideos.length !== 2) {
+      toast.error('Sélectionnez exactement 2 vidéos pour comparer');
+      return;
+    }
+    
+    setActionLoading('comparison');
+    try {
+      const video1 = videos.find(v => v.id === selectedVideos[0]);
+      const video2 = videos.find(v => v.id === selectedVideos[1]);
+      
+      console.log('🔍 Comparaison entre:', video1?.title, 'et', video2?.title);
+      
+      // Ici vous pouvez implémenter la logique de comparaison
+      // Par exemple, naviguer vers une page de comparaison ou ouvrir un modal
+      toast.success(`Comparaison lancée entre "${video1?.title}" et "${video2?.title}"`);
+      
+      // Exemple: redirection vers une page de comparaison
+      // window.location.href = `/compare?video1=${selectedVideos[0]}&video2=${selectedVideos[1]}`;
+      
+    } catch (error) {
+      console.error('Erreur comparaison:', error);
+      toast.error('Erreur lors de la comparaison');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDeleteVideo = async (video) => {
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer "${video.title}" ? Cette action est irréversible.`)) {
+      return;
+    }
+
+    setActionLoading(video.id);
+    
+    try {
+      const { data: connections, error: connectionsError } = await supabase
+        .from('connections')
+        .select('id')
+        .eq('video_id', video.id)
+        .limit(1);
+
+      if (connectionsError) {
+        console.warn('⚠️ Erreur vérification connections:', connectionsError);
+      }
+
+      if (connections && connections.length > 0) {
+        toast.warning('Cette vidéo est utilisée dans des connections. Suppression des références...');
+        
+        const { error: deleteConnectionsError } = await supabase
+          .from('connections')
+          .delete()
+          .eq('video_id', video.id);
+
+        if (deleteConnectionsError) {
+          throw new Error(`Impossible de supprimer les références: ${deleteConnectionsError.message}`);
+        }
+      }
+
+      if (video.file_path) {
+        const { error: storageError } = await supabase.storage
+          .from('videos')
+          .remove([video.file_path]);
+
+        if (storageError) {
+          console.warn('⚠️ Impossible de supprimer le fichier storage:', storageError);
+        }
+      }
+
+      const { error: deleteError } = await supabase
+        .from('videos')
+        .delete()
+        .eq('id', video.id);
+
+      if (deleteError) {
+        if (deleteError.code === '23503') {
+          throw new Error('Impossible de supprimer: vidéo utilisée dans d\'autres tables');
+        }
+        throw deleteError;
+      }
+
+      toast.success('Vidéo supprimée avec succès');
+      await loadVideos();
+
+    } catch (error) {
+      console.error('Erreur suppression vidéo:', error);
+      toast.error(`Erreur lors de la suppression: ${error.message}`);
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const toggleVideoSelection = (videoId) => {
     setSelectedVideos(prev => 
@@ -325,7 +472,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
     <div className="min-h-screen bg-gray-50">
       <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
       
-      {/* ✅ CORRECTION : Inputs files cachés avec des références */}
       <input
         ref={fileInputRef}
         type="file"
@@ -346,7 +492,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
       />
       
       <div className="container mx-auto px-4 py-8">
-        {/* En-tête du coffre-fort */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -357,7 +502,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
             </div>
             
             <div className="flex items-center space-x-4">
-              {/* ✅✅✅ CORRECTION DÉFINITIVE : Bouton avec déclenchement direct */}
               <Button
                 onClick={() => triggerFileInput(false)}
                 disabled={uploading}
@@ -377,7 +521,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
             </div>
           </div>
 
-          {/* Statistiques */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className="bg-white p-4 rounded-lg shadow-sm border">
               <div className="text-2xl font-bold text-primary-600">{stats.totalVideos}</div>
@@ -400,7 +543,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
           </div>
         </div>
 
-        {/* Contrôles (inchangé) */}
         <div className="bg-white rounded-lg shadow-sm border p-4 mb-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center space-x-4">
@@ -445,7 +587,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                   {selectedVideos.length} vidéo(s) sélectionnée(s)
                 </span>
                 <Button
-                  onClick={compareVideos}
+                  onClick={compareVideos} {/* ✅ MAINTENANT CETTE FONCTION EXISTE */}
                   disabled={selectedVideos.length !== 2 || actionLoading === 'comparison'}
                   variant="outline"
                   className="border-blue-500 text-blue-600 hover:bg-blue-50"
@@ -464,7 +606,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
           </div>
         </div>
 
-        {/* Liste des vidéos */}
         {filteredVideos.length === 0 ? (
           <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
             <div className="text-6xl mb-4">🎥</div>
@@ -474,7 +615,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                 ? "Commencez par enregistrer votre première vidéo ou importer des vidéos existantes"
                 : "Aucune vidéo ne correspond à ce filtre"}
             </p>
-            {/* ✅ CORRECTION : Même solution pour le bouton dans la section vide */}
             <Button
               onClick={() => triggerFileInput(true)}
               className="bg-primary-600 hover:bg-primary-700 px-6 py-3 text-white font-semibold"
@@ -491,7 +631,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                   selectedVideos.includes(video.id) ? 'ring-2 ring-primary-500 shadow-md' : 'hover:shadow-md'
                 }`}
               >
-                {/* Contenu de la carte vidéo inchangé */}
                 <div className="aspect-video bg-gray-200 relative">
                   {video.thumbnail_url ? (
                     <img 
@@ -602,7 +741,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
             ))}
           </div>
         ) : (
-          // Tableau liste (inchangé)
           <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
             <table className="w-full">
               <thead className="bg-gray-50">
@@ -726,7 +864,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
           </div>
         )}
 
-        {/* Section d'aide (inchangée) */}
         <div className="mt-12 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
           <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
             <span className="text-2xl mr-3">💡</span>
