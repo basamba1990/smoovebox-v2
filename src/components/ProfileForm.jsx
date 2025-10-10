@@ -1,4 +1,4 @@
-// components/ProfileForm.jsx - VERSION CORRIGÉE AVEC DEBUG ET FEEDBACK AMÉLIORÉ
+// components/ProfileForm.jsx - VERSION COMPLÈTEMENT CORRIGÉE AVEC FEEDBACK IMMÉDIAT
 import { useState, useEffect } from 'react';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { toast } from 'sonner';
@@ -47,6 +47,13 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
       console.log('⚠️ Aucun user connecté'); // ✅ LOG
     }
   }, [currentUser]); // ✅ Dépendance sur currentUser pour recharger si login
+
+  // ✅ NOUVEAU : Debug pour radios/checkboxes (en dev)
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development' && submitAttempted) {
+      console.log('🔍 Debug formData au submit:', formData); // Vérifie si valeurs set
+    }
+  }, [formData, submitAttempted]);
 
   const loadProfile = async () => {
     try {
@@ -213,14 +220,6 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
     }
   };
 
-  // ✅ NOUVEAU : Debug pour radios/checkboxes (en dev)
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development' && submitAttempted) {
-      console.log('🔍 Debug formData au submit:', formData); // Vérifie si valeurs set
-    }
-  }, [formData, submitAttempted]);
-
-  // Reste du JSX inchangé, sauf le bouton :
   return (
     <div className="max-w-2xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg">
       <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-6">
