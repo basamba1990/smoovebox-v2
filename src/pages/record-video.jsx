@@ -40,6 +40,31 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
   const navigate = useNavigate();
   const maxRecordingTime = 120;
 
+  // ✅ CORRECTION : Fonction pour détecter iOS et choisir le format adapté
+  const getSupportedMimeType = () => {
+    // Détection iOS
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    
+    if (isIOS) {
+      // Formats prioritaires pour iOS
+      if (MediaRecorder.isTypeSupported('video/mp4; codecs=avc1.42E01E')) {
+        return 'video/mp4; codecs=avc1.42E01E';
+      }
+      if (MediaRecorder.isTypeSupported('video/mp4')) {
+        return 'video/mp4';
+      }
+    }
+    
+    // Formats pour autres navigateurs
+    const types = [
+      'video/webm; codecs=vp9',
+      'video/webm; codecs=vp8', 
+      'video/webm'
+    ];
+    
+    return types.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
+  };
+
   // Nettoyage des ressources
   useEffect(() => {
     return () => {
@@ -233,7 +258,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     }
   };
 
-  // Démarrer l'enregistrement avec compte à rebours
+  // ✅ CORRIGÉ : Démarrer l'enregistrement avec support iOS
   const startRecording = async () => {
     if (!cameraAccess) {
       setError('Veuillez autoriser l\'accès à la caméra.');
@@ -249,13 +274,21 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
 
     try {
       recordedChunksRef.current = [];
-      const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9')
-        ? 'video/webm; codecs=vp9'
-        : 'video/webm';
+      
+      // ✅ UTILISATION du format détecté
+      const mimeType = getSupportedMimeType();
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      
+      console.log('🎥 Format vidéo sélectionné:', mimeType, 'iOS:', isIOS);
+
+      // ✅ Vérification finale du support
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        throw new Error(`Format non supporté: ${mimeType}. Utilisez un navigateur plus récent.`);
+      }
 
       mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
         mimeType,
-        videoBitsPerSecond: 2500000
+        videoBitsPerSecond: isIOS ? 2000000 : 2500000 // Bitrate réduit pour iOS
       });
 
       mediaRecorderRef.current.ondataavailable = (event) => {
@@ -265,23 +298,37 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       };
 
       mediaRecorderRef.current.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        const blob = new Blob(recordedChunksRef.current, { type: mimeType });
         const url = URL.createObjectURL(blob);
         setRecordedVideo({
           url,
           blob,
-          duration: recordingTime
+          duration: recordingTime,
+          mimeType // ✅ Stockage pour l'upload
         });
         analyzeToneBasic();
+        
+        // ✅ Message spécifique iOS
+        if (isIOS) {
+          toast.success('Vidéo enregistrée en format compatible iPhone');
+        }
       };
 
       mediaRecorderRef.current.start(1000);
       setRecording(true);
       setRecordingTime(0);
       toast.success('Enregistrement démarré !');
+      
     } catch (err) {
       console.error('❌ Erreur démarrage enregistrement:', err);
-      setError('Erreur lors du démarrage de l\'enregistrement.');
+      
+      let errorMsg = "Erreur lors du démarrage de l'enregistrement.";
+      if (err.message.includes('non supporté')) {
+        errorMsg = "Votre iPhone ne supporte pas l'enregistrement vidéo dans ce navigateur. Essayez Safari ou une application native.";
+      }
+      
+      setError(errorMsg);
+      toast.error(errorMsg);
     }
   };
 
@@ -310,7 +357,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     setToneAnalysis(mockToneAnalysis);
   };
 
-  // ✅ CORRIGÉ : Uploader la vidéo avec gestion robuste du chemin de stockage
+  // ✅ CORRIGÉ : Uploader la vidéo avec gestion iOS
   const uploadVideo = async () => {
     if (!recordedVideo) {
       setError('Vous devez enregistrer une vidéo.');
@@ -328,11 +375,12 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       setUploading(true);
       setError(null);
 
-      // 1. Upload du fichier vers Supabase Storage
-      const fileName = `video-${Date.now()}.webm`;
+      // 1. Upload avec le bon content-type
+      const fileExtension = recordedVideo.mimeType?.includes('mp4') ? 'mp4' : 'webm';
+      const fileName = `video-${Date.now()}.${fileExtension}`;
       const filePath = `${user.id}/${fileName}`;
 
-      console.log('📤 Upload du fichier vers:', filePath);
+      console.log('📤 Upload avec type:', recordedVideo.mimeType);
 
       // ✅ VÉRIFICATION CRITIQUE : S'assurer que filePath n'est pas null
       if (!filePath || filePath.trim() === '') {
@@ -341,9 +389,15 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
 
       const { error: uploadError } = await supabase.storage
         .from('videos')
-        .upload(filePath, recordedVideo.blob);
+        .upload(filePath, recordedVideo.blob, {
+          contentType: recordedVideo.mimeType || 'video/webm' // ✅ Content-Type explicite
+        });
 
       if (uploadError) {
+        // ✅ Gestion spécifique des erreurs MIME type 
+        if (uploadError.message.includes('Mime type') || uploadError.message.includes('invalid_mime_type')) {
+          throw new Error(`Type de fichier refusé: ${recordedVideo.mimeType}. Contactez l'administrateur.`);
+        }
         throw new Error(`Erreur upload storage: ${uploadError.message}`);
       }
 
@@ -369,7 +423,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
         public_url: urlData.publicUrl,
         // ✅ Champ supplémentaire pour compatibilité
         video_url: urlData.publicUrl,
-        format: 'webm',
+        format: recordedVideo.mimeType ? recordedVideo.mimeType.split('/')[1] : 'webm', // ✅ Format dynamique
         tone_analysis: toneAnalysis,
         tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag),
         // ✅ Champs requis par la base de données
@@ -409,7 +463,9 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       
       // ✅ Gestion d'erreur améliorée
       let errorMessage = `Erreur lors de l'upload: ${err.message}`;
-      if (err.message.includes('stockage') || err.message.includes('NULL')) {
+      if (err.message.includes('non supporté') || err.message.includes('format')) {
+        errorMessage = 'Format vidéo non compatible avec votre appareil. Réessayez sur un autre device.';
+      } else if (err.message.includes('stockage') || err.message.includes('NULL')) {
         errorMessage = 'Erreur de configuration du stockage. Le chemin de la vidéo est invalide.';
       }
       
