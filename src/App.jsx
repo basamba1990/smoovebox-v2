@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
-// ✅ CORRECTION CRITIQUE : Import du SessionContextProvider
-import { SessionContextProvider } from '@supabase/auth-helpers-react';
+// ✅ CORRECTION CRITIQUE : Import CORRECT des hooks Supabase
+import { SessionContextProvider, useUser, useSupabaseClient } from '@supabase/auth-helpers-react';
 import { supabase } from './lib/supabase.js';
 import AuthModal from './AuthModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
@@ -28,40 +28,57 @@ import Certification from '@/components/Certification.jsx';
 import './App.css';
 import './styles/design-system.css';
 
+// ✅ CORRECTION : Composant RequireAuth amélioré
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <LoadingScreen message="Vérification de l'authentification..." />;
-  return user ? children : <Navigate to="/" replace />;
+  const supabase = useSupabaseClient();
+  const [sessionChecked, setSessionChecked] = useState(false);
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session && !loading) {
+        console.log('🚫 Aucune session active, redirection vers login');
+      }
+      setSessionChecked(true);
+    };
+    checkSession();
+  }, [supabase, loading]);
+
+  if (loading || !sessionChecked) {
+    return <LoadingScreen message="Vérification de l'authentification..." />;
+  }
+  
+  return user ? children : <Navigate to="/login" replace />;
 }
 
+// ✅ CORRECTION : AppContent avec gestion d'erreur améliorée
 function AppContent() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [supabaseError, setSupabaseError] = useState(null);
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState(null);
-  const [connectionStatus, setConnectionStatus] = useState('connected');
+  const [connectionStatus, setConnectionStatus] = useState('checking');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [cameraChecked, setCameraChecked] = useState(false);
+  
+  // ✅ CORRECTION : Utilisation des hooks Supabase DANS le SessionContextProvider
+  const supabase = useSupabaseClient();
   const { user, loading, signOut, profile } = useAuth();
   const navigate = useNavigate();
 
-  // ✅ CORRECTION : Vérification des permissions caméra
+  console.log('🔍 AppContent - User:', user?.id, 'Loading:', loading);
+
+  // Vérification des permissions caméra
   useEffect(() => {
     const checkCameraPermissions = async () => {
       try {
-        console.log('🔍 Vérification des caméras disponibles...');
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(device => device.kind === 'videoinput');
-        
-        console.log(`📹 ${videoDevices.length} caméra(s) détectée(s)`);
-        
-        if (videoDevices.length === 0) {
-          console.warn('⚠️ Aucune caméra détectée sur cet appareil');
-        } else {
-          console.log('✅ Caméras disponibles:', videoDevices.map(d => d.label || 'Caméra non nommée'));
+        if (typeof navigator.mediaDevices?.enumerateDevices === 'function') {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices.filter(device => device.kind === 'videoinput');
+          console.log(`📹 ${videoDevices.length} caméra(s) détectée(s)`);
         }
-        
         setCameraChecked(true);
       } catch (error) {
         console.error('❌ Erreur vérification caméras:', error);
@@ -74,319 +91,124 @@ function AppContent() {
     }
   }, [loading]);
 
-  // ✅ CORRECTION : Vérification onboarding avec gestion d'erreur
+  // Vérification connexion Supabase
   useEffect(() => {
-    const checkOnboarding = async () => {
-      if (user) {
-        try {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('onboarding_completed, dominant_color')
-            .eq('id', user.id)
-            .single();
-          
-          if (error) {
-            console.warn('Colonne onboarding_completed non trouvée, utilisation de fallback');
-            return;
-          }
-          
-          if (!data?.onboarding_completed) {
-            setShowOnboarding(true);
-          }
-        } catch (err) {
-          console.warn('Erreur vérification onboarding:', err);
+    const checkConnection = async () => {
+      try {
+        console.log('🔄 Vérification connexion Supabase...');
+        const result = await checkSupabaseConnection();
+        
+        if (result.connected) {
+          setConnectionStatus('connected');
+          setSupabaseError(null);
+          console.log('✅ Connexion Supabase OK');
+        } else {
+          setConnectionStatus('disconnected');
+          setSupabaseError(result.error);
+          console.error('❌ Connexion Supabase échouée:', result.error);
         }
+      } catch (error) {
+        console.error('❌ Erreur vérification connexion:', error);
+        setConnectionStatus('disconnected');
+        setSupabaseError(error.message);
       }
     };
-    
-    if (user) {
-      checkOnboarding();
-    }
-  }, [user]);
 
+    checkConnection();
+  }, []);
+
+  // Chargement des données dashboard
   const loadDashboardData = async () => {
     if (!user) {
-      console.log('Aucun utilisateur connecté, aucune donnée à charger');
-      setDashboardData(null);
+      console.log('👤 Aucun utilisateur connecté');
       return;
     }
 
     try {
       setDashboardLoading(true);
       setDashboardError(null);
-      console.log('Chargement des données dashboard pour:', user.id);
       
-      let videos = [];
-      try {
-        const { data: videosData, error: vError } = await supabase
-          .from('videos')
-          .select('*, transcriptions(*)')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-        
-        if (vError) throw vError;
-        videos = videosData;
-      } catch (viewError) {
-        console.warn('Utilisation du fallback vers une requête simple');
-        const { data: videosData, error: vError } = await supabase
-          .from('videos')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-        
-        if (vError) throw vError;
-        videos = videosData;
-      }
+      console.log('📊 Chargement données dashboard pour:', user.id);
 
-      let stats = null;
-      try {
-        const { data: statsData, error: statsError } = await supabase
-          .rpc('get_user_video_stats', { user_id_param: user.id });
-        
-        if (statsError) {
-          console.warn('Erreur lors de la récupération des statistiques:', statsError);
-        } else {
-          stats = statsData;
-        }
-      } catch (statsError) {
-        console.warn('Exception lors de la récupération des statistiques:', statsError);
-      }
+      // Requête simplifiée et robuste
+      const { data: videos, error: videosError } = await supabase
+        .from('videos')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
 
-      // ✅ CORRECTION : Gestion robuste du profil couleur
-      let colorProfile = null;
-      try {
-        const { data: profileData, error: profileError } = await supabase
-          .from('questionnaire_responses')
-          .select('dominant_color, completed_at')
-          .eq('user_id', user.id)
-          .single();
-        
-        if (!profileError) {
-          colorProfile = profileData;
-        } else {
-          const { data: fallbackData } = await supabase
-            .from('questionnaire_responses')
-            .select('completed_at')
-            .eq('user_id', user.id)
-            .single();
-          
-          colorProfile = fallbackData;
-        }
-      } catch (error) {
-        console.log('Aucun profil questionnaire trouvé ou schéma incompatible');
-      }
+      if (videosError) throw videosError;
 
       const dashboardData = {
-        totalVideos: videos.length,
-        recentVideos: videos.slice(0, 5),
+        totalVideos: videos?.length || 0,
+        recentVideos: videos?.slice(0, 5) || [],
         videosByStatus: {
-          ready: videos.filter(v => v.status === 'ready' || v.status === 'uploaded' || v.status === 'published').length,
-          processing: videos.filter(v => v.status === 'processing' || v.status === 'analyzing' || v.status === 'transcribing').length,
-          transcribed: videos.filter(v => {
-            return v.transcription_text && v.transcription_text.length > 0 || 
-                   (v.transcription_data && Object.keys(v.transcription_data).length > 0);
-          }).length,
-          analyzed: videos.filter(v => {
-            return v.analysis_result && Object.keys(v.analysis_result).length > 0 || 
-                   (v.analysis && Object.keys(v.analysis).length > 0) || 
-                   (v.ai_result && v.ai_result.length > 0);
-          }).length,
-          failed: videos.filter(v => v.status === 'failed').length
+          ready: videos?.filter(v => v.status === 'ready' || v.status === 'uploaded').length || 0,
+          processing: videos?.filter(v => v.status === 'processing' || v.status === 'analyzing').length || 0,
+          analyzed: videos?.filter(v => v.status === 'analyzed').length || 0,
+          failed: videos?.filter(v => v.status === 'failed').length || 0
         },
-        totalDuration: videos.reduce((sum, video) => sum + (video.duration || 0), 0),
-        transcriptionsCount: videos.filter(v => {
-          return v.transcription_text && v.transcription_text.length > 0 || 
-                 (v.transcription_data && Object.keys(v.transcription_data).length > 0);
-        }).length,
-        analysisCount: videos.filter(v => {
-          return v.analysis_result && Object.keys(v.analysis_result).length > 0 || 
-                 (v.analysis && Object.keys(v.analysis).length > 0) || 
-                 (v.ai_result && v.ai_result.length > 0);
-        }).length,
-        videoPerformance: stats?.performance_data || [],
-        progressStats: stats?.progress_stats || { completed: 0, inProgress: 0, totalTime: 0 },
-        colorProfile: colorProfile
+        totalDuration: videos?.reduce((sum, video) => sum + (video.duration || 0), 0) || 0
       };
-      
+
       setDashboardData(dashboardData);
-      console.log('Données dashboard chargées avec succès:', dashboardData);
+      console.log('✅ Données dashboard chargées');
+
     } catch (err) {
-      console.error('Erreur lors du chargement des données dashboard:', err);
-      setDashboardData(null);
-      setDashboardError(err.message || 'Erreur lors de la récupération des données');
+      console.error('❌ Erreur chargement dashboard:', err);
+      setDashboardError(err.message);
     } finally {
       setDashboardLoading(false);
     }
   };
 
+  // Chargement données quand utilisateur change
   useEffect(() => {
-    if (!loading) {
-      const checkConnection = async () => {
-        try {
-          console.log('Vérification de la connexion Supabase...');
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout de connexion')), 5000)
-          );
-
-          const connectionResult = await Promise.race([
-            checkSupabaseConnection(),
-            timeoutPromise
-          ]);
-          
-          if (connectionResult.connected) {
-            setConnectionStatus('connected');
-            setSupabaseError(null);
-          } else {
-            console.warn('Connexion Supabase échouée:', connectionResult.error);
-            setConnectionStatus('disconnected');
-            setSupabaseError(connectionResult.error);
-          }
-        } catch (error) {
-          console.error('Erreur lors de la vérification de connexion:', error);
-          setConnectionStatus('disconnected');
-          setSupabaseError(`Erreur de vérification: ${error.message}`);
-        }
-      };
-      
-      const connectionTimer = setTimeout(checkConnection, 100);
-      return () => {
-        clearTimeout(connectionTimer);
-      };
-    }
-  }, [loading]);
-
-  useEffect(() => {
-    let mounted = true;
-    let dataTimeout = null;
-
     if (user && connectionStatus === 'connected') {
-      dataTimeout = setTimeout(() => {
-        if (mounted) {
-          loadDashboardData().catch(err => {
-            console.error('Erreur non gérée lors du chargement des données:', err);
-            if (mounted) {
-              setDashboardError(err.message || 'Erreur inattendue');
-              setDashboardLoading(false);
-            }
-          });
-        }
-      }, 200);
-
-      let videosChannel = null;
-      try {
-        videosChannel = supabase
-          .channel('videos_changes')
-          .on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'videos',
-            filter: `user_id=eq.${user.id}`
-          }, payload => {
-            console.log('Changement détecté dans la table videos:', payload);
-            if (mounted) {
-              loadDashboardData().catch(err => {
-                console.error('Erreur lors du rechargement après changement:', err);
-              });
-            }
-          })
-          .subscribe((status) => {
-            console.log('Statut de souscription aux changements videos:', status);
-          });
-      } catch (err) {
-        console.error('Erreur lors de la configuration du canal realtime:', err);
-      }
-
-      return () => {
-        mounted = false;
-        if (dataTimeout) {
-          clearTimeout(dataTimeout);
-        }
-        if (videosChannel) {
-          try {
-            supabase.removeChannel(videosChannel);
-          } catch (err) {
-            console.error('Erreur lors de la suppression du canal:', err);
-          }
-        }
-      };
+      loadDashboardData();
     }
   }, [user, connectionStatus]);
 
   const handleAuthSuccess = (userData) => {
-    console.log('Utilisateur authentifié avec succès:', userData.id);
+    console.log('✅ Utilisateur authentifié:', userData.id);
     setIsAuthModalOpen(false);
-    setTimeout(() => {
-      navigate('/');
-      loadDashboardData().catch(err => {
-        console.error('Erreur après authentification:', err);
-      });
-    }, 1000);
+    setConnectionStatus('connected');
+    navigate('/');
   };
 
   const handleSignOut = async () => {
     try {
-      console.log('Déconnexion demandée');
+      console.log('🚪 Déconnexion...');
       await signOut();
       setDashboardData(null);
       setShowOnboarding(false);
       navigate('/');
     } catch (error) {
-      console.error('Erreur de déconnexion:', error);
-      setDashboardData(null);
-      setShowOnboarding(false);
+      console.error('❌ Erreur déconnexion:', error);
       navigate('/');
     }
   };
 
   const handleVideoUploaded = () => {
-    console.log('🔄 App: Vidéo uploadée, rechargement des données');
-    loadDashboardData();
-  };
-
-  // ✅ CORRECTION : Gestion d'erreur pour l'onboarding
-  const handleOnboardingComplete = async () => {
-    setShowOnboarding(false);
-    if (user) {
-      try {
-        const { error } = await supabase
-          .from('profiles')
-          .update({ onboarding_completed: true })
-          .eq('id', user.id);
-        
-        if (error) {
-          console.warn('Impossible de mettre à jour onboarding_completed:', error);
-        }
-      } catch (err) {
-        console.warn('Erreur mise à jour onboarding:', err);
-      }
-    }
+    console.log('🎥 Vidéo uploadée, rechargement données');
     loadDashboardData();
   };
 
   const handleRetryConnection = async () => {
     setConnectionStatus('checking');
     setSupabaseError(null);
-
+    
     try {
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout de reconnexion')), 5000)
-      );
-      
-      const connectionResult = await Promise.race([
-        checkSupabaseConnection(),
-        timeoutPromise
-      ]);
-      
-      if (connectionResult.connected) {
+      const result = await checkSupabaseConnection();
+      if (result.connected) {
         setConnectionStatus('connected');
-        setSupabaseError(null);
       } else {
         setConnectionStatus('disconnected');
-        setSupabaseError(connectionResult.error);
+        setSupabaseError(result.error);
       }
     } catch (error) {
       setConnectionStatus('disconnected');
-      setSupabaseError(`Erreur de reconnexion: ${error.message}`);
+      setSupabaseError(error.message);
     }
   };
 
@@ -394,7 +216,7 @@ function AppContent() {
     return <LoadingScreen message="Chargement de l'application..." />;
   }
 
-  if (supabaseError) {
+  if (supabaseError && connectionStatus === 'disconnected') {
     return (
       <SupabaseDiagnostic 
         error={supabaseError} 
@@ -404,21 +226,10 @@ function AppContent() {
     );
   }
 
-  // ✅ CORRECTION : Afficher l'onboarding seulement si nécessaire et sans erreur
-  if (showOnboarding && user) {
-    return (
-      <UserJourneyOnboarding 
-        user={user}
-        onComplete={handleOnboardingComplete}
-        onSkip={handleOnboardingComplete}
-      />
-    );
-  }
-
   return (
-    <>
+    <div className="app-container">
       <Routes>
-        {/* Route racine avec onboarding intégré */}
+        {/* Route racine */}
         <Route path="/" element={
           user ? 
             <RequireAuth>
@@ -443,7 +254,7 @@ function AppContent() {
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         
-        {/* ✅ CORRECTION : Route d'enregistrement vidéo améliorée */}
+        {/* Routes protégées */}
         <Route path="/record-video" element={
           <RequireAuth>
             <EnhancedRecordVideo 
@@ -456,19 +267,16 @@ function AppContent() {
           </RequireAuth>
         } />
         
-        {/* Test 4 couleurs amélioré */}
         <Route path="/personality-test" element={
           <RequireAuth>
             <FourColorsTest 
               user={user}
               profile={profile}
               onSignOut={handleSignOut}
-              onComplete={handleOnboardingComplete}
             />
           </RequireAuth>
         } />
         
-        {/* Coffre-fort vidéo */}
         <Route path="/video-vault" element={
           <RequireAuth>
             <VideoVault 
@@ -480,7 +288,6 @@ function AppContent() {
           </RequireAuth>
         } />
 
-        {/* ✅ CORRECTION : Routes pour Séminaires et Certification */}
         <Route path="/seminars" element={
           <RequireAuth>
             <SeminarsList 
@@ -523,7 +330,7 @@ function AppContent() {
           </RequireAuth>
         } />
         
-        {/* Redirections et fallback */}
+        {/* Redirections */}
         <Route path="/dashboard" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
@@ -534,13 +341,15 @@ function AppContent() {
         onClose={() => setIsAuthModalOpen(false)}
         onAuthSuccess={handleAuthSuccess}
       />
-    </>
+    </div>
   );
 }
 
+// ✅ CORRECTION CRITIQUE : Composant App principal avec SessionContextProvider
 function App() {
+  console.log('🚀 Initialisation de App');
+  
   return (
-    // ✅ CORRECTION CRITIQUE : Wrapper avec SessionContextProvider
     <SessionContextProvider supabaseClient={supabase}>
       <AuthProvider>
         <ErrorBoundaryEnhanced FallbackComponent={SupabaseErrorFallback}>
