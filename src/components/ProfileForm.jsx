@@ -1,4 +1,3 @@
-// components/ProfileForm.jsx - VERSION COMPLÈTEMENT CORRIGÉE
 import { useState, useEffect } from 'react';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { toast } from 'sonner';
@@ -16,10 +15,23 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
   const supabase = useSupabaseClient();
   const currentUser = useUser();
 
+  // ✅ CORRECTION : Centres d'intérêt football clarifiés selon les demandes d'Estelle
   const passionsOptions = [
-    { value: 'club', label: 'Club' },
-    { value: 'passion', label: 'Passion' },
-    { value: 'metier_du_foot', label: 'Métier du foot' }
+    { 
+      value: 'club_football', 
+      label: 'J\'admire un club de football',
+      description: 'Supporteur d\'un club spécifique'
+    },
+    { 
+      value: 'passion_football', 
+      label: 'Passionné(e) de football',
+      description: 'Amour du jeu et de la compétition'
+    },
+    { 
+      value: 'metiers_football', 
+      label: 'Intéressé(e) par les métiers du football',
+      description: 'Carrières professionnelles dans le foot'
+    }
   ];
 
   // Charger le profil existant
@@ -186,22 +198,28 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
           </div>
         </div>
 
-        {/* Centres d'intérêt */}
-        <div className="space-y-3">
+        {/* ✅ CORRECTION : Centres d'intérêt FOOTBALL - VERSION CORRIGÉE */}
+        <div className="space-y-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Centres d'intérêt *
+            🎯 Centres d'intérêt FOOTBALL *
           </label>
-          <div className="space-y-2">
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+            Sélectionnez vos domaines d'intérêt dans le football selon les suggestions d'Estelle
+          </p>
+          <div className="space-y-3">
             {passionsOptions.map((option) => (
-              <label key={option.value} className="flex items-center">
+              <label key={option.value} className="flex items-start space-x-3 p-3 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-white dark:hover:bg-gray-700 cursor-pointer transition-colors">
                 <input
                   type="checkbox"
                   value={option.value}
                   checked={formData.passions.includes(option.value)}
                   onChange={(e) => handlePassionsChange(e.target.value)}
-                  className="mr-3"
+                  className="mt-1 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-gray-700 dark:text-gray-300">{option.label}</span>
+                <div className="flex-1">
+                  <div className="font-medium text-gray-800 dark:text-gray-200">{option.label}</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">{option.description}</div>
+                </div>
               </label>
             ))}
           </div>
