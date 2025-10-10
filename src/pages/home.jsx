@@ -62,21 +62,8 @@ const Certification = ({ user }) => (
   </div>
 );
 
-// Composant Questionnaire temporaire
-const Questionnaire = ({ onComplete, showSkip, isModal }) => (
-  <div className="bg-gray-800 rounded-lg p-6">
-    <h3 className="text-xl font-bold text-white mb-4">🎨 Test de Personnalité</h3>
-    <p className="text-gray-300 mb-4">
-      Découvrez votre profil unique pour des recommandations personnalisées.
-    </p>
-    <Button
-      onClick={onComplete}
-      className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-    >
-      Commencer le test
-    </Button>
-  </div>
-);
+// Import du vrai composant Questionnaire
+import Questionnaire from '../components/Questionnaire.jsx';
 
 export default function Home({ 
   user, 
