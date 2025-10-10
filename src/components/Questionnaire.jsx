@@ -18,6 +18,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
   });
 
   const [loading, setLoading] = useState(false);
+  const [connectionChecked, setConnectionChecked] = useState(false);
   const supabase = useSupabaseClient();
   const user = useUser();
 
@@ -152,11 +153,40 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
     }
   };
 
+  // ✅ CORRECTION : Vérification renforcée de la connexion
   useEffect(() => {
+    const checkConnection = async () => {
+      if (!user) {
+        console.log('❌ Utilisateur non connecté, questionnaire en attente');
+        return;
+      }
+      
+      try {
+        // Test de connexion à la table questionnaire_responses
+        const { error } = await supabase
+          .from('questionnaire_responses')
+          .select('id')
+          .limit(1);
+          
+        if (error) {
+          console.error('❌ Erreur connexion table questionnaire:', error);
+          toast.error('Service temporairement indisponible');
+          return;
+        }
+        
+        console.log('✅ Connexion questionnaire validée');
+        setConnectionChecked(true);
+        loadExistingResponses();
+      } catch (error) {
+        console.error('❌ Erreur critique questionnaire:', error);
+        toast.error('Erreur de connexion au service');
+      }
+    };
+    
     if (user) {
-      loadExistingResponses();
+      checkConnection();
     }
-  }, [user]);
+  }, [user, supabase]);
 
   // ✅ CORRECTION : Chargement sécurisé des réponses existantes
   const loadExistingResponses = async () => {
@@ -181,6 +211,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
           return;
         }
         console.error('❌ Erreur chargement réponses:', error);
+        toast.error('Erreur lors du chargement des réponses existantes');
         return;
       }
 
@@ -205,6 +236,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
       }
     } catch (error) {
       console.error('❌ Erreur lors du chargement des réponses:', error);
+      toast.error('Erreur lors du chargement de vos données');
     }
   };
 
@@ -354,7 +386,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
   const nextStep = () => setCurrentStep(prev => prev + 1);
   const prevStep = () => setCurrentStep(prev => prev - 1);
 
-  // Rendu des étapes (identique à votre code actuel)
+  // Rendu des étapes
   const renderStep = () => {
     switch(currentStep) {
       case 1:
@@ -615,6 +647,21 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
 
   const allColorQuestionsAnswered = answers.colorQuiz.every(answer => answer !== '');
   const canProceed = currentStep === 1 ? allColorQuestionsAnswered : true;
+
+  if (!connectionChecked && user) {
+    return (
+      <div className="bg-white rounded-2xl shadow-xl p-8 max-w-4xl mx-auto text-center">
+        <div className="text-4xl mb-4">🔍</div>
+        <h3 className="text-xl font-semibold text-primary-900 mb-2">
+          Vérification de la connexion
+        </h3>
+        <p className="text-gray-600 mb-4">
+          Nous vérifions que le service questionnaire est disponible...
+        </p>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
+      </div>
+    );
+  }
 
   return (
     <div className={`bg-white rounded-2xl shadow-xl ${isModal ? '' : 'p-8 max-w-4xl mx-auto'}`}>
