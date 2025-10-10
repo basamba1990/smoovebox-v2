@@ -1,4 +1,4 @@
-// components/ProfileForm.jsx - VERSION COMPLÈTEMENT CORRIGÉE
+// components/ProfileForm.jsx - VERSION CORRIGÉE AVEC DEBUG ET FEEDBACK AMÉLIORÉ
 import { useState, useEffect } from 'react';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { toast } from 'sonner';
@@ -6,6 +6,7 @@ import { Button } from './ui/button-enhanced.jsx';
 
 const ProfileForm = ({ onProfileUpdated = () => {} }) => {
   const [loading, setLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); // ✅ NOUVEAU : Feedback immédiat
   const [formData, setFormData] = useState({
     sex: '',
     is_major: null,
@@ -37,12 +38,15 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
     }
   ];
 
-  // ✅ CORRECTION : Chargement du profil avec gestion d'erreur améliorée
+  // ✅ CORRECTION : Chargement du profil avec gestion d'erreur améliorée + re-run si user change
   useEffect(() => {
     if (currentUser) {
+      console.log('👤 User détecté, chargement profil...'); // ✅ LOG
       loadProfile();
+    } else {
+      console.log('⚠️ Aucun user connecté'); // ✅ LOG
     }
-  }, [currentUser]);
+  }, [currentUser]); // ✅ Dépendance sur currentUser pour recharger si login
 
   const loadProfile = async () => {
     try {
@@ -79,7 +83,7 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
     }
   };
 
-  // ✅ CORRECTION : Validation en temps réel
+  // ✅ CORRECTION : Validation en temps réel + affichage forcé au submit
   const validateForm = () => {
     const errors = {};
 
@@ -133,19 +137,25 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
     }
   };
 
-  // ✅ CORRECTION : Soumission avec validation robuste
+  // ✅ CORRECTION : Soumission avec validation robuste + feedback immédiat
   const handleSubmit = async (e) => {
     e.preventDefault();
+    console.log('🔄 Submit déclenché'); // ✅ LOG pour debug
     setSubmitAttempted(true);
+    setIsSubmitting(true); // ✅ Feedback visuel immédiat
     
     if (!currentUser) {
+      console.log('❌ User non connecté'); // ✅ LOG
       toast.error('Vous devez être connecté pour sauvegarder votre profil');
+      setIsSubmitting(false);
       return;
     }
 
-    // Validation
+    // Validation + affichage forcé des erreurs
     if (!validateForm()) {
+      console.log('❌ Validation échouée:', validationErrors); // ✅ LOG
       toast.error('Veuillez corriger les erreurs dans le formulaire');
+      setIsSubmitting(false);
       return;
     }
 
@@ -161,7 +171,7 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
         updated_at: new Date().toISOString()
       };
 
-      console.log('💾 Sauvegarde du profil:', profileData);
+      console.log('💾 Sauvegarde du profil:', profileData); // ✅ LOG
 
       // ✅ CORRECTION : Utilisation de upsert avec gestion de conflit
       const { error } = await supabase
@@ -172,13 +182,15 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
         });
 
       if (error) {
-        console.error('❌ Erreur Supabase:', error);
+        console.error('❌ Erreur Supabase:', error); // ✅ LOG détaillé
         
         // ✅ Gestion spécifique des erreurs courantes
         if (error.code === '23505') {
           throw new Error('Un profil existe déjà pour cet utilisateur');
         } else if (error.code === '42501') {
           throw new Error('Permissions insuffisantes pour sauvegarder le profil');
+        } else if (error.message.includes('RLS')) { // ✅ NOUVEAU : Détection RLS
+          throw new Error('Problème de permissions en base de données (RLS). Contactez l\'admin.');
         } else {
           throw error;
         }
@@ -193,13 +205,22 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
       }
       
     } catch (error) {
-      console.error('❌ Erreur sauvegarde profil:', error);
+      console.error('❌ Erreur sauvegarde profil:', error); // ✅ LOG
       toast.error(`❌ Erreur lors de la sauvegarde: ${error.message}`);
     } finally {
       setLoading(false);
+      setIsSubmitting(false); // ✅ Reset feedback
     }
   };
 
+  // ✅ NOUVEAU : Debug pour radios/checkboxes (en dev)
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development' && submitAttempted) {
+      console.log('🔍 Debug formData au submit:', formData); // Vérifie si valeurs set
+    }
+  }, [formData, submitAttempted]);
+
+  // Reste du JSX inchangé, sauf le bouton :
   return (
     <div className="max-w-2xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg">
       <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-6">
@@ -207,7 +228,7 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
       </h2>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Genre avec validation */}
+        {/* Genre avec validation (affichage si submitAttempted OU erreurs) */}
         <div className="space-y-3">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Genre *
@@ -228,12 +249,12 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
               </label>
             ))}
           </div>
-          {validationErrors.sex && (
+          {(validationErrors.sex && (submitAttempted || Object.keys(validationErrors).length > 0)) && ( // ✅ Affichage forcé
             <p className="text-red-600 text-sm mt-1">{validationErrors.sex}</p>
           )}
         </div>
 
-        {/* Statut avec validation */}
+        {/* Statut avec validation (même correction) */}
         <div className="space-y-3">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Statut *
@@ -264,12 +285,12 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
               <span className="text-gray-700 dark:text-gray-300">Mineur</span>
             </label>
           </div>
-          {validationErrors.is_major && (
+          {(validationErrors.is_major && (submitAttempted || Object.keys(validationErrors).length > 0)) && (
             <p className="text-red-600 text-sm mt-1">{validationErrors.is_major}</p>
           )}
         </div>
 
-        {/* ✅ CORRECTION : Centres d'intérêt FOOTBALL avec validation */}
+        {/* Centres d'intérêt (même correction pour passions) */}
         <div className="space-y-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             🎯 Centres d'intérêt FOOTBALL *
@@ -294,12 +315,12 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
               </label>
             ))}
           </div>
-          {validationErrors.passions && (
+          {(validationErrors.passions && (submitAttempted || Object.keys(validationErrors).length > 0)) && (
             <p className="text-red-600 text-sm mt-2">{validationErrors.passions}</p>
           )}
         </div>
 
-        {/* Mots-clés */}
+        {/* Mots-clés (inchangé) */}
         <div className="space-y-3">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Mots-clés (séparés par des virgules)
@@ -316,14 +337,19 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
           </p>
         </div>
 
-        {/* ✅ CORRECTION : Bouton de soumission avec meilleur feedback */}
+        {/* Bouton avec feedback isSubmitting */}
         <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
           <Button
             type="submit"
-            disabled={loading}
+            disabled={loading || isSubmitting} // ✅ Désactivé pendant submit
             className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-3 rounded-lg font-semibold transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? (
+            {isSubmitting ? ( // ✅ Feedback immédiat
+              <span className="flex items-center">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
+                Sauvegarde en cours...
+              </span>
+            ) : loading ? (
               <span className="flex items-center">
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
                 Sauvegarde en cours...
@@ -336,13 +362,13 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
           </Button>
         </div>
 
-        {/* ✅ Indication des champs obligatoires */}
+        {/* Indication des champs obligatoires */}
         <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
           * Champs obligatoires
         </div>
       </form>
 
-      {/* Instructions améliorées */}
+      {/* Instructions améliorées (inchangé) */}
       <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
         <h3 className="font-semibold text-blue-800 dark:text-blue-300 mb-2">
           ℹ️ À propos de votre profil SpotBulle
@@ -354,10 +380,10 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
         </p>
       </div>
 
-      {/* ✅ Debug info (à retirer en production) */}
+      {/* Debug info (amélioré) */}
       {process.env.NODE_ENV === 'development' && (
         <div className="mt-4 p-3 bg-gray-100 dark:bg-gray-900 rounded text-xs">
-          <p><strong>Debug:</strong> User: {currentUser?.id} | Passions: {formData.passions.join(', ')}</p>
+          <p><strong>Debug:</strong> User: {currentUser?.id || 'NULL'} | FormData: {JSON.stringify(formData)} | Errors: {JSON.stringify(validationErrors)}</p>
         </div>
       )}
     </div>
