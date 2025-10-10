@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
+// ✅ CORRECTION CRITIQUE : Import du SessionContextProvider
+import { SessionContextProvider } from '@supabase/auth-helpers-react';
+import { supabase } from './lib/supabase.js';
 import AuthModal from './AuthModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import ErrorBoundaryEnhanced, { SupabaseErrorFallback } from './components/ErrorBoundaryEnhanced.jsx';
 import WelcomeAgent from './components/WelcomeAgent.jsx';
-import { supabase, checkSupabaseConnection } from './lib/supabase.js';
+import { checkSupabaseConnection } from './lib/supabase.js';
 import LoadingScreen from './components/LoadingScreen.jsx';
 import SupabaseDiagnostic from './components/SupabaseDiagnostic.jsx';
 import AuthCallback from '@/pages/AuthCallback.jsx';
@@ -55,7 +58,6 @@ function AppContent() {
         
         if (videoDevices.length === 0) {
           console.warn('⚠️ Aucune caméra détectée sur cet appareil');
-          toast.warning('Aucune caméra détectée. Vérifiez votre connexion.');
         } else {
           console.log('✅ Caméras disponibles:', videoDevices.map(d => d.label || 'Caméra non nommée'));
         }
@@ -77,7 +79,6 @@ function AppContent() {
     const checkOnboarding = async () => {
       if (user) {
         try {
-          // ✅ CORRECTION : Ne pas supposer que la colonne existe
           const { data, error } = await supabase
             .from('profiles')
             .select('onboarding_completed, dominant_color')
@@ -86,7 +87,6 @@ function AppContent() {
           
           if (error) {
             console.warn('Colonne onboarding_completed non trouvée, utilisation de fallback');
-            // Continuer sans onboarding forcé
             return;
           }
           
@@ -95,7 +95,6 @@ function AppContent() {
           }
         } catch (err) {
           console.warn('Erreur vérification onboarding:', err);
-          // Ne pas bloquer l'application en cas d'erreur
         }
       }
     };
@@ -156,7 +155,6 @@ function AppContent() {
       // ✅ CORRECTION : Gestion robuste du profil couleur
       let colorProfile = null;
       try {
-        // Essayer d'abord avec dominant_color
         const { data: profileData, error: profileError } = await supabase
           .from('questionnaire_responses')
           .select('dominant_color, completed_at')
@@ -166,7 +164,6 @@ function AppContent() {
         if (!profileError) {
           colorProfile = profileData;
         } else {
-          // Fallback: vérifier si la table existe avec d'autres colonnes
           const { data: fallbackData } = await supabase
             .from('questionnaire_responses')
             .select('completed_at')
@@ -351,7 +348,6 @@ function AppContent() {
     setShowOnboarding(false);
     if (user) {
       try {
-        // Vérifier si la colonne existe avant de tenter la mise à jour
         const { error } = await supabase
           .from('profiles')
           .update({ onboarding_completed: true })
@@ -359,7 +355,6 @@ function AppContent() {
         
         if (error) {
           console.warn('Impossible de mettre à jour onboarding_completed:', error);
-          // Continuer malgré l'erreur
         }
       } catch (err) {
         console.warn('Erreur mise à jour onboarding:', err);
@@ -545,11 +540,14 @@ function AppContent() {
 
 function App() {
   return (
-    <AuthProvider>
-      <ErrorBoundaryEnhanced FallbackComponent={SupabaseErrorFallback}>
-        <AppContent />
-      </ErrorBoundaryEnhanced>
-    </AuthProvider>
+    // ✅ CORRECTION CRITIQUE : Wrapper avec SessionContextProvider
+    <SessionContextProvider supabaseClient={supabase}>
+      <AuthProvider>
+        <ErrorBoundaryEnhanced FallbackComponent={SupabaseErrorFallback}>
+          <AppContent />
+        </ErrorBoundaryEnhanced>
+      </AuthProvider>
+    </SessionContextProvider>
   );
 }
 
