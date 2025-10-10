@@ -165,24 +165,23 @@ export default function Home({
     profile.passions && 
     profile.passions.length > 0;
 
-  // ✅ CORRECTION : Vérification robuste du questionnaire avec gestion des erreurs 406
+  // ✅ CORRECTION CRITIQUE : Vérification corrigée avec disc_color au lieu de dominant_color
   const checkQuestionnaireStatus = async () => {
     if (!currentUser) return;
 
     try {
       console.log('🔍 Vérification du statut questionnaire pour:', currentUser.id);
       
-      // ✅ CORRECTION : Utiliser maybeSingle() au lieu de single() pour éviter les erreurs 406
+      // ✅ CORRECTION : Utiliser disc_color qui existe dans la table (pas dominant_color)
       const { data, error } = await supabase
         .from('questionnaire_responses')
-        .select('id, completed_at, dominant_color')
+        .select('id, completed_at, disc_color, dominant_color')
         .eq('user_id', currentUser.id)
         .order('created_at', { ascending: false })
         .limit(1)
-        .maybeSingle(); // ✅ Utiliser maybeSingle() au lieu de single()
+        .maybeSingle();
 
       if (error) {
-        // ✅ Gestion spécifique des erreurs 406
         if (error.code === '406' || error.message?.includes('406')) {
           console.log('ℹ️ Aucune réponse au questionnaire trouvée (erreur 406 normale)');
           setHasCompletedQuestionnaire(false);
@@ -190,16 +189,23 @@ export default function Home({
           return;
         }
         console.warn('⚠️ Avertissement vérification questionnaire:', error);
-        // Continuer sans bloquer
+        return;
       }
 
       const hasCompleted = !!data?.completed_at;
-      console.log('✅ Statut questionnaire:', hasCompleted ? 'Complété' : 'Non complété');
+      // ✅ CORRECTION : Utiliser disc_color comme couleur dominante
+      const dominantColor = data?.disc_color || data?.dominant_color;
+      
+      console.log('✅ Statut questionnaire:', hasCompleted ? 'Complété' : 'Non complété', 'Couleur:', dominantColor);
       
       setHasCompletedQuestionnaire(hasCompleted);
       updateUserJourney('personality', hasCompleted);
       
-      // ✅ CORRECTION : Afficher le questionnaire seulement si pas complété ET pas déjà montré
+      // Stocker la couleur pour usage futur
+      if (dominantColor) {
+        localStorage.setItem('user_dominant_color', dominantColor);
+      }
+      
       if (!hasCompleted && !localStorage.getItem('questionnaire_shown')) {
         console.log('🎯 Affichage automatique du questionnaire dans 3 secondes');
         setTimeout(() => {
@@ -677,7 +683,6 @@ export default function Home({
               👤 Mon profil
             </Button>
 
-            {/* ✅ CORRECTION : Onglets Certification et Séminaires activés */}
             <Button
               variant={activeTab === 'seminars' ? 'default' : 'outline'}
               onClick={() => setActiveTab('seminars')}
@@ -702,7 +707,7 @@ export default function Home({
             </Button>
           </div>
 
-          {/* ✅ CORRECTION : Indicateur d'étape suivante avec données réelles */}
+          {/* Indicateur d'étape suivante */}
           {nextStep && !nextStep.completed && (
             <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 rounded-lg mb-4 animate-pulse">
               <div className="flex items-center justify-between">
