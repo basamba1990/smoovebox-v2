@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 
 // Composants temporaires pour les pages en développement
-const SeminarsList = ({ user }) => (
+const SeminarsList = ({ user, setActiveTab }) => (
   <div className="space-y-6">
     <div className="flex justify-between items-center">
       <h2 className="text-2xl font-french font-bold text-white">🎓 Séminaires & Formations</h2>
@@ -37,7 +37,7 @@ const SeminarsList = ({ user }) => (
   </div>
 );
 
-const Certification = ({ user }) => (
+const Certification = ({ user, setActiveTab }) => (
   <div className="space-y-6">
     <div className="flex justify-between items-center">
       <h2 className="text-2xl font-french font-bold text-white">🏆 Certification</h2>
@@ -165,17 +165,17 @@ export default function Home({
     profile.passions && 
     profile.passions.length > 0;
 
-  // ✅ CORRECTION CRITIQUE : Vérification corrigée avec disc_color au lieu de dominant_color
+  // ✅ CORRECTION : Utilisation de dominant_color comme il se doit
   const checkQuestionnaireStatus = async () => {
     if (!currentUser) return;
 
     try {
       console.log('🔍 Vérification du statut questionnaire pour:', currentUser.id);
       
-      // ✅ CORRECTION : Utiliser disc_color qui existe dans la table (pas dominant_color)
+      // ✅ CORRECTION : Utilisation de dominant_color uniquement
       const { data, error } = await supabase
         .from('questionnaire_responses')
-        .select('id, completed_at, disc_color, dominant_color')
+        .select('id, completed_at, dominant_color')
         .eq('user_id', currentUser.id)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -193,8 +193,7 @@ export default function Home({
       }
 
       const hasCompleted = !!data?.completed_at;
-      // ✅ CORRECTION : Utiliser disc_color comme couleur dominante
-      const dominantColor = data?.disc_color || data?.dominant_color;
+      const dominantColor = data?.dominant_color;
       
       console.log('✅ Statut questionnaire:', hasCompleted ? 'Complété' : 'Non complété', 'Couleur:', dominantColor);
       
@@ -586,10 +585,10 @@ export default function Home({
         );
       
       case 'seminars':
-        return <SeminarsList user={user} />;
+        return <SeminarsList user={user} setActiveTab={setActiveTab} />;
       
       case 'certification':
-        return <Certification user={user} />;
+        return <Certification user={user} setActiveTab={setActiveTab} />;
       
       case 'vault':
         return (
