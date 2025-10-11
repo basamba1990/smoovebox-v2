@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 // ✅ CORRECTION CRITIQUE : Import CORRECT des hooks Supabase
 import { SessionContextProvider, useUser, useSupabaseClient } from '@supabase/auth-helpers-react';
 import { supabase } from './lib/supabase.js';
+import { Toaster } from 'sonner'; // ✅ AJOUT CRITIQUE : Import du Toaster
 import AuthModal from './AuthModal.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import ErrorBoundaryEnhanced, { SupabaseErrorFallback } from './components/ErrorBoundaryEnhanced.jsx';
@@ -228,6 +229,24 @@ function AppContent() {
 
   return (
     <div className="app-container">
+      {/* ✅ AJOUT CRITIQUE : Toaster pour les notifications */}
+      <Toaster 
+        position="top-right"
+        duration={4000}
+        closeButton
+        richColors
+        expand={false}
+        visibleToasts={3}
+        toastOptions={{
+          className: 'sonner-toast',
+          style: {
+            background: 'var(--background)',
+            color: 'var(--foreground)',
+            border: '1px solid var(--border)',
+          },
+        }}
+      />
+      
       <Routes>
         {/* Route racine */}
         <Route path="/" element={
