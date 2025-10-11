@@ -1,3 +1,4 @@
+// components/Questionnaire.jsx
 import { useState, useEffect } from 'react';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { toast } from 'sonner';
@@ -22,7 +23,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
   const supabase = useSupabaseClient();
   const user = useUser();
 
-  // ✅ CORRECTION : Questions avec valeurs sécurisées
+  // Questions avec valeurs sécurisées
   const colorQuizQuestions = [
     {
       question: "Quand un défi se présente, tu :",
@@ -153,7 +154,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
     }
   };
 
-  // ✅ CORRECTION : Vérification renforcée de la connexion
+  // Vérification renforcée de la connexion
   useEffect(() => {
     const checkConnection = async () => {
       if (!user) {
@@ -188,14 +189,13 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
     }
   }, [user, supabase]);
 
-  // ✅ CORRECTION : Chargement sécurisé des réponses existantes
+  // Chargement sécurisé des réponses existantes
   const loadExistingResponses = async () => {
     if (!user) return;
     
     try {
       console.log('📥 Chargement des réponses existantes pour:', user.id);
       
-      // ✅ CORRECTION : Utiliser maybeSingle() pour éviter les erreurs 406
       const { data, error } = await supabase
         .from('questionnaire_responses')
         .select('*')
@@ -205,7 +205,6 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
         .maybeSingle();
 
       if (error) {
-        // ✅ Gestion spécifique des erreurs 406
         if (error.code === '406' || error.message?.includes('406')) {
           console.log('ℹ️ Aucune réponse existante trouvée (erreur 406 normale)');
           return;
@@ -286,75 +285,74 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
     }));
   };
 
-  // ✅ CORRECTION : Sauvegarde robuste avec gestion d'erreur améliorée
+  // CORRECTION CRITIQUE : Sauvegarde robuste avec validation des données
   const submitQuestionnaire = async () => {
     if (!user) {
       toast.error('Veuillez vous connecter pour sauvegarder le questionnaire');
       return;
     }
 
+    // Validation des données avant envoi
+    if (!answers.colorQuiz.every(answer => answer !== '')) {
+      toast.error('Veuillez répondre à toutes les questions de couleur');
+      return;
+    }
+
     setLoading(true);
+    
     try {
       console.log('💾 Sauvegarde du questionnaire pour:', user.id);
       
       const dominantColor = calculateDominantColor();
       
-      // ✅ CORRECTION : Vérifier l'existence avec maybeSingle()
-      const { data: existingResponse, error: checkError } = await supabase
-        .from('questionnaire_responses')
-        .select('id, completed_at')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (checkError && checkError.code !== 'PGRST116') {
-        console.error('❌ Erreur vérification réponse existante:', checkError);
-        // Continuer malgré l'erreur
-      }
-
-      let error;
+      // Préparation des données avec validation
       const questionnaireData = {
         color_quiz: answers.colorQuiz,
         dominant_color: dominantColor,
-        preferred_activities: answers.favoriteActivities,
-        work_preferences: answers.workPreferences,
-        current_talent: answers.currentTalent,
-        improvement_areas: answers.improvementAreas,
-        dream_description: answers.dreamDescription,
-        five_year_vision: answers.fiveYearVision,
-        inspiration_person: answers.inspirationPerson,
-        spotbulle_needs: answers.spotbulleNeeds,
-        completed_at: new Date().toISOString()
+        preferred_activities: Array.isArray(answers.favoriteActivities) ? answers.favoriteActivities : [],
+        work_preferences: Array.isArray(answers.workPreferences) ? answers.workPreferences : [],
+        current_talent: answers.currentTalent || '',
+        improvement_areas: answers.improvementAreas || '',
+        dream_description: answers.dreamDescription || '',
+        five_year_vision: answers.fiveYearVision || '',
+        inspiration_person: answers.inspirationPerson || '',
+        spotbulle_needs: Array.isArray(answers.spotbulleNeeds) ? answers.spotbulleNeeds : [],
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
 
-      if (existingResponse?.id) {
-        console.log('📝 Mise à jour réponse existante:', existingResponse.id);
-        ({ error } = await supabase
-          .from('questionnaire_responses')
-          .update(questionnaireData)
-          .eq('id', existingResponse.id));
-      } else {
-        console.log('🆕 Création nouvelle réponse questionnaire');
-        ({ error } = await supabase
-          .from('questionnaire_responses')
-          .insert({
-            user_id: user.id,
-            ...questionnaireData
-          }));
-      }
+      console.log('📤 Données à sauvegarder:', questionnaireData);
+
+      // CORRECTION : Utilisation de upsert au lieu de insert/update séparés
+      const { data, error } = await supabase
+        .from('questionnaire_responses')
+        .upsert({
+          user_id: user.id,
+          ...questionnaireData
+        }, {
+          onConflict: 'user_id',
+          returning: 'minimal'
+        });
 
       if (error) {
-        console.error('❌ Erreur sauvegarde questionnaire:', error);
+        console.error('❌ Erreur détaillée sauvegarde questionnaire:', error);
         
-        // ✅ CORRECTION : Gestion spécifique des erreurs 406
-        if (error.code === '406') {
-          toast.error('Erreur de format de données. Veuillez réessayer.');
-          return;
+        // Gestion spécifique des erreurs courantes
+        if (error.code === '23505') {
+          toast.error('Un questionnaire existe déjà pour cet utilisateur');
+        } else if (error.code === '42501') {
+          toast.error('Permissions insuffisantes pour sauvegarder');
+        } else if (error.code === '406' || error.message?.includes('406')) {
+          toast.error('Format de données invalide');
+        } else if (error.code === '400') {
+          toast.error('Données invalides - vérifiez les champs requis');
+        } else {
+          toast.error(`Erreur technique: ${error.message}`);
         }
-        
-        throw error;
+        return;
       }
 
-      // ✅ CORRECTION : Mise à jour du profil utilisateur avec gestion d'erreur
+      // Mise à jour du profil utilisateur avec gestion d'erreur
       try {
         await supabase
           .from('profiles')
@@ -373,13 +371,20 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
       console.log('🎉 Questionnaire sauvegardé avec profil:', profile.name);
       toast.success(`Profil ${profile.name} identifié !`);
       
-      if (onComplete) onComplete();
+      // Passer à l'étape des résultats
+      setCurrentStep(4);
       
     } catch (error) {
-      console.error('❌ Erreur sauvegarde questionnaire:', error);
-      toast.error('Erreur lors de la sauvegarde du questionnaire');
+      console.error('❌ Erreur inattendue sauvegarde questionnaire:', error);
+      toast.error('Erreur inattendue lors de la sauvegarde');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCompleteQuestionnaire = () => {
+    if (onComplete) {
+      onComplete();
     }
   };
 
@@ -735,7 +740,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
               <Button
                 onClick={submitQuestionnaire}
                 loading={loading}
-                disabled={!canProceed}
+                disabled={!canProceed || loading}
                 className="bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 px-8 py-3 text-white font-semibold shadow-lg"
               >
                 {loading ? '🔄 Sauvegarde...' : '🎯 Découvrir mon profil'}
@@ -748,7 +753,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
       {currentStep === 4 && (
         <div className="flex justify-center mt-8 pt-6 border-t border-gray-200">
           <Button
-            onClick={onComplete}
+            onClick={handleCompleteQuestionnaire}
             className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 px-10 py-4 text-white font-semibold text-lg shadow-xl"
           >
             🚀 Commencer l'aventure SpotBulle →
