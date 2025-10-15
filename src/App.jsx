@@ -26,6 +26,10 @@ import VideoVault from '@/pages/video-vault.jsx';
 import FourColorsTest from '@/components/FourColorsTest.jsx';
 import SeminarsList from '@/components/SeminarsList.jsx';
 import Certification from '@/components/Certification.jsx';
+
+// ✅ NOUVEAU : Import de la page d'accueil simplifiée
+import SimplifiedHome from '@/pages/SimplifiedHome.jsx';
+
 import './App.css';
 import './styles/design-system.css';
 
@@ -37,13 +41,21 @@ function RequireAuth({ children }) {
 
   useEffect(() => {
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session && !loading) {
-        console.log('🚫 Aucune session active, redirection vers login');
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session && !loading) {
+          console.log('🚫 Aucune session active, redirection vers login');
+        }
+        setSessionChecked(true);
+      } catch (error) {
+        console.error('❌ Erreur vérification session:', error);
+        setSessionChecked(true);
       }
-      setSessionChecked(true);
     };
-    checkSession();
+    
+    if (!loading) {
+      checkSession();
+    }
   }, [supabase, loading]);
 
   if (loading || !sessionChecked) {
@@ -63,13 +75,46 @@ function AppContent() {
   const [connectionStatus, setConnectionStatus] = useState('checking');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [cameraChecked, setCameraChecked] = useState(false);
+  const [userProfile, setUserProfile] = useState(null);
   
   // ✅ CORRECTION : Utilisation des hooks Supabase DANS le SessionContextProvider
   const supabase = useSupabaseClient();
   const { user, loading, signOut, profile } = useAuth();
   const navigate = useNavigate();
 
-  console.log('🔍 AppContent - User:', user?.id, 'Loading:', loading);
+  console.log('🔍 AppContent - User:', user?.id, 'Loading:', loading, 'Profile:', profile);
+
+  // ✅ CORRECTION : Chargement du profil utilisateur
+  useEffect(() => {
+    const loadUserProfile = async () => {
+      if (!user) return;
+
+      try {
+        console.log('👤 Chargement du profil utilisateur:', user.id);
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (error) {
+          console.warn('⚠️ Erreur chargement profil:', error);
+          return;
+        }
+
+        if (data) {
+          console.log('✅ Profil chargé:', data);
+          setUserProfile(data);
+        }
+      } catch (error) {
+        console.error('❌ Erreur chargement profil:', error);
+      }
+    };
+
+    if (user) {
+      loadUserProfile();
+    }
+  }, [user, supabase]);
 
   // Vérification des permissions caméra
   useEffect(() => {
@@ -138,22 +183,29 @@ function AppContent() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (videosError) throw videosError;
+      if (videosError) {
+        console.warn('⚠️ Erreur récupération vidéos:', videosError);
+        // Continuer même avec erreur
+      }
+
+      const videoList = videos || [];
 
       const dashboardData = {
-        totalVideos: videos?.length || 0,
-        recentVideos: videos?.slice(0, 5) || [],
+        totalVideos: videoList.length,
+        recentVideos: videoList.slice(0, 5) || [],
         videosByStatus: {
-          ready: videos?.filter(v => v.status === 'ready' || v.status === 'uploaded').length || 0,
-          processing: videos?.filter(v => v.status === 'processing' || v.status === 'analyzing').length || 0,
-          analyzed: videos?.filter(v => v.status === 'analyzed').length || 0,
-          failed: videos?.filter(v => v.status === 'failed').length || 0
+          ready: videoList.filter(v => v.status === 'ready' || v.status === 'uploaded').length || 0,
+          processing: videoList.filter(v => v.status === 'processing' || v.status === 'analyzing').length || 0,
+          analyzed: videoList.filter(v => v.status === 'analyzed').length || 0,
+          failed: videoList.filter(v => v.status === 'failed' || v.status === 'error').length || 0
         },
-        totalDuration: videos?.reduce((sum, video) => sum + (video.duration || 0), 0) || 0
+        totalDuration: videoList.reduce((sum, video) => sum + (video.duration || 0), 0) || 0,
+        transcribedCount: videoList.filter(v => v.transcription_data || v.transcript || v.transcription_text).length || 0,
+        analyzedCount: videoList.filter(v => v.analysis || v.ai_result).length || 0
       };
 
       setDashboardData(dashboardData);
-      console.log('✅ Données dashboard chargées');
+      console.log('✅ Données dashboard chargées:', dashboardData);
 
     } catch (err) {
       console.error('❌ Erreur chargement dashboard:', err);
@@ -174,6 +226,12 @@ function AppContent() {
     console.log('✅ Utilisateur authentifié:', userData.id);
     setIsAuthModalOpen(false);
     setConnectionStatus('connected');
+    
+    // Recharger les données après authentification
+    setTimeout(() => {
+      loadDashboardData();
+    }, 1000);
+    
     navigate('/');
   };
 
@@ -182,6 +240,7 @@ function AppContent() {
       console.log('🚪 Déconnexion...');
       await signOut();
       setDashboardData(null);
+      setUserProfile(null);
       setShowOnboarding(false);
       navigate('/');
     } catch (error) {
@@ -203,6 +262,10 @@ function AppContent() {
       const result = await checkSupabaseConnection();
       if (result.connected) {
         setConnectionStatus('connected');
+        // Recharger les données après reconnexion
+        if (user) {
+          loadDashboardData();
+        }
       } else {
         setConnectionStatus('disconnected');
         setSupabaseError(result.error);
@@ -211,6 +274,25 @@ function AppContent() {
       setConnectionStatus('disconnected');
       setSupabaseError(error.message);
     }
+  };
+
+  // ✅ NOUVEAU : Gestion de la mise à jour du profil
+  const handleProfileUpdated = () => {
+    console.log('🔄 Profil mis à jour, rechargement...');
+    // Recharger les données du profil
+    if (user) {
+      supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single()
+        .then(({ data }) => {
+          if (data) {
+            setUserProfile(data);
+          }
+        });
+    }
+    loadDashboardData();
   };
 
   if (loading) {
@@ -248,20 +330,20 @@ function AppContent() {
       />
       
       <Routes>
-        {/* Route racine */}
+        {/* ✅ MODIFICATION : Route racine utilisant SimplifiedHome */}
         <Route path="/" element={
           user ? 
             <RequireAuth>
-              <Home 
+              <SimplifiedHome 
+                user={user}
+                profile={userProfile || profile}
+                connectionStatus={connectionStatus}
+                onSignOut={handleSignOut}
                 dashboardData={dashboardData}
                 loading={dashboardLoading}
                 error={dashboardError}
                 loadDashboardData={loadDashboardData}
-                user={user}
-                profile={profile}
-                connectionStatus={connectionStatus}
-                onSignOut={handleSignOut}
-                onAuthModalOpen={() => setIsAuthModalOpen(true)}
+                onProfileUpdated={handleProfileUpdated}
               />
             </RequireAuth>
           : 
@@ -273,12 +355,28 @@ function AppContent() {
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         
+        {/* ✅ AJOUT : Route pour l'ancien Home (conservé pour compatibilité) */}
+        <Route path="/classic" element={
+          <RequireAuth>
+            <Home 
+              user={user}
+              profile={userProfile || profile}
+              connectionStatus={connectionStatus}
+              onSignOut={handleSignOut}
+              dashboardData={dashboardData}
+              dashboardLoading={dashboardLoading}
+              dashboardError={dashboardError}
+              loadDashboardData={loadDashboardData}
+            />
+          </RequireAuth>
+        } />
+        
         {/* Routes protégées */}
         <Route path="/record-video" element={
           <RequireAuth>
             <EnhancedRecordVideo 
               user={user}
-              profile={profile}
+              profile={userProfile || profile}
               onSignOut={handleSignOut}
               onVideoUploaded={handleVideoUploaded}
               cameraChecked={cameraChecked}
@@ -290,7 +388,7 @@ function AppContent() {
           <RequireAuth>
             <FourColorsTest 
               user={user}
-              profile={profile}
+              profile={userProfile || profile}
               onSignOut={handleSignOut}
             />
           </RequireAuth>
@@ -300,7 +398,7 @@ function AppContent() {
           <RequireAuth>
             <VideoVault 
               user={user}
-              profile={profile}
+              profile={userProfile || profile}
               onSignOut={handleSignOut}
               onVideoAdded={handleVideoUploaded}
             />
@@ -311,7 +409,7 @@ function AppContent() {
           <RequireAuth>
             <SeminarsList 
               user={user}
-              profile={profile}
+              profile={userProfile || profile}
               onSignOut={handleSignOut}
             />
           </RequireAuth>
@@ -321,7 +419,7 @@ function AppContent() {
           <RequireAuth>
             <Certification 
               user={user}
-              profile={profile}
+              profile={userProfile || profile}
               onSignOut={handleSignOut}
             />
           </RequireAuth>
@@ -331,7 +429,7 @@ function AppContent() {
           <RequireAuth>
             <VideoAnalysisPage 
               user={user}
-              profile={profile}
+              profile={userProfile || profile}
               onSignOut={handleSignOut}
             />
           </RequireAuth>
@@ -349,8 +447,18 @@ function AppContent() {
           </RequireAuth>
         } />
         
+        {/* ✅ AJOUT : Route pour le tableau de bord standalone */}
+        <Route path="/dashboard" element={
+          <RequireAuth>
+            <Dashboard 
+              refreshKey={Date.now()}
+              onVideoUploaded={handleVideoUploaded}
+            />
+          </RequireAuth>
+        } />
+        
         {/* Redirections */}
-        <Route path="/dashboard" element={<Navigate to="/" replace />} />
+        <Route path="/old-home" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       
