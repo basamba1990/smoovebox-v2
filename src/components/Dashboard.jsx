@@ -1,19 +1,210 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { Upload, FileText, Video, RefreshCw, Trash2, AlertCircle, CheckCircle, Clock, Play, BarChart3, Eye, Download } from 'lucide-react';
+import { Upload, FileText, Video, RefreshCw, Trash2, AlertCircle, CheckCircle, Clock, Play, BarChart3, Eye, Download, Search, Filter, X } from 'lucide-react';
 import { VIDEO_STATUS, TRANSCRIPTION_STATUS } from '../constants/videoStatus';
 import VideoUploader from './VideoUploader';
 import TranscriptionViewer from './TranscriptionViewer';
 import VideoPlayer from './VideoPlayer';
 import VideoAnalysisResults from './VideoAnalysisResults';
 
+// Composant de filtrage par mots-clés
+const VideoFilter = ({ videos, onFilterChange }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('all');
+  
+  // Extraire tous les tags uniques des vidéos
+  const allTags = useMemo(() => {
+    const tags = new Set();
+    videos.forEach(video => {
+      if (video.tags && Array.isArray(video.tags)) {
+        video.tags.forEach(tag => {
+          if (tag && typeof tag === 'string') {
+            tags.add(tag.toLowerCase().trim());
+          }
+        });
+      }
+      // Extraire les tags du titre et description aussi
+      if (video.title) {
+        video.title.split(' ').forEach(word => {
+          if (word.length > 2) tags.add(word.toLowerCase());
+        });
+      }
+    });
+    return Array.from(tags).sort();
+  }, [videos]);
+
+  // Filtrer les vidéos
+  const filteredVideos = useMemo(() => {
+    return videos.filter(video => {
+      // Filtre par recherche texte
+      const matchesSearch = !searchTerm || 
+        video.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        video.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        video.transcription_text?.toLowerCase().includes(searchTerm.toLowerCase());
+
+      // Filtre par tags
+      const matchesTags = selectedTags.length === 0 || 
+        (video.tags && selectedTags.some(tag => 
+          video.tags.map(t => t.toLowerCase().trim()).includes(tag)
+        ));
+
+      // Filtre par statut
+      const matchesStatus = statusFilter === 'all' || 
+        video.status === statusFilter ||
+        (statusFilter === 'transcribed' && (video.transcription_data || video.transcript || video.transcription_text)) ||
+        (statusFilter === 'analyzed' && (video.analysis || video.ai_result));
+
+      return matchesSearch && matchesTags && matchesStatus;
+    });
+  }, [videos, searchTerm, selectedTags, statusFilter]);
+
+  useEffect(() => {
+    onFilterChange(filteredVideos);
+  }, [filteredVideos, onFilterChange]);
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setSelectedTags([]);
+    setStatusFilter('all');
+  };
+
+  const hasActiveFilters = searchTerm || selectedTags.length > 0 || statusFilter !== 'all';
+
+  return (
+    <div className="space-y-4 mb-6 p-4 bg-gray-800 rounded-lg border border-gray-700">
+      <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-end">
+        {/* Barre de recherche */}
+        <div className="flex-1 w-full">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            🔍 Rechercher dans les vidéos
+          </label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <input
+              type="text"
+              placeholder="Titre, description, transcription..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+        </div>
+
+        {/* Filtre par statut */}
+        <div className="w-full lg:w-48">
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            📊 Statut
+          </label>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="all">Tous les statuts</option>
+            <option value="uploaded">Uploadées</option>
+            <option value="processing">En traitement</option>
+            <option value="transcribed">Transcrites</option>
+            <option value="analyzed">Analysées</option>
+          </select>
+        </div>
+
+        {/* Bouton de réinitialisation */}
+        {hasActiveFilters && (
+          <Button
+            onClick={clearFilters}
+            variant="outline"
+            size="sm"
+            className="bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600"
+          >
+            <X className="h-4 w-4 mr-1" />
+            Effacer
+          </Button>
+        )}
+      </div>
+
+      {/* Filtre par tags avec sélection multiple améliorée */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-gray-300">
+          🏷️ Mots-clés
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {allTags.slice(0, 20).map(tag => (
+            <button
+              key={tag}
+              onClick={() => {
+                setSelectedTags(prev => 
+                  prev.includes(tag) 
+                    ? prev.filter(t => t !== tag)
+                    : [...prev, tag]
+                );
+              }}
+              className={`px-3 py-1 rounded-full text-sm transition-all ${
+                selectedTags.includes(tag)
+                  ? 'bg-blue-600 text-white shadow-lg'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              {tag}
+              {selectedTags.includes(tag) && (
+                <span className="ml-1">✓</span>
+              )}
+            </button>
+          ))}
+          {allTags.length > 20 && (
+            <span className="text-gray-400 text-sm px-2 py-1">
+              +{allTags.length - 20} autres...
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Tags sélectionnés et statistiques */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-700">
+        <div className="flex flex-wrap gap-2">
+          {selectedTags.length > 0 && (
+            <>
+              <span className="text-sm text-gray-300">Filtres actifs :</span>
+              {selectedTags.map(tag => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center gap-1 px-3 py-1 bg-blue-600 text-white text-sm rounded-full"
+                >
+                  {tag}
+                  <button
+                    onClick={() => setSelectedTags(prev => prev.filter(t => t !== tag))}
+                    className="hover:text-red-300 text-xs"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </>
+          )}
+        </div>
+
+        {/* Statistiques de filtrage */}
+        <div className="text-sm text-gray-400">
+          {filteredVideos.length} vidéo(s) sur {videos.length}
+          {hasActiveFilters && (
+            <span className="ml-2 text-blue-400">
+              (filtré)
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
   const { user } = useAuth();
   const [videos, setVideos] = useState([]);
+  const [filteredVideos, setFilteredVideos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('videos');
@@ -24,7 +215,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
   const [selectedVideoForAnalysis, setSelectedVideoForAnalysis] = useState(null);
   const [videoPlayerUrl, setVideoPlayerUrl] = useState(null);
 
-  // ✅ CORRECTION : Rechargement amélioré avec dépendances complètes
+  // ✅ Rechargement amélioré avec dépendances complètes
   useEffect(() => {
     console.log('🔄 Dashboard: refreshKey changé, rechargement des vidéos...', refreshKey);
     if (user) {
@@ -32,7 +223,12 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     }
   }, [user, refreshKey, onVideoUploaded]);
 
-  // ✅ CORRECTION : Fonction fetchVideos optimisée
+  // ✅ Mise à jour des vidéos filtrées quand les vidéos changent
+  useEffect(() => {
+    setFilteredVideos(videos);
+  }, [videos]);
+
+  // ✅ Fonction fetchVideos optimisée
   const fetchVideos = async () => {
     if (!user) return;
 
@@ -71,7 +267,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     }
   };
 
-  // ✅ CORRECTION CRITIQUE : Fonction getVideoUrl améliorée avec gestion robuste
+  // ✅ Fonction getVideoUrl améliorée avec gestion robuste
   const getVideoUrl = async (video) => {
     if (!video) return null;
 
@@ -131,7 +327,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     }
   };
 
-  // ✅ CORRECTION : Fonction playVideo améliorée
+  // ✅ Fonction playVideo améliorée
   const playVideo = async (video) => {
     try {
       console.log('🎬 Tentative de lecture vidéo:', video.id);
@@ -231,7 +427,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     }
   };
 
-  // ✅ CORRECTION : Fonction startAnalysis avec gestion robuste
+  // ✅ Fonction startAnalysis avec gestion robuste
   const startAnalysis = async (videoId, transcriptionText, userId) => {
     try {
       setAnalyzing(true);
@@ -379,7 +575,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
     }
   };
 
-  // ✅ CORRECTION : handleVideoAction avec gestion d'erreur améliorée
+  // ✅ handleVideoAction avec gestion d'erreur améliorée
   const handleVideoAction = async (video, action) => {
     try {
       switch (action) {
@@ -512,23 +708,38 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
       );
     }
 
-    if (videos.length === 0) {
+    if (filteredVideos.length === 0) {
+      const hasFilters = filteredVideos.length === 0 && videos.length > 0;
+      
       return (
         <div className="text-center py-12">
-          <Video className="h-16 w-16 text-gray-7 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-11 mb-2">Aucune vidéo</h3>
-          <p className="text-gray-10 mb-4">Commencez par uploader votre première vidéo</p>
-          <Button onClick={() => setActiveTab('upload')}>
-            <Upload className="h-4 w-4 mr-2" />
-            Uploader une vidéo
-          </Button>
+          {hasFilters ? (
+            <>
+              <Filter className="h-16 w-16 text-gray-7 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-11 mb-2">Aucune vidéo ne correspond aux filtres</h3>
+              <p className="text-gray-10 mb-4">Essayez de modifier vos critères de recherche</p>
+              <Button onClick={() => setFilteredVideos(videos)} variant="outline">
+                Voir toutes les vidéos
+              </Button>
+            </>
+          ) : (
+            <>
+              <Video className="h-16 w-16 text-gray-7 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-11 mb-2">Aucune vidéo</h3>
+              <p className="text-gray-10 mb-4">Commencez par uploader votre première vidéo</p>
+              <Button onClick={() => setActiveTab('upload')}>
+                <Upload className="h-4 w-4 mr-2" />
+                Uploader une vidéo
+              </Button>
+            </>
+          )}
         </div>
       );
     }
 
     return (
       <div className="space-y-6">
-        {videos.map((video) => {
+        {filteredVideos.map((video) => {
           const hasTranscription = !!(video.transcription_data || video.transcript || video.transcription_text);
           const hasAnalysis = !!(video.analysis || video.ai_result);
           const transcriptionText = video.transcription_text || video.transcription_data?.text || video.transcript?.text || '';
@@ -583,6 +794,20 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
                 <p className="text-sm text-gray-10 mb-4">
                   {video.description || 'Aucune description'}
                 </p>
+                
+                {/* Tags de la vidéo */}
+                {video.tags && video.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {video.tags.map((tag, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -673,22 +898,38 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded }) => {
   return (
     <div className="container mx-auto p-4">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Tableau de Bord</h1>
-        <Button onClick={fetchVideos} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Actualiser
-        </Button>
+        <h1 className="text-3xl font-bold">Tableau de Bord Vidéos</h1>
+        <div className="flex gap-2">
+          <Button onClick={fetchVideos} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Actualiser
+          </Button>
+          <Button 
+            onClick={() => setActiveTab('upload')}
+            className="bg-green-600 hover:bg-green-700"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Nouvelle Vidéo
+          </Button>
+        </div>
       </div>
 
       {renderDashboardStats()}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="videos">Mes Vidéos ({videos.length})</TabsTrigger>
+          <TabsTrigger value="videos">
+            Mes Vidéos ({filteredVideos.length})
+          </TabsTrigger>
           <TabsTrigger value="upload">Uploader une vidéo</TabsTrigger>
         </TabsList>
         
         <TabsContent value="videos" className="space-y-4">
+          {/* ✅ AJOUT: Filtrage par mots-clés */}
+          <VideoFilter 
+            videos={videos} 
+            onFilterChange={setFilteredVideos}
+          />
           {renderVideoList()}
         </TabsContent>
         
