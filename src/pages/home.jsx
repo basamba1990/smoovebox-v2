@@ -65,6 +65,14 @@ const Certification = ({ user, setActiveTab }) => (
 // Import du vrai composant Questionnaire
 import Questionnaire from '../components/Questionnaire.jsx';
 
+// ✅ NOUVEAU: Navigation simplifiée
+const simplifiedTabs = [
+  { id: 'record', name: '🎥 Enregistrer', icon: '🎥', priority: 1, description: 'Créer une nouvelle vidéo' },
+  { id: 'vault', name: '📁 Mes Vidéos', icon: '📁', priority: 2, description: 'Gérer toutes mes vidéos' },
+  { id: 'dashboard', name: '📊 Tableau de bord', icon: '📊', priority: 3, description: 'Voir mes statistiques' },
+  { id: 'profile', name: '👤 Profil', icon: '👤', priority: 4, description: 'Gérer mon compte' }
+];
+
 export default function Home({ 
   user, 
   profile, 
@@ -76,7 +84,7 @@ export default function Home({
   loadDashboardData 
 }) {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('record'); // ✅ CHANGEMENT: Par défaut sur l'enregistrement
   const [activeImmersionTab, setActiveImmersionTab] = useState('parcours');
   const [profileUpdated, setProfileUpdated] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -92,10 +100,9 @@ export default function Home({
   const userJourneySteps = [
     { id: 'profile', name: 'Compléter le profil', completed: false, priority: 1, section: 'profile' },
     { id: 'personality', name: 'Test personnalité', completed: false, priority: 2, section: 'personality' },
-    { id: 'immersion', name: 'Immersion simulateur', completed: false, priority: 3, section: 'immersion' },
-    { id: 'expression', name: 'Expression orale', completed: false, priority: 4, section: 'expression' },
-    { id: 'vault', name: 'Coffre-fort vidéo', completed: false, priority: 5, section: 'vault' },
-    { id: 'restitution', name: 'Restitution & badge', completed: false, priority: 6, section: 'restitution' }
+    { id: 'record', name: 'Enregistrer une vidéo', completed: false, priority: 3, section: 'record' },
+    { id: 'vault', name: 'Coffre-fort vidéo', completed: false, priority: 4, section: 'vault' },
+    { id: 'dashboard', name: 'Tableau de bord', completed: false, priority: 5, section: 'dashboard' }
   ];
 
   // ✅ CORRECTION : Scénarios d'enregistrement
@@ -141,7 +148,7 @@ export default function Home({
       loadDashboardData();
     }
     
-    updateUserJourney('expression', true);
+    updateUserJourney('record', true);
     updateUserJourney('vault', true);
   };
 
@@ -252,6 +259,7 @@ export default function Home({
           
           if (videos && videos.length > 0) {
             updateUserJourney('vault', true);
+            updateUserJourney('record', true);
           }
         } catch (error) {
           console.log('❌ Erreur vérification coffre-fort:', error);
@@ -349,17 +357,15 @@ export default function Home({
                       <p className="text-gray-300 text-sm">
                         {step.id === 'profile' && 'Complétez vos informations personnelles'}
                         {step.id === 'personality' && 'Découvrez votre profil émotionnel unique'}
-                        {step.id === 'immersion' && 'Préparez-vous avec nos exercices d\'immersion'}
-                        {step.id === 'expression' && 'Enregistrez votre première vidéo d\'expression'}
+                        {step.id === 'record' && 'Enregistrez votre première vidéo d\'expression'}
                         {step.id === 'vault' && 'Gérez et consultez toutes vos vidéos'}
-                        {step.id === 'restitution' && 'Recevez votre analyse personnalisée'}
+                        {step.id === 'dashboard' && 'Suivez votre progression et statistiques'}
                       </p>
                     </div>
                     <div className="text-gray-400 text-sm">
                       {['profile', 'personality'].includes(step.id) && '3 min'}
-                      {step.id === 'immersion' && '2-3 min'}
-                      {step.id === 'expression' && '2 min'}
-                      {['vault', 'restitution'].includes(step.id) && '1 min'}
+                      {step.id === 'record' && '2 min'}
+                      {['vault', 'dashboard'].includes(step.id) && '1 min'}
                     </div>
                   </div>
                 ))}
@@ -419,87 +425,83 @@ export default function Home({
     }
   };
 
+  // ✅ NOUVEAU: Navigation par actions rapides
+  const renderQuickActions = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      {simplifiedTabs
+        .sort((a, b) => a.priority - b.priority)
+        .map((tab) => (
+          <div
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg border-2 ${
+              activeTab === tab.id ? 'border-blue-500 shadow-blue-500/20' : 'border-gray-700 hover:border-gray-600'
+            }`}
+          >
+            <div className="text-3xl mb-3">{tab.icon}</div>
+            <h3 className="text-xl font-bold mb-2">{tab.name}</h3>
+            <p className="text-gray-300 text-sm">{tab.description}</p>
+            {activeTab === tab.id && (
+              <div className="mt-3 w-full bg-blue-500 h-1 rounded-full"></div>
+            )}
+          </div>
+        ))}
+    </div>
+  );
+
   // ✅ CORRECTION : Contenu des onglets avec gestion robuste
   const renderTabContent = () => {
     switch (activeTab) {
+      case 'record':
+        return (
+          <RecordVideo 
+            user={user}
+            onVideoUploaded={handleVideoUploaded}
+            scenarios={recordingScenarios}
+          />
+        );
+      
+      case 'vault':
+        return (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-french font-bold text-white">📁 Mon Coffre-fort Vidéo</h2>
+              <Button
+                onClick={() => setActiveTab('record')}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                🎥 Nouvelle Vidéo
+              </Button>
+            </div>
+            <VideoVault 
+              user={user}
+              profile={profile}
+              onSignOut={onSignOut}
+              onVideoAdded={handleVaultVideoAdded}
+            />
+          </div>
+        );
+      
       case 'dashboard':
         return (
           <div className="space-y-6">
-            <div className="card-spotbulle-dark p-6 bg-gray-800 border-gray-700">
-              <h2 className="text-2xl font-french font-bold text-white mb-4">
-                🗺️ Votre Aventure SpotBulle
-              </h2>
-              
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-200">Votre Progression</h3>
-                  <span className="text-sm text-gray-400">
-                    {userJourney.filter(s => s.completed).length} / {userJourney.length} étapes complétées
-                  </span>
-                </div>
-                
-                <div className="space-y-3">
-                  {userJourney.map((step, index) => (
-                    <div key={step.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-700 bg-gray-900">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${
-                        step.completed 
-                          ? 'bg-green-500 text-white' 
-                          : step.id === nextStep?.id
-                            ? 'bg-blue-500 text-white animate-pulse'
-                            : 'bg-gray-700 text-gray-300'
-                      }`}>
-                        {step.completed ? '✓' : index + 1}
-                      </div>
-                      <span className={`flex-1 ${step.completed ? 'text-gray-400' : 'text-gray-200'}`}>
-                        {step.name}
-                      </span>
-                      {step.id === nextStep?.id && !step.completed && (
-                        <Button 
-                          size="sm"
-                          onClick={() => {
-                            if (step.id === 'profile') setActiveTab('profile');
-                            if (step.id === 'personality') setShowQuestionnaire(true);
-                            if (step.id === 'immersion') setActiveTab('immersion');
-                            if (step.id === 'expression') navigate('/record-video');
-                            if (step.id === 'vault') setActiveTab('vault');
-                            if (step.id === 'restitution') navigate('/directory');
-                          }}
-                          className="btn-spotbulle-dark text-xs bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          Commencer
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-french font-bold text-white">📊 Tableau de Bord</h2>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setActiveTab('record')}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  🎥 Nouvelle Vidéo
+                </Button>
+                <Button
+                  onClick={() => setActiveTab('vault')}
+                  variant="outline"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  📁 Mes Vidéos
+                </Button>
               </div>
-
-              {!isProfileComplete && (
-                <div className="bg-yellow-900 border border-yellow-700 rounded-lg p-4 mb-6">
-                  <p className="text-yellow-200 text-sm">
-                    📝 <strong>Profil incomplet</strong> - Complétez votre profil pour accéder à toutes les fonctionnalités.
-                  </p>
-                </div>
-              )}
-              
-              {!hasCompletedQuestionnaire && (
-                <div className="bg-blue-900 border border-blue-700 rounded-lg p-4 mb-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-blue-200 text-sm">
-                        🎯 <strong>Test de personnalité</strong> - Découvrez votre profil unique et recevez des scénarios personnalisés.
-                      </p>
-                    </div>
-                    <Button
-                      onClick={() => setShowQuestionnaire(true)}
-                      className="btn-spotbulle-dark bg-blue-600 hover:bg-blue-700 text-white"
-                      size="sm"
-                    >
-                      Découvrir mon profil
-                    </Button>
-                  </div>
-                </div>
-              )}
             </div>
             
             <Dashboard 
@@ -510,48 +512,6 @@ export default function Home({
               onVideoUploaded={handleVideoUploaded}
             />
           </div>
-        );
-      
-      case 'immersion':
-        return (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">🎮 Préparation & Immersion</h2>
-              <div className="flex gap-2">
-                <Button
-                  variant={activeImmersionTab === 'parcours' ? 'default' : 'outline'}
-                  onClick={() => setActiveImmersionTab('parcours')}
-                  className="btn-spotbulle-dark"
-                >
-                  🧭 Parcours
-                </Button>
-                <Button
-                  variant={activeImmersionTab === 'scenarios' ? 'default' : 'outline'}
-                  onClick={() => setActiveImmersionTab('scenarios')}
-                  className="btn-spotbulle-dark"
-                >
-                  🎬 Scénarios
-                </Button>
-                <Button
-                  onClick={() => setActiveTab('dashboard')}
-                  variant="outline"
-                  className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
-                >
-                  ← Retour
-                </Button>
-              </div>
-            </div>
-            {renderImmersionContent()}
-          </div>
-        );
-      
-      case 'record':
-        return (
-          <RecordVideo 
-            user={user}
-            onVideoUploaded={handleVideoUploaded}
-            scenarios={recordingScenarios}
-          />
         );
       
       case 'profile':
@@ -590,37 +550,12 @@ export default function Home({
       case 'certification':
         return <Certification user={user} setActiveTab={setActiveTab} />;
       
-      case 'vault':
-        return (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">📁 Mon Coffre-fort Vidéo</h2>
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => setActiveTab('dashboard')}
-                  variant="outline"
-                  className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
-                >
-                  ← Retour au tableau de bord
-                </Button>
-              </div>
-            </div>
-            <VideoVault 
-              user={user}
-              profile={profile}
-              onSignOut={onSignOut}
-              onVideoAdded={handleVaultVideoAdded}
-            />
-          </div>
-        );
-      
       default:
         return (
-          <Dashboard 
-            data={dashboardData}
-            loading={dashboardLoading}
-            error={dashboardError}
-            refreshKey={refreshKey}
+          <RecordVideo 
+            user={user}
+            onVideoUploaded={handleVideoUploaded}
+            scenarios={recordingScenarios}
           />
         );
     }
@@ -639,114 +574,51 @@ export default function Home({
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        {/* Navigation Tabs */}
-        <div className="mb-8">
-          <div className="flex flex-wrap gap-2 mb-4">
-            <Button
-              variant={activeTab === 'dashboard' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('dashboard')}
-              className="btn-spotbulle-dark"
-            >
-              📊 Tableau de bord
-            </Button>
-            
-            <Button
-              variant={activeTab === 'immersion' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('immersion')}
-              className="btn-spotbulle-dark"
-            >
-              🎮 Préparation
-            </Button>
-            
-            <Button
-              variant={activeTab === 'record' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('record')}
-              className="btn-spotbulle-dark"
-            >
-              🎥 Expression orale
-            </Button>
-            
-            <Button
-              variant={activeTab === 'vault' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('vault')}
-              className="btn-spotbulle-dark"
-            >
-              📁 Coffre-fort
-            </Button>
-            
-            <Button
-              variant={activeTab === 'profile' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('profile')}
-              className="btn-spotbulle-dark"
-            >
-              👤 Mon profil
-            </Button>
+        {/* ✅ NOUVEAU: Navigation par actions rapides */}
+        {renderQuickActions()}
 
-            <Button
-              variant={activeTab === 'seminars' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('seminars')}
-              className="btn-spotbulle-dark"
-            >
-              🎓 Séminaires
-            </Button>
-
-            <Button
-              variant={activeTab === 'certification' ? 'default' : 'outline'}
-              onClick={() => setActiveTab('certification')}
-              className="btn-spotbulle-dark"
-            >
-              🏆 Certification
-            </Button>
-            
-            <Button
-              onClick={handleNavigateToDirectory}
-              className="btn-spotbulle-dark ml-auto"
-            >
-              👥 Explorer la communauté
-            </Button>
-          </div>
-
-          {/* Indicateur d'étape suivante */}
-          {nextStep && !nextStep.completed && (
-            <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 rounded-lg mb-4 animate-pulse">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">🎯</span>
-                  <div>
-                    <p className="font-semibold">Prochaine étape : {nextStep.name}</p>
-                    <p className="text-sm opacity-90">
-                      {nextStep.id === 'profile' && 'Complétez vos informations pour personnaliser votre expérience'}
-                      {nextStep.id === 'personality' && 'Découvrez votre profil unique en 3 minutes'}
-                      {nextStep.id === 'immersion' && 'Préparez-vous avec nos exercices d\'immersion'}
-                      {nextStep.id === 'expression' && 'Exprimez-vous devant la caméra avec nos scénarios guidés'}
-                      {nextStep.id === 'vault' && 'Consultez et gérez toutes vos vidéos d\'expression'}
-                      {nextStep.id === 'restitution' && 'Recevez votre analyse personnalisée et vos badges'}
-                    </p>
-                  </div>
+        {/* Indicateur d'étape suivante */}
+        {nextStep && !nextStep.completed && activeTab !== nextStep.section && (
+          <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 rounded-lg mb-6 animate-pulse">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-xl">🎯</span>
+                <div>
+                  <p className="font-semibold">Prochaine étape : {nextStep.name}</p>
+                  <p className="text-sm opacity-90">
+                    {nextStep.id === 'profile' && 'Complétez vos informations pour personnaliser votre expérience'}
+                    {nextStep.id === 'personality' && 'Découvrez votre profil unique en 3 minutes'}
+                    {nextStep.id === 'record' && 'Exprimez-vous devant la caméra avec nos scénarios guidés'}
+                    {nextStep.id === 'vault' && 'Consultez et gérez toutes vos vidéos d\'expression'}
+                    {nextStep.id === 'dashboard' && 'Suivez votre progression et obtenez des insights'}
+                  </p>
                 </div>
-                <Button
-                  onClick={() => {
-                    if (nextStep.id === 'profile') setActiveTab('profile');
-                    if (nextStep.id === 'personality') setShowQuestionnaire(true);
-                    if (nextStep.id === 'immersion') setActiveTab('immersion');
-                    if (nextStep.id === 'expression') navigate('/record-video');
-                    if (nextStep.id === 'vault') setActiveTab('vault');
-                    if (nextStep.id === 'restitution') navigate('/directory');
-                  }}
-                  className="bg-white text-blue-600 hover:bg-gray-100 border-0 font-semibold"
-                >
-                  Commencer
-                </Button>
               </div>
+              <Button
+                onClick={() => setActiveTab(nextStep.section)}
+                className="bg-white text-blue-600 hover:bg-gray-100 border-0 font-semibold"
+              >
+                Commencer
+              </Button>
             </div>
-          )}
-
-          {/* Tab Content */}
-          <div className="card-spotbulle-dark p-6 bg-gray-800 border-gray-700">
-            {renderTabContent()}
           </div>
+        )}
+
+        {/* Tab Content */}
+        <div className="card-spotbulle-dark p-6 bg-gray-800 border-gray-700">
+          {renderTabContent()}
         </div>
       </main>
+
+      {/* ✅ NOUVEAU: Bouton d'action rapide flottant */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <Button
+          onClick={() => setActiveTab('record')}
+          className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg animate-pulse text-lg py-4 px-6 rounded-full flex items-center gap-2"
+        >
+          🎥 Nouvelle Vidéo
+        </Button>
+      </div>
 
       {/* Modal Questionnaire */}
       {showQuestionnaire && (
