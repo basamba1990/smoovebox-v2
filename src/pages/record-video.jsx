@@ -15,6 +15,91 @@ const VIDEO_STATUS = {
   FAILED: 'failed'
 };
 
+// Composant amélioré de saisie des tags
+const TagInput = ({ tags, setTags }) => {
+  const [inputValue, setInputValue] = useState('');
+
+  const addTag = (tag) => {
+    const cleanTag = tag.trim().toLowerCase();
+    if (cleanTag && !tags.includes(cleanTag)) {
+      setTags(prev => [...prev, cleanTag]);
+    }
+    setInputValue('');
+  };
+
+  const removeTag = (tagToRemove) => {
+    setTags(prev => prev.filter(tag => tag !== tagToRemove));
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addTag(inputValue);
+    }
+  };
+
+  const suggestedTags = ['football', 'sport', 'passion', 'technique', 'entrainement', 'match', 'jeune', 'adolescent', 'adulte', 'expression'];
+
+  return (
+    <div className="space-y-3">
+      <label className="block font-semibold text-white">
+        🏷️ Mots-clés (pour les rapprochements)
+      </label>
+      
+      <div className="flex flex-wrap gap-2 p-3 bg-gray-700 border border-gray-600 rounded-lg min-h-[50px]">
+        {tags.map(tag => (
+          <span
+            key={tag}
+            className="inline-flex items-center gap-1 px-3 py-1 bg-blue-600 text-white text-sm rounded-full"
+          >
+            {tag}
+            <button
+              type="button"
+              onClick={() => removeTag(tag)}
+              className="hover:text-red-300 text-xs"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          type="text"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={tags.length === 0 ? "sport, passion, technique..." : "Ajouter un mot-clé"}
+          className="flex-1 bg-transparent border-none outline-none text-white placeholder-gray-400 min-w-[120px]"
+        />
+      </div>
+      
+      <div className="text-xs text-gray-400">
+        💡 Ajoutez des mots-clés pertinents pour retrouver facilement vos vidéos et faire des rapprochements automatiques.
+        Appuyez sur Entrée ou tapez une virgule pour ajouter.
+      </div>
+
+      {/* Suggestions de tags */}
+      <div className="flex flex-wrap gap-2">
+        <span className="text-xs text-gray-400">Suggestions rapides :</span>
+        {suggestedTags.map(suggestion => (
+          <button
+            key={suggestion}
+            type="button"
+            onClick={() => addTag(suggestion)}
+            disabled={tags.includes(suggestion)}
+            className={`text-xs px-2 py-1 rounded transition-all ${
+              tags.includes(suggestion)
+                ? 'bg-blue-600 text-white cursor-not-allowed'
+                : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+            }`}
+          >
+            {suggestion}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const RecordVideo = ({ onVideoUploaded = () => {} }) => {
   const [recording, setRecording] = useState(false);
   const [recordedVideo, setRecordedVideo] = useState(null);
@@ -22,7 +107,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
   const [cameraAccess, setCameraAccess] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [error, setError] = useState(null);
-  const [tags, setTags] = useState('');
+  const [tags, setTags] = useState([]);
   const [analysisProgress, setAnalysisProgress] = useState(null);
   const [uploadedVideoId, setUploadedVideoId] = useState(null);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -30,6 +115,8 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
   const [audioLevel, setAudioLevel] = useState(0);
   const [toneAnalysis, setToneAnalysis] = useState(null);
   const [user, setUser] = useState(null);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
 
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -40,7 +127,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
   const navigate = useNavigate();
   const maxRecordingTime = 120;
 
-  // ✅ CORRECTION: Détection des appareils iOS
+  // ✅ Détection des appareils iOS
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
   // Nettoyage des ressources
@@ -69,6 +156,10 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
         setUser(user);
         await refreshSession();
         await requestCameraAccess();
+        
+        // Générer un titre par défaut
+        setTitle(`Vidéo ${new Date().toLocaleDateString('fr-FR')} ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`);
+        
       } catch (err) {
         console.error('❌ Erreur initialisation:', err);
         if (mounted) {
@@ -98,7 +189,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     return () => clearInterval(timer);
   }, [recording]);
 
-  // ✅ CORRIGÉ : Suivi de la progression avec redirection vers video-success
+  // ✅ Suivi de la progression avec redirection vers video-success
   useEffect(() => {
     if (!uploadedVideoId) return;
 
@@ -224,7 +315,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       return;
     }
 
-    // ✅ CORRECTION: Vérification de la compatibilité MediaRecorder
+    // ✅ Vérification de la compatibilité MediaRecorder
     if (typeof MediaRecorder === 'undefined') {
       setError('L\'enregistrement vidéo n\'est pas supporté sur votre navigateur. Essayez Chrome ou Firefox.');
       toast.error('Enregistrement non supporté');
@@ -239,7 +330,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     try {
       recordedChunksRef.current = [];
       
-      // ✅ CORRECTION: Format compatible iOS/Safari
+      // ✅ Format compatible iOS/Safari
       let mimeType = 'video/webm';
       if (isIOS) {
         mimeType = 'video/mp4';
@@ -321,7 +412,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     setToneAnalysis(mockToneAnalysis);
   };
 
-  // ✅ CORRIGÉ : Uploader la vidéo avec gestion robuste du chemin de stockage
+  // ✅ Uploader la vidéo avec gestion robuste du chemin de stockage
   const uploadVideo = async () => {
     if (!recordedVideo) {
       setError('Vous devez enregistrer une vidéo.');
@@ -362,10 +453,10 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
         .from('videos')
         .getPublicUrl(filePath);
         
-      // ✅ CORRECTION : Structure de données compatible avec la base de données
+      // ✅ Structure de données compatible avec la base de données
       const videoInsertData = {
-        title: `Vidéo ${new Date().toLocaleDateString('fr-FR')}`,
-        description: 'Vidéo enregistrée depuis la caméra',
+        title: title || `Vidéo ${new Date().toLocaleDateString('fr-FR')}`,
+        description: description || 'Vidéo enregistrée depuis la caméra',
         file_path: filePath,
         storage_path: filePath,
         file_size: recordedVideo.blob.size,
@@ -377,7 +468,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
         video_url: urlData.publicUrl,
         format: recordedVideo.format,
         tone_analysis: toneAnalysis,
-        tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag),
+        tags: tags,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -403,7 +494,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       setUploadedVideoId(videoData.id);
       toast.success('Vidéo uploadée avec succès !');
       
-      // ✅ CORRIGÉ : Envoyer l'URL publique complète à la transcription
+      // ✅ Envoyer l'URL publique complète à la transcription
       await triggerTranscription(videoData.id, user.id, urlData.publicUrl);
     } catch (err) {
       console.error('❌ Erreur upload:', err);
@@ -418,7 +509,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     }
   };
 
-  // ✅ CORRIGÉ : Fonction pour déclencher la transcription avec URL valide
+  // ✅ Fonction pour déclencher la transcription avec URL valide
   const triggerTranscription = async (videoId, userId, videoPublicUrl) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -449,9 +540,11 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     setAnalysisProgress(null);
     setUploadedVideoId(null);
     setRecordingTime(0);
-    setTags('');
+    setTags([]);
     setToneAnalysis(null);
     setAudioLevel(0);
+    setTitle(`Vidéo ${new Date().toLocaleDateString('fr-FR')} ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`);
+    setDescription('');
     stopStream();
     requestCameraAccess();
   };
@@ -464,13 +557,13 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 py-8">
       <div className="container mx-auto px-4 max-w-6xl">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-french font-bold text-gray-900 dark:text-white mb-4">
+          <h1 className="text-4xl font-french font-bold text-white mb-4">
             🎥 Enregistrez votre vidéo SpotBulle
           </h1>
-          <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+          <p className="text-lg text-gray-300 max-w-2xl mx-auto">
             Partagez votre passion et connectez-vous avec la communauté
           </p>
         </div>
@@ -501,7 +594,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
             </div>
             
             {/* Barre de niveau audio */}
-            <div className="bg-gray-200 rounded-full h-2">
+            <div className="bg-gray-700 rounded-full h-2">
               <div 
                 className="bg-green-500 h-2 rounded-full transition-all duration-100" 
                 style={{ width: `${audioLevel * 100}%` }}
@@ -537,7 +630,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
                   >
                     {uploading ? '📤 Upload...' : '📤 Uploader la vidéo'}
                   </Button>
-                  <Button onClick={retryRecording} variant="outline">
+                  <Button onClick={retryRecording} variant="outline" className="border-gray-600 text-gray-300 hover:bg-gray-700">
                     🔄 Réessayer
                   </Button>
                 </div>
@@ -547,8 +640,38 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
           
           {/* Paramètres et analyse */}
           <div className="space-y-6">
+            {/* Informations de base */}
+            <div className="card-spotbulle-dark p-4">
+              <label className="block font-semibold text-white mb-2">
+                📝 Titre de la vidéo
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Donnez un titre à votre vidéo..."
+                className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400"
+              />
+              
+              <label className="block font-semibold text-white mb-2 mt-4">
+                📄 Description
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Décrivez le contenu de votre vidéo..."
+                rows="3"
+                className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 resize-none"
+              />
+            </div>
+            
+            {/* ✅ AJOUT: Composant Tags amélioré */}
+            <div className="card-spotbulle-dark p-4">
+              <TagInput tags={tags} setTags={setTags} />
+            </div>
+
             {/* Option avatar */}
-            <div className="card-spotbulle p-4">
+            <div className="card-spotbulle-dark p-4">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input 
                   type="checkbox" 
@@ -556,15 +679,15 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
                   onChange={(e) => setUseAvatar(e.target.checked)}
                   className="w-4 h-4" 
                 />
-                <span className="font-medium">Utiliser un avatar virtuel</span>
+                <span className="font-medium text-white">Utiliser un avatar virtuel</span>
               </label>
             </div>
             
             {/* Analyse de tonalité */}
             {toneAnalysis && (
-              <div className="card-spotbulle p-4">
-                <h3 className="font-semibold mb-3">🎵 Analyse de tonalité</h3>
-                <div className="space-y-2 text-sm">
+              <div className="card-spotbulle-dark p-4">
+                <h3 className="font-semibold mb-3 text-white">🎵 Analyse de tonalité</h3>
+                <div className="space-y-2 text-sm text-gray-300">
                   <div><strong>Émotion:</strong> {toneAnalysis.emotion}</div>
                   <div><strong>Débit:</strong> {toneAnalysis.pace}</div>
                   <div><strong>Clarté:</strong> {toneAnalysis.clarity}</div>
@@ -580,31 +703,17 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
               </div>
             )}
             
-            {/* Mots-clés */}
-            <div className="card-spotbulle p-4">
-              <label className="block font-semibold mb-2">
-                Mots-clés (séparés par des virgules)
-              </label>
-              <input 
-                type="text" 
-                value={tags} 
-                onChange={(e) => setTags(e.target.value)}
-                placeholder="football, sport, passion..." 
-                className="w-full p-2 border border-gray-300 rounded-lg" 
-              />
-            </div>
-            
             {/* Progression de l'analyse */}
             {analysisProgress && (
-              <div className="card-spotbulle p-4">
-                <h3 className="font-semibold mb-2">📊 Progression</h3>
+              <div className="card-spotbulle-dark p-4">
+                <h3 className="font-semibold mb-2 text-white">📊 Progression</h3>
                 <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
+                  <div className="flex justify-between text-sm text-gray-300">
                     <span>{getProgressMessage(analysisProgress)}</span>
                     <span>{analysisProgress === VIDEO_STATUS.ANALYZED ? '✅' : '🔄'}</span>
                   </div>
                   {analysisProgress === VIDEO_STATUS.FAILED && (
-                    <p className="text-red-600 text-sm">{error}</p>
+                    <p className="text-red-400 text-sm">{error}</p>
                   )}
                 </div>
               </div>
@@ -612,22 +721,23 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
             
             {/* Message d'erreur */}
             {error && !analysisProgress && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <p className="text-red-800">{error}</p>
+              <div className="bg-red-900/30 border border-red-700 rounded-lg p-4">
+                <p className="text-red-400">{error}</p>
               </div>
             )}
           </div>
         </div>
         
         {/* Conseils */}
-        <div className="mt-8 card-spotbulle p-4">
-          <h3 className="font-semibold mb-3">💡 Conseils pour un bon enregistrement</h3>
-          <ul className="list-disc list-inside space-y-1 text-sm text-gray-600">
+        <div className="mt-8 card-spotbulle-dark p-4">
+          <h3 className="font-semibold mb-3 text-white">💡 Conseils pour un bon enregistrement</h3>
+          <ul className="list-disc list-inside space-y-1 text-sm text-gray-300">
             <li>Parlez clairement et à un rythme modéré</li>
             <li>Utilisez un fond neutre et un bon éclairage</li>
             <li>Souriez et soyez naturel</li>
             <li>2 minutes maximum pour garder l'attention</li>
             <li>Ajoutez des mots-clés pertinents pour être mieux découvert</li>
+            <li>Les mots-clés permettent des rapprochements automatiques entre vos vidéos</li>
           </ul>
         </div>
       </div>
