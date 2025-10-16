@@ -82,47 +82,128 @@ Proporciona un análisis estructurado en JSON con el siguiente formato:
 }
 
 Responde ÚNICAMENTE con el JSON, sin texto adicional.
+  `,
+  de: `
+Als Kommunikationsexperte analysieren Sie diese Video-Transkription auf Deutsch.
+
+Transkript: {text}
+
+Geben Sie eine strukturierte Analyse im JSON-Format mit folgendem Format an:
+{
+  "summary": "Zusammenfassung in 2-3 Sätzen",
+  "key_topics": ["Thema1", "Thema2", "Thema3"],
+  "sentiment": "positiv/neutral/negativ",
+  "sentiment_score": 0.8,
+  "communication_advice": ["Ratschlag1", "Ratschlag2"],
+  "tone_analysis": {
+    "emotion": "begeistert/ruhig/energisch",
+    "pace": "schnell/moderat/langsam",
+    "clarity": "ausgezeichnet/gut/durchschnittlich/schlecht"
+  }
+}
+
+Antworten Sie NUR mit dem JSON, ohne zusätzlichen Text.
+  `,
+  it: `
+Come esperto di comunicazione, analizza questa trascrizione video in italiano.
+
+Trascrizione: {text}
+
+Fornisci un'analisi strutturata in JSON con il seguente formato:
+{
+  "summary": "riassunto in 2-3 frasi",
+  "key_topics": ["tema1", "tema2", "tema3"],
+  "sentiment": "positivo/neutro/negativo",
+  "sentiment_score": 0.8,
+  "communication_advice": ["consiglio1", "consiglio2"],
+  "tone_analysis": {
+    "emotion": "entusiasta/calmo/energico",
+    "pace": "veloce/moderato/lento",
+    "clarity": "eccellente/buona/media/scarsa"
+  }
+}
+
+Rispondi SOLO con il JSON, senza testo aggiuntivo.
+  `,
+  pt: `
+Como especialista em comunicação, analise esta transcrição de vídeo em português.
+
+Transcrição: {text}
+
+Forneça uma análise estruturada em JSON com o seguinte formato:
+{
+  "summary": "resumo em 2-3 frases",
+  "key_topics": ["tema1", "tema2", "tema3"],
+  "sentiment": "positivo/neutro/negativo",
+  "sentiment_score": 0.8,
+  "communication_advice": ["conselho1", "conselho2"],
+  "tone_analysis": {
+    "emotion": "entusiástico/calmo/energético",
+    "pace": "rápido/moderado/lento",
+    "clarity": "excelente/boa/média/fraca"
+  }
+}
+
+Responda APENAS com o JSON, sem texto adicional.
   `
 };
 
 const SYSTEM_MESSAGES = {
   fr: "Vous êtes un expert en analyse de communication. Répondez UNIQUEMENT en JSON valide, sans texte supplémentaire.",
   en: "You are a communication analysis expert. Respond ONLY with valid JSON, without any additional text.",
-  es: "Eres un experto en análisis de comunicación. Responde ÚNICAMENTE en JSON válido, sin texto adicional."
+  es: "Eres un experto en análisis de comunicación. Responde ÚNICAMENTE en JSON válido, sin texto adicional.",
+  de: "Sie sind ein Experte für Kommunikationsanalyse. Antworten Sie NUR mit gültigem JSON, ohne zusätzlichen Text.",
+  it: "Sei un esperto di analisi della comunicazione. Rispondi SOLO con JSON valido, senza testo aggiuntivo.",
+  pt: "Você é um especialista em análise de comunicação. Responda APENAS com JSON válido, sem texto adicional."
 };
 
 // ✅ LANGUAGES SUPPORTED FOR ANALYSIS
 const SUPPORTED_ANALYSIS_LANGUAGES = {
   'fr': 'French',
   'en': 'English', 
-  'es': 'Spanish'
+  'es': 'Spanish',
+  'de': 'German',
+  'it': 'Italian',
+  'pt': 'Portuguese'
 };
 
 Deno.serve(async (req) => {
   console.log("🔍 Fonction analyze-transcription (multilingue) appelée");
 
+  // ✅ CORRECTION: Gestion CORS améliorée
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { 
+      headers: {
+        ...corsHeaders,
+        'Access-Control-Max-Age': '86400',
+      }
+    });
   }
 
   let videoId = null;
 
   try {
+    // ✅ CORRECTION: Gestion robuste du parsing JSON
     let requestBody;
+    let rawBody = '';
+    
     try {
-      requestBody = await req.json();
-      console.log("📦 Corps reçu:", { 
-        videoId: requestBody.videoId,
-        transcriptionLength: requestBody.transcriptionText?.length,
-        userId: requestBody.userId,
-        transcriptionLanguage: requestBody.transcriptionLanguage
-      });
+      rawBody = await req.text();
+      console.log("📦 Corps brut reçu:", rawBody.substring(0, 500) + (rawBody.length > 500 ? "..." : ""));
+      
+      if (!rawBody || rawBody.trim().length === 0) {
+        throw new Error('Corps de requête vide');
+      }
+      
+      requestBody = JSON.parse(rawBody);
+      console.log("✅ JSON parsé avec succès");
     } catch (parseError) {
       console.error("❌ Erreur parsing JSON:", parseError);
       return new Response(
         JSON.stringify({ 
           error: 'Corps de requête JSON invalide',
-          details: parseError.message 
+          details: parseError.message,
+          bodyPreview: rawBody.substring(0, 200)
         }),
         { 
           status: 400, 
@@ -138,7 +219,10 @@ Deno.serve(async (req) => {
     if (!videoId) {
       console.error("❌ videoId manquant");
       return new Response(
-        JSON.stringify({ error: 'Paramètre videoId requis' }),
+        JSON.stringify({ 
+          error: 'Paramètre videoId requis',
+          receivedBody: requestBody 
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -271,10 +355,15 @@ Deno.serve(async (req) => {
 
     let analysisResult;
     try {
+      // ✅ CORRECTION: Validation robuste du JSON OpenAI
+      if (!analysisText || analysisText.trim().length === 0) {
+        throw new Error('Réponse OpenAI vide');
+      }
+      
       analysisResult = JSON.parse(analysisText);
       console.log("✅ Analyse JSON parsée avec succès");
     } catch (parseError) {
-      console.error("❌ Erreur parsing JSON, utilisation fallback:", parseError);
+      console.error("❌ Erreur parsing JSON OpenAI, utilisation fallback:", parseError);
       analysisResult = createBasicAnalysis(textToAnalyze, analysisLanguage);
     }
 
@@ -421,6 +510,21 @@ async function extractMatchingInsights(analysis, transcription, language = 'fr')
       pratique: 'práctico',
       réflexif: 'reflexivo',
       équilibré: 'equilibrado'
+    },
+    de: {
+      pratique: 'praktisch',
+      réflexif: 'reflektierend',
+      équilibré: 'ausgeglichen'
+    },
+    it: {
+      pratique: 'pratico',
+      réflexif: 'riflessivo',
+      équilibré: 'equilibrato'
+    },
+    pt: {
+      pratique: 'prático',
+      réflexif: 'reflexivo',
+      équilibré: 'equilibrado'
     }
   };
 
@@ -456,10 +560,10 @@ function extractLearningStyle(analysis, language = 'fr', styleMap = null) {
     };
   }
 
-  if (style === 'rapide' || style === 'fast' || style === 'rápido') {
+  if (style === 'rapide' || style === 'fast' || style === 'rápido' || style === 'schnell' || style === 'veloce' || style === 'rápido') {
     return styleMap.pratique;
   }
-  if (style === 'lent' || style === 'slow' || style === 'lento') {
+  if (style === 'lent' || style === 'slow' || style === 'lento' || style === 'langsam' || style === 'lento' || style === 'lento') {
     return styleMap.réflexif;
   }
   return styleMap.équilibré;
@@ -493,6 +597,30 @@ function createBasicAnalysis(text, language = 'fr') {
       advice: [
         "Continúa practicando regularmente",
         "Varía tu ritmo para mantener la atención"
+      ]
+    },
+    de: {
+      summary: `Grundlegende Analyse: ${wordCount} Wörter, ${sentenceCount} Sätze.`,
+      topics: ["Kommunikation", "Teilen", "Ausdruck"],
+      advice: [
+        "Üben Sie regelmäßig weiter",
+        "Variieren Sie Ihr Tempo, um die Aufmerksamkeit aufrechtzuerhalten"
+      ]
+    },
+    it: {
+      summary: `Analisi di base: ${wordCount} parole, ${sentenceCount} frasi.`,
+      topics: ["comunicazione", "condivisione", "espressione"],
+      advice: [
+        "Continua a praticare regolarmente",
+        "Varia il tuo ritmo per mantenere l'attenzione"
+      ]
+    },
+    pt: {
+      summary: `Análise básica: ${wordCount} palavras, ${sentenceCount} frases.`,
+      topics: ["comunicação", "compartilhamento", "expressão"],
+      advice: [
+        "Continue praticando regularmente",
+        "Varie seu ritmo para manter a atenção"
       ]
     }
   };
