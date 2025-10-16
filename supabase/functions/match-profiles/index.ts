@@ -33,9 +33,9 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { requester_id, target_id, video_id } = await req.json();
+    const { requester_id, target_id, video_id, analysis_data } = await req.json();
     
-    console.log('Données reçues:', { requester_id, target_id, video_id });
+    console.log('Données reçues:', { requester_id, target_id, video_id, analysis_data });
 
     if (!requester_id || !target_id) {
       return new Response(
@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Créer la nouvelle connexion
+    // Créer la nouvelle connexion AVEC LES DONNÉES D'ANALYSE
     const { data, error } = await supabase
       .from('connections')
       .insert({
@@ -71,13 +71,15 @@ Deno.serve(async (req) => {
         target_id,
         video_id: video_id || null,
         status: 'pending',
+        analysis_data: analysis_data || null, // NOUVELLES DONNÉES D'ANALYSE
+        match_score: analysis_data?.score || null, // SCORE DE MATCHING
         created_at: new Date().toISOString(),
       })
       .select();
 
     if (error) throw error;
 
-    console.log('Connexion créée avec succès:', data);
+    console.log('Connexion créée avec succès avec analyse:', data);
 
     return new Response(
       JSON.stringify({ 
