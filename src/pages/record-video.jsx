@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Button } from '../components/ui/button-enhanced.jsx';
 import { supabase, refreshSession } from '../lib/supabase';
 
+// Valeurs exactes autorisées pour le statut dans la base de données
 const VIDEO_STATUS = {
   UPLOADED: 'uploaded',
   PROCESSING: 'processing',
@@ -14,6 +15,7 @@ const VIDEO_STATUS = {
   FAILED: 'failed'
 };
 
+// Composant amélioré de saisie des tags
 const TagInput = ({ tags, setTags }) => {
   const [inputValue, setInputValue] = useState('');
 
@@ -75,6 +77,7 @@ const TagInput = ({ tags, setTags }) => {
         Appuyez sur Entrée ou tapez une virgule pour ajouter.
       </div>
 
+      {/* Suggestions de tags */}
       <div className="flex flex-wrap gap-2">
         <span className="text-xs text-gray-400">Suggestions rapides :</span>
         {suggestedTags.map(suggestion => (
@@ -124,8 +127,10 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
   const navigate = useNavigate();
   const maxRecordingTime = 120;
 
+  // ✅ Détection des appareils iOS
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
+  // Nettoyage des ressources
   useEffect(() => {
     return () => {
       if (recordedVideo?.url) URL.revokeObjectURL(recordedVideo.url);
@@ -136,6 +141,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     };
   }, [recordedVideo]);
 
+  // Vérification de l'authentification et initialisation de la caméra
   useEffect(() => {
     let mounted = true;
 
@@ -151,6 +157,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
         await refreshSession();
         await requestCameraAccess();
         
+        // Générer un titre par défaut
         setTitle(`Vidéo ${new Date().toLocaleDateString('fr-FR')} ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`);
         
       } catch (err) {
@@ -164,6 +171,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     return () => { mounted = false; };
   }, [navigate]);
 
+  // Gestion du minuteur d'enregistrement
   useEffect(() => {
     let timer;
     if (recording) {
@@ -181,6 +189,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     return () => clearInterval(timer);
   }, [recording]);
 
+  // ✅ Suivi de la progression avec redirection vers video-success
   useEffect(() => {
     if (!uploadedVideoId) return;
 
@@ -226,6 +235,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     return messages[status] || 'Traitement en cours';
   };
 
+  // Arrêter le stream vidéo/audio
   const stopStream = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
@@ -238,6 +248,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     }
   };
 
+  // Analyser le niveau audio en temps réel
   const setupAudioAnalysis = (stream) => {
     try {
       audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
@@ -265,6 +276,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     }
   };
 
+  // Demander l'accès à la caméra/micro
   const requestCameraAccess = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -295,6 +307,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     }
   };
 
+  // Démarrer l'enregistrement avec compte à rebours
   const startRecording = async () => {
     if (!cameraAccess) {
       setError('Veuillez autoriser l\'accès à la caméra.');
@@ -302,6 +315,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       return;
     }
 
+    // ✅ Vérification de la compatibilité MediaRecorder
     if (typeof MediaRecorder === 'undefined') {
       setError('L\'enregistrement vidéo n\'est pas supporté sur votre navigateur. Essayez Chrome ou Firefox.');
       toast.error('Enregistrement non supporté');
@@ -316,6 +330,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     try {
       recordedChunksRef.current = [];
       
+      // ✅ Format compatible iOS/Safari
       let mimeType = 'video/webm';
       if (isIOS) {
         mimeType = 'video/mp4';
@@ -334,6 +349,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
         videoBitsPerSecond: 2500000
       });
       
+      // Gestion des erreurs de MediaRecorder
       mediaRecorderRef.current.onerror = (event) => {
         console.error('❌ Erreur MediaRecorder:', event.error);
         setError(`Erreur enregistrement: ${event.error.name}`);
@@ -362,14 +378,16 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       toast.success('Enregistrement démarré !');
     } catch (err) {
       console.error('❌ Erreur démarrage enregistrement:', err);
+      // ✅ Message d'erreur spécifique pour iOS
       if (isIOS) {
         setError('Enregistrement non supporté sur Safari iOS. Utilisez l\'application Chrome.');
       } else {
-        setError('Erreur lors du démarrage de l'enregistrement.');
+        setError('Erreur lors du démarrage de l\'enregistrement.');
       }
     }
   };
 
+  // Arrêter l'enregistrement
   const stopRecording = () => {
     if (mediaRecorderRef.current && recording) {
       mediaRecorderRef.current.stop();
@@ -378,6 +396,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     }
   };
 
+  // Analyse basique de la tonalité
   const analyzeToneBasic = () => {
     const mockToneAnalysis = {
       confidence: 0.85,
@@ -393,7 +412,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     setToneAnalysis(mockToneAnalysis);
   };
 
-  // ✅ CORRECTION PRINCIPALE : Upload simplifié et robuste
+  // ✅ Uploader la vidéo avec gestion robuste du chemin de stockage
   const uploadVideo = async () => {
     if (!recordedVideo) {
       setError('Vous devez enregistrer une vidéo.');
@@ -411,11 +430,14 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       setUploading(true);
       setError(null);
       
-      // ✅ 1. Upload direct vers Supabase Storage
+      // 1. Upload du fichier vers Supabase Storage
       const fileName = `video-${Date.now()}.${recordedVideo.format === 'mp4' ? 'mp4' : 'webm'}`;
       const filePath = `${user.id}/${fileName}`;
-      
       console.log('📤 Upload du fichier vers:', filePath);
+      
+      if (!filePath || filePath.trim() === '') {
+        throw new Error('Le chemin de stockage ne peut pas être vide');
+      }
       
       const { error: uploadError } = await supabase.storage
         .from('videos')
@@ -424,25 +446,28 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       if (uploadError) {
         throw new Error(`Erreur upload storage: ${uploadError.message}`);
       }
-      
       console.log('✅ Fichier uploadé avec succès');
       
-      // ✅ 2. Récupérer l'URL publique
+      // 2. Récupérer l'URL publique COMPLÈTE
       const { data: urlData } = supabase.storage
         .from('videos')
         .getPublicUrl(filePath);
         
-      // ✅ 3. Structure de données simplifiée et robuste
+      // ✅ Structure de données compatible avec la base de données
       const videoInsertData = {
         title: title || `Vidéo ${new Date().toLocaleDateString('fr-FR')}`,
         description: description || 'Vidéo enregistrée depuis la caméra',
         file_path: filePath,
+        storage_path: filePath,
         file_size: recordedVideo.blob.size,
         duration: Math.round(recordingTime),
         user_id: user.id,
         status: VIDEO_STATUS.UPLOADED,
+        use_avatar: useAvatar,
         public_url: urlData.publicUrl,
+        video_url: urlData.publicUrl,
         format: recordedVideo.format,
+        tone_analysis: toneAnalysis,
         tags: tags,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -450,7 +475,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       
       console.log('📝 Données à insérer:', videoInsertData);
       
-      // ✅ 4. Insertion avec gestion d'erreur améliorée
+      // 3. Insérer la vidéo avec TOUS les champs requis
       const { data: videoData, error: videoError } = await supabase
         .from('videos')
         .insert(videoInsertData)
@@ -459,6 +484,9 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
         
       if (videoError) {
         console.error('❌ Erreur insertion vidéo:', videoError);
+        if (videoError.message.includes('stockage') || videoError.message.includes('NULL')) {
+          throw new Error('Erreur de configuration du chemin de stockage. Veuillez réessayer.');
+        }
         throw new Error(`Erreur création vidéo: ${videoError.message}`);
       }
       
@@ -466,23 +494,28 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       setUploadedVideoId(videoData.id);
       toast.success('Vidéo uploadée avec succès !');
       
-      // ✅ 5. Déclencher la transcription avec gestion d'erreur
+      // ✅ Envoyer l'URL publique complète à la transcription
       await triggerTranscription(videoData.id, user.id, urlData.publicUrl);
-      
     } catch (err) {
       console.error('❌ Erreur upload:', err);
-      setError(`Erreur lors de l'upload: ${err.message}`);
+      let errorMessage = `Erreur lors de l'upload: ${err.message}`;
+      if (err.message.includes('stockage') || err.message.includes('NULL')) {
+        errorMessage = 'Erreur de configuration du stockage. Le chemin de la vidéo est invalide.';
+      }
+      setError(errorMessage);
       toast.error('Échec de l\'upload.');
     } finally {
       setUploading(false);
     }
   };
 
-  // ✅ CORRECTION : Fonction transcription simplifiée
+  // ✅ Fonction pour déclencher la transcription avec URL valide
   const triggerTranscription = async (videoId, userId, videoPublicUrl) => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Session non valide');
+
       console.log('🚀 Déclenchement transcription avec URL:', videoPublicUrl);
-      
       const { data, error } = await supabase.functions.invoke('transcribe-video', {
         body: {
           videoId,
@@ -490,22 +523,16 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
           videoUrl: videoPublicUrl
         }
       });
-      
-      if (error) {
-        console.error('❌ Erreur invocation transcription:', error);
-        throw new Error(`Erreur transcription: ${error.message}`);
-      }
-      
+      if (error) throw error;
       console.log('✅ Transcription lancée:', data);
       toast.success('Transcription en cours...');
-      
     } catch (err) {
       console.error('❌ Erreur triggerTranscription:', err);
-      // Ne pas bloquer le flux en cas d'erreur de transcription
-      toast.warning('La vidéo a été uploadée mais la transcription a échoué.');
+      throw err;
     }
   };
 
+  // Réinitialiser l'enregistrement
   const retryRecording = () => {
     if (recordedVideo?.url) URL.revokeObjectURL(recordedVideo.url);
     setRecordedVideo(null);
@@ -522,6 +549,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     requestCameraAccess();
   };
 
+  // Formater le temps d'enregistrement
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -540,7 +568,9 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
           </p>
         </div>
 
+        {/* Interface d'enregistrement */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Caméra et contrôles */}
           <div className="space-y-4">
             <div className="bg-black rounded-lg overflow-hidden aspect-video relative">
               {countdown > 0 && (
@@ -563,6 +593,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
               )}
             </div>
             
+            {/* Barre de niveau audio */}
             <div className="bg-gray-700 rounded-full h-2">
               <div 
                 className="bg-green-500 h-2 rounded-full transition-all duration-100" 
@@ -570,6 +601,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
               ></div>
             </div>
             
+            {/* Contrôles d'enregistrement */}
             <div className="flex gap-4 justify-center">
               {!recordedVideo ? (
                 <>
@@ -606,7 +638,9 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
             </div>
           </div>
           
+          {/* Paramètres et analyse */}
           <div className="space-y-6">
+            {/* Informations de base */}
             <div className="card-spotbulle-dark p-4">
               <label className="block font-semibold text-white mb-2">
                 📝 Titre de la vidéo
@@ -631,10 +665,12 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
               />
             </div>
             
+            {/* ✅ AJOUT: Composant Tags amélioré */}
             <div className="card-spotbulle-dark p-4">
               <TagInput tags={tags} setTags={setTags} />
             </div>
 
+            {/* Option avatar */}
             <div className="card-spotbulle-dark p-4">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input 
@@ -647,6 +683,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
               </label>
             </div>
             
+            {/* Analyse de tonalité */}
             {toneAnalysis && (
               <div className="card-spotbulle-dark p-4">
                 <h3 className="font-semibold mb-3 text-white">🎵 Analyse de tonalité</h3>
@@ -666,6 +703,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
               </div>
             )}
             
+            {/* Progression de l'analyse */}
             {analysisProgress && (
               <div className="card-spotbulle-dark p-4">
                 <h3 className="font-semibold mb-2 text-white">📊 Progression</h3>
@@ -681,6 +719,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
               </div>
             )}
             
+            {/* Message d'erreur */}
             {error && !analysisProgress && (
               <div className="bg-red-900/30 border border-red-700 rounded-lg p-4">
                 <p className="text-red-400">{error}</p>
@@ -689,6 +728,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
           </div>
         </div>
         
+        {/* Conseils */}
         <div className="mt-8 card-spotbulle-dark p-4">
           <h3 className="font-semibold mb-3 text-white">💡 Conseils pour un bon enregistrement</h3>
           <ul className="list-disc list-inside space-y-1 text-sm text-gray-300">
