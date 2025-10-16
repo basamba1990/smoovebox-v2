@@ -11,6 +11,9 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 
+// ✅ AJOUT : Import du sélecteur de langue
+import LanguageSelector from '../components/LanguageSelector.jsx';
+
 // Composants temporaires pour les pages en développement
 const SeminarsList = ({ user, setActiveTab }) => (
   <div className="space-y-6">
@@ -92,6 +95,8 @@ export default function Home({
   const [hasCompletedQuestionnaire, setHasCompletedQuestionnaire] = useState(false);
   const [userJourney, setUserJourney] = useState([]);
   const [isDarkMode, setIsDarkMode] = useState(true);
+  // ✅ NOUVEL ÉTAT : Langue sélectionnée
+  const [selectedLanguage, setSelectedLanguage] = useState(null);
 
   const supabase = useSupabaseClient();
   const currentUser = useUser();
@@ -123,6 +128,12 @@ export default function Home({
       "🎙 Quel lien fais-tu entre ton sport et ta vie professionnelle ?",
       "🎙 Que t'apprend ton sport sur la gestion de la pression, de l'échec ou du leadership ?"
     ]
+  };
+
+  // ✅ Gestionnaire de changement de langue
+  const handleLanguageChange = (languageCode) => {
+    setSelectedLanguage(languageCode);
+    toast.success(`Langue sélectionnée: ${languageCode || 'Détection automatique'}`);
   };
 
   const handleNavigateToDirectory = () => {
@@ -449,16 +460,41 @@ export default function Home({
     </div>
   );
 
-  // ✅ CORRECTION : Contenu des onglets avec gestion robuste
+  // ✅ CORRECTION : Contenu des onglets avec gestion robuste et intégration langue
   const renderTabContent = () => {
     switch (activeTab) {
       case 'record':
         return (
-          <RecordVideo 
-            user={user}
-            onVideoUploaded={handleVideoUploaded}
-            scenarios={recordingScenarios}
-          />
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-french font-bold text-white">🎥 Enregistrer une Vidéo</h2>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => navigate('/personality-test')}
+                  variant="outline"
+                  className="flex items-center gap-2 border-cyan-500 text-cyan-300 hover:bg-cyan-900"
+                >
+                  🌐 Langue: {selectedLanguage || 'Auto'}
+                </Button>
+              </div>
+            </div>
+            
+            {/* ✅ AFFICHAGE DU SÉLECTEUR DE LANGUE DANS L'ENREGISTREMENT */}
+            <div className="card-spotbulle-dark p-6 bg-gray-800 border-gray-700">
+              <LanguageSelector 
+                selectedLanguage={selectedLanguage}
+                onLanguageChange={handleLanguageChange}
+                showAutoDetect={true}
+              />
+            </div>
+
+            <RecordVideo 
+              user={user}
+              onVideoUploaded={handleVideoUploaded}
+              scenarios={recordingScenarios}
+              selectedLanguage={selectedLanguage} // ✅ PASSAGE DE LA LANGUE SÉLECTIONNÉE
+            />
+          </div>
         );
       
       case 'vault':
@@ -556,6 +592,7 @@ export default function Home({
             user={user}
             onVideoUploaded={handleVideoUploaded}
             scenarios={recordingScenarios}
+            selectedLanguage={selectedLanguage} // ✅ PASSAGE DE LA LANGUE SÉLECTIONNÉE
           />
         );
     }
