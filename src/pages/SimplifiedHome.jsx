@@ -5,6 +5,7 @@ import RecordVideo from "./record-video.jsx";
 import ProfessionalHeader from "../components/ProfessionalHeader.jsx";
 import ProfileForm from "../components/ProfileForm.jsx";
 import VideoVault from './video-vault.jsx';
+import LanguageSelector from '../components/LanguageSelector.jsx'; // NOUVEL IMPORT
 import { Button } from "../components/ui/button-enhanced.jsx";
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -15,7 +16,7 @@ import Questionnaire from '../components/Questionnaire.jsx';
 import SeminarsList from '../components/SeminarsList.jsx';
 import Certification from '../components/Certification.jsx';
 import ImmersionSimulator from '../components/ImmersionSimulator.jsx';
-import ComplementaryMatches from '../components/ComplementaryMatches.jsx'; // NOUVEL IMPORT
+import ComplementaryMatches from '../components/ComplementaryMatches.jsx';
 
 // ✅ Navigation simplifiée complète
 const simplifiedTabs = [
@@ -23,7 +24,7 @@ const simplifiedTabs = [
   { id: 'vault', name: '📁 Mes Vidéos', icon: '📁', priority: 2, description: 'Gérer toutes mes vidéos' },
   { id: 'dashboard', name: '📊 Tableau de bord', icon: '📊', priority: 3, description: 'Voir mes statistiques' },
   { id: 'profile', name: '👤 Profil', icon: '👤', priority: 4, description: 'Gérer mon compte' },
-  { id: 'community', name: '👥 Communauté', icon: '👥', priority: 5, description: 'Trouver des synergies' }, // NOUVEL ONGLET
+  { id: 'community', name: '👥 Communauté', icon: '👥', priority: 5, description: 'Trouver des synergies' },
   { id: 'more', name: '➕ Plus', icon: '➕', priority: 6, description: 'Autres fonctionnalités' }
 ];
 
@@ -43,8 +44,10 @@ export default function SimplifiedHome({
   const [refreshKey, setRefreshKey] = useState(0);
   const [showQuestionnaire, setShowQuestionnaire] = useState(false);
   const [userStats, setUserStats] = useState(null);
-  const [activeSubTab, setActiveSubTab] = useState('main'); // Pour l'onglet "Plus"
+  const [activeSubTab, setActiveSubTab] = useState('main');
   const [activeImmersionTab, setActiveImmersionTab] = useState('parcours');
+  const [selectedLanguage, setSelectedLanguage] = useState(null); // État pour la langue
+  const [showLanguageSelector, setShowLanguageSelector] = useState(false); // Modal langue
 
   const supabase = useSupabaseClient();
 
@@ -101,6 +104,30 @@ export default function SimplifiedHome({
     if (loadDashboardData) {
       loadDashboardData();
     }
+  };
+
+  // ✅ Gestionnaire de changement de langue
+  const handleLanguageChange = (languageCode) => {
+    setSelectedLanguage(languageCode);
+    toast.success(`Langue sélectionnée: ${getLanguageName(languageCode)}`);
+  };
+
+  // ✅ Fonction utilitaire pour obtenir le nom de la langue
+  const getLanguageName = (code) => {
+    const languages = {
+      'fr': 'Français',
+      'en': 'English', 
+      'es': 'Español',
+      'de': 'Deutsch',
+      'it': 'Italiano',
+      'pt': 'Português',
+      'ru': 'Русский',
+      'zh': '中文',
+      'ja': '日本語',
+      'ko': '한국어',
+      'ar': 'العربية'
+    };
+    return languages[code] || 'Détection automatique';
   };
 
   // ✅ Scénarios d'enregistrement
@@ -178,7 +205,37 @@ export default function SimplifiedHome({
     );
   };
 
-  // ✅ Contenu de l'onglet "Community" (NOUVEL ONGLET)
+  // ✅ Indicateur de langue sélectionnée
+  const renderLanguageIndicator = () => {
+    if (!selectedLanguage) return null;
+
+    return (
+      <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-3 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-blue-400 text-lg">🌐</span>
+            <div>
+              <div className="text-white font-medium">
+                Langue sélectionnée: {getLanguageName(selectedLanguage)}
+              </div>
+              <div className="text-blue-300 text-sm">
+                La transcription utilisera cette langue
+              </div>
+            </div>
+          </div>
+          <Button
+            onClick={() => setShowLanguageSelector(true)}
+            variant="outline"
+            className="border-blue-400 text-blue-300 hover:bg-blue-900 text-sm"
+          >
+            Modifier
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  // ✅ Contenu de l'onglet "Community"
   const renderCommunityContent = () => {
     return (
       <div className="space-y-6">
@@ -385,7 +442,6 @@ export default function SimplifiedHome({
                   key={activity.id}
                   className={`bg-gradient-to-br ${activity.color} rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg`}
                   onClick={() => {
-                    // Pour l'instant, on redirige vers l'enregistrement avec un message
                     setActiveTab('record');
                     toast.info(`Activité ${activity.name} sélectionnée`);
                   }}
@@ -462,10 +518,36 @@ export default function SimplifiedHome({
     switch (activeTab) {
       case 'record':
         return (
-          <RecordVideo 
-            user={user}
-            onVideoUploaded={handleVideoUploaded}
-          />
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-french font-bold text-white">🎥 Enregistrer une vidéo</h2>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setShowLanguageSelector(true)}
+                  variant="outline"
+                  className="flex items-center gap-2 border-blue-400 text-blue-300 hover:bg-blue-900"
+                >
+                  🌐 Langue
+                </Button>
+                <Button
+                  onClick={() => setActiveTab('dashboard')}
+                  variant="outline"
+                  className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  📊 Tableau de bord
+                </Button>
+              </div>
+            </div>
+
+            {/* Indicateur de langue sélectionnée */}
+            {renderLanguageIndicator()}
+
+            <RecordVideo 
+              user={user}
+              onVideoUploaded={handleVideoUploaded}
+              selectedLanguage={selectedLanguage} // Passage de la langue sélectionnée
+            />
+          </div>
         );
       
       case 'vault':
@@ -548,7 +630,7 @@ export default function SimplifiedHome({
           </div>
         );
       
-      case 'community': // NOUVEL ONGLET
+      case 'community':
         return renderCommunityContent();
       
       case 'more':
@@ -559,6 +641,7 @@ export default function SimplifiedHome({
           <RecordVideo 
             user={user}
             onVideoUploaded={handleVideoUploaded}
+            selectedLanguage={selectedLanguage}
           />
         );
     }
@@ -631,6 +714,31 @@ export default function SimplifiedHome({
           🎥 Nouvelle Vidéo
         </Button>
       </div>
+
+      {/* ✅ Modal LanguageSelector */}
+      {showLanguageSelector && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-gray-800 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-700">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-white">🌐 Sélection de la langue</h2>
+                <Button
+                  onClick={() => setShowLanguageSelector(false)}
+                  variant="outline"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  ✕ Fermer
+                </Button>
+              </div>
+              <LanguageSelector 
+                selectedLanguage={selectedLanguage}
+                onLanguageChange={handleLanguageChange}
+                showAutoDetect={true}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ✅ Modal Questionnaire */}
       {showQuestionnaire && (
