@@ -15,6 +15,7 @@ import Questionnaire from '../components/Questionnaire.jsx';
 import SeminarsList from '../components/SeminarsList.jsx';
 import Certification from '../components/Certification.jsx';
 import ImmersionSimulator from '../components/ImmersionSimulator.jsx';
+import ComplementaryMatches from '../components/ComplementaryMatches.jsx'; // NOUVEL IMPORT
 
 // ✅ Navigation simplifiée complète
 const simplifiedTabs = [
@@ -22,7 +23,8 @@ const simplifiedTabs = [
   { id: 'vault', name: '📁 Mes Vidéos', icon: '📁', priority: 2, description: 'Gérer toutes mes vidéos' },
   { id: 'dashboard', name: '📊 Tableau de bord', icon: '📊', priority: 3, description: 'Voir mes statistiques' },
   { id: 'profile', name: '👤 Profil', icon: '👤', priority: 4, description: 'Gérer mon compte' },
-  { id: 'more', name: '➕ Plus', icon: '➕', priority: 5, description: 'Autres fonctionnalités' }
+  { id: 'community', name: '👥 Communauté', icon: '👥', priority: 5, description: 'Trouver des synergies' }, // NOUVEL ONGLET
+  { id: 'more', name: '➕ Plus', icon: '➕', priority: 6, description: 'Autres fonctionnalités' }
 ];
 
 export default function SimplifiedHome({ 
@@ -123,7 +125,7 @@ export default function SimplifiedHome({
 
   // ✅ Navigation par actions rapides
   const renderQuickActions = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-8">
       {simplifiedTabs
         .sort((a, b) => a.priority - b.priority)
         .map((tab) => (
@@ -172,6 +174,28 @@ export default function SimplifiedHome({
           <div className="text-2xl font-bold text-white">{userStats.processingVideos}</div>
           <div className="text-yellow-300 text-sm">En traitement</div>
         </div>
+      </div>
+    );
+  };
+
+  // ✅ Contenu de l'onglet "Community" (NOUVEL ONGLET)
+  const renderCommunityContent = () => {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-french font-bold text-white">👥 Communauté & Synergies</h2>
+          <Button
+            onClick={() => setActiveTab('record')}
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            🎥 Nouvelle Vidéo
+          </Button>
+        </div>
+        
+        <ComplementaryMatches 
+          user={user}
+          profile={profile}
+        />
       </div>
     );
   };
@@ -296,7 +320,7 @@ export default function SimplifiedHome({
               </div>
 
               <div 
-                onClick={() => navigate('/directory')}
+                onClick={() => setActiveTab('community')}
                 className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
               >
                 <div className="text-3xl mb-3">👥</div>
@@ -523,6 +547,9 @@ export default function SimplifiedHome({
             />
           </div>
         );
+      
+      case 'community': // NOUVEL ONGLET
+        return renderCommunityContent();
       
       case 'more':
         return renderMoreContent();
