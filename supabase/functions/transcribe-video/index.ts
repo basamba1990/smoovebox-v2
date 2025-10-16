@@ -74,8 +74,25 @@ const WHISPER_LANGUAGE_MAPPING = {
 Deno.serve(async (req) => {
   console.log("🎤 transcribe-video (multilingue) appelée");
 
+  // ✅ CORRECTION: Gestion CORS améliorée avec OPTIONS
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { 
+      headers: {
+        ...corsHeaders,
+        'Access-Control-Max-Age': '86400',
+      }
+    });
+  }
+
+  // ✅ CORRECTION: Vérifier que c'est bien une méthode POST
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Méthode non autorisée' }),
+      { 
+        status: 405, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
   }
 
   let videoId = null;
@@ -83,27 +100,57 @@ Deno.serve(async (req) => {
   try {
     console.log("📨 Headers:", Object.fromEntries(req.headers));
     
-    const { videoId: vidId, userId, videoUrl, preferredLanguage, autoDetectLanguage = true } = await req.json();
+    // ✅ CORRECTION: Gestion ROBUSTE du parsing JSON
+    let requestBody;
+    let rawBody = '';
+    
+    try {
+      rawBody = await req.text();
+      console.log("📦 Corps brut reçu (premiers 500 caractères):", rawBody.substring(0, 500));
+      
+      if (!rawBody || rawBody.trim().length === 0) {
+        throw new Error('Corps de requête vide');
+      }
+      
+      requestBody = JSON.parse(rawBody);
+      console.log("✅ JSON parsé avec succès");
+    } catch (parseError) {
+      console.error("❌ Erreur parsing JSON:", parseError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Corps de requête JSON invalide',
+          details: parseError.message,
+          bodyPreview: rawBody.substring(0, 200)
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+    
+    const { videoId: vidId, userId, videoUrl, preferredLanguage, autoDetectLanguage = true } = requestBody;
     videoId = vidId;
-
-    console.log("📦 Paramètres reçus:", { 
-      videoId, 
-      userId, 
-      videoUrl: videoUrl ? videoUrl.substring(0, 100) + "..." : "NULL",
-      preferredLanguage,
-      autoDetectLanguage
-    });
 
     // ✅ VALIDATION AMÉLIORÉE
     if (!videoId || !userId || !videoUrl) {
-      throw new Error('Paramètres manquants: videoId, userId, videoUrl requis');
+      return new Response(
+        JSON.stringify({ 
+          error: 'Paramètres manquants: videoId, userId, videoUrl requis',
+          received: { videoId, userId, videoUrl: videoUrl ? 'présent' : 'manquant' }
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // ✅ CORRECTION: Vérifier que l'URL est accessible
     try {
       new URL(videoUrl);
     } catch (urlError) {
-      throw new Error(`URL vidéo invalide: ${videoUrl}. Erreur: ${urlError.message}`);
+      return new Response(
+        JSON.stringify({ error: `URL vidéo invalide: ${videoUrl}. Erreur: ${urlError.message}` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -111,10 +158,16 @@ Deno.serve(async (req) => {
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
 
     if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Configuration Supabase manquante');
+      return new Response(
+        JSON.stringify({ error: 'Configuration Supabase manquante' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
     if (!openaiApiKey) {
-      throw new Error('Clé API OpenAI manquante');
+      return new Response(
+        JSON.stringify({ error: 'Clé API OpenAI manquante' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -122,18 +175,39 @@ Deno.serve(async (req) => {
 
     // ✅ MISE À JOUR AVEC INFORMATIONS DE LANGUE
     console.log("🔄 Mise à jour statut PROCESSING");
-    const { error: statusError } = await supabase
-      .from('videos')
-      .update({ 
-        status: VIDEO_STATUS.PROCESSING,
-        transcription_language: preferredLanguage || 'auto',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', videoId)
+    
+    // ✅ CORRECTION: Gestion des colonnes manquantes dès le début
+    let statusUpdatePayload = {
+      status: VIDEO_STATUS.PROCESSING,
+      updated_at: new Date().toISOString()
+    };
 
-    if (statusError) {
-      console.error("❌ Erreur mise à jour statut:", statusError);
-      throw new Error(`Erreur mise à jour statut: ${statusError.message}`);
+    try {
+      // Essayer avec transcription_language
+      const statusUpdate = await supabase
+        .from('videos')
+        .update({ 
+          ...statusUpdatePayload, 
+          transcription_language: preferredLanguage || 'auto' 
+        })
+        .eq('id', videoId);
+
+      if (statusUpdate.error) {
+        console.warn("⚠️ Colonne transcription_language non disponible, mise à jour sans...");
+        // Réessayer sans la colonne
+        const { error: fallbackError } = await supabase
+          .from('videos')
+          .update(statusUpdatePayload)
+          .eq('id', videoId);
+
+        if (fallbackError) throw fallbackError;
+      }
+    } catch (updateError) {
+      console.error("❌ Erreur mise à jour statut:", updateError);
+      return new Response(
+        JSON.stringify({ error: `Erreur mise à jour statut: ${updateError.message}` }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     console.log('🎙️ Début transcription multilingue pour la vidéo:', videoId);
@@ -142,7 +216,6 @@ Deno.serve(async (req) => {
     // ✅ TÉLÉCHARGEMENT AVEC GESTION D'ERREUR AMÉLIORÉE
     console.log("📥 Téléchargement vidéo...");
     
-    // ✅ CORRECTION: Ajouter timeout et retry logic
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
     
@@ -158,21 +231,36 @@ Deno.serve(async (req) => {
     } catch (fetchError) {
       clearTimeout(timeoutId);
       if (fetchError.name === 'AbortError') {
-        throw new Error('Timeout lors du téléchargement de la vidéo');
+        return new Response(
+          JSON.stringify({ error: 'Timeout lors du téléchargement de la vidéo' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
-      throw new Error(`Erreur réseau: ${fetchError.message}`);
+      return new Response(
+        JSON.stringify({ error: `Erreur réseau: ${fetchError.message}` }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
     
     if (!videoResponse.ok) {
       const errorText = await videoResponse.text();
-      throw new Error(`Erreur téléchargement vidéo: ${videoResponse.status} ${videoResponse.statusText}. Détails: ${errorText}`);
+      return new Response(
+        JSON.stringify({ 
+          error: `Erreur téléchargement vidéo: ${videoResponse.status} ${videoResponse.statusText}`,
+          details: errorText.substring(0, 200)
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const videoBlob = await videoResponse.blob();
     console.log(`📊 Taille vidéo téléchargée: ${videoBlob.size} bytes`);
 
     if (videoBlob.size === 0) {
-      throw new Error('Fichier vidéo vide ou inaccessible');
+      return new Response(
+        JSON.stringify({ error: 'Fichier vidéo vide ou inaccessible' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // ✅ CONFIGURATION WHISPER MULTILINGUE
@@ -189,7 +277,6 @@ Deno.serve(async (req) => {
       whisperConfig.language = WHISPER_LANGUAGE_MAPPING[preferredLanguage];
       console.log(`🎯 Transcription en langue spécifiée: ${SUPPORTED_LANGUAGES[preferredLanguage]}`);
     } else if (!autoDetectLanguage) {
-      // Détection automatique désactivée, utiliser l'anglais par défaut
       whisperConfig.language = 'english';
       console.log("🔍 Détection auto désactivée, utilisation de l'anglais par défaut");
     } else {
@@ -203,7 +290,13 @@ Deno.serve(async (req) => {
       transcriptionResponse = await openai.audio.transcriptions.create(whisperConfig);
     } catch (openaiError) {
       console.error('❌ Erreur OpenAI Whisper:', openaiError);
-      throw new Error(`Erreur transcription OpenAI: ${openaiError.message}`);
+      return new Response(
+        JSON.stringify({ 
+          error: `Erreur transcription OpenAI: ${openaiError.message}`,
+          type: 'openai_error'
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const transcriptionText = transcriptionResponse.text;
@@ -211,7 +304,10 @@ Deno.serve(async (req) => {
     
     // ✅ CORRECTION: Vérifier que la transcription n'est pas vide
     if (!transcriptionText || transcriptionText.trim().length === 0) {
-      throw new Error('La transcription est vide - aucun texte détecté dans la vidéo');
+      return new Response(
+        JSON.stringify({ error: 'La transcription est vide - aucun texte détecté dans la vidéo' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
     
     console.log(`✅ Transcription réussie - Langue: ${detectedLanguage}, Longueur: ${transcriptionText.length}`);
@@ -229,7 +325,6 @@ Deno.serve(async (req) => {
     // ✅ SAUVEGARDE AVEC INFORMATIONS LANGUE - GESTION DE FALLBACK AMÉLIORÉE
     console.log("💾 Sauvegarde transcription multilingue...");
     
-    // ✅ CORRECTION: Vérifier d'abord si la colonne existe
     let updatePayload = {
       status: VIDEO_STATUS.TRANSCRIBED,
       transcription_text: transcriptionText,
@@ -258,16 +353,18 @@ Deno.serve(async (req) => {
       }
     } catch (updateError) {
       console.error("❌ Erreur sauvegarde transcription:", updateError);
-      throw new Error(`Erreur sauvegarde: ${updateError.message}`);
+      return new Response(
+        JSON.stringify({ error: `Erreur sauvegarde: ${updateError.message}` }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // ✅ DÉCLENCHEMENT ANALYSE MULTILINGUE - GESTION D'ERREUR AMÉLIORÉE
     console.log("🚀 Déclenchement analyse multilingue...");
     try {
-      // ✅ CORRECTION: S'assurer que toutes les données sont bien passées
       const analyzeBody = {
         videoId,
-        transcriptionText: transcriptionText, // ✅ CORRECTION: Assurer que c'est bien passé
+        transcriptionText: transcriptionText,
         userId,
         transcriptionLanguage: detectedLanguage
       };
@@ -291,13 +388,11 @@ Deno.serve(async (req) => {
       if (!analyzeResponse.ok) {
         const errorText = await analyzeResponse.text();
         console.warn('⚠️ Erreur déclenchement analyse:', errorText);
-        // Ne pas throw ici pour ne pas bloquer le processus principal
       } else {
         console.log('✅ Analyse multilingue déclenchée avec succès');
       }
     } catch (analyzeError) {
       console.warn('⚠️ Erreur lors du déclenchement de l\'analyse:', analyzeError);
-      // Ne pas throw ici pour ne pas bloquer le processus principal
     }
 
     return new Response(
@@ -307,7 +402,7 @@ Deno.serve(async (req) => {
         transcriptionLength: transcriptionText.length,
         language: detectedLanguage,
         languageName: SUPPORTED_LANGUAGES[detectedLanguage] || 'Inconnue',
-        hasTranscriptionText: !!transcriptionText // ✅ CORRECTION: Confirmation que le texte est présent
+        hasTranscriptionText: !!transcriptionText
       }),
       { 
         status: 200, 
@@ -330,7 +425,7 @@ Deno.serve(async (req) => {
             .from('videos')
             .update({ 
               status: VIDEO_STATUS.FAILED,
-              error_message: error.message,
+              error_message: error.message.substring(0, 255), // Limiter la longueur
               updated_at: new Date().toISOString()
             })
             .eq('id', videoId);
