@@ -21,7 +21,6 @@ const corsHeaders = {
 Deno.serve(async (req) => {
   console.log("🔍 Fonction analyze-transcription appelée");
 
-  // Gérer les requêtes OPTIONS (CORS preflight)
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -29,9 +28,6 @@ Deno.serve(async (req) => {
   let videoId = null;
 
   try {
-    // Log détaillé de la requête
-    console.log("📨 Headers reçus:", Object.fromEntries(req.headers));
-    
     let requestBody;
     try {
       requestBody = await req.json();
@@ -57,7 +53,6 @@ Deno.serve(async (req) => {
     const { videoId: vidId, transcriptionText, userId } = requestBody;
     videoId = vidId;
 
-    // Validation améliorée des paramètres
     if (!videoId) {
       console.error("❌ videoId manquant");
       return new Response(
@@ -66,7 +61,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Fetch transcription si manquante (fallback DB)
     let textToAnalyze = transcriptionText;
     if (!textToAnalyze) {
       console.log("📄 Fetch transcription depuis DB...");
@@ -89,16 +83,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Vérification des variables d'environnement
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-
-    console.log("🔑 Vérification configuration:", {
-      hasSupabaseUrl: !!supabaseUrl,
-      hasServiceKey: !!supabaseServiceKey,
-      hasOpenaiKey: !!openaiApiKey
-    });
 
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('Configuration Supabase manquante');
@@ -142,7 +129,6 @@ Deno.serve(async (req) => {
 
     console.log(`🔍 Début analyse pour video ${videoId}, longueur texte: ${textToAnalyze.length}`);
 
-    // Prompt OpenAI (limité pour tokens)
     const analysisPrompt = `
 En tant qu'expert en communication, analysez cette transcription vidéo en français.
 
@@ -202,29 +188,48 @@ Répondez UNIQUEMENT avec le JSON, sans texte supplémentaire.
     const aiScore = calculateAIScore(analysisResult);
     console.log(`📊 Score IA calculé: ${aiScore}`);
 
-    // AJOUT: Extraire les insights de matching
+    // Extraire les insights de matching
     console.log("🔍 Extraction des insights de matching...");
     const matchingInsights = await extractMatchingInsights(analysisResult, textToAnalyze);
     console.log("✅ Insights de matching extraits:", matchingInsights);
 
-    // Mettre à jour la vidéo avec les résultats (incluant les insights de matching)
-    console.log("💾 Sauvegarde résultats analyse...");
-    const updatePayload = {
+    // VÉRIFIER SI LA COLONNE EXISTE AVANT DE METTRE À JOUR
+    console.log("🔍 Vérification de l'existence des colonnes...");
+    
+    // D'abord, essayer avec matching_insights
+    let updatePayload = {
       status: VIDEO_STATUS.ANALYZED,
       analysis: analysisResult,
       ai_score: aiScore,
-      matching_insights: matchingInsights, // NOUVELLES DONNÉES POUR LE MATCHING
       updated_at: new Date().toISOString()
     };
 
-    const { error: finalUpdateError } = await supabase
-      .from('videos')
-      .update(updatePayload)
-      .eq('id', videoId);
+    try {
+      // Tenter d'ajouter matching_insights seulement si la colonne existe
+      const testUpdate = await supabase
+        .from('videos')
+        .update({ ...updatePayload, matching_insights: matchingInsights })
+        .eq('id', videoId);
 
-    if (finalUpdateError) {
-      console.error("❌ Erreur sauvegarde analyse:", finalUpdateError);
-      throw new Error(`Erreur sauvegarde: ${finalUpdateError.message}`);
+      if (testUpdate.error) {
+        console.log("⚠️ Colonne matching_insights non disponible, mise à jour sans cette colonne");
+        // Réessayer sans matching_insights
+        const { error: finalUpdateError } = await supabase
+          .from('videos')
+          .update(updatePayload)
+          .eq('id', videoId);
+
+        if (finalUpdateError) throw finalUpdateError;
+      }
+    } catch (updateError) {
+      console.error("❌ Erreur sauvegarde analyse:", updateError);
+      // Continuer même si matching_insights échoue
+      const { error: basicUpdateError } = await supabase
+        .from('videos')
+        .update(updatePayload)
+        .eq('id', videoId);
+      
+      if (basicUpdateError) throw basicUpdateError;
     }
 
     console.log("🎉 Analyse terminée avec succès");
@@ -246,7 +251,6 @@ Répondez UNIQUEMENT avec le JSON, sans texte supplémentaire.
   } catch (error) {
     console.error("💥 Erreur générale dans analyze-transcription:", error);
 
-    // Mettre à jour le statut d'erreur
     if (videoId) {
       try {
         const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -297,7 +301,6 @@ async function extractMatchingInsights(analysis, transcription) {
 
 function extractMentorTopics(analysis, transcription) {
   const topics = analysis.key_topics || [];
-  // Identifier les sujets où la personne semble compétente
   return topics.filter(topic => 
     transcription.toLowerCase().includes(topic.toLowerCase()) &&
     topic.length > 5
@@ -311,7 +314,6 @@ function extractLearningStyle(analysis) {
   return 'équilibré';
 }
 
-// Fonction de fallback pour créer une analyse basique
 function createBasicAnalysis(text) {
   const wordCount = text.split(/\s+/).filter(word => word.length > 0).length;
   const sentenceCount = text.split(/[.!?]+/).length - 1;
@@ -320,50 +322,26 @@ function createBasicAnalysis(text) {
   return {
     summary: `Analyse basique: ${wordCount} mots, ${sentenceCount} phrases, ${paragraphCount} paragraphes.`,
     key_topics: ["communication", "partage", "expression"],
-    important_entities: [],
     sentiment: "neutre",
     sentiment_score: 0.5,
-    structure_analysis: {
-      introduction: wordCount > 100 ? "détectée" : "courte",
-      development: wordCount > 200 ? "présent" : "limité", 
-      conclusion: wordCount > 150 ? "détectée" : "courte",
-      overall_structure: wordCount > 300 ? "complet" : "basique"
-    },
     communication_advice: [
       "Continuez à pratiquer régulièrement",
-      "Variez le débit pour maintenir l'attention",
-      "Structurez votre discours avec des pauses stratégiques"
+      "Variez le débit pour maintenir l'attention"
     ],
     tone_analysis: {
       emotion: "neutre",
       pace: "modéré",
-      clarity: "bonne",
-      confidence_level: 0.6
-    },
-    target_audience: ["communauté SpotBulle"],
-    expertise_level: "intermédiaire",
-    emotional_engagement: {
-      type: "informatif",
-      level: 0.5
-    },
-    visual_suggestions: [
-      "Éclairage naturel recommandé", 
-      "Fond neutre préférable",
-      "Contact visuel avec la caméra"
-    ]
+      clarity: "bonne"
+    }
   };
 }
 
-// Fonction helper pour calculer un score IA basé sur l'analyse
 function calculateAIScore(analysisResult) {
-  let score = 7.0; // Score de base
-
+  let score = 7.0;
   if (analysisResult.summary && analysisResult.summary.length > 30) score += 0.5;
   if (analysisResult.key_topics && analysisResult.key_topics.length >= 2) score += 0.5;
   if (analysisResult.communication_advice && analysisResult.communication_advice.length > 0) score += 0.5;
   if (analysisResult.tone_analysis) score += 0.5;
   if (analysisResult.sentiment_score > 0.6) score += 0.5;
-  if (analysisResult.structure_analysis) score += 0.5;
-
-  return Math.min(Math.max(score, 0), 10.0); // Limiter entre 0 et 10
+  return Math.min(Math.max(score, 0), 10.0);
 }
