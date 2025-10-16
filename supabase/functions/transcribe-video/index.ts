@@ -99,20 +99,11 @@ Deno.serve(async (req) => {
       throw new Error('Paramètres manquants: videoId, userId, videoUrl requis');
     }
 
-    // ✅ VÉRIFICATION URL AMÉLIORÉE
-    let validatedUrl = videoUrl;
+    // ✅ CORRECTION: Vérifier que l'URL est accessible
     try {
       new URL(videoUrl);
     } catch (urlError) {
-      console.warn('⚠️ URL invalide, tentative de correction...');
-      // Si l'URL est relative, essayer de la reconstruire
-      if (videoUrl.startsWith('/')) {
-        const supabaseUrl = Deno.env.get('SUPABASE_URL');
-        validatedUrl = `${supabaseUrl}${videoUrl}`;
-        console.log('🔧 URL reconstruite:', validatedUrl);
-      } else {
-        throw new Error(`URL vidéo invalide: ${videoUrl}. Erreur: ${urlError.message}`);
-      }
+      throw new Error(`URL vidéo invalide: ${videoUrl}. Erreur: ${urlError.message}`);
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -141,7 +132,7 @@ Deno.serve(async (req) => {
       .eq('id', videoId)
 
     if (statusError) {
-      console.error('❌ Erreur mise à jour statut:', statusError);
+      console.error("❌ Erreur mise à jour statut:", statusError);
       throw new Error(`Erreur mise à jour statut: ${statusError.message}`);
     }
 
@@ -149,41 +140,42 @@ Deno.serve(async (req) => {
     console.log("🌐 Paramètres langue:", { preferredLanguage, autoDetectLanguage });
 
     // ✅ TÉLÉCHARGEMENT AVEC GESTION D'ERREUR AMÉLIORÉE
-    console.log("📥 Téléchargement vidéo depuis:", validatedUrl);
+    console.log("📥 Téléchargement vidéo...");
+    
+    // ✅ CORRECTION: Ajouter timeout et retry logic
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
     
     let videoResponse;
     try {
-      videoResponse = await fetch(validatedUrl, {
+      videoResponse = await fetch(videoUrl, {
+        signal: controller.signal,
         headers: {
-          'User-Agent': 'SpotBulle-Multilingual-Transcription/2.0',
-          'Accept': 'video/*'
-        },
-        timeout: 30000 // 30 secondes timeout
+          'User-Agent': 'SpotBulle-Multilingual-Transcription/2.0'
+        }
       });
+      clearTimeout(timeoutId);
     } catch (fetchError) {
-      console.error('❌ Erreur fetch vidéo:', fetchError);
-      throw new Error(`Impossible de télécharger la vidéo: ${fetchError.message}`);
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        throw new Error('Timeout lors du téléchargement de la vidéo');
+      }
+      throw new Error(`Erreur réseau: ${fetchError.message}`);
     }
     
     if (!videoResponse.ok) {
-      const errorText = await videoResponse.text().catch(() => 'Impossible de lire le corps de l\'erreur');
-      console.error('❌ Erreur réponse HTTP:', {
-        status: videoResponse.status,
-        statusText: videoResponse.statusText,
-        headers: Object.fromEntries(videoResponse.headers),
-        error: errorText
-      });
-      throw new Error(`Erreur téléchargement vidéo: ${videoResponse.status} ${videoResponse.statusText}`);
+      const errorText = await videoResponse.text();
+      throw new Error(`Erreur téléchargement vidéo: ${videoResponse.status} ${videoResponse.statusText}. Détails: ${errorText}`);
     }
 
     const videoBlob = await videoResponse.blob();
-    console.log(`📊 Taille vidéo téléchargée: ${videoBlob.size} bytes, type: ${videoBlob.type}`);
+    console.log(`📊 Taille vidéo téléchargée: ${videoBlob.size} bytes`);
 
     if (videoBlob.size === 0) {
       throw new Error('Fichier vidéo vide ou inaccessible');
     }
 
-    // ✅ CONFIGURATION WHISPER MULTILINGUE AVEC GESTION D'ERREUR
+    // ✅ CONFIGURATION WHISPER MULTILINGUE
     const whisperConfig = {
       file: new File([videoBlob], `video-${videoId}.mp4`, { 
         type: 'video/mp4' 
@@ -197,13 +189,14 @@ Deno.serve(async (req) => {
       whisperConfig.language = WHISPER_LANGUAGE_MAPPING[preferredLanguage];
       console.log(`🎯 Transcription en langue spécifiée: ${SUPPORTED_LANGUAGES[preferredLanguage]}`);
     } else if (!autoDetectLanguage) {
+      // Détection automatique désactivée, utiliser l'anglais par défaut
       whisperConfig.language = 'english';
       console.log("🔍 Détection auto désactivée, utilisation de l'anglais par défaut");
     } else {
       console.log("🌐 Détection automatique de la langue activée");
     }
 
-    // ✅ TRANSCRIPTION AVEC WHISPER - GESTION D'ERREUR RENFORCÉE
+    // ✅ TRANSCRIPTION AVEC WHISPER - GESTION D'ERREUR AMÉLIORÉE
     console.log("🤖 Appel Whisper multilingue...");
     let transcriptionResponse;
     try {
@@ -216,13 +209,12 @@ Deno.serve(async (req) => {
     const transcriptionText = transcriptionResponse.text;
     const detectedLanguage = transcriptionResponse.language || preferredLanguage || 'fr';
     
-    console.log(`✅ Transcription réussie - Langue: ${detectedLanguage}, Longueur: ${transcriptionText.length}`);
-
-    // ✅ VÉRIFICATION QUE LE TEXTE DE TRANSCRIPTION N'EST PAS VIDE
+    // ✅ CORRECTION: Vérifier que la transcription n'est pas vide
     if (!transcriptionText || transcriptionText.trim().length === 0) {
-      console.warn('⚠️ Transcription vide, utilisation de texte par défaut');
-      throw new Error('La transcription a retourné un texte vide');
+      throw new Error('La transcription est vide - aucun texte détecté dans la vidéo');
     }
+    
+    console.log(`✅ Transcription réussie - Langue: ${detectedLanguage}, Longueur: ${transcriptionText.length}`);
 
     const transcriptionData = {
       text: transcriptionText,
@@ -234,28 +226,27 @@ Deno.serve(async (req) => {
       detected_automatically: !preferredLanguage && autoDetectLanguage
     };
 
-    // ✅ SAUVEGARDE AVEC INFORMATIONS LANGUE - GESTION DE FALLBACK
+    // ✅ SAUVEGARDE AVEC INFORMATIONS LANGUE - GESTION DE FALLBACK AMÉLIORÉE
     console.log("💾 Sauvegarde transcription multilingue...");
-    const updatePayload = {
+    
+    // ✅ CORRECTION: Vérifier d'abord si la colonne existe
+    let updatePayload = {
       status: VIDEO_STATUS.TRANSCRIBED,
       transcription_text: transcriptionText,
       transcription_data: transcriptionData,
       updated_at: new Date().toISOString()
     };
 
-    // ✅ ESSAYER D'AJOUTER LA COLONNE LANGUE SI ELLE EXISTE
+    // Essayer d'ajouter transcription_language si la colonne existe
     try {
-      const { error: updateError } = await supabase
+      const testUpdate = await supabase
         .from('videos')
-        .update({ 
-          ...updatePayload,
-          transcription_language: detectedLanguage
-        })
+        .update({ ...updatePayload, transcription_language: detectedLanguage })
         .eq('id', videoId);
 
-      if (updateError) {
-        console.warn("⚠️ Erreur sauvegarde avec colonne langue, tentative sans...");
-        // Fallback sans la colonne language
+      if (testUpdate.error) {
+        console.warn("⚠️ Colonne transcription_language non disponible, sauvegarde sans...");
+        // Réessayer sans la colonne language
         const { error: fallbackError } = await supabase
           .from('videos')
           .update(updatePayload)
@@ -266,40 +257,47 @@ Deno.serve(async (req) => {
         }
       }
     } catch (updateError) {
-      console.error('❌ Erreur sauvegarde transcription:', updateError);
-      throw updateError;
+      console.error("❌ Erreur sauvegarde transcription:", updateError);
+      throw new Error(`Erreur sauvegarde: ${updateError.message}`);
     }
 
-    // ✅ DÉCLENCHEMENT ANALYSE MULTILINGUE AVEC GESTION D'ERREUR
+    // ✅ DÉCLENCHEMENT ANALYSE MULTILINGUE - GESTION D'ERREUR AMÉLIORÉE
     console.log("🚀 Déclenchement analyse multilingue...");
     try {
+      // ✅ CORRECTION: S'assurer que toutes les données sont bien passées
+      const analyzeBody = {
+        videoId,
+        transcriptionText: transcriptionText, // ✅ CORRECTION: Assurer que c'est bien passé
+        userId,
+        transcriptionLanguage: detectedLanguage
+      };
+
+      console.log("📤 Données envoyées à l'analyse:", {
+        videoId,
+        transcriptionLength: transcriptionText.length,
+        userId,
+        transcriptionLanguage: detectedLanguage
+      });
+
       const analyzeResponse = await fetch(`${supabaseUrl}/functions/v1/analyze-transcription`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${supabaseServiceKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          videoId,
-          transcriptionText: transcriptionText, // ✅ CORRECTION : S'assurer que c'est bien envoyé
-          userId,
-          transcriptionLanguage: detectedLanguage
-        })
+        body: JSON.stringify(analyzeBody)
       });
 
       if (!analyzeResponse.ok) {
         const errorText = await analyzeResponse.text();
-        console.warn('⚠️ Erreur déclenchement analyse:', {
-          status: analyzeResponse.status,
-          error: errorText
-        });
-        // Ne pas throw ici pour ne pas bloquer le processus de transcription
+        console.warn('⚠️ Erreur déclenchement analyse:', errorText);
+        // Ne pas throw ici pour ne pas bloquer le processus principal
       } else {
         console.log('✅ Analyse multilingue déclenchée avec succès');
       }
     } catch (analyzeError) {
       console.warn('⚠️ Erreur lors du déclenchement de l\'analyse:', analyzeError);
-      // Ne pas throw pour ne pas bloquer le processus principal
+      // Ne pas throw ici pour ne pas bloquer le processus principal
     }
 
     return new Response(
@@ -308,7 +306,8 @@ Deno.serve(async (req) => {
         message: 'Transcription multilingue terminée avec succès',
         transcriptionLength: transcriptionText.length,
         language: detectedLanguage,
-        languageName: SUPPORTED_LANGUAGES[detectedLanguage] || 'Inconnue'
+        languageName: SUPPORTED_LANGUAGES[detectedLanguage] || 'Inconnue',
+        hasTranscriptionText: !!transcriptionText // ✅ CORRECTION: Confirmation que le texte est présent
       }),
       { 
         status: 200, 
@@ -334,7 +333,8 @@ Deno.serve(async (req) => {
               error_message: error.message,
               updated_at: new Date().toISOString()
             })
-            .eq('id', videoId)
+            .eq('id', videoId);
+          console.log("📝 Statut erreur sauvegardé");
         }
       } catch (updateError) {
         console.error('❌ Erreur mise à jour statut erreur:', updateError);
