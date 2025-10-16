@@ -18,7 +18,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-// ✅ PROMPTS MULTILINGUES POUR L'ANALYSE
+// ✅ PROMPTS MULTILINGUES POUR L'ANALYSE - ARABE AJOUTÉ EN 3ÈME POSITION
 const ANALYSIS_PROMPTS = {
   fr: `
 En tant qu'expert en communication, analysez cette transcription vidéo en français.
@@ -40,6 +40,27 @@ Fournissez une analyse structurée en JSON avec le format suivant:
 }
 
 Répondez UNIQUEMENT avec le JSON, sans texte supplémentaire.
+  `,
+  ar: `
+كمحترف في مجال الاتصال، قم بتحليل نص الفيديو هذا باللغة العربية.
+
+النص: {text}
+
+قدم تحليلاً منظماً بتنسيق JSON بالشكل التالي:
+{
+  "summary": "ملخص في 2-3 جمل",
+  "key_topics": ["موضوع1", "موضوع2", "موضوع3"],
+  "sentiment": "إيجابي/محايد/سلبي",
+  "sentiment_score": 0.8,
+  "communication_advice": ["نصيحة1", "نصيحة2"],
+  "tone_analysis": {
+    "emotion": "متحمس/هادئ/نشيط",
+    "pace": "سريع/معتدل/بطيء",
+    "clarity": "ممتازة/جيدة/متوسطة/ضعيفة"
+  }
+}
+
+الرد فقط بـ JSON، دون أي نص إضافي.
   `,
   en: `
 As a communication expert, analyze this video transcription in English.
@@ -150,6 +171,7 @@ Responda APENAS com o JSON, sem texto adicional.
 
 const SYSTEM_MESSAGES = {
   fr: "Vous êtes un expert en analyse de communication. Répondez UNIQUEMENT en JSON valide, sans texte supplémentaire.",
+  ar: "أنت خبير في تحليل الاتصال. قم بالرد فقط بـ JSON صالح، دون أي نص إضافي.",
   en: "You are a communication analysis expert. Respond ONLY with valid JSON, without any additional text.",
   es: "Eres un experto en análisis de comunicación. Responde ÚNICAMENTE en JSON válido, sin texto adicional.",
   de: "Sie sind ein Experte für Kommunikationsanalyse. Antworten Sie NUR mit gültigem JSON, ohne zusätzlichen Text.",
@@ -157,14 +179,26 @@ const SYSTEM_MESSAGES = {
   pt: "Você é um especialista em análise de comunicação. Responda APENAS com JSON válido, sem texto adicional."
 };
 
-// ✅ LANGUAGES SUPPORTED FOR ANALYSIS
+// ✅ LANGUAGES SUPPORTED FOR ANALYSIS - ARABE EN 3ÈME POSITION
 const SUPPORTED_ANALYSIS_LANGUAGES = {
   'fr': 'French',
+  'ar': 'Arabic',
   'en': 'English', 
   'es': 'Spanish',
   'de': 'German',
   'it': 'Italian',
   'pt': 'Portuguese'
+};
+
+// ✅ DÉTECTION AUTOMATIQUE DE LA LANGUE AMÉLIORÉE
+const LANGUAGE_DETECTION_KEYWORDS = {
+  'fr': ['le', 'la', 'les', 'de', 'des', 'du', 'et', 'est', 'dans', 'pour'],
+  'ar': ['ال', 'في', 'من', 'على', 'إلى', 'أن', 'هذا', 'هذه', 'كان', 'ما'],
+  'en': ['the', 'and', 'is', 'in', 'to', 'of', 'a', 'that', 'it', 'with'],
+  'es': ['el', 'la', 'de', 'que', 'y', 'en', 'un', 'es', 'se', 'no'],
+  'de': ['der', 'die', 'das', 'und', 'in', 'den', 'von', 'zu', 'ist', 'sich'],
+  'it': ['il', 'la', 'di', 'e', 'in', 'che', 'non', 'per', 'un', 'una'],
+  'pt': ['o', 'a', 'de', 'e', 'do', 'da', 'em', 'um', 'para', 'com']
 };
 
 Deno.serve(async (req) => {
@@ -311,10 +345,48 @@ Deno.serve(async (req) => {
 
     console.log(`🔍 Début analyse pour video ${videoId}, longueur texte: ${textToAnalyze.length}`);
 
-    // ✅ ANALYSE MULTILINGUE
-    const analysisLanguage = transcriptionLanguage || video?.transcription_language || 'fr';
-    const systemMessage = SYSTEM_MESSAGES[analysisLanguage] || SYSTEM_MESSAGES['en'];
-    const analysisPromptTemplate = ANALYSIS_PROMPTS[analysisLanguage] || ANALYSIS_PROMPTS['en'];
+    // ✅ CORRECTION CRITIQUE : DÉTECTION AUTOMATIQUE AMÉLIORÉE DE LA LANGUE
+    let analysisLanguage = transcriptionLanguage || video?.transcription_language || 'fr';
+    
+    // Si la langue est 'auto' ou non spécifiée, détecter automatiquement
+    if (!analysisLanguage || analysisLanguage === 'auto') {
+      console.log("🔍 Détection automatique de la langue...");
+      analysisLanguage = detectLanguage(textToAnalyze);
+      console.log(`🌐 Langue détectée: ${analysisLanguage} (${SUPPORTED_ANALYSIS_LANGUAGES[analysisLanguage] || 'Unknown'})`);
+    }
+
+    // ✅ CORRECTION : FORCER LA LANGUE D'ANALYSE CORRECTE
+    // Si le texte est majoritairement en français mais que la langue détectée est autre, prioriser le français
+    const frenchScore = calculateLanguageScore(textToAnalyze, 'fr');
+    const arabicScore = calculateLanguageScore(textToAnalyze, 'ar');
+    const englishScore = calculateLanguageScore(textToAnalyze, 'en');
+    
+    console.log(`📊 Scores de langue - FR: ${frenchScore}, AR: ${arabicScore}, EN: ${englishScore}`);
+    
+    // Si le français a un score élevé, l'utiliser prioritairement
+    if (frenchScore > 0.7 && analysisLanguage !== 'fr') {
+      console.log(`🔄 Correction: Forçage vers le français (score: ${frenchScore})`);
+      analysisLanguage = 'fr';
+    }
+    // Sinon si l'arabe a un score élevé
+    else if (arabicScore > 0.7 && analysisLanguage !== 'ar') {
+      console.log(`🔄 Correction: Forçage vers l'arabe (score: ${arabicScore})`);
+      analysisLanguage = 'ar';
+    }
+    // Sinon si l'anglais a un score élevé
+    else if (englishScore > 0.7 && analysisLanguage !== 'en') {
+      console.log(`🔄 Correction: Forçage vers l'anglais (score: ${englishScore})`);
+      analysisLanguage = 'en';
+    }
+
+    // ✅ S'assurer que la langue est supportée
+    if (!SUPPORTED_ANALYSIS_LANGUAGES[analysisLanguage]) {
+      console.warn(`⚠️ Langue ${analysisLanguage} non supportée, utilisation du français par défaut`);
+      analysisLanguage = 'fr';
+    }
+
+    const systemMessage = SYSTEM_MESSAGES[analysisLanguage] || SYSTEM_MESSAGES['fr'];
+    const analysisPromptTemplate = ANALYSIS_PROMPTS[analysisLanguage] || ANALYSIS_PROMPTS['fr'];
     
     // ✅ CORRECTION: Limiter la taille du texte pour éviter les erreurs de token
     const textForAnalysis = textToAnalyze.length > 6000 
@@ -324,6 +396,7 @@ Deno.serve(async (req) => {
     const analysisPrompt = analysisPromptTemplate.replace('{text}', textForAnalysis);
 
     console.log(`🤖 Appel OpenAI en ${analysisLanguage} (${SUPPORTED_ANALYSIS_LANGUAGES[analysisLanguage] || 'Unknown'})...`);
+    console.log(`📝 Prompt langue: ${analysisLanguage}`);
     
     let completion;
     try {
@@ -387,7 +460,8 @@ Deno.serve(async (req) => {
       status: VIDEO_STATUS.ANALYZED,
       analysis: analysisResult,
       ai_score: aiScore,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      transcription_language: analysisLanguage // ✅ CORRECTION CRITIQUE: Sauvegarder la langue utilisée
     };
 
     // Essayer d'ajouter analysis_language si la colonne existe
@@ -443,7 +517,12 @@ Deno.serve(async (req) => {
         matchingInsights: matchingInsights,
         analysisLanguage: analysisLanguage,
         analysisLanguageName: SUPPORTED_ANALYSIS_LANGUAGES[analysisLanguage] || 'Unknown',
-        textLength: textToAnalyze.length
+        textLength: textToAnalyze.length,
+        languageScores: {
+          fr: frenchScore,
+          ar: arabicScore,
+          en: englishScore
+        }
       }),
       { 
         status: 200, 
@@ -491,15 +570,74 @@ Deno.serve(async (req) => {
   }
 });
 
+// ✅ NOUVELLE FONCTION : Détection automatique de la langue
+function detectLanguage(text) {
+  if (!text || text.trim().length === 0) return 'fr';
+  
+  const scores = {};
+  const words = text.toLowerCase().split(/\s+/).slice(0, 100); // Prendre les 100 premiers mots
+  
+  // Calculer le score pour chaque langue
+  for (const [lang, keywords] of Object.entries(LANGUAGE_DETECTION_KEYWORDS)) {
+    let score = 0;
+    for (const keyword of keywords) {
+      if (words.includes(keyword.toLowerCase())) {
+        score++;
+      }
+    }
+    scores[lang] = score / keywords.length;
+  }
+  
+  // Trouver la langue avec le score le plus élevé
+  let bestLanguage = 'fr';
+  let bestScore = 0;
+  
+  for (const [lang, score] of Object.entries(scores)) {
+    if (score > bestScore) {
+      bestScore = score;
+      bestLanguage = lang;
+    }
+  }
+  
+  console.log(`🔍 Scores de détection:`, scores);
+  console.log(`🎯 Langue sélectionnée: ${bestLanguage} (score: ${bestScore})`);
+  
+  return bestScore > 0.1 ? bestLanguage : 'fr'; // Seuil minimum de confiance
+}
+
+// ✅ NOUVELLE FONCTION : Calcul du score de langue
+function calculateLanguageScore(text, language) {
+  if (!text || text.trim().length === 0) return 0;
+  
+  const keywords = LANGUAGE_DETECTION_KEYWORDS[language] || [];
+  if (keywords.length === 0) return 0;
+  
+  const words = text.toLowerCase().split(/\s+/).slice(0, 100);
+  let score = 0;
+  
+  for (const keyword of keywords) {
+    if (words.includes(keyword.toLowerCase())) {
+      score++;
+    }
+  }
+  
+  return score / keywords.length;
+}
+
 // FONCTION POUR EXTRAIRE LES INSIGHTS DE MATCHING (MULTILINGUE)
 async function extractMatchingInsights(analysis, transcription, language = 'fr') {
   
-  // ✅ DICTIONNAIRE MULTILINGUE POUR LES STYLES D'APPRENTISSAGE
+  // ✅ DICTIONNAIRE MULTILINGUE POUR LES STYLES D'APPRENTISSAGE - ARABE AJOUTÉ
   const LEARNING_STYLES = {
     fr: {
       pratique: 'pratique',
       réflexif: 'réflexif',
       équilibré: 'équilibré'
+    },
+    ar: {
+      pratique: 'عملي',
+      réflexif: 'تأملي',
+      équilibré: 'متوازن'
     },
     en: {
       pratique: 'practical',
@@ -560,10 +698,14 @@ function extractLearningStyle(analysis, language = 'fr', styleMap = null) {
     };
   }
 
-  if (style === 'rapide' || style === 'fast' || style === 'rápido' || style === 'schnell' || style === 'veloce' || style === 'rápido') {
+  // ✅ SUPPORT ÉTENDU POUR TOUTES LES LANGUES - ARABE INCLUS
+  const fastKeywords = ['rapide', 'fast', 'rápido', 'schnell', 'veloce', 'rápido', 'سريع'];
+  const slowKeywords = ['lent', 'slow', 'lento', 'langsam', 'lento', 'lento', 'بطيء'];
+  
+  if (fastKeywords.some(keyword => style?.toLowerCase().includes(keyword))) {
     return styleMap.pratique;
   }
-  if (style === 'lent' || style === 'slow' || style === 'lento' || style === 'langsam' || style === 'lento' || style === 'lento') {
+  if (slowKeywords.some(keyword => style?.toLowerCase().includes(keyword))) {
     return styleMap.réflexif;
   }
   return styleMap.équilibré;
@@ -573,7 +715,7 @@ function createBasicAnalysis(text, language = 'fr') {
   const wordCount = text.split(/\s+/).filter(word => word.length > 0).length;
   const sentenceCount = text.split(/[.!?]+/).length - 1;
   
-  // ✅ MESSAGES D'ANALYSE BASIQUE MULTILINGUES
+  // ✅ MESSAGES D'ANALYSE BASIQUE MULTILINGUES - ARABE AJOUTÉ
   const BASIC_ANALYSIS_TEXTS = {
     fr: {
       summary: `Analyse basique: ${wordCount} mots, ${sentenceCount} phrases.`,
@@ -581,6 +723,14 @@ function createBasicAnalysis(text, language = 'fr') {
       advice: [
         "Continuez à pratiquer régulièrement",
         "Variez le débit pour maintenir l'attention"
+      ]
+    },
+    ar: {
+      summary: `تحليل أساسي: ${wordCount} كلمة, ${sentenceCount} جملة.`,
+      topics: ["اتصال", "مشاركة", "تعبير"],
+      advice: [
+        "استمر في الممارسة بانتظام",
+        "غير سرعة الحديث للحفاظ على الانتباه"
       ]
     },
     en: {
