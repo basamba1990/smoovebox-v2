@@ -202,12 +202,18 @@ Répondez UNIQUEMENT avec le JSON, sans texte supplémentaire.
     const aiScore = calculateAIScore(analysisResult);
     console.log(`📊 Score IA calculé: ${aiScore}`);
 
-    // Mettre à jour la vidéo avec les résultats (mapper vers colonnes existantes)
+    // AJOUT: Extraire les insights de matching
+    console.log("🔍 Extraction des insights de matching...");
+    const matchingInsights = await extractMatchingInsights(analysisResult, textToAnalyze);
+    console.log("✅ Insights de matching extraits:", matchingInsights);
+
+    // Mettre à jour la vidéo avec les résultats (incluant les insights de matching)
     console.log("💾 Sauvegarde résultats analyse...");
     const updatePayload = {
       status: VIDEO_STATUS.ANALYZED,
-      analysis: analysisResult,  // Mapper vers 'analysis' (existant JSONB)
-      ai_score: aiScore,  // Si colonne ajoutée
+      analysis: analysisResult,
+      ai_score: aiScore,
+      matching_insights: matchingInsights, // NOUVELLES DONNÉES POUR LE MATCHING
       updated_at: new Date().toISOString()
     };
 
@@ -228,7 +234,8 @@ Répondez UNIQUEMENT avec le JSON, sans texte supplémentaire.
         success: true, 
         message: 'Analyse terminée avec succès',
         videoId: videoId,
-        aiScore: aiScore
+        aiScore: aiScore,
+        matchingInsights: matchingInsights
       }),
       { 
         status: 200, 
@@ -275,6 +282,34 @@ Répondez UNIQUEMENT avec le JSON, sans texte supplémentaire.
     );
   }
 });
+
+// FONCTION POUR EXTRAIRE LES INSIGHTS DE MATCHING
+async function extractMatchingInsights(analysis, transcription) {
+  return {
+    communication_style: analysis.tone_analysis?.emotion || 'neutre',
+    expertise_areas: analysis.key_topics || [],
+    sentiment_profile: analysis.sentiment,
+    key_strengths: analysis.communication_advice || [],
+    potential_mentor_topics: extractMentorTopics(analysis, transcription),
+    learning_preferences: extractLearningStyle(analysis)
+  };
+}
+
+function extractMentorTopics(analysis, transcription) {
+  const topics = analysis.key_topics || [];
+  // Identifier les sujets où la personne semble compétente
+  return topics.filter(topic => 
+    transcription.toLowerCase().includes(topic.toLowerCase()) &&
+    topic.length > 5
+  ).slice(0, 3);
+}
+
+function extractLearningStyle(analysis) {
+  const style = analysis.tone_analysis?.pace;
+  if (style === 'rapide') return 'pratique';
+  if (style === 'lent') return 'réflexif';
+  return 'équilibré';
+}
 
 // Fonction de fallback pour créer une analyse basique
 function createBasicAnalysis(text) {
