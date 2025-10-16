@@ -5,7 +5,6 @@ import RecordVideo from "./record-video.jsx";
 import ProfessionalHeader from "../components/ProfessionalHeader.jsx";
 import ProfileForm from "../components/ProfileForm.jsx";
 import VideoVault from './video-vault.jsx';
-import LanguageSelector from '../components/LanguageSelector.jsx'; // NOUVEL IMPORT
 import { Button } from "../components/ui/button-enhanced.jsx";
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -17,6 +16,8 @@ import SeminarsList from '../components/SeminarsList.jsx';
 import Certification from '../components/Certification.jsx';
 import ImmersionSimulator from '../components/ImmersionSimulator.jsx';
 import ComplementaryMatches from '../components/ComplementaryMatches.jsx';
+// ✅ NOUVEAU IMPORT : Sélecteur de langue
+import LanguageSelector from '../components/LanguageSelector.jsx';
 
 // ✅ Navigation simplifiée complète
 const simplifiedTabs = [
@@ -44,10 +45,10 @@ export default function SimplifiedHome({
   const [refreshKey, setRefreshKey] = useState(0);
   const [showQuestionnaire, setShowQuestionnaire] = useState(false);
   const [userStats, setUserStats] = useState(null);
-  const [activeSubTab, setActiveSubTab] = useState('main');
+  const [activeSubTab, setActiveSubTab] = useState('main'); // Pour l'onglet "Plus"
   const [activeImmersionTab, setActiveImmersionTab] = useState('parcours');
-  const [selectedLanguage, setSelectedLanguage] = useState(null); // État pour la langue
-  const [showLanguageSelector, setShowLanguageSelector] = useState(false); // Modal langue
+  // ✅ NOUVEL ÉTAT : Langue sélectionnée
+  const [selectedLanguage, setSelectedLanguage] = useState(null);
 
   const supabase = useSupabaseClient();
 
@@ -109,25 +110,7 @@ export default function SimplifiedHome({
   // ✅ Gestionnaire de changement de langue
   const handleLanguageChange = (languageCode) => {
     setSelectedLanguage(languageCode);
-    toast.success(`Langue sélectionnée: ${getLanguageName(languageCode)}`);
-  };
-
-  // ✅ Fonction utilitaire pour obtenir le nom de la langue
-  const getLanguageName = (code) => {
-    const languages = {
-      'fr': 'Français',
-      'en': 'English', 
-      'es': 'Español',
-      'de': 'Deutsch',
-      'it': 'Italiano',
-      'pt': 'Português',
-      'ru': 'Русский',
-      'zh': '中文',
-      'ja': '日本語',
-      'ko': '한국어',
-      'ar': 'العربية'
-    };
-    return languages[code] || 'Détection automatique';
+    toast.success(`Langue sélectionnée: ${languageCode || 'Détection automatique'}`);
   };
 
   // ✅ Scénarios d'enregistrement
@@ -200,36 +183,6 @@ export default function SimplifiedHome({
         <div className="bg-yellow-900/30 rounded-lg p-4 text-center border border-yellow-700">
           <div className="text-2xl font-bold text-white">{userStats.processingVideos}</div>
           <div className="text-yellow-300 text-sm">En traitement</div>
-        </div>
-      </div>
-    );
-  };
-
-  // ✅ Indicateur de langue sélectionnée
-  const renderLanguageIndicator = () => {
-    if (!selectedLanguage) return null;
-
-    return (
-      <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-3 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-blue-400 text-lg">🌐</span>
-            <div>
-              <div className="text-white font-medium">
-                Langue sélectionnée: {getLanguageName(selectedLanguage)}
-              </div>
-              <div className="text-blue-300 text-sm">
-                La transcription utilisera cette langue
-              </div>
-            </div>
-          </div>
-          <Button
-            onClick={() => setShowLanguageSelector(true)}
-            variant="outline"
-            className="border-blue-400 text-blue-300 hover:bg-blue-900 text-sm"
-          >
-            Modifier
-          </Button>
         </div>
       </div>
     );
@@ -335,6 +288,27 @@ export default function SimplifiedHome({
           </div>
         );
 
+      case 'language': // ✅ NOUVEAU SOUS-ONGLET : Sélection de langue
+        return (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-french font-bold text-white">🌐 Sélection de la Langue</h2>
+              <Button
+                onClick={() => setActiveSubTab('main')}
+                variant="outline"
+                className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
+              >
+                ← Retour
+              </Button>
+            </div>
+            <LanguageSelector 
+              selectedLanguage={selectedLanguage}
+              onLanguageChange={handleLanguageChange}
+              showAutoDetect={true}
+            />
+          </div>
+        );
+
       default:
         return (
           <div className="space-y-6">
@@ -395,12 +369,12 @@ export default function SimplifiedHome({
               </div>
 
               <div 
-                onClick={() => navigate('/personality-test')}
-                className="bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
+                onClick={() => setActiveSubTab('language')} // ✅ NOUVEAU : Sélection de langue
+                className="bg-gradient-to-br from-cyan-600 to-cyan-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
               >
-                <div className="text-3xl mb-3">🌈</div>
-                <h3 className="text-xl font-bold mb-2">Test 4 Couleurs</h3>
-                <p className="text-white/90 text-sm">Analyse complète de votre personnalité</p>
+                <div className="text-3xl mb-3">🌐</div>
+                <h3 className="text-xl font-bold mb-2">Langues</h3>
+                <p className="text-white/90 text-sm">Sélectionnez votre langue de transcription</p>
               </div>
             </div>
           </div>
@@ -442,6 +416,7 @@ export default function SimplifiedHome({
                   key={activity.id}
                   className={`bg-gradient-to-br ${activity.color} rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg`}
                   onClick={() => {
+                    // Pour l'instant, on redirige vers l'enregistrement avec un message
                     setActiveTab('record');
                     toast.info(`Activité ${activity.name} sélectionnée`);
                   }}
@@ -513,39 +488,38 @@ export default function SimplifiedHome({
     }
   };
 
-  // ✅ Contenu des onglets principaux
+  // ✅ Contenu des onglets principaux avec intégration du sélecteur de langue
   const renderTabContent = () => {
     switch (activeTab) {
       case 'record':
         return (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">🎥 Enregistrer une vidéo</h2>
+              <h2 className="text-2xl font-french font-bold text-white">🎥 Enregistrer une Vidéo</h2>
               <div className="flex gap-2">
                 <Button
-                  onClick={() => setShowLanguageSelector(true)}
+                  onClick={() => setActiveSubTab('language')}
                   variant="outline"
-                  className="flex items-center gap-2 border-blue-400 text-blue-300 hover:bg-blue-900"
+                  className="flex items-center gap-2 border-cyan-500 text-cyan-300 hover:bg-cyan-900"
                 >
-                  🌐 Langue
-                </Button>
-                <Button
-                  onClick={() => setActiveTab('dashboard')}
-                  variant="outline"
-                  className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
-                >
-                  📊 Tableau de bord
+                  🌐 Langue: {selectedLanguage || 'Auto'}
                 </Button>
               </div>
             </div>
-
-            {/* Indicateur de langue sélectionnée */}
-            {renderLanguageIndicator()}
+            
+            {/* ✅ AFFICHAGE DU SÉLECTEUR DE LANGUE DANS L'ENREGISTREMENT */}
+            <div className="card-spotbulle-dark p-6 bg-gray-800 border-gray-700">
+              <LanguageSelector 
+                selectedLanguage={selectedLanguage}
+                onLanguageChange={handleLanguageChange}
+                showAutoDetect={true}
+              />
+            </div>
 
             <RecordVideo 
               user={user}
               onVideoUploaded={handleVideoUploaded}
-              selectedLanguage={selectedLanguage} // Passage de la langue sélectionnée
+              selectedLanguage={selectedLanguage} // ✅ PASSAGE DE LA LANGUE SÉLECTIONNÉE
             />
           </div>
         );
@@ -641,7 +615,7 @@ export default function SimplifiedHome({
           <RecordVideo 
             user={user}
             onVideoUploaded={handleVideoUploaded}
-            selectedLanguage={selectedLanguage}
+            selectedLanguage={selectedLanguage} // ✅ PASSAGE DE LA LANGUE SÉLECTIONNÉE
           />
         );
     }
@@ -714,31 +688,6 @@ export default function SimplifiedHome({
           🎥 Nouvelle Vidéo
         </Button>
       </div>
-
-      {/* ✅ Modal LanguageSelector */}
-      {showLanguageSelector && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-gray-800 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-700">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-white">🌐 Sélection de la langue</h2>
-                <Button
-                  onClick={() => setShowLanguageSelector(false)}
-                  variant="outline"
-                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
-                >
-                  ✕ Fermer
-                </Button>
-              </div>
-              <LanguageSelector 
-                selectedLanguage={selectedLanguage}
-                onLanguageChange={handleLanguageChange}
-                showAutoDetect={true}
-              />
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ✅ Modal Questionnaire */}
       {showQuestionnaire && (
