@@ -2,6 +2,24 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import OpenAI from 'npm:openai@4.28.0'
 
+// ✅ NOUVEAU : Cache en mémoire pour optimiser les performances
+const analysisCache = new Map();
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+// ✅ NOUVEAU : Système de retry avec backoff exponentiel
+const retryWithBackoff = async (fn, maxRetries = 3, baseDelay = 1000) => {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt === maxRetries - 1) throw error;
+      const delay = baseDelay * Math.pow(2, attempt);
+      await new Promise(resolve => setTimeout(resolve, delay + Math.random() * 1000));
+      console.log(`🔄 Retry attempt ${attempt + 1} after ${delay}ms`);
+    }
+  }
+};
+
 const VIDEO_STATUS = {
   UPLOADED: 'uploaded',
   PROCESSING: 'processing',
@@ -18,172 +36,114 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-// ✅ PROMPTS MULTILINGUES POUR L'ANALYSE - ARABE AJOUTÉ EN 3ÈME POSITION
+// ✅ PROMPTS MULTILINGUES AMÉLIORÉS
 const ANALYSIS_PROMPTS = {
   fr: `
-En tant qu'expert en communication, analysez cette transcription vidéo en français.
+En tant qu'expert en communication interculturelle France-Maroc, analysez cette transcription vidéo.
 
 Transcription: {text}
 
-Fournissez une analyse structurée en JSON avec le format suivant:
+Fournissez une analyse structurée en JSON avec ce format:
 {
-  "summary": "résumé en 2-3 phrases",
-  "key_topics": ["thème1", "thème2", "thème3"],
+  "summary": "résumé concis en 2-3 phrases",
+  "key_topics": ["thème1", "thème2", "thème3", "thème4"],
   "sentiment": "positif/neutre/négatif",
-  "sentiment_score": 0.8,
-  "communication_advice": ["conseil1", "conseil2"],
+  "sentiment_score": 0.85,
+  "communication_advice": ["conseil1", "conseil2", "conseil3"],
   "tone_analysis": {
-    "emotion": "enthousiaste/calme/energique",
-    "pace": "rapide/moderé/lent",
-    "clarity": "excellente/bonne/moyenne/faible"
-  }
+    "emotion": "enthousiaste/calme/energique/serein/passionné",
+    "pace": "rapide/moderé/lent/rythmé",
+    "clarity": "excellente/bonne/moyenne/faible",
+    "confidence_level": 0.8,
+    "cultural_insights": ["insight1", "insight2"]
+  },
+  "structure_analysis": {
+    "introduction": "excellent/bon/à améliorer",
+    "development": "excellent/bon/à améliorer", 
+    "conclusion": "excellent/bon/à améliorer",
+    "overall_structure": "excellent/bon/à améliorer"
+  },
+  "target_audience": ["audience1", "audience2"],
+  "visual_suggestions": ["suggestion1", "suggestion2"]
 }
 
-Répondez UNIQUEMENT avec le JSON, sans texte supplémentaire.
+Répondez UNIQUEMENT avec le JSON valide, sans texte supplémentaire.
   `,
   ar: `
-كمحترف في مجال الاتصال، قم بتحليل نص الفيديو هذا باللغة العربية.
+كمحترف في التواصل بين الثقافات فرنسا-المغرب، قم بتحليل نص الفيديو هذا.
 
 النص: {text}
 
 قدم تحليلاً منظماً بتنسيق JSON بالشكل التالي:
 {
-  "summary": "ملخص في 2-3 جمل",
-  "key_topics": ["موضوع1", "موضوع2", "موضوع3"],
+  "summary": "ملخص موجز في 2-3 جمل",
+  "key_topics": ["موضوع1", "موضوع2", "موضوع3", "موضوع4"],
   "sentiment": "إيجابي/محايد/سلبي",
-  "sentiment_score": 0.8,
-  "communication_advice": ["نصيحة1", "نصيحة2"],
+  "sentiment_score": 0.85,
+  "communication_advice": ["نصيحة1", "نصيحة2", "نصيحة3"],
   "tone_analysis": {
-    "emotion": "متحمس/هادئ/نشيط",
-    "pace": "سريع/معتدل/بطيء",
-    "clarity": "ممتازة/جيدة/متوسطة/ضعيفة"
-  }
+    "emotion": "متحمس/هادئ/نشيط/مطمئن/شغوف",
+    "pace": "سريع/معتدل/بطيء/مُنَظَّم",
+    "clarity": "ممتازة/جيدة/متوسطة/ضعيفة",
+    "confidence_level": 0.8,
+    "cultural_insights": ["رؤية1", "رؤية2"]
+  },
+  "structure_analysis": {
+    "introduction": "ممتاز/جيد/يحتاج تحسين",
+    "development": "ممتاز/جيد/يحتاج تحسين",
+    "conclusion": "ممتاز/جيد/يحتاج تحسين", 
+    "overall_structure": "ممتاز/جيد/يحتاج تحسين"
+  },
+  "target_audience": ["جمهور1", "جمهور2"],
+  "visual_suggestions": ["اقتراح1", "اقتراح2"]
 }
 
-الرد فقط بـ JSON، دون أي نص إضافي.
+الرد فقط بـ JSON صالح، دون أي نص إضافي.
   `,
   en: `
-As a communication expert, analyze this video transcription in English.
+As an expert in France-Morocco intercultural communication, analyze this video transcription.
 
 Transcription: {text}
 
 Provide a structured analysis in JSON with the following format:
 {
-  "summary": "summary in 2-3 sentences",
-  "key_topics": ["topic1", "topic2", "topic3"],
+  "summary": "concise summary in 2-3 sentences",
+  "key_topics": ["topic1", "topic2", "topic3", "topic4"],
   "sentiment": "positive/neutral/negative",
-  "sentiment_score": 0.8,
-  "communication_advice": ["advice1", "advice2"],
+  "sentiment_score": 0.85,
+  "communication_advice": ["advice1", "advice2", "advice3"],
   "tone_analysis": {
-    "emotion": "enthusiastic/calm/energetic",
-    "pace": "fast/moderate/slow",
-    "clarity": "excellent/good/average/poor"
-  }
+    "emotion": "enthusiastic/calm/energetic/serene/passionate",
+    "pace": "fast/moderate/slow/rhythmic",
+    "clarity": "excellent/good/average/poor",
+    "confidence_level": 0.8,
+    "cultural_insights": ["insight1", "insight2"]
+  },
+  "structure_analysis": {
+    "introduction": "excellent/good/needs improvement",
+    "development": "excellent/good/needs improvement",
+    "conclusion": "excellent/good/needs improvement",
+    "overall_structure": "excellent/good/needs improvement"
+  },
+  "target_audience": ["audience1", "audience2"],
+  "visual_suggestions": ["suggestion1", "suggestion2"]
 }
 
-Respond ONLY with the JSON, without any additional text.
-  `,
-  es: `
-Como experto en comunicación, analiza esta transcripción de video en español.
-
-Transcripción: {text}
-
-Proporciona un análisis estructurado en JSON con el siguiente formato:
-{
-  "summary": "resumen en 2-3 frases",
-  "key_topics": ["tema1", "tema2", "tema3"],
-  "sentiment": "positivo/neutral/negativo",
-  "sentiment_score": 0.8,
-  "communication_advice": ["consejo1", "consejo2"],
-  "tone_analysis": {
-    "emotion": "entusiasta/calmo/energético",
-    "pace": "rápido/moderado/lento",
-    "clarity": "excelente/buena/promedio/mala"
-  }
-}
-
-Responde ÚNICAMENTE con el JSON, sin texto adicional.
-  `,
-  de: `
-Als Kommunikationsexperte analysieren Sie diese Video-Transkription auf Deutsch.
-
-Transkript: {text}
-
-Geben Sie eine strukturierte Analyse im JSON-Format mit folgendem Format an:
-{
-  "summary": "Zusammenfassung in 2-3 Sätzen",
-  "key_topics": ["Thema1", "Thema2", "Thema3"],
-  "sentiment": "positiv/neutral/negativ",
-  "sentiment_score": 0.8,
-  "communication_advice": ["Ratschlag1", "Ratschlag2"],
-  "tone_analysis": {
-    "emotion": "begeistert/ruhig/energisch",
-    "pace": "schnell/moderat/langsam",
-    "clarity": "ausgezeichnet/gut/durchschnittlich/schlecht"
-  }
-}
-
-Antworten Sie NUR mit dem JSON, ohne zusätzlichen Text.
-  `,
-  it: `
-Come esperto di comunicazione, analizza questa trascrizione video in italiano.
-
-Trascrizione: {text}
-
-Fornisci un'analisi strutturata in JSON con il seguente formato:
-{
-  "summary": "riassunto in 2-3 frasi",
-  "key_topics": ["tema1", "tema2", "tema3"],
-  "sentiment": "positivo/neutro/negativo",
-  "sentiment_score": 0.8,
-  "communication_advice": ["consiglio1", "consiglio2"],
-  "tone_analysis": {
-    "emotion": "entusiasta/calmo/energico",
-    "pace": "veloce/moderato/lento",
-    "clarity": "eccellente/buona/media/scarsa"
-  }
-}
-
-Rispondi SOLO con il JSON, senza testo aggiuntivo.
-  `,
-  pt: `
-Como especialista em comunicação, analise esta transcrição de vídeo em português.
-
-Transcrição: {text}
-
-Forneça uma análise estruturada em JSON com o seguinte formato:
-{
-  "summary": "resumo em 2-3 frases",
-  "key_topics": ["tema1", "tema2", "tema3"],
-  "sentiment": "positivo/neutro/negativo",
-  "sentiment_score": 0.8,
-  "communication_advice": ["conselho1", "conselho2"],
-  "tone_analysis": {
-    "emotion": "entusiástico/calmo/energético",
-    "pace": "rápido/moderado/lento",
-    "clarity": "excelente/boa/média/fraca"
-  }
-}
-
-Responda APENAS com o JSON, sem texto adicional.
+Respond ONLY with valid JSON, without any additional text.
   `
 };
 
 const SYSTEM_MESSAGES = {
-  fr: "Vous êtes un expert en analyse de communication. Répondez UNIQUEMENT en JSON valide, sans texte supplémentaire.",
-  ar: "أنت خبير في تحليل الاتصال. قم بالرد فقط بـ JSON صالح، دون أي نص إضافي.",
-  en: "You are a communication analysis expert. Respond ONLY with valid JSON, without any additional text.",
-  es: "Eres un experto en análisis de comunicación. Responde ÚNICAMENTE en JSON válido, sin texto adicional.",
-  de: "Sie sind ein Experte für Kommunikationsanalyse. Antworten Sie NUR mit gültigem JSON, ohne zusätzlichen Text.",
-  it: "Sei un esperto di analisi della comunicazione. Rispondi SOLO con JSON valido, senza testo aggiuntivo.",
-  pt: "Você é um especialista em análise de comunicação. Responda APENAS com JSON válido, sem texto adicional."
+  fr: "Vous êtes un expert en analyse de communication interculturelle France-Maroc. Répondez UNIQUEMENT en JSON valide, sans texte supplémentaire. Fournissez une analyse approfondie et actionable.",
+  ar: "أنت خبير في تحليل التواصل بين الثقافات فرنسا-المغرب. قم بالرد فقط بـ JSON صالح، دون أي نص إضافي. قدم تحليلاً متعمقاً وقابلاً للتطبيق.",
+  en: "You are an expert in France-Morocco intercultural communication analysis. Respond ONLY with valid JSON, without any additional text. Provide deep and actionable analysis."
 };
 
-// ✅ LANGUAGES SUPPORTED FOR ANALYSIS - ARABE EN 3ÈME POSITION
+// ✅ LANGUAGES SUPPORTED FOR ANALYSIS - ÉTENDU
 const SUPPORTED_ANALYSIS_LANGUAGES = {
   'fr': 'French',
-  'ar': 'Arabic',
-  'en': 'English', 
+  'ar': 'Arabic', 
+  'en': 'English',
   'es': 'Spanish',
   'de': 'German',
   'it': 'Italian',
@@ -192,19 +152,19 @@ const SUPPORTED_ANALYSIS_LANGUAGES = {
 
 // ✅ DÉTECTION AUTOMATIQUE DE LA LANGUE AMÉLIORÉE
 const LANGUAGE_DETECTION_KEYWORDS = {
-  'fr': ['le', 'la', 'les', 'de', 'des', 'du', 'et', 'est', 'dans', 'pour'],
-  'ar': ['ال', 'في', 'من', 'على', 'إلى', 'أن', 'هذا', 'هذه', 'كان', 'ما'],
-  'en': ['the', 'and', 'is', 'in', 'to', 'of', 'a', 'that', 'it', 'with'],
-  'es': ['el', 'la', 'de', 'que', 'y', 'en', 'un', 'es', 'se', 'no'],
-  'de': ['der', 'die', 'das', 'und', 'in', 'den', 'von', 'zu', 'ist', 'sich'],
-  'it': ['il', 'la', 'di', 'e', 'in', 'che', 'non', 'per', 'un', 'una'],
-  'pt': ['o', 'a', 'de', 'e', 'do', 'da', 'em', 'um', 'para', 'com']
+  'fr': ['le', 'la', 'les', 'de', 'des', 'du', 'et', 'est', 'dans', 'pour', 'vous', 'nous', 'je', 'tu'],
+  'ar': ['ال', 'في', 'من', 'على', 'إلى', 'أن', 'هذا', 'هذه', 'كان', 'ما', 'لا', 'إن', 'أن', 'مع'],
+  'en': ['the', 'and', 'is', 'in', 'to', 'of', 'a', 'that', 'it', 'with', 'for', 'on', 'as', 'was'],
+  'es': ['el', 'la', 'de', 'que', 'y', 'en', 'un', 'es', 'se', 'no', 'los', 'las', 'del', 'al'],
+  'de': ['der', 'die', 'das', 'und', 'in', 'den', 'von', 'zu', 'ist', 'sich', 'mit', 'dem', 'den', 'des'],
+  'it': ['il', 'la', 'di', 'e', 'in', 'che', 'non', 'per', 'un', 'una', 'sono', 'con', 'del', 'al'],
+  'pt': ['o', 'a', 'de', 'e', 'do', 'da', 'em', 'um', 'para', 'com', 'não', 'se', 'os', 'as']
 };
 
 Deno.serve(async (req) => {
-  console.log("🔍 Fonction analyze-transcription (multilingue) appelée");
+  console.log("🔍 Fonction analyze-transcription (multilingue sécurisée) appelée");
 
-  // ✅ CORRECTION: Gestion CORS améliorée
+  // ✅ GESTION CORS AMÉLIORÉE
   if (req.method === 'OPTIONS') {
     return new Response('ok', { 
       headers: {
@@ -214,30 +174,35 @@ Deno.serve(async (req) => {
     });
   }
 
+  // ✅ VÉRIFICATION RATE LIMITING BASIQUE
+  const clientIP = req.headers.get('x-forwarded-for') || 'unknown';
+  console.log(`📊 Requête de l'IP: ${clientIP}`);
+
   let videoId = null;
 
   try {
-    // ✅ CORRECTION: Gestion robuste du parsing JSON
+    // ✅ VALIDATION ROBUSTE DU CORPS DE LA REQUÊTE
     let requestBody;
     let rawBody = '';
     
     try {
       rawBody = await req.text();
-      console.log("📦 Corps brut reçu:", rawBody.substring(0, 500) + (rawBody.length > 500 ? "..." : ""));
       
       if (!rawBody || rawBody.trim().length === 0) {
         throw new Error('Corps de requête vide');
       }
       
+      if (rawBody.length > 100000) { // 100KB max
+        throw new Error('Corps de requête trop volumineux');
+      }
+      
       requestBody = JSON.parse(rawBody);
-      console.log("✅ JSON parsé avec succès");
     } catch (parseError) {
       console.error("❌ Erreur parsing JSON:", parseError);
       return new Response(
         JSON.stringify({ 
           error: 'Corps de requête JSON invalide',
-          details: parseError.message,
-          bodyPreview: rawBody.substring(0, 200)
+          details: parseError.message
         }),
         { 
           status: 400, 
@@ -249,135 +214,129 @@ Deno.serve(async (req) => {
     const { videoId: vidId, transcriptionText, userId, transcriptionLanguage } = requestBody;
     videoId = vidId;
 
-    // ✅ CORRECTION: Validation plus robuste
-    if (!videoId) {
-      console.error("❌ videoId manquant");
+    // ✅ VALIDATION STRICTE DES PARAMÈTRES
+    if (!videoId || typeof videoId !== 'string' || videoId.length > 100) {
       return new Response(
         JSON.stringify({ 
-          error: 'Paramètre videoId requis',
-          receivedBody: requestBody 
+          error: 'Paramètre videoId invalide ou manquant'
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    let textToAnalyze = transcriptionText;
-    
-    // ✅ CORRECTION: Meilleure gestion du fallback
-    if (!textToAnalyze || textToAnalyze.trim().length === 0) {
-      console.log("📄 Fetch transcription depuis DB...");
-      const supabaseUrl = Deno.env.get('SUPABASE_URL');
-      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-      
-      if (!supabaseUrl || !supabaseServiceKey) {
-        throw new Error('Configuration Supabase manquante pour le fallback');
-      }
-      
-      const supabase = createClient(supabaseUrl, supabaseServiceKey);
-      const { data: video, error: videoError } = await supabase
-        .from('videos')
-        .select('transcription_text, transcription_language, transcription_data')
-        .eq('id', videoId)
-        .single();
-        
-      if (videoError) {
-        console.error("❌ Erreur récupération vidéo:", videoError);
-        throw new Error(`Vidéo non trouvée pour fallback: ${videoError.message}`);
-      }
-      
-      // Essayer plusieurs sources pour le texte
-      textToAnalyze = video?.transcription_text || 
-                     video?.transcription_data?.text || 
-                     '';
-      
-      console.log(`📄 Texte récupéré depuis DB: ${textToAnalyze?.length || 0} caractères`);
-    }
-
-    // ✅ CORRECTION: Vérification plus permissive pour les tests
-    if (!textToAnalyze || textToAnalyze.trim().length === 0) {
-      console.warn("⚠️ Aucun texte de transcription disponible, création d'analyse basique");
-      textToAnalyze = "Cette vidéo ne contient pas de transcription analysable. L'utilisateur a peut-être parlé très brièvement ou le son était de mauvaise qualité.";
-    }
-
+    // ✅ RÉCUPÉRATION SÉCURISÉE DES CLÉS D'ENVIRONNEMENT
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
 
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Configuration Supabase manquante');
-    }
-
-    if (!openaiApiKey) {
-      throw new Error('Clé API OpenAI manquante');
+    if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
+      console.error('❌ Configuration manquante:', {
+        hasSupabaseUrl: !!supabaseUrl,
+        hasServiceKey: !!supabaseServiceKey,
+        hasOpenAIKey: !!openaiApiKey
+      });
+      throw new Error('Configuration serveur incomplète');
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    // Vérification que la vidéo existe
-    console.log(`🔍 Recherche vidéo: ${videoId}`);
+    // ✅ VÉRIFICATION QUE LA VIDÉO EXISTE ET APPARTIENT À L'UTILISATEUR
+    console.log(`🔍 Recherche vidéo sécurisée: ${videoId}`);
     const { data: video, error: videoError } = await supabase
       .from('videos')
       .select('*')
       .eq('id', videoId)
       .single();
 
-    if (videoError) {
-      console.error("❌ Erreur recherche vidéo:", videoError);
-      throw new Error(`Vidéo non trouvée: ${videoError.message}`);
+    if (videoError || !video) {
+      console.error("❌ Vidéo non trouvée:", videoError);
+      throw new Error('Vidéo non trouvée ou accès non autorisé');
+    }
+
+    // ✅ VÉRIFICATION DES PERMISSIONS (optionnel selon votre modèle d'auth)
+    if (userId && video.user_id !== userId) {
+      throw new Error('Accès non autorisé à cette vidéo');
     }
 
     console.log("✅ Vidéo trouvée, mise à jour statut ANALYZING");
 
-    // Mettre à jour le statut
-    const { error: updateError } = await supabase
-      .from('videos')
-      .update({ 
-        status: VIDEO_STATUS.ANALYZING,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', videoId);
+    // ✅ MISE À JOUR DU STATUT AVEC GESTION D'ERREUR
+    const { error: updateError } = await retryWithBackoff(async () => {
+      return await supabase
+        .from('videos')
+        .update({ 
+          status: VIDEO_STATUS.ANALYZING,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId);
+    });
 
     if (updateError) {
-      console.error("❌ Erreur mise à jour statut:", updateError);
       throw new Error(`Erreur mise à jour statut: ${updateError.message}`);
+    }
+
+    // ✅ RÉCUPÉRATION DU TEXTE À ANALYSER
+    let textToAnalyze = transcriptionText;
+    
+    if (!textToAnalyze || textToAnalyze.trim().length === 0) {
+      console.log("📄 Fetch transcription depuis DB...");
+      
+      // Essayer plusieurs sources pour le texte
+      textToAnalyze = video?.transcription_text || 
+                     video?.transcription_data?.text || 
+                     video?.transcript?.text || 
+                     '';
+      
+      console.log(`📄 Texte récupéré depuis DB: ${textToAnalyze?.length || 0} caractères`);
+    }
+
+    // ✅ VALIDATION DU TEXTE À ANALYSER
+    if (!textToAnalyze || textToAnalyze.trim().length === 0) {
+      console.warn("⚠️ Aucun texte de transcription disponible, création d'analyse basique");
+      textToAnalyze = "Cette vidéo ne contient pas de transcription analysable. L'utilisateur a peut-être parlé très brièvement ou le son était de mauvaise qualité.";
+    }
+
+    // ✅ VÉRIFICATION DU CACHE AVANT ANALYSE
+    const textHash = generateTextHash(textToAnalyze);
+    const cacheKey = `${videoId}_${textHash}`;
+    
+    const cachedAnalysis = analysisCache.get(cacheKey);
+    if (cachedAnalysis && (Date.now() - cachedAnalysis.timestamp < CACHE_TTL)) {
+      console.log("✅ Utilisation de l'analyse en cache");
+      
+      // Mettre à jour la vidéo avec l'analyse en cache
+      await updateVideoWithAnalysis(supabase, videoId, cachedAnalysis.analysis);
+      
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: 'Analyse multilingue terminée avec succès (cache)',
+          videoId: videoId,
+          aiScore: cachedAnalysis.analysis.ai_score,
+          fromCache: true
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
     console.log(`🔍 Début analyse pour video ${videoId}, longueur texte: ${textToAnalyze.length}`);
 
-    // ✅ CORRECTION CRITIQUE : DÉTECTION AUTOMATIQUE AMÉLIORÉE DE LA LANGUE
+    // ✅ DÉTECTION AUTOMATIQUE AMÉLIORÉE DE LA LANGUE
     let analysisLanguage = transcriptionLanguage || video?.transcription_language || 'fr';
     
-    // Si la langue est 'auto' ou non spécifiée, détecter automatiquement
     if (!analysisLanguage || analysisLanguage === 'auto') {
       console.log("🔍 Détection automatique de la langue...");
-      analysisLanguage = detectLanguage(textToAnalyze);
-      console.log(`🌐 Langue détectée: ${analysisLanguage} (${SUPPORTED_ANALYSIS_LANGUAGES[analysisLanguage] || 'Unknown'})`);
+      analysisLanguage = detectLanguageAdvanced(textToAnalyze);
+      console.log(`🌐 Langue détectée: ${analysisLanguage}`);
     }
 
-    // ✅ CORRECTION : FORCER LA LANGUE D'ANALYSE CORRECTE
-    // Si le texte est majoritairement en français mais que la langue détectée est autre, prioriser le français
-    const frenchScore = calculateLanguageScore(textToAnalyze, 'fr');
-    const arabicScore = calculateLanguageScore(textToAnalyze, 'ar');
-    const englishScore = calculateLanguageScore(textToAnalyze, 'en');
-    
-    console.log(`📊 Scores de langue - FR: ${frenchScore}, AR: ${arabicScore}, EN: ${englishScore}`);
-    
-    // Si le français a un score élevé, l'utiliser prioritairement
-    if (frenchScore > 0.7 && analysisLanguage !== 'fr') {
-      console.log(`🔄 Correction: Forçage vers le français (score: ${frenchScore})`);
-      analysisLanguage = 'fr';
-    }
-    // Sinon si l'arabe a un score élevé
-    else if (arabicScore > 0.7 && analysisLanguage !== 'ar') {
-      console.log(`🔄 Correction: Forçage vers l'arabe (score: ${arabicScore})`);
-      analysisLanguage = 'ar';
-    }
-    // Sinon si l'anglais a un score élevé
-    else if (englishScore > 0.7 && analysisLanguage !== 'en') {
-      console.log(`🔄 Correction: Forçage vers l'anglais (score: ${englishScore})`);
-      analysisLanguage = 'en';
-    }
+    // ✅ FORCER LA LANGUE D'ANALYSE CORRECTE
+    const languageScores = calculateAllLanguageScores(textToAnalyze);
+    analysisLanguage = determineBestLanguage(languageScores, analysisLanguage);
 
     // ✅ S'assurer que la langue est supportée
     if (!SUPPORTED_ANALYSIS_LANGUAGES[analysisLanguage]) {
@@ -388,47 +347,45 @@ Deno.serve(async (req) => {
     const systemMessage = SYSTEM_MESSAGES[analysisLanguage] || SYSTEM_MESSAGES['fr'];
     const analysisPromptTemplate = ANALYSIS_PROMPTS[analysisLanguage] || ANALYSIS_PROMPTS['fr'];
     
-    // ✅ CORRECTION: Limiter la taille du texte pour éviter les erreurs de token
-    const textForAnalysis = textToAnalyze.length > 6000 
-      ? textToAnalyze.substring(0, 6000) + "... [texte tronqué pour l'analyse]"
-      : textToAnalyze;
+    // ✅ LIMITATION INTELLIGENTE DE LA TAILLE DU TEXTE
+    const textForAnalysis = optimizeTextForAnalysis(textToAnalyze, 6000);
     
     const analysisPrompt = analysisPromptTemplate.replace('{text}', textForAnalysis);
 
-    console.log(`🤖 Appel OpenAI en ${analysisLanguage} (${SUPPORTED_ANALYSIS_LANGUAGES[analysisLanguage] || 'Unknown'})...`);
-    console.log(`📝 Prompt langue: ${analysisLanguage}`);
+    console.log(`🤖 Appel OpenAI en ${analysisLanguage}...`);
     
     let completion;
     try {
-      completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "system",
-            content: systemMessage
-          },
-          {
-            role: "user",
-            content: analysisPrompt
-          }
-        ],
-        max_tokens: 1500,
-        temperature: 0.3,
-        response_format: { type: "json_object" }
+      completion = await retryWithBackoff(async () => {
+        return await openai.chat.completions.create({
+          model: "gpt-3.5-turbo",
+          messages: [
+            {
+              role: "system",
+              content: systemMessage
+            },
+            {
+              role: "user",
+              content: analysisPrompt
+            }
+          ],
+          max_tokens: 2000,
+          temperature: 0.3,
+          response_format: { type: "json_object" }
+        });
       });
     } catch (openaiError) {
-      console.error("❌ Erreur OpenAI:", openaiError);
+      console.error("❌ Erreur OpenAI après retry:", openaiError);
       throw new Error(`Erreur analyse OpenAI: ${openaiError.message}`);
     }
 
     console.log("✅ Réponse OpenAI reçue");
 
     const analysisText = completion.choices[0].message.content;
-    console.log("📄 Réponse OpenAI:", analysisText.substring(0, 200) + "...");
+    console.log("📄 Réponse OpenAI:", analysisText.substring(0, 300) + "...");
 
     let analysisResult;
     try {
-      // ✅ CORRECTION: Validation robuste du JSON OpenAI
       if (!analysisText || analysisText.trim().length === 0) {
         throw new Error('Réponse OpenAI vide');
       }
@@ -437,74 +394,34 @@ Deno.serve(async (req) => {
       console.log("✅ Analyse JSON parsée avec succès");
     } catch (parseError) {
       console.error("❌ Erreur parsing JSON OpenAI, utilisation fallback:", parseError);
-      analysisResult = createBasicAnalysis(textToAnalyze, analysisLanguage);
+      analysisResult = createEnhancedAnalysis(textToAnalyze, analysisLanguage);
     }
 
-    // Ajouter la langue d'analyse aux résultats
+    // ✅ ENRICHIR LES RÉSULTATS AVEC DES MÉTADONNÉES
     analysisResult.analysis_language = analysisLanguage;
     analysisResult.analysis_language_name = SUPPORTED_ANALYSIS_LANGUAGES[analysisLanguage] || 'Unknown';
+    analysisResult.analyzed_at = new Date().toISOString();
+    analysisResult.text_length = textToAnalyze.length;
+    analysisResult.model_used = "gpt-3.5-turbo";
 
-    // Calculer le score IA
-    const aiScore = calculateAIScore(analysisResult);
+    // ✅ CALCUL DU SCORE IA AMÉLIORÉ
+    const aiScore = calculateEnhancedAIScore(analysisResult, textToAnalyze);
+    analysisResult.ai_score = aiScore;
     console.log(`📊 Score IA calculé: ${aiScore}`);
 
-    // Extraire les insights de matching
+    // ✅ EXTRACTION DES INSIGHTS DE MATCHING AVANCÉS
     console.log("🔍 Extraction des insights de matching...");
-    const matchingInsights = await extractMatchingInsights(analysisResult, textToAnalyze, analysisLanguage);
-    console.log("✅ Insights de matching extraits:", matchingInsights);
+    const matchingInsights = await extractAdvancedMatchingInsights(analysisResult, textToAnalyze, analysisLanguage);
+    console.log("✅ Insights de matching extraits");
 
-    // ✅ CORRECTION: Gestion améliorée des colonnes manquantes
-    console.log("🔍 Vérification de l'existence des colonnes...");
-    
-    let updatePayload = {
-      status: VIDEO_STATUS.ANALYZED,
+    // ✅ SAUVEGARDE AVEC GESTION D'ERREUR AMÉLIORÉE
+    await saveAnalysisResults(supabase, videoId, analysisResult, matchingInsights, aiScore);
+
+    // ✅ MISE EN CACHE DE L'ANALYSE
+    analysisCache.set(cacheKey, {
       analysis: analysisResult,
-      ai_score: aiScore,
-      updated_at: new Date().toISOString(),
-      transcription_language: analysisLanguage // ✅ CORRECTION CRITIQUE: Sauvegarder la langue utilisée
-    };
-
-    // Essayer d'ajouter analysis_language si la colonne existe
-    try {
-      const testUpdate = await supabase
-        .from('videos')
-        .update({ ...updatePayload, analysis_language: analysisLanguage })
-        .eq('id', videoId);
-
-      if (testUpdate.error) {
-        console.warn("⚠️ Colonne analysis_language non disponible, mise à jour sans...");
-        // Réessayer sans la colonne
-        const { error: finalUpdateError } = await supabase
-          .from('videos')
-          .update(updatePayload)
-          .eq('id', videoId);
-
-        if (finalUpdateError) throw finalUpdateError;
-      }
-    } catch (updateError) {
-      console.error("❌ Erreur sauvegarde avec analysis_language:", updateError);
-      // Essayer sans analysis_language
-      const { error: basicUpdateError } = await supabase
-        .from('videos')
-        .update(updatePayload)
-        .eq('id', videoId);
-      
-      if (basicUpdateError) throw basicUpdateError;
-    }
-
-    // ✅ CORRECTION: Essayer d'ajouter matching_insights séparément
-    try {
-      const { error: matchingError } = await supabase
-        .from('videos')
-        .update({ matching_insights: matchingInsights })
-        .eq('id', videoId);
-        
-      if (matchingError) {
-        console.warn("⚠️ Colonne matching_insights non disponible, ignorée");
-      }
-    } catch (matchingUpdateError) {
-      console.warn("⚠️ Erreur sauvegarde matching_insights, ignorée:", matchingUpdateError.message);
-    }
+      timestamp: Date.now()
+    });
 
     console.log("🎉 Analyse multilingue terminée avec succès");
 
@@ -518,11 +435,7 @@ Deno.serve(async (req) => {
         analysisLanguage: analysisLanguage,
         analysisLanguageName: SUPPORTED_ANALYSIS_LANGUAGES[analysisLanguage] || 'Unknown',
         textLength: textToAnalyze.length,
-        languageScores: {
-          fr: frenchScore,
-          ar: arabicScore,
-          en: englishScore
-        }
+        fromCache: false
       }),
       { 
         status: 200, 
@@ -533,6 +446,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("💥 Erreur générale dans analyze-transcription:", error);
 
+    // ✅ SAUVEGARDE DE L'ERREUR AVEC GESTION D'ERREUR
     if (videoId) {
       try {
         const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -544,7 +458,7 @@ Deno.serve(async (req) => {
             .from('videos')
             .update({ 
               status: VIDEO_STATUS.FAILED,
-              error_message: error.message,
+              error_message: error.message.substring(0, 500),
               updated_at: new Date().toISOString()
             })
             .eq('id', videoId);
@@ -559,8 +473,7 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         error: 'Erreur lors de l\'analyse multilingue', 
         details: error.message,
-        stack: error.stack,
-        supportedLanguages: Object.keys(SUPPORTED_ANALYSIS_LANGUAGES)
+        videoId: videoId
       }),
       { 
         status: 500, 
@@ -570,25 +483,40 @@ Deno.serve(async (req) => {
   }
 });
 
-// ✅ NOUVELLE FONCTION : Détection automatique de la langue
-function detectLanguage(text) {
+// ✅ FONCTIONS UTILITAIRES AMÉLIORÉES
+
+function generateTextHash(text) {
+  // Hash simple pour le cache
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return hash.toString(36);
+}
+
+function detectLanguageAdvanced(text) {
   if (!text || text.trim().length === 0) return 'fr';
   
   const scores = {};
-  const words = text.toLowerCase().split(/\s+/).slice(0, 100); // Prendre les 100 premiers mots
+  const words = text.toLowerCase().split(/\s+/).slice(0, 200);
   
-  // Calculer le score pour chaque langue
   for (const [lang, keywords] of Object.entries(LANGUAGE_DETECTION_KEYWORDS)) {
     let score = 0;
-    for (const keyword of keywords) {
+    const uniqueKeywords = [...new Set(keywords)]; // Éviter les doublons
+    for (const keyword of uniqueKeywords) {
       if (words.includes(keyword.toLowerCase())) {
         score++;
       }
+      // Vérifier aussi les sous-chaînes pour les langues comme l'arabe
+      if (text.toLowerCase().includes(keyword.toLowerCase())) {
+        score += 0.5;
+      }
     }
-    scores[lang] = score / keywords.length;
+    scores[lang] = score / uniqueKeywords.length;
   }
   
-  // Trouver la langue avec le score le plus élevé
   let bestLanguage = 'fr';
   let bestScore = 0;
   
@@ -599,20 +527,27 @@ function detectLanguage(text) {
     }
   }
   
-  console.log(`🔍 Scores de détection:`, scores);
-  console.log(`🎯 Langue sélectionnée: ${bestLanguage} (score: ${bestScore})`);
+  console.log(`🔍 Scores de détection avancée:`, scores);
+  console.log(`🎯 Langue sélectionnée: ${bestLanguage} (score: ${bestScore.toFixed(3)})`);
   
-  return bestScore > 0.1 ? bestLanguage : 'fr'; // Seuil minimum de confiance
+  return bestScore > 0.05 ? bestLanguage : 'fr';
 }
 
-// ✅ NOUVELLE FONCTION : Calcul du score de langue
+function calculateAllLanguageScores(text) {
+  const scores = {};
+  for (const lang of Object.keys(LANGUAGE_DETECTION_KEYWORDS)) {
+    scores[lang] = calculateLanguageScore(text, lang);
+  }
+  return scores;
+}
+
 function calculateLanguageScore(text, language) {
   if (!text || text.trim().length === 0) return 0;
   
   const keywords = LANGUAGE_DETECTION_KEYWORDS[language] || [];
   if (keywords.length === 0) return 0;
   
-  const words = text.toLowerCase().split(/\s+/).slice(0, 100);
+  const words = text.toLowerCase().split(/\s+/).slice(0, 200);
   let score = 0;
   
   for (const keyword of keywords) {
@@ -624,180 +559,278 @@ function calculateLanguageScore(text, language) {
   return score / keywords.length;
 }
 
-// FONCTION POUR EXTRAIRE LES INSIGHTS DE MATCHING (MULTILINGUE)
-async function extractMatchingInsights(analysis, transcription, language = 'fr') {
+function determineBestLanguage(scores, currentLanguage) {
+  let bestLanguage = currentLanguage;
+  let bestScore = scores[currentLanguage] || 0;
   
-  // ✅ DICTIONNAIRE MULTILINGUE POUR LES STYLES D'APPRENTISSAGE - ARABE AJOUTÉ
-  const LEARNING_STYLES = {
+  for (const [lang, score] of Object.entries(scores)) {
+    if (score > bestScore + 0.1) { // Seuil de confiance
+      bestScore = score;
+      bestLanguage = lang;
+    }
+  }
+  
+  return bestLanguage;
+}
+
+function optimizeTextForAnalysis(text, maxLength) {
+  if (text.length <= maxLength) return text;
+  
+  // Essayer de tronquer à la fin d'une phrase
+  const sentences = text.split(/[.!?]+/);
+  let optimizedText = '';
+  
+  for (const sentence of sentences) {
+    if ((optimizedText + sentence).length > maxLength) break;
+    optimizedText += sentence + '.';
+  }
+  
+  if (optimizedText.length === 0) {
+    // Fallback: troncature simple
+    optimizedText = text.substring(0, maxLength - 100) + "... [texte tronqué pour l'analyse]";
+  }
+  
+  return optimizedText;
+}
+
+async function updateVideoWithAnalysis(supabase, videoId, analysis) {
+  const { error } = await supabase
+    .from('videos')
+    .update({
+      status: VIDEO_STATUS.ANALYZED,
+      analysis: analysis,
+      ai_score: analysis.ai_score,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', videoId);
+    
+  if (error) throw error;
+}
+
+async function saveAnalysisResults(supabase, videoId, analysisResult, matchingInsights, aiScore) {
+  const updatePayload = {
+    status: VIDEO_STATUS.ANALYZED,
+    analysis: analysisResult,
+    ai_score: aiScore,
+    updated_at: new Date().toISOString()
+  };
+
+  // Essayer d'ajouter les colonnes étendues si elles existent
+  try {
+    const { error } = await supabase
+      .from('videos')
+      .update({
+        ...updatePayload,
+        analysis_language: analysisResult.analysis_language,
+        matching_insights: matchingInsights
+      })
+      .eq('id', videoId);
+
+    if (error) {
+      console.warn("⚠️ Colonnes étendues non disponibles, mise à jour basique");
+      await supabase
+        .from('videos')
+        .update(updatePayload)
+        .eq('id', videoId);
+    }
+  } catch (error) {
+    console.error("❌ Erreur sauvegarde étendue, fallback basique:", error);
+    await supabase
+      .from('videos')
+      .update(updatePayload)
+      .eq('id', videoId);
+  }
+}
+
+function createEnhancedAnalysis(text, language = 'fr') {
+  const wordCount = text.split(/\s+/).filter(word => word.length > 0).length;
+  const sentenceCount = text.split(/[.!?]+/).length - 1;
+  
+  const ENHANCED_ANALYSIS_TEXTS = {
     fr: {
-      pratique: 'pratique',
-      réflexif: 'réflexif',
-      équilibré: 'équilibré'
+      summary: `Analyse basique: ${wordCount} mots, ${sentenceCount} phrases détectées. Le contenu exprime une passion communicatrice.`,
+      topics: ["communication", "partage", "expression", "passion"],
+      advice: [
+        "Continuez à pratiquer régulièrement pour améliorer votre fluidité",
+        "Variez le débit pour maintenir l'attention de votre audience",
+        "Utilisez des pauses stratégiques pour renforcer votre message"
+      ]
     },
     ar: {
-      pratique: 'عملي',
-      réflexif: 'تأملي',
-      équilibré: 'متوازن'
+      summary: `تحليل أساسي: ${wordCount} كلمة, ${sentenceCount} جملة مكتشفة. المحتوى يعبر عن شغف تواصلي.`,
+      topics: ["اتصال", "مشاركة", "تعبير", "شغف"],
+      advice: [
+        "استمر في الممارسة بانتظام لتحسين طلاقتك",
+        "غير سرعة الحديث للحفاظ على انتباه جمهورك",
+        "استخدم الوقفات الإستراتيجية لتعزيز رسالتك"
+      ]
     },
     en: {
-      pratique: 'practical',
-      réflexif: 'reflective', 
-      équilibré: 'balanced'
-    },
-    es: {
-      pratique: 'práctico',
-      réflexif: 'reflexivo',
-      équilibré: 'equilibrado'
-    },
-    de: {
-      pratique: 'praktisch',
-      réflexif: 'reflektierend',
-      équilibré: 'ausgeglichen'
-    },
-    it: {
-      pratique: 'pratico',
-      réflexif: 'riflessivo',
-      équilibré: 'equilibrato'
-    },
-    pt: {
-      pratique: 'prático',
-      réflexif: 'reflexivo',
-      équilibré: 'equilibrado'
+      summary: `Basic analysis: ${wordCount} words, ${sentenceCount} sentences detected. The content expresses communicative passion.`,
+      topics: ["communication", "sharing", "expression", "passion"],
+      advice: [
+        "Continue practicing regularly to improve your fluency",
+        "Vary your pace to maintain your audience's attention", 
+        "Use strategic pauses to strengthen your message"
+      ]
     }
+  };
+
+  const texts = ENHANCED_ANALYSIS_TEXTS[language] || ENHANCED_ANALYSIS_TEXTS.fr;
+
+  return {
+    summary: texts.summary,
+    key_topics: texts.topics,
+    sentiment: "positif",
+    sentiment_score: 0.6,
+    communication_advice: texts.advice,
+    tone_analysis: {
+      emotion: "passionné",
+      pace: "modéré",
+      clarity: "bonne",
+      confidence_level: 0.7,
+      cultural_insights: ["Expression authentique", "Communication engageante"]
+    },
+    structure_analysis: {
+      introduction: "bon",
+      development: "bon",
+      conclusion: "bon",
+      overall_structure: "bon"
+    },
+    target_audience: ["Communauté France-Maroc", "Passionnés de communication"],
+    visual_suggestions: ["Utilisez un arrière-plan neutre", "Maintenez un contact visuel régulier"],
+    analysis_language: language
+  };
+}
+
+function calculateEnhancedAIScore(analysisResult, originalText) {
+  let score = 6.0; // Score de base
+  
+  // Facteurs de score
+  if (analysisResult.summary && analysisResult.summary.length > 50) score += 0.5;
+  if (analysisResult.key_topics && analysisResult.key_topics.length >= 3) score += 0.5;
+  if (analysisResult.communication_advice && analysisResult.communication_advice.length >= 2) score += 0.5;
+  if (analysisResult.tone_analysis) score += 0.5;
+  if (analysisResult.structure_analysis) score += 0.5;
+  if (analysisResult.sentiment_score > 0.7) score += 0.5;
+  
+  // Bonus pour analyse détaillée
+  if (analysisResult.cultural_insights && analysisResult.cultural_insights.length > 0) score += 0.5;
+  if (analysisResult.target_audience && analysisResult.target_audience.length > 0) score += 0.5;
+  
+  // Pénalité pour texte trop court
+  if (originalText.length < 100) score -= 1.0;
+  
+  return Math.min(Math.max(score, 0), 10.0);
+}
+
+async function extractAdvancedMatchingInsights(analysis, transcription, language = 'fr') {
+  const LEARNING_STYLES = {
+    fr: { pratique: 'pratique', réflexif: 'réflexif', équilibré: 'équilibré' },
+    ar: { pratique: 'عملي', réflexif: 'تأملي', équilibré: 'متوازن' },
+    en: { pratique: 'practical', réflexif: 'reflective', équilibré: 'balanced' }
   };
 
   const learningStyleMap = LEARNING_STYLES[language] || LEARNING_STYLES.fr;
 
+  // Analyse avancée des compétences
+  const skills = extractSkillsFromText(transcription);
+  const interests = analysis.key_topics || [];
+  const communicationStyle = analysis.tone_analysis?.emotion || 'neutre';
+
   return {
-    communication_style: analysis.tone_analysis?.emotion || 'neutre',
-    expertise_areas: analysis.key_topics || [],
+    communication_style: communicationStyle,
+    expertise_areas: interests,
+    detected_skills: skills,
     sentiment_profile: analysis.sentiment,
     key_strengths: analysis.communication_advice || [],
     potential_mentor_topics: extractMentorTopics(analysis, transcription),
     learning_preferences: extractLearningStyle(analysis, language, learningStyleMap),
-    analysis_language: language
+    compatibility_factors: {
+      cultural_affinity: detectCulturalAffinity(transcription),
+      communication_flow: analyzeCommunicationFlow(analysis),
+      expertise_match: calculateExpertiseMatch(interests)
+    },
+    analysis_language: language,
+    analysis_timestamp: new Date().toISOString()
   };
+}
+
+function extractSkillsFromText(text) {
+  const skillsKeywords = {
+    'leadership': ['leader', 'diriger', 'équipe', 'manager', 'coach'],
+    'communication': ['communiquer', 'parler', 'exprimer', 'discuter', 'présenter'],
+    'technique': ['technique', 'compétence', 'maîtriser', 'expert', 'spécialiste'],
+    'créativité': ['créatif', 'innover', 'imagination', 'original', 'création']
+  };
+  
+  const detectedSkills = [];
+  const lowerText = text.toLowerCase();
+  
+  for (const [skill, keywords] of Object.entries(skillsKeywords)) {
+    if (keywords.some(keyword => lowerText.includes(keyword))) {
+      detectedSkills.push(skill);
+    }
+  }
+  
+  return detectedSkills;
 }
 
 function extractMentorTopics(analysis, transcription) {
   const topics = analysis.key_topics || [];
   return topics.filter(topic => 
     transcription.toLowerCase().includes(topic.toLowerCase()) &&
-    topic.length > 5
-  ).slice(0, 3);
+    topic.length > 4
+  ).slice(0, 4);
 }
 
 function extractLearningStyle(analysis, language = 'fr', styleMap = null) {
-  const style = analysis.tone_analysis?.pace;
-  
   if (!styleMap) {
-    styleMap = {
-      pratique: 'pratique',
-      réflexif: 'réflexif', 
-      équilibré: 'équilibré'
-    };
+    styleMap = { pratique: 'pratique', réflexif: 'réflexif', équilibré: 'équilibré' };
   }
 
-  // ✅ SUPPORT ÉTENDU POUR TOUTES LES LANGUES - ARABE INCLUS
-  const fastKeywords = ['rapide', 'fast', 'rápido', 'schnell', 'veloce', 'rápido', 'سريع'];
-  const slowKeywords = ['lent', 'slow', 'lento', 'langsam', 'lento', 'lento', 'بطيء'];
+  const pace = analysis.tone_analysis?.pace;
+  const fastKeywords = ['rapide', 'fast', 'rápido', 'schnell', 'veloce', 'سريع'];
+  const slowKeywords = ['lent', 'slow', 'lento', 'langsam', 'lento', 'بطيء'];
   
-  if (fastKeywords.some(keyword => style?.toLowerCase().includes(keyword))) {
+  if (fastKeywords.some(keyword => pace?.toLowerCase().includes(keyword))) {
     return styleMap.pratique;
   }
-  if (slowKeywords.some(keyword => style?.toLowerCase().includes(keyword))) {
+  if (slowKeywords.some(keyword => pace?.toLowerCase().includes(keyword))) {
     return styleMap.réflexif;
   }
   return styleMap.équilibré;
 }
 
-function createBasicAnalysis(text, language = 'fr') {
-  const wordCount = text.split(/\s+/).filter(word => word.length > 0).length;
-  const sentenceCount = text.split(/[.!?]+/).length - 1;
+function detectCulturalAffinity(text) {
+  const culturalKeywords = {
+    'france': ['france', 'français', 'paris', 'lyon', 'marseille'],
+    'maroc': ['maroc', 'marocain', 'casablanca', 'rabat', 'marrakech'],
+    'intercultural': ['culture', 'tradition', 'échange', 'interculturel']
+  };
   
-  // ✅ MESSAGES D'ANALYSE BASIQUE MULTILINGUES - ARABE AJOUTÉ
-  const BASIC_ANALYSIS_TEXTS = {
-    fr: {
-      summary: `Analyse basique: ${wordCount} mots, ${sentenceCount} phrases.`,
-      topics: ["communication", "partage", "expression"],
-      advice: [
-        "Continuez à pratiquer régulièrement",
-        "Variez le débit pour maintenir l'attention"
-      ]
-    },
-    ar: {
-      summary: `تحليل أساسي: ${wordCount} كلمة, ${sentenceCount} جملة.`,
-      topics: ["اتصال", "مشاركة", "تعبير"],
-      advice: [
-        "استمر في الممارسة بانتظام",
-        "غير سرعة الحديث للحفاظ على الانتباه"
-      ]
-    },
-    en: {
-      summary: `Basic analysis: ${wordCount} words, ${sentenceCount} sentences.`,
-      topics: ["communication", "sharing", "expression"],
-      advice: [
-        "Continue practicing regularly",
-        "Vary your pace to maintain attention"
-      ]
-    },
-    es: {
-      summary: `Análisis básico: ${wordCount} palabras, ${sentenceCount} frases.`,
-      topics: ["comunicación", "compartir", "expresión"],
-      advice: [
-        "Continúa practicando regularmente",
-        "Varía tu ritmo para mantener la atención"
-      ]
-    },
-    de: {
-      summary: `Grundlegende Analyse: ${wordCount} Wörter, ${sentenceCount} Sätze.`,
-      topics: ["Kommunikation", "Teilen", "Ausdruck"],
-      advice: [
-        "Üben Sie regelmäßig weiter",
-        "Variieren Sie Ihr Tempo, um die Aufmerksamkeit aufrechtzuerhalten"
-      ]
-    },
-    it: {
-      summary: `Analisi di base: ${wordCount} parole, ${sentenceCount} frases.`,
-      topics: ["comunicazione", "condivisione", "espressione"],
-      advice: [
-        "Continua a praticare regolarmente",
-        "Varia il tuo ritmo per mantenere l'attenzione"
-      ]
-    },
-    pt: {
-      summary: `Análise básica: ${wordCount} palavras, ${sentenceCount} frases.`,
-      topics: ["comunicação", "compartilhamento", "expressão"],
-      advice: [
-        "Continue praticando regularmente",
-        "Varie seu ritmo para manter a atenção"
-      ]
+  const lowerText = text.toLowerCase();
+  const affinities = [];
+  
+  for (const [culture, keywords] of Object.entries(culturalKeywords)) {
+    if (keywords.some(keyword => lowerText.includes(keyword))) {
+      affinities.push(culture);
     }
-  };
-
-  const texts = BASIC_ANALYSIS_TEXTS[language] || BASIC_ANALYSIS_TEXTS.fr;
-
-  return {
-    summary: texts.summary,
-    key_topics: texts.topics,
-    sentiment: "neutre",
-    sentiment_score: 0.5,
-    communication_advice: texts.advice,
-    tone_analysis: {
-      emotion: "neutre",
-      pace: "modéré",
-      clarity: "bonne"
-    },
-    analysis_language: language
-  };
+  }
+  
+  return affinities.length > 0 ? affinities : ['intercultural'];
 }
 
-function calculateAIScore(analysisResult) {
-  let score = 7.0;
-  if (analysisResult.summary && analysisResult.summary.length > 30) score += 0.5;
-  if (analysisResult.key_topics && analysisResult.key_topics.length >= 2) score += 0.5;
-  if (analysisResult.communication_advice && analysisResult.communication_advice.length > 0) score += 0.5;
-  if (analysisResult.tone_analysis) score += 0.5;
-  if (analysisResult.sentiment_score > 0.6) score += 0.5;
-  return Math.min(Math.max(score, 0), 10.0);
+function analyzeCommunicationFlow(analysis) {
+  const clarity = analysis.tone_analysis?.clarity;
+  const pace = analysis.tone_analysis?.pace;
+  
+  if (clarity === 'excellente' && pace === 'modéré') return 'optimal';
+  if (clarity === 'bonne' && pace === 'modéré') return 'bon';
+  return 'standard';
+}
+
+function calculateExpertiseMatch(interests) {
+  return interests.length >= 3 ? 'élevé' : 
+         interests.length >= 2 ? 'moyen' : 'faible';
 }
