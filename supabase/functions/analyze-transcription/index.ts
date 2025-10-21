@@ -758,7 +758,7 @@ function createBasicAnalysis(text, language = 'fr') {
       ]
     },
     it: {
-      summary: `Analisi di base: ${wordCount} parole, ${sentenceCount} frasi.`,
+      summary: `Analisi di base: ${wordCount} parole, ${sentenceCount} frases.`,
       topics: ["comunicazione", "condivisione", "espressione"],
       advice: [
         "Continua a praticare regolarmente",
