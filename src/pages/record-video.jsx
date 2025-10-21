@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button-enhanced.jsx';
 import { supabase, refreshSession } from '../lib/supabase';
-import { videoCompressor } from '../lib/video-compressor';
 
 // Valeurs exactes autorisées pour le statut dans la base de données
 const VIDEO_STATUS = {
@@ -118,7 +117,6 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
   const [user, setUser] = useState(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [compressionProgress, setCompressionProgress] = useState(null);
 
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -414,26 +412,6 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
     setToneAnalysis(mockToneAnalysis);
   };
 
-  // ✅ NOUVELLE FONCTION : Compression vidéo avant upload
-  const compressVideo = async (videoBlob) => {
-    try {
-      setCompressionProgress('Compression en cours...');
-      console.log('📦 Début compression vidéo...');
-      
-      const result = await videoCompressor.quickCompress(videoBlob);
-      
-      console.log(`✅ Compression réussie: ${result.reduction}% de réduction`);
-      setCompressionProgress(null);
-      
-      return result.blob;
-    } catch (error) {
-      console.error('❌ Erreur compression:', error);
-      setCompressionProgress(null);
-      toast.warning('Échec de la compression, upload de la vidéo originale');
-      return videoBlob; // Retourner l'original en cas d'erreur
-    }
-  };
-
   // ✅ Uploader la vidéo avec gestion robuste du chemin de stockage
   const uploadVideo = async () => {
     if (!recordedVideo) {
@@ -452,14 +430,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       setUploading(true);
       setError(null);
       
-      // 1. Compression de la vidéo
-      let finalBlob = recordedVideo.blob;
-      if (recordedVideo.blob.size > 10 * 1024 * 1024) { // > 10MB
-        toast.info('Compression de la vidéo...');
-        finalBlob = await compressVideo(recordedVideo.blob);
-      }
-
-      // 2. Upload du fichier vers Supabase Storage
+      // 1. Upload du fichier vers Supabase Storage
       const fileName = `video-${Date.now()}.${recordedVideo.format === 'mp4' ? 'mp4' : 'webm'}`;
       const filePath = `${user.id}/${fileName}`;
       console.log('📤 Upload du fichier vers:', filePath);
@@ -470,14 +441,14 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       
       const { error: uploadError } = await supabase.storage
         .from('videos')
-        .upload(filePath, finalBlob);
+        .upload(filePath, recordedVideo.blob);
         
       if (uploadError) {
         throw new Error(`Erreur upload storage: ${uploadError.message}`);
       }
       console.log('✅ Fichier uploadé avec succès');
       
-      // 3. Récupérer l'URL publique COMPLÈTE
+      // 2. Récupérer l'URL publique COMPLÈTE
       const { data: urlData } = supabase.storage
         .from('videos')
         .getPublicUrl(filePath);
@@ -488,7 +459,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
         description: description || 'Vidéo enregistrée depuis la caméra',
         file_path: filePath,
         storage_path: filePath,
-        file_size: finalBlob.size,
+        file_size: recordedVideo.blob.size,
         duration: Math.round(recordingTime),
         user_id: user.id,
         status: VIDEO_STATUS.UPLOADED,
@@ -504,7 +475,7 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
       
       console.log('📝 Données à insérer:', videoInsertData);
       
-      // 4. Insérer la vidéo avec TOUS les champs requis
+      // 3. Insérer la vidéo avec TOUS les champs requis
       const { data: videoData, error: videoError } = await supabase
         .from('videos')
         .insert(videoInsertData)
@@ -665,16 +636,6 @@ const RecordVideo = ({ onVideoUploaded = () => {} }) => {
                 </div>
               )}
             </div>
-
-            {/* Progression de compression */}
-            {compressionProgress && (
-              <div className="bg-blue-900/30 border border-blue-600 rounded-lg p-3">
-                <div className="flex items-center gap-3">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
-                  <span className="text-blue-300 text-sm">{compressionProgress}</span>
-                </div>
-              </div>
-            )}
           </div>
           
           {/* Paramètres et analyse */}
