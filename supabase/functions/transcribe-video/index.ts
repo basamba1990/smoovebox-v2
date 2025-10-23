@@ -1,4 +1,3 @@
-// supabase/functions/transcribe-video/index.ts
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import OpenAI from 'npm:openai@4.28.0'
 
@@ -18,24 +17,37 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS' 
 }
 
-// ✅ SUPPORT MULTILINGUE ÉTENDU - CORRIGÉ
+// ✅ SUPPORT MULTILINGUE ÉTENDU
 const SUPPORTED_LANGUAGES = {
-  'fr': { name: 'French', whisperCode: 'fr' },
-  'en': { name: 'English', whisperCode: 'en' },
-  'es': { name: 'Spanish', whisperCode: 'es' },
-  'de': { name: 'German', whisperCode: 'de' },
-  'it': { name: 'Italian', whisperCode: 'it' },
-  'pt': { name: 'Portuguese', whisperCode: 'pt' },
-  'ru': { name: 'Russian', whisperCode: 'ru' },
-  'zh': { name: 'Chinese', whisperCode: 'zh' },
-  'ja': { name: 'Japanese', whisperCode: 'ja' },
-  'ar': { name: 'Arabic', whisperCode: 'ar' }
+  'fr': 'French',
+  'en': 'English',
+  'es': 'Spanish',
+  'de': 'German',
+  'it': 'Italian',
+  'pt': 'Portuguese',
+  'ru': 'Russian',
+  'zh': 'Chinese',
+  'ja': 'Japanese',
+  'ko': 'Korean',
+  'ar': 'Arabic',
+  'hi': 'Hindi',
+  'tr': 'Turkish',
+  'nl': 'Dutch',
+  'pl': 'Polish',
+  'sv': 'Swedish',
+  'da': 'Danish',
+  'no': 'Norwegian',
+  'fi': 'Finnish',
+  'el': 'Greek',
+  'he': 'Hebrew',
+  'th': 'Thai',
+  'vi': 'Vietnamese'
 };
 
-// ✅ WHISPER LANGUAGE MAPPING CORRECT
+// ✅ DÉTECTION AUTOMATIQUE DE LANGUE AVEC WHISPER
 const WHISPER_LANGUAGE_MAPPING = {
   'fr': 'french',
-  'en': 'english', 
+  'en': 'english',
   'es': 'spanish',
   'de': 'german',
   'it': 'italian',
@@ -43,13 +55,26 @@ const WHISPER_LANGUAGE_MAPPING = {
   'ru': 'russian',
   'zh': 'chinese',
   'ja': 'japanese',
-  'ar': 'arabic'
+  'ko': 'korean',
+  'ar': 'arabic',
+  'hi': 'hindi',
+  'tr': 'turkish',
+  'nl': 'dutch',
+  'pl': 'polish',
+  'sv': 'swedish',
+  'da': 'danish',
+  'no': 'norwegian',
+  'fi': 'finnish',
+  'el': 'greek',
+  'he': 'hebrew',
+  'th': 'thai',
+  'vi': 'vietnamese'
 };
 
 Deno.serve(async (req) => {
-  console.log("🎤 transcribe-video (multilingue corrigée) appelée");
+  console.log("🎤 transcribe-video (multilingue) appelée");
 
-  // ✅ GESTION CORS CORRECTE
+  // ✅ CORRECTION: Gestion CORS améliorée avec OPTIONS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { 
       headers: {
@@ -59,7 +84,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  // ✅ VÉRIFICATION MÉTHODE POST
+  // ✅ CORRECTION: Vérifier que c'est bien une méthode POST
   if (req.method !== 'POST') {
     return new Response(
       JSON.stringify({ error: 'Méthode non autorisée' }),
@@ -75,7 +100,7 @@ Deno.serve(async (req) => {
   try {
     console.log("📨 Headers:", Object.fromEntries(req.headers));
     
-    // ✅ CORRECTION CRITIQUE: Gestion ROBUSTE du parsing JSON
+    // ✅ CORRECTION: Gestion ROBUSTE du parsing JSON
     let requestBody;
     let rawBody = '';
     
@@ -88,11 +113,7 @@ Deno.serve(async (req) => {
       }
       
       requestBody = JSON.parse(rawBody);
-      console.log("✅ JSON parsé avec succès:", { 
-        videoId: requestBody.videoId,
-        userId: requestBody.userId,
-        hasVideoUrl: !!requestBody.videoUrl 
-      });
+      console.log("✅ JSON parsé avec succès");
     } catch (parseError) {
       console.error("❌ Erreur parsing JSON:", parseError);
       return new Response(
@@ -107,7 +128,7 @@ Deno.serve(async (req) => {
         }
       );
     }
-
+    
     const { videoId: vidId, userId, videoUrl, preferredLanguage, autoDetectLanguage = true } = requestBody;
     videoId = vidId;
 
@@ -116,281 +137,257 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           error: 'Paramètres manquants: videoId, userId, videoUrl requis',
-          received: { 
-            videoId: videoId, 
-            userId: userId, 
-            videoUrl: videoUrl ? 'présent' : 'manquant' 
-          }
+          received: { videoId, userId, videoUrl: videoUrl ? 'présent' : 'manquant' }
         }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // ✅ VALIDATION URL CORRECTE
+    // ✅ CORRECTION: Vérifier que l'URL est accessible
     try {
       new URL(videoUrl);
     } catch (urlError) {
       return new Response(
         JSON.stringify({ error: `URL vidéo invalide: ${videoUrl}. Erreur: ${urlError.message}` }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // ✅ RÉCUPÉRATION SÉCURISÉE DES CLÉS
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
 
     if (!supabaseUrl || !supabaseServiceKey) {
-      console.error('❌ Configuration Supabase manquante');
       return new Response(
         JSON.stringify({ error: 'Configuration Supabase manquante' }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
     if (!openaiApiKey) {
-      console.error('❌ Clé API OpenAI manquante');
       return new Response(
         JSON.stringify({ error: 'Clé API OpenAI manquante' }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    // ✅ VÉRIFICATION QUE LA VIDÉO EXISTE ET APPARTIENT À L'UTILISATEUR
-    console.log("🔍 Vérification vidéo:", videoId);
-    const { data: video, error: videoError } = await supabase
-      .from('videos')
-      .select('*')
-      .eq('id', videoId)
-      .single();
-
-    if (videoError || !video) {
-      console.error('❌ Vidéo non trouvée:', videoError);
-      return new Response(
-        JSON.stringify({ error: 'Vidéo non trouvée ou accès non autorisé' }),
-        { 
-          status: 404, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    // ✅ VÉRIFICATION DES PERMISSIONS
-    if (video.user_id !== userId) {
-      console.error('❌ Accès non autorisé:', { videoUserId: video.user_id, requestUserId: userId });
-      return new Response(
-        JSON.stringify({ error: 'Accès non autorisé à cette vidéo' }),
-        { 
-          status: 403, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
+    // ✅ MISE À JOUR AVEC INFORMATIONS DE LANGUE
     console.log("🔄 Mise à jour statut PROCESSING");
-
-    // ✅ MISE À JOUR STATUT - GESTION DE FALLBACK
-    let statusUpdatePayload: any = {
+    
+    // ✅ CORRECTION: Gestion des colonnes manquantes dès le début
+    let statusUpdatePayload = {
       status: VIDEO_STATUS.PROCESSING,
       updated_at: new Date().toISOString()
     };
 
     try {
       // Essayer avec transcription_language
-      const { error: updateError } = await supabase
+      const statusUpdate = await supabase
         .from('videos')
-        .update({
-          ...statusUpdatePayload,
-          transcription_language: preferredLanguage || 'auto'
+        .update({ 
+          ...statusUpdatePayload, 
+          transcription_language: preferredLanguage || 'auto' 
         })
         .eq('id', videoId);
 
-      if (updateError) {
+      if (statusUpdate.error) {
         console.warn("⚠️ Colonne transcription_language non disponible, mise à jour sans...");
         // Réessayer sans la colonne
         const { error: fallbackError } = await supabase
           .from('videos')
           .update(statusUpdatePayload)
           .eq('id', videoId);
-        
+
         if (fallbackError) throw fallbackError;
       }
     } catch (updateError) {
       console.error("❌ Erreur mise à jour statut:", updateError);
       return new Response(
         JSON.stringify({ error: `Erreur mise à jour statut: ${updateError.message}` }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     console.log('🎙️ Début transcription multilingue pour la vidéo:', videoId);
     console.log("🌐 Paramètres langue:", { preferredLanguage, autoDetectLanguage });
 
-    // ✅ TÉLÉCHARGEMENT SÉCURISÉ AVEC TIMEOUT
+    // ✅ TÉLÉCHARGEMENT AVEC GESTION D'ERREUR AMÉLIORÉE
     console.log("📥 Téléchargement vidéo...");
+    
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 45000); // 45s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
     
     let videoResponse;
     try {
       videoResponse = await fetch(videoUrl, {
         signal: controller.signal,
         headers: {
-          'User-Agent': 'SpotBulle-Multilingual-Transcription/2.0',
-          'Range': 'bytes=0-10485760' // Limiter à 10MB pour la transcription
+          'User-Agent': 'SpotBulle-Multilingual-Transcription/2.0'
         }
       });
       clearTimeout(timeoutId);
     } catch (fetchError) {
       clearTimeout(timeoutId);
       if (fetchError.name === 'AbortError') {
-        throw new Error('Timeout lors du téléchargement de la vidéo');
+        return new Response(
+          JSON.stringify({ error: 'Timeout lors du téléchargement de la vidéo' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
-      throw new Error(`Erreur réseau: ${fetchError.message}`);
+      return new Response(
+        JSON.stringify({ error: `Erreur réseau: ${fetchError.message}` }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
     
     if (!videoResponse.ok) {
-      const errorText = await videoResponse.text().catch(() => 'Impossible de lire la réponse');
-      throw new Error(`Erreur téléchargement vidéo: ${videoResponse.status} ${videoResponse.statusText}`);
+      const errorText = await videoResponse.text();
+      return new Response(
+        JSON.stringify({ 
+          error: `Erreur téléchargement vidéo: ${videoResponse.status} ${videoResponse.statusText}`,
+          details: errorText.substring(0, 200)
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const videoBlob = await videoResponse.blob();
     console.log(`📊 Taille vidéo téléchargée: ${videoBlob.size} bytes`);
 
     if (videoBlob.size === 0) {
-      throw new Error('Fichier vidéo vide ou inaccessible');
+      return new Response(
+        JSON.stringify({ error: 'Fichier vidéo vide ou inaccessible' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    if (videoBlob.size > 25 * 1024 * 1024) {
-      throw new Error('Fichier vidéo trop volumineux pour la transcription (>25MB)');
-    }
-
-    // ✅ CONFIGURATION WHISPER CORRECTE
-    const whisperConfig: any = {
+    // ✅ CONFIGURATION WHISPER MULTILINGUE
+    const whisperConfig = {
       file: new File([videoBlob], `video-${videoId}.mp4`, { 
         type: 'video/mp4' 
       }),
       model: 'whisper-1',
-      response_format: 'verbose_json',
-      temperature: 0.0,
+      response_format: 'verbose_json'
     };
 
-    // ✅ GESTION LANGUE CORRECTE
+    // ✅ AJOUT DU PARAMÈTRE LANGUE SI SPÉCIFIÉ
     if (preferredLanguage && WHISPER_LANGUAGE_MAPPING[preferredLanguage]) {
       whisperConfig.language = WHISPER_LANGUAGE_MAPPING[preferredLanguage];
-      console.log(`🎯 Transcription en langue spécifiée: ${SUPPORTED_LANGUAGES[preferredLanguage]?.name}`);
+      console.log(`🎯 Transcription en langue spécifiée: ${SUPPORTED_LANGUAGES[preferredLanguage]}`);
     } else if (!autoDetectLanguage) {
-      whisperConfig.language = 'french';
-      console.log("🔍 Détection auto désactivée, utilisation du français par défaut");
+      whisperConfig.language = 'english';
+      console.log("🔍 Détection auto désactivée, utilisation de l'anglais par défaut");
     } else {
       console.log("🌐 Détection automatique de la langue activée");
     }
 
-    // ✅ TRANSCRIPTION AVEC GESTION D'ERREUR
+    // ✅ TRANSCRIPTION AVEC WHISPER - GESTION D'ERREUR AMÉLIORÉE
     console.log("🤖 Appel Whisper multilingue...");
     let transcriptionResponse;
     try {
       transcriptionResponse = await openai.audio.transcriptions.create(whisperConfig);
     } catch (openaiError) {
       console.error('❌ Erreur OpenAI Whisper:', openaiError);
-      
-      // Tentative de fallback sans langue spécifiée
-      if (whisperConfig.language) {
-        console.log("🔄 Tentative de fallback sans langue spécifiée...");
-        delete whisperConfig.language;
-        transcriptionResponse = await openai.audio.transcriptions.create(whisperConfig);
-      } else {
-        throw new Error(`Erreur transcription OpenAI: ${openaiError.message}`);
-      }
+      return new Response(
+        JSON.stringify({ 
+          error: `Erreur transcription OpenAI: ${openaiError.message}`,
+          type: 'openai_error'
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    const transcriptionText = transcriptionResponse.text?.trim();
+    const transcriptionText = transcriptionResponse.text;
     const detectedLanguage = transcriptionResponse.language || preferredLanguage || 'fr';
     
-    // ✅ VALIDATION TRANSCRIPTION
-    if (!transcriptionText || transcriptionText.length === 0) {
-      throw new Error('La transcription est vide - aucun texte détecté dans la vidéo');
+    // ✅ CORRECTION: Vérifier que la transcription n'est pas vide
+    if (!transcriptionText || transcriptionText.trim().length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'La transcription est vide - aucun texte détecté dans la vidéo' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
-
+    
     console.log(`✅ Transcription réussie - Langue: ${detectedLanguage}, Longueur: ${transcriptionText.length}`);
 
-    // ✅ PRÉPARATION DONNÉES TRANSCRIPTION
     const transcriptionData = {
       text: transcriptionText,
       language: detectedLanguage,
-      language_name: SUPPORTED_LANGUAGES[detectedLanguage]?.name || 'Unknown',
+      language_name: SUPPORTED_LANGUAGES[detectedLanguage] || 'Unknown',
       duration: transcriptionResponse.duration,
       words: transcriptionResponse.words || [],
-      segments: transcriptionResponse.segments || [],
-      confidence: transcriptionResponse.confidence || calculateConfidence(transcriptionText),
-      detected_automatically: !preferredLanguage && autoDetectLanguage,
-      model: 'whisper-1',
-      processed_at: new Date().toISOString()
+      confidence: transcriptionResponse.confidence || 0.8,
+      detected_automatically: !preferredLanguage && autoDetectLanguage
     };
 
-    // ✅ SAUVEGARDE RÉSULTATS AVEC FALLBACK
+    // ✅ SAUVEGARDE AVEC INFORMATIONS LANGUE - GESTION DE FALLBACK AMÉLIORÉE
     console.log("💾 Sauvegarde transcription multilingue...");
-    const updatePayload: any = {
+    
+    let updatePayload = {
       status: VIDEO_STATUS.TRANSCRIBED,
       transcription_text: transcriptionText,
       transcription_data: transcriptionData,
       updated_at: new Date().toISOString()
     };
 
+    // Essayer d'ajouter transcription_language si la colonne existe
     try {
-      const { error } = await supabase
+      const testUpdate = await supabase
         .from('videos')
-        .update({
-          ...updatePayload,
-          transcription_language: detectedLanguage
-        })
+        .update({ ...updatePayload, transcription_language: detectedLanguage })
         .eq('id', videoId);
 
-      if (error) {
+      if (testUpdate.error) {
         console.warn("⚠️ Colonne transcription_language non disponible, sauvegarde sans...");
-        await supabase
+        // Réessayer sans la colonne language
+        const { error: fallbackError } = await supabase
           .from('videos')
           .update(updatePayload)
           .eq('id', videoId);
+
+        if (fallbackError) {
+          throw new Error(`Erreur mise à jour transcription: ${fallbackError.message}`);
+        }
       }
     } catch (updateError) {
       console.error("❌ Erreur sauvegarde transcription:", updateError);
-      throw new Error(`Erreur sauvegarde: ${updateError.message}`);
+      return new Response(
+        JSON.stringify({ error: `Erreur sauvegarde: ${updateError.message}` }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // ✅ DÉCLENCHEMENT ANALYSE SÉCURISÉ
+    // ✅ DÉCLENCHEMENT ANALYSE MULTILINGUE - GESTION D'ERREUR AMÉLIORÉE
     console.log("🚀 Déclenchement analyse multilingue...");
     try {
-      const { data, error } = await supabase.functions.invoke('analyze-transcription', {
-        body: {
-          videoId,
-          transcriptionText: transcriptionText,
-          userId,
-          transcriptionLanguage: detectedLanguage
-        }
+      const analyzeBody = {
+        videoId,
+        transcriptionText: transcriptionText,
+        userId,
+        transcriptionLanguage: detectedLanguage
+      };
+
+      console.log("📤 Données envoyées à l'analyse:", {
+        videoId,
+        transcriptionLength: transcriptionText.length,
+        userId,
+        transcriptionLanguage: detectedLanguage
       });
 
-      if (error) {
-        console.warn('⚠️ Erreur déclenchement analyse:', error);
+      const analyzeResponse = await fetch(`${supabaseUrl}/functions/v1/analyze-transcription`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(analyzeBody)
+      });
+
+      if (!analyzeResponse.ok) {
+        const errorText = await analyzeResponse.text();
+        console.warn('⚠️ Erreur déclenchement analyse:', errorText);
       } else {
         console.log('✅ Analyse multilingue déclenchée avec succès');
       }
@@ -404,8 +401,8 @@ Deno.serve(async (req) => {
         message: 'Transcription multilingue terminée avec succès',
         transcriptionLength: transcriptionText.length,
         language: detectedLanguage,
-        languageName: SUPPORTED_LANGUAGES[detectedLanguage]?.name || 'Inconnue',
-        confidence: transcriptionData.confidence
+        languageName: SUPPORTED_LANGUAGES[detectedLanguage] || 'Inconnue',
+        hasTranscriptionText: !!transcriptionText
       }),
       { 
         status: 200, 
@@ -416,7 +413,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('❌ Erreur transcription multilingue:', error);
 
-    // ✅ SAUVEGARDE ERREUR
+    // Mettre à jour le statut d'erreur si videoId est disponible
     if (videoId) {
       try {
         const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -428,7 +425,7 @@ Deno.serve(async (req) => {
             .from('videos')
             .update({ 
               status: VIDEO_STATUS.FAILED,
-              error_message: error.message.substring(0, 500),
+              error_message: error.message.substring(0, 255), // Limiter la longueur
               updated_at: new Date().toISOString()
             })
             .eq('id', videoId);
@@ -443,7 +440,7 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         error: 'Erreur lors de la transcription multilingue', 
         details: error.message,
-        videoId: videoId
+        supportedLanguages: Object.keys(SUPPORTED_LANGUAGES)
       }),
       { 
         status: 500, 
@@ -452,23 +449,3 @@ Deno.serve(async (req) => {
     )
   }
 })
-
-// ✅ FONCTION UTILITAIRE POUR CALCULER LA CONFIANCE
-function calculateConfidence(text: string): number {
-  if (!text || text.length === 0) return 0;
-  
-  let confidence = 0.5;
-  
-  if (text.length > 100) confidence += 0.2;
-  if (text.length > 500) confidence += 0.1;
-  
-  const sentenceCount = (text.match(/[.!?]+/g) || []).length;
-  if (sentenceCount > 3) confidence += 0.1;
-  
-  const words = text.split(/\s+/).filter(word => word.length > 0);
-  const uniqueWords = new Set(words.map(word => word.toLowerCase()));
-  const diversity = uniqueWords.size / words.length;
-  confidence += diversity * 0.1;
-  
-  return Math.min(Math.max(confidence, 0.1), 0.95);
-}
