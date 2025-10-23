@@ -59,22 +59,117 @@ const parseRequestBody = async (req) => {
   }
 };
 
-// ✅ PROMPTS MULTILINGUES (garder votre code existant)
+// ✅ PROMPTS MULTILINGUES
 const ANALYSIS_PROMPTS = {
-  fr: `...`,
-  ar: `...`, 
-  en: `...`
+  fr: `Analyse le texte de transcription suivant et fournis une analyse détaillée en français au format JSON avec cette structure :
+
+{
+  "summary": "Résumé concis du contenu (150-200 mots)",
+  "key_topics": ["liste", "de", "thèmes", "principaux"],
+  "sentiment": "positif/négatif/neutre",
+  "sentiment_score": 0.85,
+  "communication_advice": [
+    "Conseil 1 pour améliorer la communication",
+    "Conseil 2 pour renforcer l'impact"
+  ],
+  "tone_analysis": {
+    "emotion": "émotion dominante",
+    "pace": "rythme (rapide/lent/moderé)",
+    "clarity": "clarté (excellente/bonne/moyenne/faible)",
+    "confidence_level": 0.75,
+    "cultural_insights": ["insight culturel 1", "insight culturel 2"]
+  },
+  "structure_analysis": {
+    "introduction": "qualité introduction",
+    "development": "qualité développement", 
+    "conclusion": "qualité conclusion",
+    "overall_structure": "évaluation structure globale"
+  },
+  "target_audience": ["audience cible 1", "audience cible 2"],
+  "visual_suggestions": ["suggestion visuelle 1", "suggestion visuelle 2"]
+}
+
+Texte à analyser :
+{text}
+
+IMPORTANT : Réponds UNIQUEMENT en JSON valide, sans texte supplémentaire.`,
+
+  ar: `حلل نص النسخ التالي وقدم تحليلاً مفصلاً بالعربية بتنسيق JSON مع هذه البنية:
+
+{
+  "summary": "ملخص موجز للمحتوى (150-200 كلمة)",
+  "key_topics": ["قائمة", "المواضيع", "الرئيسية"],
+  "sentiment": "إيجابي/سلبي/محايد", 
+  "sentiment_score": 0.85,
+  "communication_advice": [
+    "نصيحة 1 لتحسين التواصل",
+    "نصيحة 2 لتعزيز التأثير"
+  ],
+  "tone_analysis": {
+    "emotion": "العاطفة المسيطرة",
+    "pace": "السرعة (سريع/بطيء/معتدل)",
+    "clarity": "الوضوح (ممتاز/جيد/متوسط/ضعيف)",
+    "confidence_level": 0.75,
+    "cultural_insights": ["رؤية ثقافية 1", "رؤية ثقافية 2"]
+  },
+  "structure_analysis": {
+    "introduction": "جودة المقدمة",
+    "development": "جودة العرض",
+    "conclusion": "جودة الخاتمة",
+    "overall_structure": "تقييم الهيكل العام"
+  },
+  "target_audience": ["الجمهور المستهدف 1", "الجمهور المستهدف 2"],
+  "visual_suggestions": ["اقتراح بصري 1", "اقتراح بصري 2"]
+}
+
+النص المراد تحليله:
+{text}
+
+هام: أجب فقط بتنسيق JSON صالح، بدون نص إضافي.`,
+
+  en: `Analyze the following transcription text and provide a detailed analysis in English in JSON format with this structure:
+
+{
+  "summary": "Concise content summary (150-200 words)", 
+  "key_topics": ["list", "of", "main", "themes"],
+  "sentiment": "positive/negative/neutral",
+  "sentiment_score": 0.85,
+  "communication_advice": [
+    "Advice 1 to improve communication",
+    "Advice 2 to strengthen impact"  
+  ],
+  "tone_analysis": {
+    "emotion": "dominant emotion",
+    "pace": "pace (fast/slow/moderate)",
+    "clarity": "clarity (excellent/good/average/poor)",
+    "confidence_level": 0.75,
+    "cultural_insights": ["cultural insight 1", "cultural insight 2"]
+  },
+  "structure_analysis": {
+    "introduction": "introduction quality",
+    "development": "development quality",
+    "conclusion": "conclusion quality", 
+    "overall_structure": "overall structure assessment"
+  },
+  "target_audience": ["target audience 1", "target audience 2"],
+  "visual_suggestions": ["visual suggestion 1", "visual suggestion 2"]
+}
+
+Text to analyze:
+{text}
+
+IMPORTANT: Respond ONLY in valid JSON, without additional text.`
 };
 
 const SYSTEM_MESSAGES = {
-  fr: "...",
-  ar: "...",
-  en: "..."
+  fr: "Tu es un expert en analyse de communication et d'expression orale. Tu analyses des transcriptions vidéo pour fournir des insights précieux sur le contenu, le ton, la structure et l'impact. Tes analyses sont objectives, constructives et précises.",
+  ar: "أنت خبير في تحليل التواصل والتعبير الشفهي. تقوم بتحليل نصوص الفيديو لتقديم رؤى قيمة حول المحتوى والنبرة والهيكل والتأثير. تحليلاتك موضوعية وبناءة ودقيقة.",
+  en: "You are an expert in communication and oral expression analysis. You analyze video transcripts to provide valuable insights about content, tone, structure and impact. Your analyses are objective, constructive and accurate."
 };
 
 const SUPPORTED_ANALYSIS_LANGUAGES = {
   'fr': 'French',
-  'ar': 'Arabic',
+  'ar': 'Arabic', 
   'en': 'English',
   'es': 'Spanish',
   'de': 'German',
@@ -123,6 +218,27 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // ✅ AJOUT : Validation des paramètres reçus
+    console.log("🔍 Validation des paramètres reçus:", {
+      videoId: videoId,
+      transcriptionTextLength: transcriptionText?.length,
+      userId: userId,
+      transcriptionLanguage: transcriptionLanguage
+    });
+
+    // ✅ VALIDATION RENFORCÉE DU TEXTE
+    if (!transcriptionText || transcriptionText.trim().length === 0) {
+      throw new Error('Le texte de transcription est vide ou manquant');
+    }
+
+    if (transcriptionText.trim().length < 10) {
+      throw new Error('Le texte de transcription est trop court pour l\'analyse (minimum 10 caractères)');
+    }
+
+    // ✅ NETTOYAGE DU TEXTE
+    const cleanTranscriptionText = transcriptionText.trim().substring(0, 10000); // Limite de sécurité
+    console.log(`📝 Texte nettoyé: ${cleanTranscriptionText.length} caractères`);
 
     // ✅ RÉCUPÉRATION SÉCURISÉE DES CLÉS D'ENVIRONNEMENT
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -176,8 +292,8 @@ Deno.serve(async (req) => {
       throw new Error(`Erreur mise à jour statut: ${updateError.message}`);
     }
 
-    // ✅ RÉCUPÉRATION DU TEXTE À ANALYSER (garder votre code existant)
-    let textToAnalyze = transcriptionText;
+    // ✅ RÉCUPÉRATION DU TEXTE À ANALYSER
+    let textToAnalyze = cleanTranscriptionText;
     
     if (!textToAnalyze || textToAnalyze.trim().length === 0) {
       console.log("📄 Fetch transcription depuis DB...");
@@ -188,9 +304,6 @@ Deno.serve(async (req) => {
       
       console.log(`📄 Texte récupéré depuis DB: ${textToAnalyze?.length || 0} caractères`);
     }
-
-    // ✅ Le reste de votre code reste inchangé...
-    // [Garder tout le code existant à partir d'ici...]
 
     if (!textToAnalyze || textToAnalyze.trim().length === 0) {
       console.warn("⚠️ Aucun texte de transcription disponible, création d'analyse basique");
