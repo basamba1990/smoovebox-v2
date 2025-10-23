@@ -40,9 +40,6 @@ const SUPPORTED_LANGUAGES = {
   'ja': { name: 'Japanese', whisperCode: 'japanese', priority: 10 }
 };
 
-// ✅ NOUVEAU : Détection automatique améliorée
-const LANGUAGE_DETECTION_THRESHOLD = 0.1;
-
 Deno.serve(async (req) => {
   console.log("🎤 transcribe-video (sécurisée et optimisée) appelée");
 
