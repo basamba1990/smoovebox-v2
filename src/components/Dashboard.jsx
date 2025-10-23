@@ -10,6 +10,8 @@ import {
   CheckCircle, Clock, Play, BarChart3, Eye, Download, 
   Search, Filter, X 
 } from 'lucide-react';
+import VideoUploader from './VideoUploader';
+import VideoAnalysisResults from './VideoAnalysisResults';
 
 // ✅ REINTRODUCTION : Composant de filtrage de l'ancienne version
 const VideoFilter = ({ videos, onFilterChange }) => {
@@ -228,6 +230,25 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
     setFilteredVideos(videos);
   }, [videos]);
 
+  // ✅ Journalisation améliorée pour le débogage
+  useEffect(() => {
+    console.log('🔄 Dashboard monté/rafraîchi', {
+      user: user?.id,
+      videosCount: videos.length,
+      filteredCount: filteredVideos.length,
+      refreshKey: refreshKey
+    });
+  }, [user, videos.length, filteredVideos.length, refreshKey]);
+
+  // ✅ Journalisation des changements de statut
+  useEffect(() => {
+    videos.forEach(video => {
+      if (video.status === 'analyzing' || video.status === 'processing') {
+        console.log(`📊 Vidéo en traitement: ${video.id} - ${video.status} - ${video.title}`);
+      }
+    });
+  }, [videos]);
+
   // ✅ Fonction fetchVideos optimisée
   const fetchVideos = async () => {
     if (!user) return;
@@ -413,11 +434,12 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
     }
   };
 
-  // ✅ Fonction startAnalysis avec gestion robuste
+  // ✅ CORRECTION : Fonction startAnalysis avec gestion robuste améliorée
   const startAnalysis = async (videoId, transcriptionText, userId) => {
     try {
       setAnalyzing(true);
       
+      // ✅ Mise à jour immédiate du statut
       setVideos(prev => prev.map(video => 
         video.id === videoId 
           ? { ...video, status: 'analyzing' }
@@ -427,36 +449,56 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
       console.log('🟡 Début analyse IA pour video:', videoId);
       console.log('📝 Texte de transcription:', transcriptionText?.length, 'caractères');
 
+      // ✅ VALIDATION RENFORCÉE
       if (!transcriptionText?.trim()) {
-        throw new Error('Texte de transcription manquant ou vide');
+        throw new Error('Texte de transcription manquant ou vide pour l\'analyse');
       }
 
+      if (transcriptionText.trim().length < 10) {
+        throw new Error('Texte de transcription trop court (minimum 10 caractères)');
+      }
+
+      // ✅ APPEL SÉCURISÉ
       const { data, error } = await supabase.functions.invoke('analyze-transcription', {
         body: { 
           videoId: videoId,
-          transcriptionText: transcriptionText,
+          transcriptionText: transcriptionText.trim(),
           userId: userId
         }
       });
 
       if (error) {
         console.error('❌ Erreur fonction Edge:', error);
-        throw new Error(`Erreur fonction Edge: ${error.message}`);
+        throw new Error(`Erreur lors de l'analyse: ${error.message}`);
       }
 
-      console.log('✅ Analyse IA lancée:', data);
+      console.log('✅ Analyse IA lancée avec succès:', data);
       
+      // ✅ RE-CHARGEMENT OPTIMISÉ
       setTimeout(() => {
         fetchVideos();
-      }, 5000);
+      }, 3000);
 
     } catch (err) {
       console.error('❌ Erreur startAnalysis:', err);
-      setError(`Erreur analyse IA: ${err.message}`);
       
+      // ✅ MESSAGE D'ERREUR UTILE
+      let errorMessage = `Erreur analyse IA: ${err.message}`;
+      
+      if (err.message.includes('transcription manquant')) {
+        errorMessage = 'Erreur: Aucun texte de transcription disponible. Veuillez d\'abord transcrire la vidéo.';
+      } else if (err.message.includes('trop court')) {
+        errorMessage = 'Erreur: Le texte de transcription est trop court pour l\'analyse.';
+      } else if (err.message.includes('Configuration serveur')) {
+        errorMessage = 'Erreur: Problème de configuration serveur. Veuillez réessayer.';
+      }
+      
+      setError(errorMessage);
+      
+      // ✅ RÉINITIALISATION DU STATUT
       setVideos(prev => prev.map(video => 
         video.id === videoId 
-          ? { ...video, status: 'error' }
+          ? { ...video, status: 'transcribed' } // Retour au statut précédent
           : video
       ));
     } finally {
@@ -562,13 +604,16 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
     }
   };
 
-  // ✅ handleVideoAction avec gestion d'erreur améliorée
+  // ✅ CORRECTION : handleVideoAction avec gestion d'erreur améliorée
   const handleVideoAction = async (video, action) => {
     try {
+      console.log(`🎯 Action demandée: ${action} pour video:`, video.id);
+      
       switch (action) {
         case 'play':
           await playVideo(video);
           break;
+          
         case 'view':
           const url = await getVideoUrl(video);
           if (url) {
@@ -577,24 +622,52 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
             setError('Impossible d\'ouvrir la vidéo. URL non disponible.');
           }
           break;
+          
         case 'transcribe':
+          if (video.status === 'processing') {
+            setError('Transcription déjà en cours...');
+            return;
+          }
           await startTranscription(video.id);
           break;
+          
         case 'analyze':
+          // ✅ VALIDATION AMÉLIORÉE
           const transcriptionText = video.transcription_text || 
                                   video.transcription_data?.text || 
                                   video.transcript?.text || '';
+          
+          console.log('🔍 Vérification transcription:', {
+            hasTranscriptionText: !!video.transcription_text,
+            hasTranscriptionData: !!video.transcription_data,
+            hasTranscript: !!video.transcript,
+            textLength: transcriptionText.length
+          });
+
           if (!transcriptionText.trim()) {
             setError('Aucune transcription disponible pour l\'analyse. Transcrivez d\'abord la vidéo.');
             return;
           }
+
+          if (transcriptionText.trim().length < 10) {
+            setError('La transcription est trop courte pour l\'analyse (minimum 10 caractères).');
+            return;
+          }
+
+          if (video.status === 'analyzing') {
+            setError('Analyse déjà en cours...');
+            return;
+          }
+
           await startAnalysis(video.id, transcriptionText, user.id);
           break;
+          
         case 'view-analysis':
           setSelectedVideoForAnalysis(video);
           break;
+          
         default:
-          break;
+          console.warn('Action non reconnue:', action);
       }
     } catch (err) {
       console.error(`❌ Erreur action ${action}:`, err);
@@ -909,6 +982,38 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
         </div>
       </div>
 
+      {/* ✅ CORRECTION : Affichage des erreurs amélioré */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-900/30 border border-red-700 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-red-400" />
+              <div>
+                <h4 className="font-semibold text-red-300">Erreur</h4>
+                <p className="text-red-200 text-sm mt-1">{error}</p>
+              </div>
+            </div>
+            <Button 
+              onClick={() => setError(null)} 
+              variant="outline" 
+              size="sm"
+              className="border-red-600 text-red-300 hover:bg-red-800"
+            >
+              ×
+            </Button>
+          </div>
+          
+          {/* ✅ SUGGESTIONS AUTOMATIQUES */}
+          {error.includes('transcription') && (
+            <div className="mt-3 p-3 bg-red-800/20 rounded border border-red-600/50">
+              <p className="text-red-200 text-sm">
+                <strong>Solution :</strong> Assurez-vous que la vidéo a été transcrite avec succès avant l'analyse.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       {renderDashboardStats()}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -925,7 +1030,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
         </TabsContent>
 
         <TabsContent value="upload">
-          {/* IMPORTANT: Assurez-vous que VideoUploader est importé */}
           <VideoUploader 
             onUploadComplete={() => {
               fetchVideos();
@@ -1011,7 +1115,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
               </Button>
             </div>
             <div className="p-4">
-              {/* IMPORTANT: Assurez-vous que VideoAnalysisResults est importé */}
               <VideoAnalysisResults video={selectedVideoForAnalysis} />
             </div>
           </div>
