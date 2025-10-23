@@ -1,4 +1,4 @@
-// ✅ VERSION STABLE - Dashboard basé sur l'ancienne version fonctionnelle
+// ✅ VERSION CORRIGÉE - Dashboard avec gestion robuste de l'analyse
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -8,12 +8,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { 
   Upload, FileText, Video, RefreshCw, Trash2, AlertCircle, 
   CheckCircle, Clock, Play, BarChart3, Eye, Download, 
-  Search, Filter, X 
+  Search, Filter, X, Sparkles, Volume2
 } from 'lucide-react';
 import VideoUploader from './VideoUploader';
 import VideoAnalysisResults from './VideoAnalysisResults';
 
-// ✅ REINTRODUCTION : Composant de filtrage de l'ancienne version
+// ✅ Composant de filtrage amélioré
 const VideoFilter = ({ videos, onFilterChange }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState([]);
@@ -202,7 +202,7 @@ const VideoFilter = ({ videos, onFilterChange }) => {
   );
 };
 
-// ✅ COMPOSANT PRINCIPAL - Version stable basée sur l'ancien code
+// ✅ COMPOSANT PRINCIPAL - Version corrigée
 const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
   const { user } = useAuth();
   const [videos, setVideos] = useState([]);
@@ -228,25 +228,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
   // ✅ Mise à jour des vidéos filtrées quand les vidéos changent
   useEffect(() => {
     setFilteredVideos(videos);
-  }, [videos]);
-
-  // ✅ Journalisation améliorée pour le débogage
-  useEffect(() => {
-    console.log('🔄 Dashboard monté/rafraîchi', {
-      user: user?.id,
-      videosCount: videos.length,
-      filteredCount: filteredVideos.length,
-      refreshKey: refreshKey
-    });
-  }, [user, videos.length, filteredVideos.length, refreshKey]);
-
-  // ✅ Journalisation des changements de statut
-  useEffect(() => {
-    videos.forEach(video => {
-      if (video.status === 'analyzing' || video.status === 'processing') {
-        console.log(`📊 Vidéo en traitement: ${video.id} - ${video.status} - ${video.title}`);
-      }
-    });
   }, [videos]);
 
   // ✅ Fonction fetchVideos optimisée
@@ -458,7 +439,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
         throw new Error('Texte de transcription trop court (minimum 10 caractères)');
       }
 
-      // ✅ APPEL SÉCURISÉ
+      // ✅ APPEL SÉCURISÉ - SEULEMENT analyze-transcription (plus analyze-tone)
       const { data, error } = await supabase.functions.invoke('analyze-transcription', {
         body: { 
           videoId: videoId,
@@ -811,7 +792,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
                                   video.transcript?.text || '';
 
           return (
-            <Card key={video.id} className="hover:shadow-md transition-shadow">
+            <Card key={video.id} className="hover:shadow-md transition-shadow border-l-4 border-l-blue-500">
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
@@ -867,7 +848,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
                     {video.tags.map((tag, index) => (
                       <span 
                         key={index}
-                        className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                        className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200"
                       >
                         {tag}
                       </span>
@@ -883,7 +864,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
                       Transcription
                     </h4>
                     {hasTranscription ? (
-                      <div className="text-sm bg-gray-50 rounded p-3 max-h-32 overflow-y-auto">
+                      <div className="text-sm bg-gray-50 rounded p-3 max-h-32 overflow-y-auto border">
                         {transcriptionText.substring(0, 200)}...
                       </div>
                     ) : (
@@ -915,9 +896,25 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
                     </h4>
                     {hasAnalysis ? (
                       <div className="space-y-2">
-                        <div className="text-sm bg-gray-50 rounded p-3 max-h-24 overflow-y-auto">
+                        <div className="text-sm bg-gray-50 rounded p-3 max-h-24 overflow-y-auto border">
                           {video.analysis?.summary || video.ai_result?.insights || 'Analyse disponible'}
                         </div>
+                        
+                        {/* ✅ NOUVEAU : Affichage de l'analyse de tonalité */}
+                        {video.analysis?.tone_analysis && (
+                          <div className="text-xs bg-blue-50 rounded p-2 border border-blue-200">
+                            <div className="font-medium text-blue-800 mb-1 flex items-center gap-1">
+                              <Volume2 className="h-3 w-3" />
+                              Ton: {video.analysis.tone_analysis.emotion}
+                            </div>
+                            <div className="text-blue-600 text-xs">
+                              Débit: {video.analysis.tone_analysis.pace} • 
+                              Énergie: {video.analysis.tone_analysis.energy} • 
+                              Clarté: {video.analysis.tone_analysis.clarity}
+                            </div>
+                          </div>
+                        )}
+                        
                         <div className="flex gap-2">
                           <Button 
                             size="sm" 
@@ -1101,9 +1098,10 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
       {/* Modal d'analyse détaillée */}
       {selectedVideoForAnalysis && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-4 border-b flex justify-between items-center">
-              <h3 className="text-lg font-semibold">
+          <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b flex justify-between items-center bg-gradient-to-r from-gray-50 to-gray-100">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
                 Analyse IA détaillée - {selectedVideoForAnalysis.title || 'Sans titre'}
               </h3>
               <Button 
