@@ -49,6 +49,7 @@ export default function SimplifiedHome({
   const [activeImmersionTab, setActiveImmersionTab] = useState('parcours');
   // ✅ NOUVEL ÉTAT : Langue sélectionnée
   const [selectedLanguage, setSelectedLanguage] = useState(null);
+  const [appError, setAppError] = useState(null);
 
   const supabase = useSupabaseClient();
 
@@ -76,6 +77,7 @@ export default function SimplifiedHome({
         setUserStats(stats);
       } catch (err) {
         console.error('❌ Erreur chargement stats:', err);
+        setAppError(`Erreur chargement statistiques: ${err.message}`);
       }
     };
 
@@ -107,9 +109,10 @@ export default function SimplifiedHome({
     }
   };
 
-  // ✅ Gestionnaire de changement de langue
+  // ✅ CORRECTION : Gestionnaire de changement de langue amélioré
   const handleLanguageChange = (languageCode) => {
     setSelectedLanguage(languageCode);
+    console.log('🌐 Langue sélectionnée pour transcription:', languageCode);
     toast.success(`Langue sélectionnée: ${languageCode || 'Détection automatique'}`);
   };
 
@@ -488,7 +491,7 @@ export default function SimplifiedHome({
     }
   };
 
-  // ✅ Contenu des onglets principaux avec intégration du sélecteur de langue
+  // ✅ CORRECTION : Contenu des onglets principaux avec intégration du sélecteur de langue amélioré
   const renderTabContent = () => {
     switch (activeTab) {
       case 'record':
@@ -507,19 +510,27 @@ export default function SimplifiedHome({
               </div>
             </div>
             
-            {/* ✅ AFFICHAGE DU SÉLECTEUR DE LANGUE DANS L'ENREGISTREMENT */}
+            {/* ✅ CORRECTION : S'assurer que LanguageSelector est bien configuré */}
             <div className="card-spotbulle-dark p-6 bg-gray-800 border-gray-700">
               <LanguageSelector 
                 selectedLanguage={selectedLanguage}
-                onLanguageChange={handleLanguageChange}
+                onLanguageChange={(lang) => {
+                  setSelectedLanguage(lang);
+                  console.log('🌐 Langue sélectionnée pour transcription:', lang);
+                }}
                 showAutoDetect={true}
+                compact={false}
               />
             </div>
 
             <RecordVideo 
               user={user}
               onVideoUploaded={handleVideoUploaded}
-              selectedLanguage={selectedLanguage} // ✅ PASSAGE DE LA LANGUE SÉLECTIONNÉE
+              selectedLanguage={selectedLanguage} // ✅ BIEN PASSÉ
+              onError={(error) => {
+                console.error('❌ Erreur RecordVideo:', error);
+                setAppError(`Erreur enregistrement: ${error.message}`);
+              }}
             />
           </div>
         );
@@ -644,6 +655,29 @@ export default function SimplifiedHome({
           </p>
         </div>
 
+        {/* ✅ Affichage des erreurs globales */}
+        {(appError || error) && (
+          <div className="mb-6 p-4 bg-red-900/30 border border-red-700 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="h-5 w-5 text-red-400" />
+                <div>
+                  <h4 className="font-semibold text-red-300">Erreur</h4>
+                  <p className="text-red-200 text-sm mt-1">{appError || error}</p>
+                </div>
+              </div>
+              <Button 
+                onClick={() => { setAppError(null); }}
+                variant="outline" 
+                size="sm"
+                className="border-red-600 text-red-300 hover:bg-red-800"
+              >
+                ×
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* ✅ Navigation par actions rapides */}
         {renderQuickActions()}
 
@@ -715,20 +749,8 @@ export default function SimplifiedHome({
       )}
 
       {/* Footer */}
-      <footer className="mt-12 py-6 border-t border-gray-700/50 bg-gradient-to-r from-gray-800 to-gray-900">
-        <div className="container mx-auto px-4 text-center">
-          <div className="flex justify-center items-center gap-4 mb-4">
-            <div className="w-8 h-8 bg-blue-600 rounded-full shadow-lg"></div>
-            <div className="w-8 h-8 bg-gray-700 border border-gray-600 rounded-full shadow-lg"></div>
-            <div className="w-8 h-8 bg-purple-600 rounded-full shadow-lg"></div>
-          </div>
-          <p className="text-gray-300 text-sm font-medium">
-            <span className="gradient-text-dark font-french">SpotBulle Express</span> - Simple • Rapide • Efficace
-          </p>
-          <p className="text-gray-400 text-xs mt-2">
-            Navigation simplifiée pour une expérience optimale
-          </p>
-        </div>
+      <footer className="mt-12 py-6 border-t border-gray-800 text-center text-gray-400">
+        <p>© 2024 SpotBulle - Tous droits réservés</p>
       </footer>
     </div>
   );
