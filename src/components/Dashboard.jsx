@@ -1,4 +1,4 @@
-// ✅ VERSION CORRIGÉE - Dashboard avec gestion robuste de l'analyse
+// ✅ VERSION COMPLÈTE CORRIGÉE - Dashboard avec gestion robuste
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -202,7 +202,7 @@ const VideoFilter = ({ videos, onFilterChange }) => {
   );
 };
 
-// ✅ COMPOSANT PRINCIPAL - Version corrigée
+// ✅ COMPOSANT PRINCIPAL - Version complètement corrigée
 const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
   const { user } = useAuth();
   const [videos, setVideos] = useState([]);
@@ -229,6 +229,16 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
   useEffect(() => {
     setFilteredVideos(videos);
   }, [videos]);
+
+  // ✅ Journalisation améliorée pour le débogage
+  useEffect(() => {
+    console.log('🔄 Dashboard monté/rafraîchi', {
+      user: user?.id,
+      videosCount: videos.length,
+      filteredCount: filteredVideos.length,
+      refreshKey: refreshKey
+    });
+  }, [user, videos.length, filteredVideos.length, refreshKey]);
 
   // ✅ Fonction fetchVideos optimisée
   const fetchVideos = async () => {
