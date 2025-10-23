@@ -1,4 +1,4 @@
-// ✅ VERSION COMPLÈTE CORRIGÉE - Dashboard avec gestion robuste
+// ✅ VERSION FINALE CORRIGÉE - Dashboard avec gestion d'erreurs complète
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -202,7 +202,7 @@ const VideoFilter = ({ videos, onFilterChange }) => {
   );
 };
 
-// ✅ COMPOSANT PRINCIPAL - Version complètement corrigée
+// ✅ COMPOSANT PRINCIPAL - Version finale corrigée
 const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
   const { user } = useAuth();
   const [videos, setVideos] = useState([]);
@@ -230,17 +230,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
     setFilteredVideos(videos);
   }, [videos]);
 
-  // ✅ Journalisation améliorée pour le débogage
-  useEffect(() => {
-    console.log('🔄 Dashboard monté/rafraîchi', {
-      user: user?.id,
-      videosCount: videos.length,
-      filteredCount: filteredVideos.length,
-      refreshKey: refreshKey
-    });
-  }, [user, videos.length, filteredVideos.length, refreshKey]);
-
-  // ✅ Fonction fetchVideos optimisée
+  // ✅ Fonction fetchVideos optimisée avec gestion d'erreurs robuste
   const fetchVideos = async () => {
     if (!user) return;
 
@@ -389,24 +379,42 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
     }
   };
 
+  // ✅ CORRECTION : Fonction startTranscription avec validation robuste
   const startTranscription = async (videoId) => {
     try {
       setTranscribing(true);
       
+      // Vérifier que la vidéo existe
+      const video = videos.find(v => v.id === videoId);
+      if (!video) {
+        throw new Error('Vidéo non trouvée');
+      }
+
       setVideos(prev => prev.map(video => 
         video.id === videoId 
           ? { ...video, status: 'processing', transcription_status: 'processing' }
           : video
       ));
 
+      console.log('🎙️ Lancement transcription pour video:', videoId);
+
+      // ✅ APPEL SÉCURISÉ avec timeout
       const { data, error } = await supabase.functions.invoke('transcribe-video', {
-        body: { videoId }
+        body: { 
+          videoId: videoId,
+          userId: user.id,
+          videoUrl: video.public_url || video.storage_path
+        }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erreur fonction Edge:', error);
+        throw new Error(`Erreur lors de la transcription: ${error.message}`);
+      }
 
       console.log('✅ Transcription lancée:', data);
       
+      // ✅ RE-CHARGEMENT OPTIMISÉ
       setTimeout(() => {
         fetchVideos();
       }, 5000);
@@ -449,7 +457,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
         throw new Error('Texte de transcription trop court (minimum 10 caractères)');
       }
 
-      // ✅ APPEL SÉCURISÉ - SEULEMENT analyze-transcription (plus analyze-tone)
+      // ✅ APPEL SÉCURISÉ - SEULEMENT analyze-transcription
       const { data, error } = await supabase.functions.invoke('analyze-transcription', {
         body: { 
           videoId: videoId,
