@@ -1,4 +1,3 @@
-// ✅ VERSION FINALE CORRIGÉE - Dashboard avec gestion d'erreurs complète
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -19,7 +18,6 @@ const VideoFilter = ({ videos, onFilterChange }) => {
   const [selectedTags, setSelectedTags] = useState([]);
   const [statusFilter, setStatusFilter] = useState('all');
 
-  // Extraire tous les tags uniques des vidéos
   const allTags = useMemo(() => {
     const tags = new Set();
     videos.forEach(video => {
@@ -39,22 +37,18 @@ const VideoFilter = ({ videos, onFilterChange }) => {
     return Array.from(tags).sort();
   }, [videos]);
 
-  // Filtrer les vidéos
   const filteredVideos = useMemo(() => {
     return videos.filter(video => {
-      // Filtre par recherche texte
       const matchesSearch = !searchTerm || 
         video.title?.toLowerCase().includes(searchTerm.toLowerCase()) || 
         video.description?.toLowerCase().includes(searchTerm.toLowerCase()) || 
         video.transcription_text?.toLowerCase().includes(searchTerm.toLowerCase());
 
-      // Filtre par tags
       const matchesTags = selectedTags.length === 0 || 
         (video.tags && selectedTags.some(tag => 
           video.tags.map(t => t.toLowerCase().trim()).includes(tag)
         ));
 
-      // Filtre par statut
       const matchesStatus = statusFilter === 'all' || 
         video.status === statusFilter || 
         (statusFilter === 'transcribed' && (video.transcription_data || video.transcript || video.transcription_text)) || 
@@ -128,7 +122,7 @@ const VideoFilter = ({ videos, onFilterChange }) => {
         )}
       </div>
 
-      {/* Filtre par tags avec sélection multiple améliorée */}
+      {/* Filtre par tags */}
       <div className="space-y-2">
         <label className="block text-sm font-medium text-gray-300">
           🏷️ Mots-clés
@@ -188,7 +182,6 @@ const VideoFilter = ({ videos, onFilterChange }) => {
           )}
         </div>
 
-        {/* Statistiques de filtrage */}
         <div className="text-sm text-gray-400">
           {filteredVideos.length} vidéo(s) sur {videos.length}
           {hasActiveFilters && (
@@ -202,7 +195,7 @@ const VideoFilter = ({ videos, onFilterChange }) => {
   );
 };
 
-// ✅ COMPOSANT PRINCIPAL - Version finale corrigée
+// ✅ COMPOSANT PRINCIPAL CORRIGÉ
 const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
   const { user } = useAuth();
   const [videos, setVideos] = useState([]);
@@ -217,7 +210,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
   const [selectedVideoForAnalysis, setSelectedVideoForAnalysis] = useState(null);
   const [videoPlayerUrl, setVideoPlayerUrl] = useState(null);
 
-  // ✅ Rechargement amélioré avec dépendances complètes
+  // ✅ Rechargement amélioré
   useEffect(() => {
     console.log('🔄 Dashboard: refreshKey changé, rechargement des vidéos...', refreshKey);
     if (user) {
@@ -225,19 +218,17 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
     }
   }, [user, refreshKey, onVideoUploaded]);
 
-  // ✅ Mise à jour des vidéos filtrées quand les vidéos changent
   useEffect(() => {
     setFilteredVideos(videos);
   }, [videos]);
 
-  // ✅ Fonction fetchVideos optimisée avec gestion d'erreurs robuste
+  // ✅ Fonction fetchVideos optimisée
   const fetchVideos = async () => {
     if (!user) return;
 
     try {
       setLoading(true);
       setError(null);
-      console.log('📥 Récupération des vidéos pour user:', user?.id);
 
       const { data, error } = await supabase
         .from('videos')
@@ -253,11 +244,9 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('❌ Erreur Supabase:', error);
         throw error;
       }
 
-      console.log(`✅ ${data?.length || 0} vidéos trouvées`);
       setVideos(data || []);
 
     } catch (err) {
@@ -268,48 +257,42 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
     }
   };
 
-  // ✅ Fonction getVideoUrl améliorée avec gestion robuste
+  // ✅ Fonction getVideoUrl améliorée
   const getVideoUrl = async (video) => {
     if (!video) return null;
 
     try {
       // ✅ PRIORITÉ 1: URL publique directe
       if (video.public_url) {
-        console.log('✅ Utilisation URL publique:', video.public_url);
         return video.public_url;
       }
 
-      // ✅ PRIORITÉ 2: storage_path (NON NULL) avant file_path
+      // ✅ PRIORITÉ 2: storage_path
       const path = video.storage_path || video.file_path;
       if (!path) {
         console.error('❌ Aucun chemin de stockage disponible pour la vidéo:', video.id);
         return null;
       }
 
-      console.log('📁 Génération URL signée pour:', path);
-
       // ✅ Génération URL signée
       const { data, error } = await supabase.storage
         .from('videos')
-        .createSignedUrl(path, 3600); // 1 heure
+        .createSignedUrl(path, 3600);
 
       if (error) {
-        console.error('❌ Erreur génération URL signée:', error);
         throw error;
       }
 
-      console.log('✅ URL signée générée');
       return data.signedUrl;
 
     } catch (err) {
       console.error('❌ Erreur getVideoUrl:', err);
       
-      // ✅ Fallback: essayer de régénérer l'URL publique
+      // ✅ Fallback
       if (video.storage_path) {
         const { data: fallbackUrl } = supabase.storage
           .from('videos')
           .getPublicUrl(video.storage_path);
-        console.log('🔄 Fallback URL publique');
         return fallbackUrl.publicUrl;
       }
       
@@ -320,21 +303,11 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
   // ✅ Fonction playVideo améliorée
   const playVideo = async (video) => {
     try {
-      console.log('🎬 Tentative de lecture vidéo:', video.id);
-      console.log('📊 Données vidéo:', { 
-        id: video.id, 
-        file_path: video.file_path, 
-        storage_path: video.storage_path, 
-        public_url: video.public_url 
-      });
-
       const url = await getVideoUrl(video);
       if (url) {
-        console.log('✅ URL vidéo obtenue');
         setVideoPlayerUrl(url);
         setSelectedVideo(video);
       } else {
-        console.error('❌ Impossible d\'obtenir l\'URL de la vidéo');
         setError('Impossible de charger la vidéo. Vérifiez que le fichier existe dans le stockage.');
       }
     } catch (err) {
@@ -369,7 +342,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
 
       setVideos(prev => prev.filter(video => video.id !== videoId));
       setDeleteConfirm(null);
-      console.log('✅ Vidéo supprimée:', videoId);
 
     } catch (err) {
       console.error('❌ Erreur deleteVideo:', err);
@@ -379,12 +351,11 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
     }
   };
 
-  // ✅ CORRECTION : Fonction startTranscription avec validation robuste
+  // ✅ CORRECTION : Fonction startTranscription
   const startTranscription = async (videoId) => {
     try {
       setTranscribing(true);
       
-      // Vérifier que la vidéo existe
       const video = videos.find(v => v.id === videoId);
       if (!video) {
         throw new Error('Vidéo non trouvée');
@@ -396,9 +367,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
           : video
       ));
 
-      console.log('🎙️ Lancement transcription pour video:', videoId);
-
-      // ✅ APPEL SÉCURISÉ avec timeout
       const { data, error } = await supabase.functions.invoke('transcribe-video', {
         body: { 
           videoId: videoId,
@@ -408,12 +376,9 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
       });
 
       if (error) {
-        console.error('❌ Erreur fonction Edge:', error);
         throw new Error(`Erreur lors de la transcription: ${error.message}`);
       }
 
-      console.log('✅ Transcription lancée:', data);
-      
       // ✅ RE-CHARGEMENT OPTIMISÉ
       setTimeout(() => {
         fetchVideos();
@@ -433,22 +398,17 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
     }
   };
 
-  // ✅ CORRECTION : Fonction startAnalysis avec gestion robuste améliorée
+  // ✅ CORRECTION : Fonction startAnalysis
   const startAnalysis = async (videoId, transcriptionText, userId) => {
     try {
       setAnalyzing(true);
       
-      // ✅ Mise à jour immédiate du statut
       setVideos(prev => prev.map(video => 
         video.id === videoId 
           ? { ...video, status: 'analyzing' }
           : video
       ));
 
-      console.log('🟡 Début analyse IA pour video:', videoId);
-      console.log('📝 Texte de transcription:', transcriptionText?.length, 'caractères');
-
-      // ✅ VALIDATION RENFORCÉE
       if (!transcriptionText?.trim()) {
         throw new Error('Texte de transcription manquant ou vide pour l\'analyse');
       }
@@ -457,7 +417,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
         throw new Error('Texte de transcription trop court (minimum 10 caractères)');
       }
 
-      // ✅ APPEL SÉCURISÉ - SEULEMENT analyze-transcription
       const { data, error } = await supabase.functions.invoke('analyze-transcription', {
         body: { 
           videoId: videoId,
@@ -467,12 +426,9 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
       });
 
       if (error) {
-        console.error('❌ Erreur fonction Edge:', error);
         throw new Error(`Erreur lors de l'analyse: ${error.message}`);
       }
 
-      console.log('✅ Analyse IA lancée avec succès:', data);
-      
       // ✅ RE-CHARGEMENT OPTIMISÉ
       setTimeout(() => {
         fetchVideos();
@@ -481,23 +437,19 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
     } catch (err) {
       console.error('❌ Erreur startAnalysis:', err);
       
-      // ✅ MESSAGE D'ERREUR UTILE
       let errorMessage = `Erreur analyse IA: ${err.message}`;
       
       if (err.message.includes('transcription manquant')) {
         errorMessage = 'Erreur: Aucun texte de transcription disponible. Veuillez d\'abord transcrire la vidéo.';
       } else if (err.message.includes('trop court')) {
         errorMessage = 'Erreur: Le texte de transcription est trop court pour l\'analyse.';
-      } else if (err.message.includes('Configuration serveur')) {
-        errorMessage = 'Erreur: Problème de configuration serveur. Veuillez réessayer.';
       }
       
       setError(errorMessage);
       
-      // ✅ RÉINITIALISATION DU STATUT
       setVideos(prev => prev.map(video => 
         video.id === videoId 
-          ? { ...video, status: 'transcribed' } // Retour au statut précédent
+          ? { ...video, status: 'transcribed' }
           : video
       ));
     } finally {
@@ -603,11 +555,9 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
     }
   };
 
-  // ✅ CORRECTION : handleVideoAction avec gestion d'erreur améliorée
+  // ✅ CORRECTION : handleVideoAction
   const handleVideoAction = async (video, action) => {
     try {
-      console.log(`🎯 Action demandée: ${action} pour video:`, video.id);
-      
       switch (action) {
         case 'play':
           await playVideo(video);
@@ -631,17 +581,9 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
           break;
           
         case 'analyze':
-          // ✅ VALIDATION AMÉLIORÉE
           const transcriptionText = video.transcription_text || 
                                   video.transcription_data?.text || 
                                   video.transcript?.text || '';
-          
-          console.log('🔍 Vérification transcription:', {
-            hasTranscriptionText: !!video.transcription_text,
-            hasTranscriptionData: !!video.transcription_data,
-            hasTranscript: !!video.transcript,
-            textLength: transcriptionText.length
-          });
 
           if (!transcriptionText.trim()) {
             setError('Aucune transcription disponible pour l\'analyse. Transcrivez d\'abord la vidéo.');
@@ -918,7 +860,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
                           {video.analysis?.summary || video.ai_result?.insights || 'Analyse disponible'}
                         </div>
                         
-                        {/* ✅ NOUVEAU : Affichage de l'analyse de tonalité */}
                         {video.analysis?.tone_analysis && (
                           <div className="text-xs bg-blue-50 rounded p-2 border border-blue-200">
                             <div className="font-medium text-blue-800 mb-1 flex items-center gap-1">
@@ -997,7 +938,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
         </div>
       </div>
 
-      {/* ✅ CORRECTION : Affichage des erreurs amélioré */}
+      {/* ✅ Affichage des erreurs */}
       {error && (
         <div className="mb-6 p-4 bg-red-900/30 border border-red-700 rounded-lg">
           <div className="flex items-center justify-between">
@@ -1018,7 +959,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
             </Button>
           </div>
           
-          {/* ✅ SUGGESTIONS AUTOMATIQUES */}
           {error.includes('transcription') && (
             <div className="mt-3 p-3 bg-red-800/20 rounded border border-red-600/50">
               <p className="text-red-200 text-sm">
