@@ -7,7 +7,7 @@ const analysisCache = new Map();
 const CACHE_TTL = 30 * 60 * 1000;
 
 // ✅ SYSTÈME DE RETRY AMÉLIORÉ
-const retryWithBackoff = async (fn, maxRetries = 3, baseDelay = 1000) => {
+const retryWithBackoff = async (fn: () => Promise<any>, maxRetries = 3, baseDelay = 1000) => {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       return await fn();
@@ -22,7 +22,7 @@ const retryWithBackoff = async (fn, maxRetries = 3, baseDelay = 1000) => {
 
 const VIDEO_STATUS = {
   UPLOADED: 'uploaded',
-  PROCESSING: 'processing', 
+  PROCESSING: 'processing',
   TRANSCRIBED: 'transcribed',
   ANALYZING: 'analyzing',
   ANALYZED: 'analyzed',
@@ -94,12 +94,6 @@ Fournis une analyse détaillée en JSON avec cette structure :
   }
 }
 
-CRITÈRES D'ANALYSE DÉTAILLÉS :
-- Émotion : basé sur le vocabulaire émotionnel, l'intensité, la consistance
-- Rythme : longueur des phrases, complexité, fluidité
-- Clarté : structure, logique, transitions
-- Impact : mémorabilité, appel à l'action, valeur ajoutée
-
 Transcription à analyser :
 {text}
 
@@ -160,12 +154,6 @@ Provide detailed analysis in JSON with this structure:
     "development_areas": ["area 1", "area 2"]
   }
 }
-
-DETAILED ANALYSIS CRITERIA:
-- Emotion: based on emotional vocabulary, intensity, consistency  
-- Pace: sentence length, complexity, flow
-- Clarity: structure, logic, transitions
-- Impact: memorability, call to action, value added
 
 Text to analyze:
 {text}
@@ -292,13 +280,13 @@ Deno.serve(async (req) => {
     // ✅ APPEL GPT-4 AVEC RETRY
     const completion = await retryWithBackoff(async () => {
       return await openai.chat.completions.create({
-        model: "gpt-4", // ✅ PASSAGE À GPT-4
+        model: "gpt-4",
         messages: [
           { role: "system", content: systemMessage },
           { role: "user", content: finalPrompt }
         ],
         max_tokens: 3000,
-        temperature: 0.2, // Plus bas pour plus de consistance
+        temperature: 0.2,
         response_format: { type: "json_object" }
       });
     });
@@ -375,7 +363,7 @@ Deno.serve(async (req) => {
 
 // ✅ FONCTIONS UTILITAIRES AMÉLIORÉES
 
-function generateTextHash(text) {
+function generateTextHash(text: string): string {
   let hash = 0;
   for (let i = 0; i < Math.min(text.length, 1000); i++) {
     const char = text.charCodeAt(i);
@@ -385,8 +373,8 @@ function generateTextHash(text) {
   return hash.toString(36);
 }
 
-function detectLanguage(text) {
-  const samples = {
+function detectLanguage(text: string): string {
+  const samples: { [key: string]: string[] } = {
     'fr': [' le ', ' la ', ' et ', ' est ', ' dans ', ' pour ', ' vous ', ' nous ', ' avec ', ' sans '],
     'en': [' the ', ' and ', ' is ', ' in ', ' to ', ' for ', ' you ', ' we ', ' with ', ' without '],
     'ar': [' ال', ' في ', ' من ', ' على ', ' أن ', ' هذا ', ' هذه ', ' كان ', ' ما ', ' لا ']
@@ -411,7 +399,7 @@ function detectLanguage(text) {
   return bestLang;
 }
 
-function calculateAdvancedScores(analysis) {
+function calculateAdvancedScores(analysis: any) {
   let overall = 7.0;
   
   // Score basé sur la complétude de l'analyse
@@ -435,7 +423,7 @@ function calculateAdvancedScores(analysis) {
   };
 }
 
-function createAdvancedFallbackAnalysis(text, language = 'fr') {
+function createAdvancedFallbackAnalysis(text: string, language = 'fr') {
   const wordCount = text.split(/\s+/).filter(word => word.length > 0).length;
   const sentenceCount = text.split(/[.!?]+/).length - 1;
   
@@ -532,7 +520,7 @@ function createAdvancedFallbackAnalysis(text, language = 'fr') {
   return baseAnalysis;
 }
 
-async function saveAnalysisToDB(supabase, videoId, analysisResult) {
+async function saveAnalysisToDB(supabase: any, videoId: string, analysisResult: any) {
   const updatePayload = {
     status: VIDEO_STATUS.ANALYZED,
     analysis: analysisResult,
@@ -551,7 +539,7 @@ async function saveAnalysisToDB(supabase, videoId, analysisResult) {
   }
 }
 
-function createSuccessResponse(analysisResult, fromCache = false) {
+function createSuccessResponse(analysisResult: any, fromCache = false) {
   return new Response(
     JSON.stringify({ 
       success: true, 
