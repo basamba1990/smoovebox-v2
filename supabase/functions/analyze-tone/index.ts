@@ -66,36 +66,7 @@ Texte à analyser : {text}`,
   ]
 }
 
-Text to analyze: {text}`,
-
-  ar: `حلل النبرة العاطفية والصوتية لهذا الصوت. أجب بتنسيق JSON مع هذه البنية:
-
-{
-  "confidence": 0.85,
-  "emotion": "فرح/حزن/غضب/محايد/متحمس/هادئ/نشيط/متوتر/واثق/مطمئن",
-  "pace": "بطيء/معتدل/سريع",
-  "clarity": "ضعيف/متوسط/جيد/ممتاز",
-  "energy": "منخفض/متوسط/مرتفع",
-  "sentiment_score": 0.75,
-  "vocal_characteristics": {
-    "pitch_stability": "ثابت/متغير",
-    "articulation": "واضح/مرتخي",
-    "intonation": "رتيب/معبر",
-    "pause_frequency": "قليل/كثير"
-  },
-  "emotional_intensity": 0.7,
-  "communication_style": "رسمي/غير رسمي/ودي/سلطوي",
-  "improvement_suggestions": [
-    "اقتراح 1 لتحسين النبرة",
-    "اقتراح 2 للتأثير الصوتي"
-  ],
-  "positive_aspects": [
-    "الجانب الإيجابي 1",
-    "الجانب الإيجابي 2"
-  ]
-}
-
-النص المراد تحليله: {text}`
+Text to analyze: {text}`
 }
 
 Deno.serve(async (req) => {
@@ -103,7 +74,7 @@ Deno.serve(async (req) => {
 
   // ✅ GESTION CORS
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { 
+    return new Response('ok', {
       headers: {
         ...corsHeaders,
         'Access-Control-Max-Age': '86400',
@@ -116,9 +87,9 @@ Deno.serve(async (req) => {
     if (req.method !== 'POST') {
       return new Response(
         JSON.stringify({ error: 'Méthode non autorisée' }),
-        { 
-          status: 405, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 405,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       )
     }
@@ -130,9 +101,9 @@ Deno.serve(async (req) => {
     } catch (parseError) {
       return new Response(
         JSON.stringify({ error: 'Corps JSON invalide' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       )
     }
@@ -143,9 +114,9 @@ Deno.serve(async (req) => {
     if (!audio) {
       return new Response(
         JSON.stringify({ error: 'Données audio manquantes' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       )
     }
@@ -155,9 +126,9 @@ Deno.serve(async (req) => {
     if (!openaiApiKey) {
       return new Response(
         JSON.stringify({ error: 'Clé API OpenAI manquante' }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       )
     }
@@ -182,9 +153,9 @@ Deno.serve(async (req) => {
         console.error('❌ Erreur transcription:', transcribeError)
         return new Response(
           JSON.stringify({ error: 'Erreur lors de la transcription audio' }),
-          { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           }
         )
       }
@@ -193,9 +164,9 @@ Deno.serve(async (req) => {
     if (!transcriptionText || transcriptionText.trim().length < 10) {
       return new Response(
         JSON.stringify({ error: 'Texte de transcription trop court ou vide' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       )
     }
@@ -205,7 +176,7 @@ Deno.serve(async (req) => {
     const analysisPrompt = promptTemplate.replace('{text}', transcriptionText.substring(0, 4000))
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4", // ✅ UTILISATION DE GPT-4 POUR MEILLEURE ANALYSE
+      model: "gpt-4",
       messages: [
         {
           role: "system",
@@ -269,28 +240,28 @@ Deno.serve(async (req) => {
     console.log("✅ Analyse de tonalité terminée")
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         message: 'Analyse de tonalité terminée avec succès',
         analysis: toneAnalysis,
         text_sample: transcriptionText.substring(0, 200) + '...'
       }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     )
 
   } catch (error) {
     console.error('❌ Erreur analyse-tone:', error)
     return new Response(
-      JSON.stringify({ 
-        error: 'Erreur lors de l\'analyse de tonalité', 
+      JSON.stringify({
+        error: 'Erreur lors de l\'analyse de tonalité',
         details: error.message
       }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     )
   }
