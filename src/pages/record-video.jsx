@@ -7,7 +7,7 @@ import { supabase, refreshSession } from '../lib/supabase';
 // ✅ CONSTANTES
 const VIDEO_STATUS = {
   UPLOADED: 'uploaded',
-  PROCESSING: 'processing', 
+  PROCESSING: 'processing',
   TRANSCRIBED: 'transcribed',
   ANALYZING: 'analyzing',
   ANALYZED: 'analyzed',
