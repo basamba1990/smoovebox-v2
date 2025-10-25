@@ -139,20 +139,25 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
 
     const initialize = async () => {
       try {
+        console.log('🔄 Initialisation RecordVideo...');
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         
         if (userError || !user) {
+          console.error('❌ Utilisateur non connecté:', userError);
           toast.error('Vous devez être connecté pour enregistrer une vidéo.');
           navigate('/login');
           return;
         }
 
         setUser(user);
+        console.log('✅ Utilisateur connecté:', user.id);
+        
         await refreshSession();
         await requestCameraAccess();
 
         const defaultTitle = `Vidéo ${new Date().toLocaleDateString('fr-FR')} ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
         setTitle(defaultTitle);
+        console.log('🎯 Titre par défaut:', defaultTitle);
 
       } catch (err) {
         console.error('❌ Erreur initialisation:', err);
@@ -205,6 +210,8 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
           return;
         }
 
+        console.log(`🔍 Vérification progression #${checkCount} pour video:`, uploadedVideoId);
+        
         const { data: video, error } = await supabase
           .from('videos')
           .select('status, analysis, ai_result, tone_analysis, error_message')
@@ -215,6 +222,8 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
           console.error('❌ Erreur vérification vidéo:', error);
           return;
         }
+
+        console.log('📊 Statut vidéo:', video.status);
 
         if (video.status === VIDEO_STATUS.ANALYZED) {
           setAnalysisProgress(VIDEO_STATUS.ANALYZED);
@@ -308,6 +317,8 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
   // ✅ Demander l'accès caméra
   const requestCameraAccess = async () => {
     try {
+      console.log('📹 Demande accès caméra...');
+      
       const constraints = {
         video: {
           width: { ideal: 1280 },
@@ -326,6 +337,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       
+      console.log('✅ Accès caméra accordé');
       streamRef.current = stream;
       setCameraAccess(true);
 
@@ -343,6 +355,8 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         errorMessage += 'Veuillez autoriser l\'accès à la caméra et au microphone.';
       } else if (err.name === 'NotFoundError') {
         errorMessage += 'Aucune caméra n\'a été détectée.';
+      } else if (err.name === 'NotSupportedError') {
+        errorMessage += 'Votre navigateur ne supporte pas l\'enregistrement vidéo.';
       } else {
         errorMessage += `Erreur: ${err.message}`;
       }
@@ -361,11 +375,12 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
     }
 
     if (typeof MediaRecorder === 'undefined') {
-      setError('L\'enregistrement vidéo n\'est pas supporté sur votre navigateur.');
+      setError('L\'enregistrement vidéo n\'est pas supporté sur votre navigateur. Essayez Chrome ou Firefox.');
       toast.error('Enregistrement non supporté');
       return;
     }
 
+    // ✅ Compte à rebours
     setCountdown(3);
     for (let i = 3; i > 0; i--) {
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -400,6 +415,8 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
           }
         }
       }
+
+      console.log('📹 Format sélectionné:', mimeType, 'iOS:', isIOS);
 
       const recorderOptions = {
         mimeType,
@@ -438,6 +455,12 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
           format: mimeType.includes('mp4') ? 'mp4' : 'webm',
           size: blob.size
         });
+
+        console.log('✅ Enregistrement terminé:', {
+          duration: recordingTime,
+          size: blob.size,
+          format: mimeType.includes('mp4') ? 'mp4' : 'webm'
+        });
       };
 
       mediaRecorderRef.current.start(1000);
@@ -450,6 +473,8 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
       
       if (isIOS) {
         errorMsg = 'Enregistrement limité sur Safari iOS. Essayez l\'application Chrome.';
+      } else if (err.name === 'InvalidStateError') {
+        errorMsg = 'État MediaRecorder invalide. Rafraîchissez la page.';
       }
       
       setError(errorMsg);
@@ -497,6 +522,8 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         language: 'fr'
       };
 
+      console.log('📤 Appel analyse tonalité...');
+
       const { data, error } = await supabase.functions.invoke('analyze-tone', {
         body: requestBody
       });
@@ -508,6 +535,8 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         return;
       }
 
+      console.log('✅ Analyse tonalité réussie:', data);
+      
       if (data.success && data.analysis) {
         setToneAnalysis(data.analysis);
         toast.success('🎵 Analyse de tonalité terminée !');
@@ -576,9 +605,17 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
 
       console.log('🚀 Début upload vidéo...');
 
+      // 1. Upload du fichier vers Supabase Storage
       const fileName = `video-${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${recordedVideo.format}`;
       const filePath = `${user.id}/${fileName}`;
+      
+      console.log('📤 Upload vers:', filePath);
 
+      if (!filePath || filePath.trim() === '') {
+        throw new Error('Le chemin de stockage ne peut pas être vide');
+      }
+
+      // ✅ Upload avec progression
       const { error: uploadError } = await supabase.storage
         .from('videos')
         .upload(filePath, recordedVideo.blob, {
@@ -588,20 +625,44 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
             if (progress.totalBytes) {
               const percent = Math.round((progress.loadedBytes / progress.totalBytes) * 100);
               setUploadProgress(percent);
+              console.log(`📊 Progression upload: ${percent}%`);
             }
           }
         });
 
       if (uploadError) {
+        console.error('❌ Erreur upload storage:', uploadError);
         throw new Error(`Erreur upload: ${uploadError.message}`);
       }
 
+      console.log('✅ Fichier uploadé avec succès');
       setUploadProgress(100);
 
+      // 2. Récupérer l'URL publique
       const { data: urlData } = supabase.storage
         .from('videos')
         .getPublicUrl(filePath);
 
+      console.log('🔗 URL publique:', urlData.publicUrl);
+
+      // ✅ VÉRIFICATION CRITIQUE : Tester l'URL
+      try {
+        const urlCheck = await fetch(urlData.publicUrl, { method: 'HEAD' });
+        console.log('🔍 Vérification URL:', {
+          url: urlData.publicUrl,
+          status: urlCheck.status,
+          ok: urlCheck.ok
+        });
+        
+        if (!urlCheck.ok) {
+          throw new Error(`URL vidéo inaccessible: ${urlCheck.status}`);
+        }
+      } catch (urlError) {
+        console.error('❌ Erreur vérification URL:', urlError);
+        throw new Error(`URL vidéo invalide: ${urlError.message}`);
+      }
+
+      // 3. Structure de données compatible
       const videoInsertData = {
         title: title || `Vidéo ${new Date().toLocaleDateString('fr-FR')}`,
         description: description || 'Vidéo enregistrée depuis la caméra',
@@ -622,6 +683,9 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         updated_at: new Date().toISOString()
       };
 
+      console.log('📝 Insertion en base:', videoInsertData);
+
+      // 4. Insérer la vidéo en base
       const { data: videoData, error: videoError } = await supabase
         .from('videos')
         .insert(videoInsertData)
@@ -629,13 +693,23 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         .single();
 
       if (videoError) {
-        throw new Error(`Erreur création vidéo: ${videoError.message}`);
+        console.error('❌ Erreur insertion vidéo:', videoError);
+        
+        let errorMsg = `Erreur création vidéo: ${videoError.message}`;
+        if (videoError.message.includes('stockage') || videoError.message.includes('NULL')) {
+          errorMsg = 'Erreur de configuration du stockage. Veuillez réessayer.';
+        } else if (videoError.message.includes('row') && videoError.message.includes('violates')) {
+          errorMsg = 'Erreur de contrainte base de données. Vérifiez les données.';
+        }
+        
+        throw new Error(errorMsg);
       }
 
       console.log('✅ Vidéo créée en base:', videoData.id);
       setUploadedVideoId(videoData.id);
       toast.success('🎉 Vidéo uploadée avec succès !');
 
+      // 5. DÉCLENCHEMENT TRANSCRIPTION
       await triggerTranscription(videoData.id, user.id, urlData.publicUrl);
 
     } catch (err) {
@@ -643,10 +717,10 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
       let errorMessage = `Erreur lors de l'upload: ${err.message}`;
       
       if (err.message.includes('stockage') || err.message.includes('NULL')) {
-        errorMessage = 'Erreur de configuration du stockage.';
-      } else if (err.message.includes('quota')) {
+        errorMessage = 'Erreur de configuration du stockage. Le chemin de la vidéo est invalide.';
+      } else if (err.message.includes('quota') || err.message.includes('space')) {
         errorMessage = 'Espace de stockage insuffisant.';
-      } else if (err.message.includes('network')) {
+      } else if (err.message.includes('network') || err.message.includes('fetch')) {
         errorMessage = 'Erreur réseau. Vérifiez votre connexion.';
       }
       
@@ -658,38 +732,80 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
     }
   };
 
-  // ✅ Déclencher transcription
+  // ✅ CORRECTION CRITIQUE : Fonction pour déclencher la transcription
   const triggerTranscription = async (videoId, userId, videoPublicUrl) => {
     try {
+      console.log('🚀 Déclenchement transcription...', {
+        videoId,
+        userId,
+        videoUrl: videoPublicUrl?.substring(0, 100),
+        selectedLanguage
+      });
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         throw new Error('Session non valide');
       }
 
+      // ✅ CORRECTION : Préparer le body correctement
+      const requestBody = {
+        videoId: videoId,
+        userId: userId,
+        videoUrl: videoPublicUrl,
+        preferredLanguage: selectedLanguage,
+        autoDetectLanguage: !selectedLanguage
+      };
+
+      console.log('📦 Body de la requête transcription:', requestBody);
+
+      // ✅ CORRECTION : Utiliser l'URL complète avec authorization
       const { data, error } = await supabase.functions.invoke('transcribe-video', {
-        body: { 
-          videoId, 
-          userId, 
-          videoUrl: videoPublicUrl,
-          preferredLanguage: selectedLanguage,
-          autoDetectLanguage: !selectedLanguage
-        }
+        body: requestBody
       });
 
       if (error) {
+        console.error('❌ Erreur invocation fonction:', error);
         throw new Error(`Erreur transcription: ${error.message}`);
       }
 
+      console.log('✅ Transcription déclenchée avec succès:', data);
       toast.success('🔍 Transcription en cours...');
-      
+
     } catch (err) {
       console.error('❌ Erreur triggerTranscription:', err);
-      toast.warning('⚠️ Problème avec la transcription');
+      
+      // ✅ Message d'erreur plus informatif
+      let errorMessage = 'Problème avec la transcription';
+      if (err.message.includes('fetch') || err.message.includes('network')) {
+        errorMessage = 'Erreur réseau lors de la transcription';
+      } else if (err.message.includes('authorization') || err.message.includes('token')) {
+        errorMessage = 'Problème d\'authentification pour la transcription';
+      } else if (err.message.includes('CORS')) {
+        errorMessage = 'Erreur CORS lors de la transcription';
+      }
+      
+      toast.warning(`⚠️ ${errorMessage}`);
+      
+      // ✅ Mettre à jour le statut de la vidéo en échec
+      try {
+        await supabase
+          .from('videos')
+          .update({
+            status: VIDEO_STATUS.FAILED,
+            error_message: err.message.substring(0, 500),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoId);
+      } catch (dbError) {
+        console.error('❌ Erreur mise à jour statut:', dbError);
+      }
     }
   };
 
   // ✅ Réinitialiser
   const retryRecording = () => {
+    console.log('🔄 Réinitialisation enregistrement...');
+    
     if (recordedVideo?.url) {
       URL.revokeObjectURL(recordedVideo.url);
     }
@@ -711,6 +827,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
     
     stopStream();
     
+    // Réinitialiser la caméra après un court délai
     setTimeout(() => {
       requestCameraAccess();
     }, 500);
@@ -773,12 +890,19 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
                 muted 
                 playsInline 
                 className="w-full h-full object-cover"
+                onError={() => console.error('❌ Erreur lecture vidéo')}
               />
               
               {recording && (
                 <div className="absolute top-4 right-4 bg-red-600 text-white px-3 py-1 rounded-full flex items-center gap-2 animate-pulse">
                   <div className="w-3 h-3 bg-white rounded-full"></div>
                   <span className="font-semibold">{formatTime(recordingTime)}</span>
+                </div>
+              )}
+              
+              {recordedVideo && !recording && (
+                <div className="absolute top-4 left-4 bg-green-600 text-white px-3 py-1 rounded-full text-sm">
+                  ✅ Prêt à uploader
                 </div>
               )}
             </div>
@@ -873,7 +997,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
               )}
             </div>
 
-            {/* Informations vidéo */}
+            {/* Informations vidéo enregistrée */}
             {recordedVideo && (
               <div className="bg-gray-800 rounded-lg p-4 border border-gray-600">
                 <div className="grid grid-cols-2 gap-4 text-sm text-gray-300">
@@ -896,6 +1020,9 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
                   <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
                   <span className="text-blue-300 font-medium">Analyse de tonalité en cours...</span>
                 </div>
+                <p className="text-blue-400 text-sm mt-2">
+                  Notre IA analyse votre voix pour détecter l'émotion et le ton
+                </p>
               </div>
             )}
           </div>
@@ -963,11 +1090,11 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
 
             {/* Affichage résultats analyse de tonalité */}
             {toneAnalysis && (
-              <div className="bg-gradient-to-br from-purple-900 to-blue-900 rounded-xl p-6 border border-purple-700">
+              <div className="bg-gradient-to-br from-purple-900 to-blue-900 rounded-xl p-6 border border-purple-700 animate-fade-in">
                 <h3 className="font-semibold mb-4 text-white text-lg flex items-center gap-2">
                   🎵 Analyse de tonalité IA
                   {toneAnalysis.confidence > 0.7 && (
-                    <span className="text-xs bg-green-600 text-white px-2 py-1 rounded-full">
+                    <span className="text-xs bg-green-600 text-white px-2 py-1 rounded-full animate-pulse">
                       {Math.round(toneAnalysis.confidence * 100)}% de confiance
                     </span>
                   )}
@@ -992,9 +1119,11 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
                     </div>
                   </div>
                   
-                  {toneAnalysis.suggestions && (
+                  {toneAnalysis.suggestions && toneAnalysis.suggestions.length > 0 && (
                     <div className="mt-4">
-                      <h4 className="font-medium text-white mb-3">💡 Suggestions</h4>
+                      <h4 className="font-medium text-white mb-3 flex items-center gap-2">
+                        💡 Suggestions d'amélioration
+                      </h4>
                       <ul className="space-y-2">
                         {toneAnalysis.suggestions.map((suggestion, index) => (
                           <li key={index} className="text-purple-200 text-sm bg-purple-800/30 rounded-lg p-3 border-l-4 border-purple-500">
@@ -1010,7 +1139,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
 
             {/* Progression de l'analyse */}
             {analysisProgress && (
-              <div className="bg-gradient-to-br from-green-900 to-emerald-900 rounded-xl p-6 border border-green-700">
+              <div className="bg-gradient-to-br from-green-900 to-emerald-900 rounded-xl p-6 border border-green-700 animate-fade-in">
                 <h3 className="font-semibold mb-4 text-white text-lg">📊 Progression de l'analyse</h3>
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
@@ -1062,7 +1191,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
 
             {/* Message d'erreur général */}
             {error && !analysisProgress && (
-              <div className="bg-red-900/30 border border-red-700 rounded-xl p-4">
+              <div className="bg-red-900/30 border border-red-700 rounded-xl p-4 animate-shake">
                 <div className="flex items-center gap-3 mb-2">
                   <span className="text-red-400 text-xl">❌</span>
                   <span className="font-medium text-red-300">Erreur</span>
@@ -1078,7 +1207,82 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
             )}
           </div>
         </div>
+
+        {/* Conseils */}
+        <div className="mt-8 bg-gradient-to-br from-orange-900 to-amber-900 rounded-xl p-6 border border-orange-700">
+          <h3 className="font-semibold mb-6 text-white text-xl flex items-center gap-3">
+            <span className="text-2xl">💡</span>
+            Conseils pour un enregistrement réussi
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div className="flex items-start gap-4 p-3 bg-orange-800/30 rounded-lg hover:bg-orange-800/50 transition-colors">
+                <span className="text-orange-400 text-xl mt-1">🎯</span>
+                <div>
+                  <h4 className="font-medium text-white mb-1">Préparation</h4>
+                  <p className="text-orange-200 text-sm">Préparez vos idées principales avant de commencer</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4 p-3 bg-orange-800/30 rounded-lg hover:bg-orange-800/50 transition-colors">
+                <span className="text-orange-400 text-xl mt-1">💡</span>
+                <div>
+                  <h4 className="font-medium text-white mb-1">Éclairage</h4>
+                  <p className="text-orange-200 text-sm">Placez-vous face à la lumière naturelle</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4 p-3 bg-orange-800/30 rounded-lg hover:bg-orange-800/50 transition-colors">
+                <span className="text-orange-400 text-xl mt-1">🎙️</span>
+                <div>
+                  <h4 className="font-medium text-white mb-1">Audio</h4>
+                  <p className="text-orange-200 text-sm">Parlez clairement et à un rythme modéré</p>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="flex items-start gap-4 p-3 bg-orange-800/30 rounded-lg hover:bg-orange-800/50 transition-colors">
+                <span className="text-orange-400 text-xl mt-1">⏱️</span>
+                <div>
+                  <h4 className="font-medium text-white mb-1">Durée</h4>
+                  <p className="text-orange-200 text-sm">5 minutes maximum pour garder l'attention</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4 p-3 bg-orange-800/30 rounded-lg hover:bg-orange-800/50 transition-colors">
+                <span className="text-orange-400 text-xl mt-1">😊</span>
+                <div>
+                  <h4 className="font-medium text-white mb-1">Expression</h4>
+                  <p className="text-orange-200 text-sm">Souriez et soyez naturel</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4 p-3 bg-orange-800/30 rounded-lg hover:bg-orange-800/50 transition-colors">
+                <span className="text-orange-400 text-xl mt-1">🏷️</span>
+                <div>
+                  <h4 className="font-medium text-white mb-1">Mots-clés</h4>
+                  <p className="text-orange-200 text-sm">Ajoutez des tags pertinents pour les rapprochements</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* Styles d'animation */}
+      <style jsx>{`
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-5px); }
+          75% { transform: translateX(5px); }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.5s ease-out;
+        }
+        .animate-shake {
+          animation: shake 0.5s ease-in-out;
+        }
+      `}</style>
     </div>
   );
 };
