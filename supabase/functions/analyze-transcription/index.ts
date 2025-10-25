@@ -313,7 +313,7 @@ Deno.serve(async (req) => {
     // ✅ APPEL GPT-4 AVEC RETRY
     const completion = await retryWithBackoff(async () => {
       return await openai.chat.completions.create({
-        model: "gpt-4",
+        model: "gpt-4o",
         messages: [
           { role: "system", content: systemMessage },
           { role: "user", content: finalPrompt }
@@ -335,7 +335,7 @@ Deno.serve(async (req) => {
       analysisResult.metadata = {
         analyzed_at: new Date().toISOString(),
         text_length: cleanText.length,
-        model_used: "gpt-4",
+        model_used: "gpt-4o",
         analysis_language: analysisLanguage,
         processing_time: "optimisé"
       };
@@ -409,8 +409,7 @@ function generateTextHash(text: string): string {
 function detectLanguage(text: string): string {
   const samples: { [key: string]: string[] } = {
     'fr': [' le ', ' la ', ' et ', ' est ', ' dans ', ' pour ', ' vous ', ' nous ', ' avec ', ' sans '],
-    'en': [' the ', ' and ', ' is ', ' in ', ' to ', ' for ', ' you ', ' we ', ' with ', ' without '],
-    'ar': [' ال', ' في ', ' من ', ' على ', ' أن ', ' هذا ', ' هذه ', ' كان ', ' ما ', ' لا ']
+    'en': [' the ', ' and ', ' is ', ' in ', ' to ', ' for ', ' you ', ' we ', ' with ', ' without ']
   };
   
   let bestLang = 'fr';
@@ -447,30 +446,44 @@ function calculateAdvancedScores(analysis: any) {
   if (analysis.content_analysis?.storytelling_elements) overall += 0.2;
   if (analysis.audience_analysis) overall += 0.3;
   
+  // Mapping pour clarity_score multilingue
+  const clarityMap: { [key: string]: number } = {
+    'excellent': 9.0,
+    'excellente': 9.0,
+    'bon': 8.0,
+    'bonne': 8.0,
+    'good': 8.0,
+    'moyen': 7.0,
+    'moyenne': 7.0,
+    'average': 7.0,
+    'faible': 5.0,
+    'poor': 5.0
+  };
+  
   return {
     overall_score: Math.min(Math.max(overall, 0), 10),
-    clarity_score: analysis.tone_analysis?.clarity === 'excellent' ? 9.0 : 
-                  analysis.tone_analysis?.clarity === 'bon' ? 8.0 : 7.0,
+    clarity_score: clarityMap[analysis.tone_analysis?.clarity || ''] || 7.0,
     engagement_score: analysis.sentiment_score ? analysis.sentiment_score * 10 * 0.8 : 7.5,
     impact_score: analysis.performance_metrics?.impact_score || 7.8
   };
 }
 
 function createAdvancedFallbackAnalysis(text: string, language = 'fr') {
+  const isFrench = language === 'fr';
   const wordCount = text.split(/\s+/).filter(word => word.length > 0).length;
   const sentenceCount = text.split(/[.!?]+/).length - 1;
   
-  const baseAnalysis = {
-    summary: language === 'fr' 
+  const fallbackData = {
+    summary: isFrench
       ? `Analyse de base: ${wordCount} mots, ${sentenceCount} phrases. Contenu analysé avec précision.`
       : `Basic analysis: ${wordCount} words, ${sentenceCount} sentences. Content analyzed accurately.`,
     
     key_topics: ["communication", "expression", "partage"],
     
-    sentiment: "positif",
+    sentiment: isFrench ? "positif" : "positive",
     sentiment_score: 0.7,
     
-    communication_advice: language === 'fr' ? [
+    communication_advice: isFrench ? [
       "Pratiquez régulièrement pour améliorer votre fluidité",
       "Variez les intonations pour maintenir l'attention",
       "Utilisez des pauses stratégiques pour renforcer votre message"
@@ -481,19 +494,19 @@ function createAdvancedFallbackAnalysis(text: string, language = 'fr') {
     ],
     
     tone_analysis: {
-      primary_emotion: "enthousiaste",
-      secondary_emotions: ["confiant", "engageant"],
-      pace: "modéré",
-      clarity: "bon",
-      energy: "élevé",
+      primary_emotion: isFrench ? "enthousiaste" : "enthusiastic",
+      secondary_emotions: isFrench ? ["confiant", "engageant"] : ["confident", "engaging"],
+      pace: isFrench ? "modéré" : "moderate",
+      clarity: isFrench ? "bon" : "good",
+      energy: isFrench ? "élevé" : "high",
       confidence_level: 0.75,
       vocal_characteristics: {
-        articulation: "précise",
-        intonation: "expressif",
-        pause_usage: "efficace",
-        emphasis_points: ["points clés bien mis en avant"]
+        articulation: isFrench ? "précise" : "precise",
+        intonation: isFrench ? "expressif" : "expressive",
+        pause_usage: "efficace", // Same as "effective"
+        emphasis_points: isFrench ? ["points clés bien mis en avant"] : ["key points well highlighted"]
       },
-      improvement_opportunities: language === 'fr' ? [
+      improvement_opportunities: isFrench ? [
         "Développer davantage les transitions",
         "Renforcer la conclusion"
       ] : [
@@ -503,16 +516,16 @@ function createAdvancedFallbackAnalysis(text: string, language = 'fr') {
     },
     
     content_analysis: {
-      structure_quality: "bonne",
-      key_message_clarity: "clair",
-      storytelling_elements: ["narratif engageant"],
-      persuasion_techniques: ["argumentation logique"]
+      structure_quality: isFrench ? "bonne" : "good",
+      key_message_clarity: isFrench ? "clair" : "clear",
+      storytelling_elements: isFrench ? ["narratif engageant"] : ["engaging narrative"],
+      persuasion_techniques: isFrench ? ["argumentation logique"] : ["logical argumentation"]
     },
     
     audience_analysis: {
-      target_match: "fort",
+      target_match: isFrench ? "fort" : "strong",
       engagement_potential: 0.75,
-      accessibility_level: "intermédiaire"
+      accessibility_level: isFrench ? "intermédiaire" : "intermediate"
     },
     
     performance_metrics: {
@@ -523,14 +536,14 @@ function createAdvancedFallbackAnalysis(text: string, language = 'fr') {
     },
     
     actionable_insights: {
-      immediate_actions: language === 'fr' ? [
+      immediate_actions: isFrench ? [
         "Réviser la structure d'ouverture",
         "Ajouter des exemples concrets"
       ] : [
         "Revise opening structure",
         "Add concrete examples"
       ],
-      strategic_recommendations: language === 'fr' ? [
+      strategic_recommendations: isFrench ? [
         "Développer une signature vocale distinctive",
         "Créer des hooks captivants"
       ] : [
@@ -538,15 +551,17 @@ function createAdvancedFallbackAnalysis(text: string, language = 'fr') {
         "Create captivating hooks"
       ],
       development_areas: ["expression", "structure", "impact"]
-    },
-    
-    metadata: {
-      analyzed_at: new Date().toISOString(),
-      text_length: text.length,
-      model_used: "gpt-4-fallback",
-      analysis_language: language,
-      processing_time: "standard"
     }
+  };
+  
+  const baseAnalysis = { ...fallbackData };
+  
+  baseAnalysis.metadata = {
+    analyzed_at: new Date().toISOString(),
+    text_length: text.length,
+    model_used: "gpt-4o-fallback",
+    analysis_language: language,
+    processing_time: "standard"
   };
   
   baseAnalysis.ai_score = baseAnalysis.performance_metrics.overall_score;
@@ -585,7 +600,7 @@ function createSuccessResponse(analysisResult: any, fromCache = false) {
       message: 'Analyse avancée terminée avec succès',
       analysis: analysisResult,
       fromCache: fromCache,
-      model_used: analysisResult.metadata?.model_used || "gpt-4",
+      model_used: analysisResult.metadata?.model_used || "gpt-4o",
       ai_score: analysisResult.ai_score
     }),
     { 
