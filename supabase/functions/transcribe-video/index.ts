@@ -12,10 +12,12 @@ const VIDEO_STATUS = {
   FAILED: 'failed'
 }
 
+// ✅ CORRECTION CORS - Headers complets
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS'
+  'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
+  'Content-Type': 'application/json',
 }
 
 // ✅ SUPPORT MULTILINGUE ÉTENDU
@@ -35,7 +37,7 @@ const SUPPORTED_LANGUAGES = {
 Deno.serve(async (req) => {
   console.log("🎤 transcribe-video (optimisée) appelée")
 
-  // ✅ GESTION CORS
+  // ✅ CORRECTION CORS - Gestion OPTIONS améliorée
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
       headers: {
@@ -43,17 +45,6 @@ Deno.serve(async (req) => {
         'Access-Control-Max-Age': '86400',
       }
     })
-  }
-
-  // ✅ VÉRIFICATION MÉTHODE
-  if (req.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ error: 'Méthode non autorisée' }),
-      {
-        status: 405,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
-    )
   }
 
   let videoId = null
@@ -68,6 +59,7 @@ Deno.serve(async (req) => {
       }
       requestBody = JSON.parse(rawBody)
     } catch (parseError) {
+      console.error('❌ Erreur parsing JSON:', parseError)
       return new Response(
         JSON.stringify({
           error: 'JSON invalide',
@@ -75,7 +67,7 @@ Deno.serve(async (req) => {
         }),
         {
           status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          headers: corsHeaders
         }
       )
     }
@@ -90,7 +82,7 @@ Deno.serve(async (req) => {
           error: 'Paramètres manquants: videoId, userId, videoUrl requis',
           received: { videoId: !!videoId, userId: !!userId, videoUrl: !!videoUrl }
         }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 400, headers: corsHeaders }
       )
     }
 
@@ -100,9 +92,10 @@ Deno.serve(async (req) => {
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
 
     if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
+      console.error('❌ Configuration manquante')
       return new Response(
         JSON.stringify({ error: 'Configuration serveur incomplète' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 500, headers: corsHeaders }
       )
     }
 
@@ -110,6 +103,7 @@ Deno.serve(async (req) => {
     const openai = new OpenAI({ apiKey: openaiApiKey })
 
     // ✅ VÉRIFICATION VIDÉO
+    console.log(`🔍 Vérification vidéo: ${videoId}`)
     const { data: video, error: videoError } = await supabase
       .from('videos')
       .select('*')
@@ -117,27 +111,33 @@ Deno.serve(async (req) => {
       .single()
 
     if (videoError || !video) {
+      console.error('❌ Vidéo non trouvée:', videoError)
       return new Response(
         JSON.stringify({ error: 'Vidéo non trouvée' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 404, headers: corsHeaders }
       )
     }
 
     if (video.user_id !== userId) {
       return new Response(
         JSON.stringify({ error: 'Accès non autorisé' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 403, headers: corsHeaders }
       )
     }
 
     // ✅ MISE À JOUR STATUT
-    await supabase
+    console.log("🔄 Mise à jour statut PROCESSING")
+    const { error: statusError } = await supabase
       .from('videos')
       .update({
         status: VIDEO_STATUS.PROCESSING,
         updated_at: new Date().toISOString()
       })
       .eq('id', videoId)
+
+    if (statusError) {
+      throw new Error(`Erreur mise à jour statut: ${statusError.message}`)
+    }
 
     console.log('🎙️ Début transcription pour:', videoId)
 
@@ -228,7 +228,7 @@ Deno.serve(async (req) => {
       processed_at: new Date().toISOString()
     }
 
-    await supabase
+    const { error: updateError } = await supabase
       .from('videos')
       .update({
         status: VIDEO_STATUS.TRANSCRIBED,
@@ -239,10 +239,14 @@ Deno.serve(async (req) => {
       })
       .eq('id', videoId)
 
+    if (updateError) {
+      throw new Error(`Erreur sauvegarde transcription: ${updateError.message}`)
+    }
+
     // ✅ DÉCLENCHEMENT ANALYSE
     console.log("🚀 Déclenchement analyse...")
     try {
-      await supabase.functions.invoke('analyze-transcription', {
+      const { error: analyzeError } = await supabase.functions.invoke('analyze-transcription', {
         body: {
           videoId,
           transcriptionText: transcriptionText,
@@ -250,7 +254,12 @@ Deno.serve(async (req) => {
           transcriptionLanguage: detectedLanguage
         }
       })
-      console.log('✅ Analyse déclenchée')
+
+      if (analyzeError) {
+        console.warn('⚠️ Erreur déclenchement analyse:', analyzeError)
+      } else {
+        console.log('✅ Analyse déclenchée')
+      }
     } catch (analyzeError) {
       console.warn('⚠️ Erreur déclenchement analyse:', analyzeError)
     }
@@ -265,7 +274,7 @@ Deno.serve(async (req) => {
       }),
       {
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: corsHeaders
       }
     )
 
@@ -301,7 +310,7 @@ Deno.serve(async (req) => {
       }),
       {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: corsHeaders
       }
     )
   }
