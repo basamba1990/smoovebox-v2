@@ -30,10 +30,12 @@ const VIDEO_STATUS = {
   FAILED: 'failed'
 };
 
+// ✅ CORRECTION CORS - Headers complets
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS'
+  'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
+  'Content-Type': 'application/json',
 };
 
 // ✅ PROMPTS AVANCÉS POUR GPT-4
@@ -169,7 +171,7 @@ const SYSTEM_MESSAGES = {
 Deno.serve(async (req) => {
   console.log("🔍 Fonction analyze-transcription (GPT-4 optimisée) appelée");
 
-  // ✅ GESTION CORS
+  // ✅ CORRECTION CORS - Gestion OPTIONS améliorée
   if (req.method === 'OPTIONS') {
     return new Response('ok', { 
       headers: {
@@ -191,9 +193,16 @@ Deno.serve(async (req) => {
       }
       requestBody = JSON.parse(rawBody);
     } catch (parseError) {
+      console.error('❌ Erreur parsing JSON:', parseError);
       return new Response(
-        JSON.stringify({ error: 'JSON invalide', details: parseError.message }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          error: 'JSON invalide', 
+          details: parseError.message 
+        }),
+        { 
+          status: 400, 
+          headers: corsHeaders 
+        }
       );
     }
     
@@ -203,15 +212,27 @@ Deno.serve(async (req) => {
     // ✅ VALIDATION RENFORCÉE
     if (!videoId || !transcriptionText) {
       return new Response(
-        JSON.stringify({ error: 'Paramètres manquants: videoId et transcriptionText requis' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          error: 'Paramètres manquants: videoId et transcriptionText requis',
+          received: { videoId: !!videoId, transcriptionText: !!transcriptionText }
+        }),
+        { 
+          status: 400, 
+          headers: corsHeaders 
+        }
       );
     }
 
     if (transcriptionText.trim().length < 20) {
       return new Response(
-        JSON.stringify({ error: 'Texte de transcription trop court (minimum 20 caractères)' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          error: 'Texte de transcription trop court (minimum 20 caractères)',
+          length: transcriptionText.trim().length 
+        }),
+        { 
+          status: 400, 
+          headers: corsHeaders 
+        }
       );
     }
 
@@ -221,6 +242,11 @@ Deno.serve(async (req) => {
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
 
     if (!supabaseUrl || !supabaseServiceKey || !openaiApiKey) {
+      console.error('❌ Configuration manquante:', {
+        supabaseUrl: !!supabaseUrl,
+        supabaseServiceKey: !!supabaseServiceKey,
+        openaiApiKey: !!openaiApiKey
+      });
       throw new Error('Configuration serveur incomplète');
     }
 
@@ -228,6 +254,7 @@ Deno.serve(async (req) => {
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
     // ✅ VÉRIFICATION VIDÉO
+    console.log(`🔍 Vérification vidéo: ${videoId}`);
     const { data: video, error: videoError } = await supabase
       .from('videos')
       .select('*')
@@ -235,7 +262,8 @@ Deno.serve(async (req) => {
       .single();
 
     if (videoError || !video) {
-      throw new Error('Vidéo non trouvée');
+      console.error('❌ Vidéo non trouvée:', videoError);
+      throw new Error(`Vidéo non trouvée: ${videoError?.message || 'Aucune donnée'}`);
     }
 
     // ✅ PERMISSIONS
@@ -244,13 +272,18 @@ Deno.serve(async (req) => {
     }
 
     console.log("🔄 Mise à jour statut ANALYZING");
-    await supabase
+    const { error: updateError } = await supabase
       .from('videos')
       .update({ 
         status: VIDEO_STATUS.ANALYZING,
         updated_at: new Date().toISOString()
       })
       .eq('id', videoId);
+
+    if (updateError) {
+      console.error('❌ Erreur mise à jour statut:', updateError);
+      throw new Error(`Erreur mise à jour: ${updateError.message}`);
+    }
 
     // ✅ OPTIMISATION TEXTE
     const cleanText = transcriptionText.trim().substring(0, 12000);
@@ -355,7 +388,7 @@ Deno.serve(async (req) => {
       }),
       { 
         status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        headers: corsHeaders 
       }
     );
   }
@@ -529,10 +562,16 @@ async function saveAnalysisToDB(supabase: any, videoId: string, analysisResult: 
   };
 
   try {
-    await supabase
+    const { error } = await supabase
       .from('videos')
       .update(updatePayload)
       .eq('id', videoId);
+
+    if (error) {
+      throw new Error(`Erreur sauvegarde: ${error.message}`);
+    }
+    
+    console.log('✅ Analyse sauvegardée en base de données');
   } catch (error) {
     console.error("❌ Erreur sauvegarde DB:", error);
     throw error;
@@ -551,7 +590,7 @@ function createSuccessResponse(analysisResult: any, fromCache = false) {
     }),
     { 
       status: 200, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      headers: corsHeaders 
     }
   );
 }
