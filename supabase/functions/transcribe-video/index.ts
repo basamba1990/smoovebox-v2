@@ -1,4 +1,4 @@
-// supabase/functions/transcribe-video/index.ts - VERSION COMPLÈTE CORRIGÉE
+// supabase/functions/transcribe-video/index.ts
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3'
 import OpenAI from 'npm:openai@4.28.0'
 
@@ -15,10 +15,9 @@ const VIDEO_STATUS = {
 // ✅ CORRECTION CORS DÉFINITIVE
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, accept, x-client-info, x-client-ip',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS, GET, PUT, DELETE, PATCH',
-  'Access-Control-Max-Age': '86400',
-  'Content-Type': 'application/json'
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS, GET, PUT, DELETE',
+  'Content-Type': 'application/json',
 }
 
 // ✅ SUPPORT MULTILINGUE
@@ -36,7 +35,7 @@ const SUPPORTED_LANGUAGES = {
 }
 
 Deno.serve(async (req) => {
-  console.log("🎤 transcribe-video (VERSION CORRIGÉE) appelée")
+  console.log("🎤 transcribe-video (VERSION ULTIME) appelée")
   console.log("📨 Méthode:", req.method)
   console.log("🔗 URL:", req.url)
 
@@ -175,7 +174,8 @@ Deno.serve(async (req) => {
       id: video.id,
       title: video.title,
       user_id: video.user_id,
-      status: video.status
+      status: video.status,
+      format: video.format
     })
 
     // ✅ VÉRIFICATION PERMISSIONS
@@ -200,7 +200,7 @@ Deno.serve(async (req) => {
 
     console.log('🎙️ Début transcription...')
 
-    // ✅ TÉLÉCHARGEMENT VIDÉO AVEC TIMEOUT ET GESTION D'ERREUR AMÉLIORÉE
+    // ✅ TÉLÉCHARGEMENT VIDÉO AVEC TIMEOUT
     console.log("📥 Téléchargement depuis:", videoUrl)
     
     const controller = new AbortController()
@@ -222,11 +222,6 @@ Deno.serve(async (req) => {
     } catch (fetchError) {
       clearTimeout(timeoutId)
       console.error('❌ Erreur fetch:', fetchError)
-      
-      if (fetchError.name === 'AbortError') {
-        throw new Error('Timeout lors du téléchargement de la vidéo (120s dépassé)')
-      }
-      
       throw new Error(`Erreur téléchargement: ${fetchError.message}`)
     }
 
@@ -242,15 +237,27 @@ Deno.serve(async (req) => {
       throw new Error('Fichier vidéo vide (0 bytes)')
     }
 
-    // ✅ CONFIGURATION WHISPER AVEC GESTION D'ERREUR
+    // ✅ CONFIGURATION WHISPER AVEC TYPE CORRECT
+    let fileName = `video-${videoId}.mp4`
+    let fileType = 'video/mp4'
+
+    // ✅ CORRECTION : Utiliser le format réel de la vidéo depuis la DB
+    if (video.format === 'webm') {
+      fileName = `video-${videoId}.webm`
+      fileType = 'video/webm'
+      console.log('🔧 Format détecté: webm')
+    } else {
+      console.log('🔧 Format détecté: mp4')
+    }
+
     const whisperConfig: any = {
-      file: new File([videoBlob], `video-${videoId}.mp4`, { type: 'video/mp4' }),
+      file: new File([videoBlob], fileName, { type: fileType }),
       model: 'whisper-1',
       response_format: 'verbose_json',
       temperature: 0.0,
     }
 
-    // ✅ GESTION LANGUE AMÉLIORÉE
+    // ✅ GESTION LANGUE
     if (preferredLanguage && SUPPORTED_LANGUAGES[preferredLanguage]) {
       whisperConfig.language = SUPPORTED_LANGUAGES[preferredLanguage].whisperCode
       console.log(`🎯 Langue spécifiée: ${SUPPORTED_LANGUAGES[preferredLanguage].name}`)
@@ -261,7 +268,7 @@ Deno.serve(async (req) => {
       console.log("🌐 Détection automatique activée")
     }
 
-    // ✅ TRANSCRIPTION WHISPER AVEC FALLBACK
+    // ✅ TRANSCRIPTION WHISPER
     console.log("🤖 Appel OpenAI Whisper...")
     let transcriptionResponse
     
@@ -271,7 +278,7 @@ Deno.serve(async (req) => {
     } catch (openaiError: any) {
       console.error('❌ Erreur Whisper:', openaiError)
       
-      // ✅ FALLBACK SANS CONFIGURATION LANGUE
+      // Fallback sans langue
       if (whisperConfig.language) {
         console.log("🔄 Fallback sans langue spécifique...")
         delete whisperConfig.language
@@ -279,8 +286,7 @@ Deno.serve(async (req) => {
           transcriptionResponse = await openai.audio.transcriptions.create(whisperConfig)
           console.log("✅ Fallback réussi")
         } catch (fallbackError: any) {
-          console.error('❌ Fallback échoué:', fallbackError)
-          throw new Error(`Erreur Whisper: ${openaiError.message} | Fallback: ${fallbackError.message}`)
+          throw new Error(`Erreur Whisper (fallback échoué): ${fallbackError.message}`)
         }
       } else {
         throw new Error(`Erreur Whisper: ${openaiError.message}`)
@@ -329,7 +335,7 @@ Deno.serve(async (req) => {
 
     console.log("✅ Transcription sauvegardée")
 
-    // ✅ DÉCLENCHEMENT ANALYSE (OPTIONNEL) AVEC GESTION D'ERREUR
+    // ✅ DÉCLENCHEMENT ANALYSE (OPTIONNEL)
     console.log("🚀 Déclenchement analyse...")
     try {
       const { error: analyzeError } = await supabase.functions.invoke('analyze-transcription', {
@@ -343,13 +349,11 @@ Deno.serve(async (req) => {
 
       if (analyzeError) {
         console.warn('⚠️ Erreur déclenchement analyse:', analyzeError)
-        // Ne pas échouer la transcription si l'analyse échoue
       } else {
         console.log('✅ Analyse déclenchée')
       }
     } catch (analyzeError: any) {
       console.warn('⚠️ Erreur déclenchement analyse:', analyzeError)
-      // Ne pas échouer la transcription si l'analyse échoue
     }
 
     // ✅ RÉPONSE SUCCÈS
@@ -397,13 +401,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ✅ RÉPONSE ERREUR DÉTAILLÉE
+    // ✅ RÉPONSE ERREUR
     const errorResponse = {
       error: 'Erreur lors de la transcription',
       details: error.message,
       videoId: videoId,
-      timestamp: new Date().toISOString(),
-      help: 'Vérifiez les logs serveur pour plus de détails'
+      timestamp: new Date().toISOString()
     }
 
     return new Response(
