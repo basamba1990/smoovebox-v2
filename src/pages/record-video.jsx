@@ -1,3 +1,4 @@
+// record-video.jsx - VERSION COMPLÈTE CORRIGÉE
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -15,7 +16,7 @@ const VIDEO_STATUS = {
   FAILED: 'failed'
 };
 
-// ✅ COMPOSANT TAGS
+// ✅ COMPOSANT TAGS AMÉLIORÉ
 const TagInput = ({ tags, setTags }) => {
   const [inputValue, setInputValue] = useState('');
 
@@ -193,7 +194,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
     return () => clearInterval(timer);
   }, [recording]);
 
-  // ✅ Suivi de la progression
+  // ✅ Suivi de la progression CORRIGÉ
   useEffect(() => {
     if (!uploadedVideoId) return;
 
@@ -584,7 +585,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
     };
   };
 
-  // ✅ Uploader vidéo
+  // ✅ Uploader vidéo CORRIGÉ
   const uploadVideo = async () => {
     if (!recordedVideo) {
       setError('Vous devez enregistrer une vidéo.');
@@ -709,8 +710,24 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
       setUploadedVideoId(videoData.id);
       toast.success('🎉 Vidéo uploadée avec succès !');
 
-      // 5. DÉCLENCHEMENT TRANSCRIPTION
-      await triggerTranscription(videoData.id, user.id, urlData.publicUrl);
+      // ✅ CORRECTION CRITIQUE : Déclenchement transcription avec gestion d'erreur robuste
+      try {
+        await triggerTranscription(videoData.id, user.id, urlData.publicUrl);
+      } catch (transcriptionError) {
+        console.error('❌ Erreur déclenchement transcription:', transcriptionError);
+        
+        // Mettre à jour le statut mais ne pas bloquer l'upload
+        await supabase
+          .from('videos')
+          .update({
+            status: VIDEO_STATUS.FAILED,
+            error_message: `Upload réussi mais transcription échouée: ${transcriptionError.message}`.substring(0, 500),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', videoData.id);
+
+        toast.warning('📹 Vidéo uploadée mais transcription en échec. Vous pouvez réessayer plus tard.');
+      }
 
     } catch (err) {
       console.error('❌ Erreur upload:', err);
@@ -732,7 +749,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
     }
   };
 
-  // ✅ CORRECTION CRITIQUE : Fonction pour déclencher la transcription
+  // ✅ FONCTION TRIGGER TRANSCRIPTION CORRIGÉE
   const triggerTranscription = async (videoId, userId, videoPublicUrl) => {
     try {
       console.log('🚀 Déclenchement transcription...', {
@@ -742,63 +759,100 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         selectedLanguage
       });
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) {
-        throw new Error('Session non valide');
+      // ✅ VÉRIFICATION SESSION RENFORCÉE
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.access_token) {
+        console.error('❌ Erreur session:', sessionError);
+        throw new Error(`Session invalide: ${sessionError?.message || 'Token manquant'}`);
       }
 
-      // ✅ CORRECTION : Préparer le body correctement
+      // ✅ PRÉPARATION BODY AVEC VALEURS PAR DÉFAUT
       const requestBody = {
         videoId: videoId,
         userId: userId,
         videoUrl: videoPublicUrl,
-        preferredLanguage: selectedLanguage,
+        preferredLanguage: selectedLanguage || null,
         autoDetectLanguage: !selectedLanguage
       };
 
-      console.log('📦 Body de la requête transcription:', requestBody);
-
-      // ✅ CORRECTION : Utiliser l'URL complète avec authorization
-      const { data, error } = await supabase.functions.invoke('transcribe-video', {
-        body: requestBody
+      console.log('📦 Body transcription:', {
+        ...requestBody,
+        videoUrl: requestBody.videoUrl?.substring(0, 80) + '...'
       });
 
+      // ✅ APPEL FONCTION EDGE AVEC TIMEOUT
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
+      const { data, error } = await supabase.functions.invoke('transcribe-video', {
+        body: requestBody,
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
       if (error) {
-        console.error('❌ Erreur invocation fonction:', error);
-        throw new Error(`Erreur transcription: ${error.message}`);
+        console.error('❌ Erreur invocation fonction Edge:', error);
+        
+        // ✅ ANALYSE DÉTAILLÉE DE L'ERREUR
+        let errorMessage = `Erreur Edge Function: ${error.message}`;
+        
+        if (error.message.includes('fetch') || error.message.includes('network')) {
+          errorMessage = 'Erreur réseau - vérifiez votre connexion internet';
+        } else if (error.message.includes('CORS')) {
+          errorMessage = 'Erreur CORS - problème de configuration serveur';
+        } else if (error.message.includes('timeout') || error.message.includes('abort')) {
+          errorMessage = 'Timeout - le serveur met trop de temps à répondre';
+        } else if (error.message.includes('auth') || error.message.includes('token')) {
+          errorMessage = 'Erreur d\'authentification - reconnexion nécessaire';
+        }
+        
+        throw new Error(errorMessage);
       }
 
-      console.log('✅ Transcription déclenchée avec succès:', data);
+      if (!data) {
+        throw new Error('Réponse vide de la fonction Edge');
+      }
+
+      console.log('✅ Transcription déclenchée avec succès:', {
+        success: data.success,
+        message: data.message,
+        videoId: data.videoId
+      });
+
       toast.success('🔍 Transcription en cours...');
 
     } catch (err) {
       console.error('❌ Erreur triggerTranscription:', err);
       
-      // ✅ Message d'erreur plus informatif
-      let errorMessage = 'Problème avec la transcription';
-      if (err.message.includes('fetch') || err.message.includes('network')) {
-        errorMessage = 'Erreur réseau lors de la transcription';
-      } else if (err.message.includes('authorization') || err.message.includes('token')) {
-        errorMessage = 'Problème d\'authentification pour la transcription';
-      } else if (err.message.includes('CORS')) {
-        errorMessage = 'Erreur CORS lors de la transcription';
-      }
-      
-      toast.warning(`⚠️ ${errorMessage}`);
-      
-      // ✅ Mettre à jour le statut de la vidéo en échec
+      // ✅ SAUVEGARDE ERREUR EN BASE
       try {
         await supabase
           .from('videos')
           .update({
             status: VIDEO_STATUS.FAILED,
-            error_message: err.message.substring(0, 500),
+            error_message: `Transcription failed: ${err.message}`.substring(0, 500),
             updated_at: new Date().toISOString()
           })
           .eq('id', videoId);
       } catch (dbError) {
-        console.error('❌ Erreur mise à jour statut:', dbError);
+        console.error('❌ Erreur sauvegarde statut:', dbError);
       }
+
+      // ✅ MESSAGE D'ERREUR ADAPTÉ
+      let userMessage = 'Erreur lors du déclenchement de la transcription';
+      
+      if (err.name === 'AbortError') {
+        userMessage = 'Timeout - le serveur ne répond pas. Vérifiez votre connexion.';
+      } else if (err.message.includes('network') || err.message.includes('fetch')) {
+        userMessage = 'Erreur réseau - vérifiez votre connexion internet';
+      } else if (err.message.includes('CORS')) {
+        userMessage = 'Problème de configuration serveur. Réessayez dans quelques minutes.';
+      } else {
+        userMessage = err.message || 'Erreur inconnue lors de la transcription';
+      }
+      
+      throw new Error(userMessage);
     }
   };
 
