@@ -1,9 +1,9 @@
-// record-video.jsx - VERSION COMPLÈTE CORRIGÉE
+// record-video.jsx - VERSION COMPLÈTE CORRIGÉE AVEC SOLUTION HTTPS
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button-enhanced.jsx';
-import { supabase, refreshSession } from '../lib/supabase';
+import { supabase, refreshSession, invokeEdgeFunctionWithRetry } from '../lib/supabase';
 
 // ✅ CONSTANTES
 const VIDEO_STATUS = {
@@ -91,7 +91,7 @@ const TagInput = ({ tags, setTags }) => {
   );
 };
 
-// ✅ COMPOSANT PRINCIPAL CORRIGÉ
+// ✅ COMPOSANT PRINCIPAL CORRIGÉ AVEC SOLUTION HTTPS
 const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) => {
   const [recording, setRecording] = useState(false);
   const [recordedVideo, setRecordedVideo] = useState(null);
@@ -525,8 +525,10 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
 
       console.log('📤 Appel analyse tonalité...');
 
-      const { data, error } = await supabase.functions.invoke('analyze-tone', {
-        body: requestBody
+      // ✅ UTILISATION DE LA NOUVELLE FONCTION AVEC RETRY ET HTTPS
+      const { data, error } = await invokeEdgeFunctionWithRetry('analyze-tone', requestBody, {
+        maxRetries: 2,
+        timeout: 15000
       });
 
       if (error) {
@@ -585,7 +587,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
     };
   };
 
-  // ✅ Uploader vidéo CORRIGÉ
+  // ✅ Uploader vidéo CORRIGÉ AVEC GESTION HTTPS
   const uploadVideo = async () => {
     if (!recordedVideo) {
       setError('Vous devez enregistrer une vidéo.');
@@ -710,7 +712,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
       setUploadedVideoId(videoData.id);
       toast.success('🎉 Vidéo uploadée avec succès !');
 
-      // ✅ CORRECTION CRITIQUE : Déclenchement transcription avec gestion d'erreur robuste
+      // ✅ CORRECTION CRITIQUE : Déclenchement transcription avec la nouvelle fonction robuste
       try {
         await triggerTranscription(videoData.id, user.id, urlData.publicUrl);
       } catch (transcriptionError) {
@@ -749,7 +751,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
     }
   };
 
-  // ✅ FONCTION TRIGGER TRANSCRIPTION CORRIGÉE
+  // ✅ FONCTION TRIGGER TRANSCRIPTION CORRIGÉE AVEC SOLUTION HTTPS
   const triggerTranscription = async (videoId, userId, videoPublicUrl) => {
     try {
       console.log('🚀 Déclenchement transcription...', {
@@ -758,13 +760,6 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         videoUrl: videoPublicUrl?.substring(0, 100),
         selectedLanguage
       });
-
-      // ✅ VÉRIFICATION SESSION RENFORCÉE
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session?.access_token) {
-        console.error('❌ Erreur session:', sessionError);
-        throw new Error(`Session invalide: ${sessionError?.message || 'Token manquant'}`);
-      }
 
       // ✅ PRÉPARATION BODY AVEC VALEURS PAR DÉFAUT
       const requestBody = {
@@ -780,21 +775,16 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         videoUrl: requestBody.videoUrl?.substring(0, 80) + '...'
       });
 
-      // ✅ APPEL FONCTION EDGE AVEC TIMEOUT
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
-
-      const { data, error } = await supabase.functions.invoke('transcribe-video', {
-        body: requestBody,
-        signal: controller.signal
+      // ✅ UTILISATION DE LA NOUVELLE FONCTION ROBUSTE AVEC RETRY ET HTTPS FALLBACK
+      const { data, error } = await invokeEdgeFunctionWithRetry('transcribe-video', requestBody, {
+        maxRetries: 3,
+        timeout: 30000,
+        useHttpsFallback: true
       });
-
-      clearTimeout(timeoutId);
 
       if (error) {
         console.error('❌ Erreur invocation fonction Edge:', error);
         
-        // ✅ ANALYSE DÉTAILLÉE DE L'ERREUR
         let errorMessage = `Erreur Edge Function: ${error.message}`;
         
         if (error.message.includes('fetch') || error.message.includes('network')) {
