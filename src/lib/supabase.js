@@ -2,8 +2,14 @@
 import { createClient } from '@supabase/supabase-js';
 
 // ✅ CONFIGURATION SÉCURISÉE - SUPPRIMER LES CLÉS SENSIBLES DU CLIENT
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+let supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+// ✅ CORRECTION CRITIQUE : FORCER HTTPS POUR ÉVITER LES ÉCHECS D'INVOCATION EDGE
+if (supabaseUrl && supabaseUrl.startsWith('http://')) {
+  console.warn('⚠️ URL Supabase détectée en HTTP - Conversion forcée vers HTTPS pour compatibilité Edge Functions');
+  supabaseUrl = supabaseUrl.replace('http://', 'https://');
+}
 
 // ✅ VALIDATION DE LA CONFIGURATION
 if (!supabaseUrl || !supabaseAnonKey) {
@@ -18,7 +24,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 console.log('Configuration Supabase sécurisée:', {
-  url: supabaseUrl ? 'Définie' : 'Manquante',
+  url: supabaseUrl ? `${supabaseUrl.substring(0, 20)}... (HTTPS)` : 'Manquante',
   key: supabaseAnonKey ? 'Définie (Anon Key uniquement)' : 'Manquante',
 });
 
