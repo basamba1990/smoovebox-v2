@@ -501,5 +501,39 @@ export const videoService = {
       console.error('Erreur lors de l\'incrémentation des vues:', error);
       throw error;
     }
+  },
+
+  // New functions for public_videos table
+  async getPublicVideoById(id) {
+    if (!id) throw new Error('ID de vidéo publique requis');
+    
+    try {
+      const { data, error } = await supabase
+        .from('public_videos')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Erreur lors de la récupération de la vidéo publique:', error);
+      throw error;
+    }
+  },
+
+  async getAllPublicVideos() {
+    try {
+      const { data, error } = await supabase
+        .from('public_videos')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Erreur lors de la récupération des vidéos publiques:', error);
+      throw error;
+    }
   }
 };
