@@ -37,6 +37,8 @@ import SimplifiedHome from "@/pages/SimplifiedHome.jsx";
 import "./App.css";
 import "./styles/design-system.css";
 import { TransformationDemo } from "./pages/TransformationDemo.jsx";
+import { PsgSignup } from "./pages/psg-signup.jsx";
+import { PsgSignin } from "./pages/psg-signin.jsx";
 
 // ✅ COMPOSANT : Gestion d'authentification simplifiée
 const RequireAuth = ({ children, fallbackPath = "/login" }) => {
@@ -331,6 +333,8 @@ const AppContent = () => {
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/transformation-demo" element={<TransformationDemo />} />
+        <Route path="/psg-signup" element={<PsgSignup />} />
+        <Route path="/psg-signin" element={<PsgSignin />} />
 
         {/* Routes protégées */}
         <Route
