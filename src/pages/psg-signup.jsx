@@ -41,8 +41,10 @@ export const PsgSignup = () => {
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-[#0A122A] via-[#0A122A] to-[#151B34] flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
-        {/* Card */}
-        <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-[#0A122A]/70">
+        {/* Liseré doré */}
+        <div className="p-[2px] rounded-3xl border-[#C9A227] border shadow-2xl">
+          {/* Card */}
+          <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-[#0A122A]/70">
           {/* Top accent bar */}
           <div className="h-1 w-full bg-gradient-to-r from-[#DA291C] via-white to-[#0A122A]" />
 
@@ -129,6 +131,7 @@ export const PsgSignup = () => {
               </button>
             </div>
           </form>
+          </div>
         </div>
 
         {/* Footer tagline */}

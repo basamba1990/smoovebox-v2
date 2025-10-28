@@ -38,7 +38,8 @@ export const PsgSignin = () => {
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-[#0A122A] via-[#0A122A] to-[#151B34] flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
-        <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-[#0A122A]/70">
+        <div className="p-[2px] rounded-3xl border-[#C9A227] border shadow-2xl">
+          <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-[#0A122A]/70">
           <div className="h-1 w-full bg-gradient-to-r from-[#DA291C] via-white to-[#0A122A]" />
 
           <div className="px-8 pt-8 pb-4 text-center">
@@ -109,6 +110,7 @@ export const PsgSignin = () => {
               </button>
             </div>
           </form>
+          </div>
         </div>
 
         <div className="text-center mt-6 text-gray-300 text-xs">
