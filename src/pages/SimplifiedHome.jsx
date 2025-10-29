@@ -18,6 +18,8 @@ import ImmersionSimulator from '../components/ImmersionSimulator.jsx';
 import ComplementaryMatches from '../components/ComplementaryMatches.jsx';
 // ✅ NOUVEAU IMPORT : Sélecteur de langue
 import LanguageSelector from '../components/LanguageSelector.jsx';
+// ✅ NOUVEL IMPORT : Modal de chat football
+import FootballChatModal from '../components/FootballChatModal.jsx';
 
 // ✅ Navigation simplifiée complète
 const simplifiedTabs = [
@@ -50,6 +52,8 @@ export default function SimplifiedHome({
   // ✅ NOUVEL ÉTAT : Langue sélectionnée
   const [selectedLanguage, setSelectedLanguage] = useState(null);
   const [appError, setAppError] = useState(null);
+  // ✅ NOUVEL ÉTAT : Modal de chat football
+  const [showChatModal, setShowChatModal] = useState(false);
 
   const supabase = useSupabaseClient();
 
@@ -713,8 +717,18 @@ export default function SimplifiedHome({
         </div>
       </main>
 
-      {/* ✅ Bouton d'action rapide flottant */}
-      <div className="fixed bottom-6 right-6 z-50">
+      {/* ✅ Boutons d'action rapide flottants */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+        {/* Bouton Chat Football */}
+        <Button
+          onClick={() => setShowChatModal(true)}
+          className="bg-green-600 hover:bg-green-700 text-white shadow-lg text-lg py-3 px-4 rounded-full flex items-center gap-2 hover:scale-105 transition-transform"
+          title="Assistant Football"
+        >
+          ⚽
+        </Button>
+        
+        {/* Bouton Nouvelle Vidéo */}
         <Button
           onClick={() => setActiveTab('record')}
           className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg text-lg py-4 px-6 rounded-full flex items-center gap-2 animate-bounce"
@@ -747,6 +761,12 @@ export default function SimplifiedHome({
           </div>
         </div>
       )}
+
+      {/* ✅ Modal Chat Football */}
+      <FootballChatModal 
+        isOpen={showChatModal}
+        onClose={() => setShowChatModal(false)}
+      />
 
       {/* Footer */}
       <footer className="mt-12 py-6 border-t border-gray-800 text-center text-gray-400">
