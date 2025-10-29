@@ -39,6 +39,7 @@ import "./styles/design-system.css";
 import { TransformationDemo } from "./pages/TransformationDemo.jsx";
 import { PsgSignup } from "./pages/psg-signup.jsx";
 import { PsgSignin } from "./pages/psg-signin.jsx";
+import FootballChatTest from "./pages/FootballChatTest.jsx";
 
 // ✅ COMPOSANT : Gestion d'authentification simplifiée
 const RequireAuth = ({ children, fallbackPath = "/login" }) => {
@@ -335,6 +336,7 @@ const AppContent = () => {
         <Route path="/transformation-demo" element={<TransformationDemo />} />
         <Route path="/psg-signup" element={<PsgSignup />} />
         <Route path="/psg-signin" element={<PsgSignin />} />
+        <Route path="/test-chat" element={<FootballChatTest />} />
 
         {/* Routes protégées */}
         <Route
