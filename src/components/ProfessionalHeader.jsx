@@ -9,12 +9,13 @@ const ProfessionalHeader = ({
   connectionStatus = 'connected', 
   onSignOut, 
   onAuthModalOpen,
-  currentSection = 'dashboard'
+  currentSection = 'dashboard',
+  welcomeTitle
 }) => {
   return (
     <header className="bg-white/95 backdrop-blur-md shadow-sm border-b border-gray-100 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8">
-        <div className="flex justify-between items-center h-14 sm:h-16">
+        <div className="relative flex justify-between items-center h-14 sm:h-16">
           {/* Logo et branding */}
           <div className="flex items-center gap-2 sm:gap-4">
             <div className="relative group">
@@ -188,6 +189,13 @@ const ProfessionalHeader = ({
               </div>
             )}
           </div>
+          {welcomeTitle && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <h1 className="text-base sm:text-lg font-semibold text-gray-900 text-center truncate px-8">
+                {welcomeTitle}
+              </h1>
+            </div>
+          )}
         </div>
       </div>
     </header>

@@ -898,9 +898,9 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
           <h1 className="text-4xl font-bold text-white mb-4">
             🎥 Enregistrez votre vidéo SpotBulle
           </h1>
-          <p className="text-lg text-gray-300 max-w-2xl mx-auto">
+          {/* <p className="text-lg text-gray-300 max-w-2xl mx-auto">
             Partagez votre passion et connectez-vous avec la communauté
-          </p>
+          </p> */}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
