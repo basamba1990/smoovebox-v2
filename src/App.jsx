@@ -40,6 +40,7 @@ import { TransformationDemo } from "./pages/TransformationDemo.jsx";
 import { PsgSignup } from "./pages/psg-signup.jsx";
 import { PsgSignin } from "./pages/psg-signin.jsx";
 import FootballChatTest from "./pages/FootballChatTest.jsx";
+import SpotBullePremium from "./pages/SpotBullePremium.jsx";
 
 // ✅ COMPOSANT : Gestion d'authentification simplifiée
 const RequireAuth = ({ children, fallbackPath = "/login" }) => {
@@ -337,6 +338,7 @@ const AppContent = () => {
         <Route path="/psg-signup" element={<PsgSignup />} />
         <Route path="/psg-signin" element={<PsgSignin />} />
         <Route path="/test-chat" element={<FootballChatTest />} />
+        <Route path="/premium" element={<SpotBullePremium />} />
 
         {/* Routes protégées */}
         <Route
