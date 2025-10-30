@@ -185,6 +185,12 @@ Prêt à commencer votre aventure ?`;
               >
                 Se connecter
               </Button>
+              <Button 
+                onClick={() => navigate('/psg-signup')}
+                className="bg-[#0A122A] text-white hover:bg-[#11183a] border border-[#DA291C]/40 text-lg py-4 px-8 rounded-full transition-all duration-300"
+              >
+                🔵🔴 Inscription PSG
+              </Button>
             </div>
 
             <div className="mt-8 text-gray-600 text-sm">
