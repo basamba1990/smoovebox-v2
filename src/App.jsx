@@ -54,7 +54,7 @@ const RequireAuth = ({ children, fallbackPath = "/login" }) => {
     }
   }, [user, loading, navigate, fallbackPath]);
 
-  if (loading) {
+  if (loading && !user) {
     return (
       <LoadingScreen
         message="Vérification de sécurité..."
