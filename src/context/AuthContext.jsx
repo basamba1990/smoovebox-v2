@@ -22,7 +22,6 @@ export const AuthProvider = ({ children }) => {
   // Fonction pour créer un profil utilisateur
   const createUserProfile = async (userId, userData) => {
     try {
-      console.log('Création d\'un nouveau profil pour:', userId);
       
       const profileData = {
         id: userId,
@@ -122,6 +121,7 @@ export const AuthProvider = ({ children }) => {
             setUser(session.user);
             const userProfile = await fetchUserProfile(session.user.id, session.user);
             setProfile(userProfile);
+            setLoading(false);
           }
         }
       } catch (error) {
@@ -143,13 +143,13 @@ export const AuthProvider = ({ children }) => {
       async (event, session) => {
         if (!mounted) return;
 
-        console.log('Changement état auth:', event);
 
         if (session?.user) {
           setUser(session.user);
           const userProfile = await fetchUserProfile(session.user.id, session.user);
           setProfile(userProfile);
           setError(null);
+          setLoading(false);
         } else {
           setUser(null);
           setProfile(null);
