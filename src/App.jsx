@@ -33,6 +33,7 @@ import FourColorsTest from "@/components/FourColorsTest.jsx";
 import SeminarsList from "@/components/SeminarsList.jsx";
 import Certification from "@/components/Certification.jsx";
 import SimplifiedHome from "@/pages/SimplifiedHome.jsx";
+import SpotCoach from "@/pages/SpotCoach.jsx";
 
 import "./App.css";
 import "./styles/design-system.css";
@@ -41,7 +42,6 @@ import { PsgSignup } from "./pages/psg-signup.jsx";
 import { PsgSignin } from "./pages/psg-signin.jsx";
 import FootballChatTest from "./pages/FootballChatTest.jsx";
 import SpotBullePremium from "./pages/SpotBullePremium.jsx";
-import SpotCoach from "./pages/SpotCoach.jsx";
 
 // ✅ COMPOSANT : Gestion d'authentification simplifiée
 const RequireAuth = ({ children, fallbackPath = "/login" }) => {
