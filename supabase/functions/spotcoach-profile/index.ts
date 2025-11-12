@@ -182,14 +182,16 @@ Fuseau horaire: ${birth.timezone ?? "Non fourni"}
 
   const intentionsBlock = (payload.intentions ?? []).map((x) => `- ${x}`).join("\n") || "Aucune intention partagée";
 
-  const astroBlock = astro
-    ? `Faits astrologiques calculés (Swiss Ephemeris):
-- Soleil: ${astro.sun_deg ?? "null"}° (${astro.sun_sign ?? "inconnu"})
-- Lune: ${astro.moon_deg ?? "null"}° (${astro.moon_sign ?? "inconnu"})
-- Ascendant: ${astro.asc_deg ?? "null"}° (${astro.asc_sign ?? "inconnu"})`
-    : "Faits astrologiques précis non disponibles (calcule signe/degrés au mieux à partir du contexte).";
+  const formatDegree = (deg: number | null | undefined) =>
+    deg === null || deg === undefined || Number.isNaN(Number(deg))
+      ? "inconnu"
+      : `${Number(deg).toFixed(1)}°`;
 
-  return `Tu es SpotCoach, un coach symbolique et stratégique.
+  const astroFacts = astro
+    ? `Données astro calculées (Swiss Ephemeris) :\n- Soleil : ${formatDegree(astro.sun_deg)} (${astro.sun_sign ?? "signe inconnu"})\n- Lune : ${formatDegree(astro.moon_deg)} (${astro.moon_sign ?? "signe inconnu"})\n- Ascendant : ${formatDegree(astro.asc_deg)} (${astro.asc_sign ?? "signe inconnu"})\n- Mode de calcul : ${astro.ephe_mode ?? "inconnu"}`
+    : "Données astro indisponibles : déduis les tendances au mieux.";
+
+  return `Tu es SpotCoach, un coach symbolique et stratégique francophone.
 Tu combines:
 - L'analyse astrologique (à partir des données de naissance)
 - Le modèle DISC / 4 couleurs
@@ -212,13 +214,15 @@ OBJECTIF: Générer un profil symbolique structuré en JSON respectant stricteme
   "ascendant_degre": number | null
 }
 
-Contraintes:
-- Renvoie UNIQUEMENT le JSON (aucun texte avant ou après).
-- Si une information astronomique est inconnue, mets null.
-- La phrase_synchronie doit être courte (max 140 caractères) et inspirante.
-- L'archetype doit être un mot ou expression courte.
-- Les passions doivent être un tableau de chaînes résumant les axes majeurs.
-- Utilise un ton professionnel, positif et concret.
+Contraintes impératives :
+- Renvoie uniquement ce JSON (aucun autre texte).
+- Langue: français naturel, sans emoji.
+- Utilise les faits astro pour renseigner signes et degrés (arrondis à une décimale avec ~xx.x°).
+- "phrase_synchronie": slogan positif, max 140 caractères.
+- "archetype", "couleur_dominante", "element": termes courts et cohérents.
+- "passions": 3 à 5 éléments (phrases courtes) dérivés des informations fournies.
+- "profile_text" doit suivre exactement cette structure :
+  Soleil — Signe (~degré)\nParagraphe de 2-4 phrases sur le tempérament et la motivation.\n\nLune — Signe (~degré)\nParagraphe de 2-4 phrases sur le monde émotionnel et les besoins affectifs.\n\nAscendant — Signe (~degré)\nParagraphe de 2-4 phrases sur l'image sociale et la manière d'aborder la vie.\n\nPoints forts\n- Bullet 1\n- Bullet 2\n- Bullet 3 (3 à 5 puces maximum)\n\nConclusion\nPhrase de synthèse unique.\n- N'utilise pas de balises Markdown (#, **). Contente-toi de titres sur une ligne et de sauts de ligne.
 
 DONNÉES UTILISATEUR:
 ${baseInfo}
@@ -235,13 +239,8 @@ ${intentionsBlock}
 Profil DISC:
 ${discBlock}
 
-${astroBlock}
-
-Analyse et synthèse:
-- 1) Identifie les grands thèmes symboliques qui émergent
-- 2) Synthétise les talents / passions clés
-- 3) Propose un archetype central et couleur dominante cohérents
-- 4) Donne une phrase_synchronie inspirante rappelant l'essence de la personne.
+Faits astro:
+${astroFacts}
 `;
 }
 

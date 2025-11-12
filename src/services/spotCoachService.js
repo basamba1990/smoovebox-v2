@@ -58,11 +58,13 @@ export const spotCoachService = {
       });
 
       const invokePromise = supabase.functions.invoke(FUNCTION_NAME, {
-        body: { ...payload },
+        body: {
+          ...payload,
+        },
       });
 
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout after 20s calling spotcoach-profile')), 20000)
+        setTimeout(() => reject(new Error('Timeout after 45s calling spotcoach-profile')), 45000)
       );
 
       const { data, error } = await Promise.race([invokePromise, timeoutPromise]);

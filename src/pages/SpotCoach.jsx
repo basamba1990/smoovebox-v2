@@ -3,10 +3,8 @@
 import React, { useMemo, useState } from 'react';
 import { Button } from '../components/ui/button.jsx';
 import { Input } from '../components/ui/input.jsx';
-import { Textarea } from '../components/ui/textarea.jsx';
 import { Label } from '../components/ui/label.jsx';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card.jsx';
-import { Switch } from '../components/ui/switch.jsx';
 import { spotCoachService } from '../services/spotCoachService.js';
 
 const initialState = {
@@ -35,8 +33,34 @@ export default function SpotCoach() {
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
 
+  const narrativeSections = useMemo(() => {
+    const text = result?.profile?.profile_text;
+    if (!text) return [];
+
+    const lines = text
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const sections = [];
+    let current = null;
+
+    const isTitle = (line) =>
+      line.includes('—') || /^points forts$/i.test(line) || /^conclusion$/i.test(line);
+
+    lines.forEach((line) => {
+      if (isTitle(line)) {
+        current = { title: line, rows: [] };
+        sections.push(current);
+      } else if (current) {
+        current.rows.push(line);
+      }
+    });
+
+    return sections;
+  }, [result]);
+
   const inputClass = 'bg-slate-950/60 border-slate-800 focus:border-cyan-500 text-slate-100 placeholder:text-slate-500';
-  const textareaClass = `${inputClass} min-h-[140px]`;
 
   const isSubmitDisabled = useMemo(() => {
     if (!form.birthDate || !form.latitude || !form.longitude) {
@@ -251,30 +275,12 @@ export default function SpotCoach() {
               )}
 
               {result && result.profile && (
-                <div className="space-y-4 text-sm text-slate-100">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Mode</p>
-                    <p>{result.mode === 'preview' ? 'Prévisualisation (non sauvegardée)' : 'Profil enregistré'}</p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Phrase de synchronie</p>
-                    <p className="italic text-cyan-200">{result.profile.phrase_synchronie}</p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Archetype</p>
-                    <p>{result.profile.archetype}</p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Profil détaillé</p>
-                    <p className="leading-relaxed whitespace-pre-line text-slate-200">
-                      {result.profile.profile_text}
-                    </p>
-                  </div>
-
+                <div className="space-y-6 text-sm text-slate-100">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="border border-slate-800 rounded-lg px-3 py-2">
+                      <p className="text-xs uppercase text-slate-500">Mode</p>
+                      <p>{result.mode === 'preview' ? 'Prévisualisation (non sauvegardée)' : 'Profil enregistré'}</p>
+                    </div>
                     <div className="border border-slate-800 rounded-lg px-3 py-2">
                       <p className="text-xs uppercase text-slate-500">Couleur dominante</p>
                       <p className="font-medium text-slate-100">{result.profile.couleur_dominante}</p>
@@ -284,11 +290,19 @@ export default function SpotCoach() {
                       <p className="font-medium text-slate-100">{result.profile.element}</p>
                     </div>
                     <div className="border border-slate-800 rounded-lg px-3 py-2">
-                      <p className="text-xs uppercase text-slate-500">Signe solaire</p>
+                      <p className="text-xs uppercase text-slate-500">Phrase de synchronie</p>
+                      <p className="font-medium text-cyan-200 italic">{result.profile.phrase_synchronie}</p>
+                    </div>
+                    <div className="border border-slate-800 rounded-lg px-3 py-2">
+                      <p className="text-xs uppercase text-slate-500">Archétype</p>
+                      <p className="font-medium text-slate-100">{result.profile.archetype}</p>
+                    </div>
+                    <div className="border border-slate-800 rounded-lg px-3 py-2">
+                      <p className="text-xs uppercase text-slate-500">Soleil</p>
                       <p className="font-medium text-slate-100">{result.profile.signe_soleil}</p>
                     </div>
                     <div className="border border-slate-800 rounded-lg px-3 py-2">
-                      <p className="text-xs uppercase text-slate-500">Signe lunaire</p>
+                      <p className="text-xs uppercase text-slate-500">Lune</p>
                       <p className="font-medium text-slate-100">{result.profile.signe_lune}</p>
                     </div>
                     <div className="border border-slate-800 rounded-lg px-3 py-2">
@@ -298,13 +312,48 @@ export default function SpotCoach() {
                   </div>
 
                   {Array.isArray(result.profile.passions) && result.profile.passions.length > 0 && (
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-slate-500">Passions clés</p>
+                    <div className="border border-slate-800 rounded-lg px-4 py-3 bg-slate-900/50">
+                      <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">Passions clés</p>
                       <ul className="list-disc list-inside text-slate-200 space-y-1">
                         {result.profile.passions.map((passion, index) => (
                           <li key={`${passion}-${index}`}>{passion}</li>
                         ))}
                       </ul>
+                    </div>
+                  )}
+
+                  {narrativeSections.map((section) => {
+                    const isPointsForts = /^points forts$/i.test(section.title);
+                    const isConclusion = /^conclusion$/i.test(section.title);
+                    return (
+                      <div key={section.title} className="border border-slate-800 rounded-lg px-4 py-3 bg-slate-900/40 space-y-2">
+                        <h3 className="text-sm font-semibold text-cyan-100">{section.title}</h3>
+                        {isPointsForts ? (
+                          <ul className="list-disc list-inside space-y-1 text-slate-200">
+                            {section.rows.map((row, idx) => (
+                              <li key={idx}>{row.replace(/^[-•]\s*/, '')}</li>
+                            ))}
+                          </ul>
+                        ) : isConclusion ? (
+                          <p className="text-slate-200">{section.rows.join(' ')}</p>
+                        ) : (
+                          section.rows.map((row, idx) => (
+                            <p key={idx} className="text-slate-200 leading-relaxed">
+                              {row}
+                            </p>
+                          ))
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {result.astro && (
+                    <div className="border border-slate-800 rounded-lg px-4 py-3 bg-slate-900/40 space-y-1 text-xs text-slate-400">
+                      <p className="uppercase tracking-wide">Référence calcul astro</p>
+                      <p>Soleil : {result.astro.sun_deg?.toFixed?.(1) ?? '–'}° ({result.astro.sun_sign ?? 'inconnu'})</p>
+                      <p>Lune : {result.astro.moon_deg?.toFixed?.(1) ?? '–'}° ({result.astro.moon_sign ?? 'inconnu'})</p>
+                      <p>Ascendant : {result.astro.asc_deg?.toFixed?.(1) ?? '–'}° ({result.astro.asc_sign ?? 'inconnu'})</p>
+                      {result.astro.ephe_mode && <p>Mode : {result.astro.ephe_mode}</p>}
                     </div>
                   )}
 
