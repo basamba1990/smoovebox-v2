@@ -317,7 +317,7 @@ async function fetchAstroData(birth: GenerateProfilePayload["birth"]): Promise<A
 
   const apiKey = DENO.env.get("ASTRO_ENGINE_API_KEY");
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  const timeout = setTimeout(() => controller.abort(), 45000);
 
   try {
     const response = await fetch(url, {
