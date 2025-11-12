@@ -95,6 +95,18 @@ const AI_RESPONSE_SCHEMA = [
 
 const OPENAI_MODEL = "gpt-4o-mini";
 
+interface AstroEngineResponse {
+  sun_deg: number | null;
+  moon_deg: number | null;
+  asc_deg: number | null;
+  sun_sign: string | null;
+  moon_sign: string | null;
+  asc_sign: string | null;
+  tz_used?: string | null;
+  ephe_mode?: string;
+  [key: string]: unknown;
+}
+
 function ensureEnv(name: string): string {
   const value = DENO.env.get(name);
   if (!value) {
@@ -138,7 +150,11 @@ function validatePayload(payload: GenerateProfilePayload) {
   }
 }
 
-function buildOpenAiPrompt(userName: string | undefined, payload: GenerateProfilePayload) {
+function buildOpenAiPrompt(
+  userName: string | undefined,
+  payload: GenerateProfilePayload,
+  astro: AstroEngineResponse | null
+) {
   const name = userName || sanitizeString(payload.name) || "Utilisateur";
   const birth = payload.birth;
 
@@ -165,6 +181,13 @@ Fuseau horaire: ${birth.timezone ?? "Non fourni"}
     .join("\n") || "Pas de questionnaire talent";
 
   const intentionsBlock = (payload.intentions ?? []).map((x) => `- ${x}`).join("\n") || "Aucune intention partagée";
+
+  const astroBlock = astro
+    ? `Faits astrologiques calculés (Swiss Ephemeris):
+- Soleil: ${astro.sun_deg ?? "null"}° (${astro.sun_sign ?? "inconnu"})
+- Lune: ${astro.moon_deg ?? "null"}° (${astro.moon_sign ?? "inconnu"})
+- Ascendant: ${astro.asc_deg ?? "null"}° (${astro.asc_sign ?? "inconnu"})`
+    : "Faits astrologiques précis non disponibles (calcule signe/degrés au mieux à partir du contexte).";
 
   return `Tu es SpotCoach, un coach symbolique et stratégique.
 Tu combines:
@@ -211,6 +234,8 @@ ${intentionsBlock}
 
 Profil DISC:
 ${discBlock}
+
+${astroBlock}
 
 Analyse et synthèse:
 - 1) Identifie les grands thèmes symboliques qui émergent
@@ -284,7 +309,50 @@ async function callOpenAi(prompt: string, signal?: AbortSignal): Promise<AiSymbo
   };
 }
 
-async function insertSymbolicProfileSimple(
+async function fetchAstroData(birth: GenerateProfilePayload["birth"]): Promise<AstroEngineResponse | null> {
+  const url = DENO.env.get("ASTRO_ENGINE_URL");
+  if (!url) {
+    return null;
+  }
+
+  const apiKey = DENO.env.get("ASTRO_ENGINE_API_KEY");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { "Authorization": `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        date: birth.date,
+        time: birth.time ?? null,
+        latitude: birth.latitude,
+        longitude: birth.longitude,
+        timezone: birth.timezone ?? null,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const txt = await response.text();
+      console.error("[SpotCoach] Astro engine error:", response.status, txt);
+      return null;
+    }
+
+    const data = await response.json() as AstroEngineResponse;
+    return data;
+  } catch (err) {
+    console.error("[SpotCoach] Astro engine fetch failed:", err);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function saveOrUpdateSymbolicProfile(
   supabase: ReturnType<typeof createClient>,
   userId: string,
   payload: GenerateProfilePayload,
@@ -292,36 +360,83 @@ async function insertSymbolicProfileSimple(
 ) {
   const birth = payload.birth;
 
-  const insertBody: Record<string, unknown> = {
-    user_id: userId,
-    name: sanitizeString(payload.name) ?? "Profil SpotCoach",
-    date: birth.date,
-    time: sanitizeString(birth.time) ?? null,
-    lat: birth.latitude,
-    lon: birth.longitude,
-    // Keep only the essential AI fields to avoid type mismatches
-    profile_text: aiProfile.profile_text,
-    phrase_synchronie: aiProfile.phrase_synchronie,
-    archetype: aiProfile.archetype,
-    couleur_dominante: aiProfile.couleur_dominante,
-    element: aiProfile.element,
-    signe_soleil: aiProfile.signe_soleil,
-    signe_lune: aiProfile.signe_lune,
-    signe_ascendant: aiProfile.signe_ascendant,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-
-  const { data, error } = await supabase
+  // 1) Check if a row already exists for this user
+  const { data: existing, error: checkError } = await supabase
     .from("profiles_symboliques")
-    .insert(insertBody)
+    .select("id")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (checkError && checkError.code !== "PGRST116") {
+    throw new Error(`Failed to check existing profile: ${checkError.message}`);
+  }
+
+  if (existing?.id) {
+    // 2) Update existing row
+    const { data: updated, error: updateError } = await supabase
+      .from("profiles_symboliques")
+      .update({
+        name: sanitizeString(payload.name) ?? "Profil SpotCoach",
+        date: birth.date,
+        time: sanitizeString(birth.time) ?? null,
+        lat: birth.latitude,
+        lon: birth.longitude,
+        soleil: aiProfile.soleil_degre,
+        lune: aiProfile.lune_degre,
+        ascendant: aiProfile.ascendant_degre,
+        profile_text: aiProfile.profile_text,
+        phrase_synchronie: aiProfile.phrase_synchronie,
+        archetype: aiProfile.archetype,
+        couleur_dominante: aiProfile.couleur_dominante,
+        element: aiProfile.element,
+        signe_soleil: aiProfile.signe_soleil,
+        signe_lune: aiProfile.signe_lune,
+        signe_ascendant: aiProfile.signe_ascendant,
+        passions: aiProfile.passions,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existing.id)
+      .select()
+      .single();
+
+    if (updateError) {
+      throw new Error(`Failed to update profiles_symboliques: ${updateError.message}`);
+    }
+    return updated;
+  }
+
+  // 3) Insert new row
+  const { data: inserted, error: insertError } = await supabase
+    .from("profiles_symboliques")
+    .insert({
+      user_id: userId,
+      name: sanitizeString(payload.name) ?? "Profil SpotCoach",
+      date: birth.date,
+      time: sanitizeString(birth.time) ?? null,
+      lat: birth.latitude,
+      lon: birth.longitude,
+      soleil: aiProfile.soleil_degre,
+      lune: aiProfile.lune_degre,
+      ascendant: aiProfile.ascendant_degre,
+      profile_text: aiProfile.profile_text,
+      phrase_synchronie: aiProfile.phrase_synchronie,
+      archetype: aiProfile.archetype,
+      couleur_dominante: aiProfile.couleur_dominante,
+      element: aiProfile.element,
+      signe_soleil: aiProfile.signe_soleil,
+      signe_lune: aiProfile.signe_lune,
+      signe_ascendant: aiProfile.signe_ascendant,
+      passions: aiProfile.passions,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
     .select()
     .single();
 
-  if (error) {
-    throw new Error(`Failed to insert profiles_symboliques: ${error.message}`);
+  if (insertError) {
+    throw new Error(`Failed to insert profiles_symboliques: ${insertError.message}`);
   }
-  return data;
+  return inserted;
 }
 
 DENO.serve(async (req: Request) => {
@@ -406,7 +521,13 @@ DENO.serve(async (req: Request) => {
       });
     }
 
-    const prompt = buildOpenAiPrompt(user.user_metadata?.full_name ?? user.email ?? undefined, payload);
+    const astroData = await fetchAstroData(payload.birth);
+
+    const prompt = buildOpenAiPrompt(
+      user.user_metadata?.full_name ?? user.email ?? undefined,
+      payload,
+      astroData
+    );
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 20000);
@@ -420,14 +541,25 @@ DENO.serve(async (req: Request) => {
       clearTimeout(timeoutId);
     }
 
-    console.log("[SpotCoach] Persisting profile to profiles_symboliques (simple insert)...");
-    const storedProfile = await insertSymbolicProfileSimple(supabaseClient, user.id, payload, aiProfile);
+    const enrichedProfile: AiSymbolicProfile = {
+      ...aiProfile,
+      soleil_degre: astroData?.sun_deg ?? aiProfile.soleil_degre ?? null,
+      lune_degre: astroData?.moon_deg ?? aiProfile.lune_degre ?? null,
+      ascendant_degre: astroData?.asc_deg ?? aiProfile.ascendant_degre ?? null,
+      signe_soleil: astroData?.sun_sign ?? aiProfile.signe_soleil,
+      signe_lune: astroData?.moon_sign ?? aiProfile.signe_lune,
+      signe_ascendant: astroData?.asc_sign ?? aiProfile.signe_ascendant,
+    };
+
+    console.log("[SpotCoach] Persisting profile to profiles_symboliques...");
+    const storedProfile = await saveOrUpdateSymbolicProfile(supabaseClient, user.id, payload, enrichedProfile);
     console.log("[SpotCoach] Save/Update complete:", { id: storedProfile?.id, user_id: storedProfile?.user_id });
 
     return new Response(JSON.stringify({
       success: true,
       mode: "persisted",
-      profile: aiProfile,
+      profile: enrichedProfile,
+      astro: astroData,
       stored: storedProfile,
     }), {
       status: 200,
