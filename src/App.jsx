@@ -33,6 +33,7 @@ import FourColorsTest from "@/components/FourColorsTest.jsx";
 import SeminarsList from "@/components/SeminarsList.jsx";
 import Certification from "@/components/Certification.jsx";
 import SimplifiedHome from "@/pages/SimplifiedHome.jsx";
+import SpotCoach from "@/pages/SpotCoach.jsx";
 
 import "./App.css";
 import "./styles/design-system.css";
@@ -339,6 +340,14 @@ const AppContent = () => {
         <Route path="/psg-signin" element={<PsgSignin />} />
         <Route path="/test-chat" element={<FootballChatTest />} />
         <Route path="/premium" element={<SpotBullePremium />} />
+        <Route
+          path="/spotcoach"
+          element={
+            <RequireAuth>
+              <SpotCoach />
+            </RequireAuth>
+          }
+        />
 
         {/* Routes protégées */}
         <Route

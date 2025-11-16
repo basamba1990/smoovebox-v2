@@ -250,9 +250,9 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={loading || authLoading}
+                disabled={loading }
               >
-                {loading || authLoading
+                {loading 
                   ? "Chargement..."
                   : isLogin
                   ? "Connexion"
