@@ -106,6 +106,59 @@ export const spotCoachService = {
       throw formatServiceError(err);
     }
   },
+
+  async getExistingProfile() {
+    const startedAt = Date.now();
+    console.log('[SpotCoachService] getExistingProfile start');
+    try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+      if (authError) {
+        console.error('[SpotCoachService] getExistingProfile auth error:', authError);
+      }
+      if (!user) {
+        console.log('[SpotCoachService] getExistingProfile: no user session');
+        return null;
+      }
+
+      const timeoutMs = 10000;
+      let timeoutId;
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Timeout retrieving symbolic profile')), timeoutMs);
+      });
+
+      let data;
+      let error;
+
+      try {
+        ({ data, error } = await Promise.race([
+          supabase
+            .from('profiles_symboliques')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          timeoutPromise,
+        ]));
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+      }
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      return data || null;
+    } catch (err) {
+      console.error('[SpotCoachService] getExistingProfile error:', err);
+      return null;
+    } finally {
+      console.log('[SpotCoachService] getExistingProfile end', { ms: Date.now() - startedAt });
+    }
+  },
 };
 
 export default spotCoachService;
