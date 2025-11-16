@@ -1,6 +1,6 @@
 // src/pages/SpotCoach.jsx
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '../components/ui/button.jsx';
 import { Input } from '../components/ui/input.jsx';
 import { Label } from '../components/ui/label.jsx';
@@ -32,6 +32,81 @@ export default function SpotCoach() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
+  const [loadingExisting, setLoadingExisting] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setLoadingExisting(true);
+      try {
+        const existing = await spotCoachService.getExistingProfile();
+        if (!mounted) return;
+        if (existing) {
+          const passions = Array.isArray(existing.passions)
+            ? existing.passions
+            : typeof existing.passions === 'string'
+              ? (() => {
+                  try {
+                    const parsed = JSON.parse(existing.passions);
+                    return Array.isArray(parsed) ? parsed : [existing.passions];
+                  } catch {
+                    return [existing.passions];
+                  }
+                })()
+              : [];
+
+          const mapped = {
+            mode: 'persisted',
+            profile: {
+              phrase_synchronie: existing.phrase_synchronie ?? '',
+              archetype: existing.archetype ?? '',
+              couleur_dominante: existing.couleur_dominante ?? '',
+              element: existing.element ?? '',
+              signe_soleil: existing.signe_soleil ?? '',
+              signe_lune: existing.signe_lune ?? '',
+              signe_ascendant: existing.signe_ascendant ?? '',
+              profile_text: existing.profile_text ?? '',
+              passions,
+            },
+            astro: {
+              sun_deg: existing.soleil ?? null,
+              moon_deg: existing.lune ?? null,
+              asc_deg: existing.ascendant ?? null,
+              sun_sign: existing.signe_soleil ?? null,
+              moon_sign: existing.signe_lune ?? null,
+              asc_sign: existing.signe_ascendant ?? null,
+            },
+            stored: existing,
+          };
+          setResult(mapped);
+          setForm((prev) => ({
+            ...prev,
+            name: existing.name ?? '',
+            birthDate: existing.date ?? '',
+            birthTime: existing.time ?? '',
+            birthCity: existing.city ?? '',
+            latitude: existing.lat ?? '',
+            longitude: existing.lon ?? '',
+            timezone: existing.timezone ?? '',
+          }));
+          setShowForm(false);
+        } else {
+          setShowForm(true);
+          setResult(null);
+        }
+      } catch (err) {
+        console.error('[SpotCoach] Load existing profile error:', err);
+        setShowForm(true);
+        setResult(null);
+      } finally {
+        if (mounted) setLoadingExisting(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const narrativeSections = useMemo(() => {
     const text = result?.profile?.profile_text;
@@ -109,6 +184,7 @@ export default function SpotCoach() {
 
       console.log('[SpotCoach] submit success', { ms: Date.now() - startedAt, mode: response?.mode });
       setResult(response);
+      setShowForm(false);
     } catch (err) {
       console.error('[SpotCoach] Form submission error:', err);
       try { console.error('[SpotCoach] Form submission error (json):', JSON.stringify(err)); } catch {}
@@ -150,107 +226,118 @@ export default function SpotCoach() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form className="space-y-6" onSubmit={handleSubmit}>
-                <section className="space-y-4">
-                  <h2 className="text-lg font-semibold text-slate-100">Identité &amp; Naissance</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="coach-name">Nom (optionnel)</Label>
-                      <Input
-                        id="coach-name"
-                        placeholder="Ex: Alex Dupont"
-                        value={form.name}
-                        onChange={handleChange('name')}
-                        className={inputClass}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="coach-date">Date de naissance *</Label>
-                      <Input
-                        id="coach-date"
-                        type="date"
-                        value={form.birthDate}
-                        onChange={handleChange('birthDate')}
-                        required
-                        className={inputClass}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="coach-time">Heure de naissance (optionnelle)</Label>
-                      <Input
-                        id="coach-time"
-                        type="time"
-                        value={form.birthTime}
-                        onChange={handleChange('birthTime')}
-                        className={inputClass}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="coach-city">Ville de naissance</Label>
-                      <Input
-                        id="coach-city"
-                        placeholder="Ex: Paris, France"
-                        value={form.birthCity}
-                        onChange={handleChange('birthCity')}
-                        className={inputClass}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="coach-lat">Latitude *</Label>
-                      <Input
-                        id="coach-lat"
-                        type="number"
-                        step="0.000001"
-                        placeholder="48.856613"
-                        value={form.latitude}
-                        onChange={handleChange('latitude')}
-                        required
-                        className={inputClass}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="coach-lon">Longitude *</Label>
-                      <Input
-                        id="coach-lon"
-                        type="number"
-                        step="0.000001"
-                        placeholder="2.352222"
-                        value={form.longitude}
-                        onChange={handleChange('longitude')}
-                        required
-                        className={inputClass}
-                      />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="coach-timezone">Fuseau horaire (optionnel)</Label>
-                      <Input
-                        id="coach-timezone"
-                        placeholder="Ex: Europe/Paris"
-                        value={form.timezone}
-                        onChange={handleChange('timezone')}
-                        className={inputClass}
-                      />
-                    </div>
-                  </div>
-                </section>
+              {loadingExisting ? (
+                <div className="text-sm text-slate-400">Chargement du profil…</div>
+              ) : showForm ? (
+                <form className="space-y-6" onSubmit={handleSubmit}>
+                    <section className="space-y-4">
+                      <h2 className="text-lg font-semibold text-slate-100">Identité &amp; Naissance</h2>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="coach-name">Nom (optionnel)</Label>
+                          <Input
+                            id="coach-name"
+                            placeholder="Ex: Alex Dupont"
+                            value={form.name}
+                            onChange={handleChange('name')}
+                            className={inputClass}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="coach-date">Date de naissance *</Label>
+                          <Input
+                            id="coach-date"
+                            type="date"
+                            value={form.birthDate}
+                            onChange={handleChange('birthDate')}
+                            required
+                            className={inputClass}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="coach-time">Heure de naissance (optionnelle)</Label>
+                          <Input
+                            id="coach-time"
+                            type="time"
+                            value={form.birthTime}
+                            onChange={handleChange('birthTime')}
+                            className={inputClass}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="coach-city">Ville de naissance</Label>
+                          <Input
+                            id="coach-city"
+                            placeholder="Ex: Paris, France"
+                            value={form.birthCity}
+                            onChange={handleChange('birthCity')}
+                            className={inputClass}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="coach-lat">Latitude *</Label>
+                          <Input
+                            id="coach-lat"
+                            type="number"
+                            step="0.000001"
+                            placeholder="48.856613"
+                            value={form.latitude}
+                            onChange={handleChange('latitude')}
+                            required
+                            className={inputClass}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="coach-lon">Longitude *</Label>
+                          <Input
+                            id="coach-lon"
+                            type="number"
+                            step="0.000001"
+                            placeholder="2.352222"
+                            value={form.longitude}
+                            onChange={handleChange('longitude')}
+                            required
+                            className={inputClass}
+                          />
+                        </div>
+                        <div className="space-y-2 md:col-span-2">
+                          <Label htmlFor="coach-timezone">Fuseau horaire (optionnel)</Label>
+                          <Input
+                            id="coach-timezone"
+                            placeholder="Ex: Europe/Paris"
+                            value={form.timezone}
+                            onChange={handleChange('timezone')}
+                            className={inputClass}
+                          />
+                        </div>
+                      </div>
+                    </section>
 
-                {/* Sections removed per request: Passions & Talents, Intentions, and Preview toggle */}
+                    {/* Sections removed per request: Passions & Talents, Intentions, and Preview toggle */}
 
-                <div className="flex items-center gap-3">
-                  <Button type="submit" disabled={isSubmitDisabled} className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-semibold">
-                    {loading ? 'Génération en cours…' : 'Générer et sauvegarder'}
-                  </Button>
-                  <Button type="button" variant="outline" className="border-slate-700 text-slate-300 hover:text-white" onClick={() => setForm(initialState)} disabled={loading}>
-                    Réinitialiser
+                    <div className="flex items-center gap-3">
+                      <Button type="submit" disabled={isSubmitDisabled} className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-semibold">
+                        {loading ? 'Génération en cours…' : 'Générer et sauvegarder'}
+                      </Button>
+                      <Button type="button" variant="outline" className="border-slate-700 text-slate-300 hover:text-white" onClick={() => setForm(initialState)} disabled={loading}>
+                        Réinitialiser
+                      </Button>
+                    </div>
+
+                    {error && (
+                      <div className="rounded-lg border border-red-500/40 bg-red-500/10 text-red-200 px-4 py-3 text-sm">
+                        {error}
+                      </div>
+                    )}
+                  </form>
+              ) : (
+                <div className="space-y-4 text-sm text-slate-300">
+                  <p>Un profil existe déjà pour cet utilisateur. Tu peux le consulter à droite ou le régénérer si besoin.</p>
+                  <Button onClick={() => { setShowForm(true); setError(null); }} className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-semibold">
+                    Régénérer le profil symbolique
                   </Button>
                 </div>
-
-                {error && (
-                  <div className="rounded-lg border border-red-500/40 bg-red-500/10 text-red-200 px-4 py-3 text-sm">
-                    {error}
-                  </div>
-                )}
-              </form>
+              )}
             </CardContent>
           </Card>
 
@@ -262,7 +349,7 @@ export default function SpotCoach() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {!result && !loading && (
+              {!result && !loading && !loadingExisting && (
                 <div className="text-sm text-slate-400">
                   Complète le formulaire et lance la génération pour découvrir le profil symbolique personnalisé.
                 </div>
