@@ -60,10 +60,17 @@ const simplifiedTabs = [
     description: "Trouver des synergies",
   },
   {
+    id: "spotcoach",
+    name: "🎯 SpotCoach",
+    icon: "🎯",
+    priority: 6,
+    description: "Profil symbolique personnalisé",
+  },
+  {
     id: "more",
     name: "➕ Plus",
     icon: "➕",
-    priority: 6,
+    priority: 7,
     description: "Autres fonctionnalités",
   },
 ];
@@ -189,6 +196,10 @@ export default function SimplifiedHome({
 
   // ✅ Navigation par actions rapides via composant dédié
   const onSelectQuickAction = (id) => {
+    if (id === "spotcoach") {
+      navigate("/spotcoach");
+      return;
+    }
     setActiveTab(id);
     if (id === "more") setActiveSubTab("main");
   };
