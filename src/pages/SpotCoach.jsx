@@ -1,6 +1,7 @@
 // src/pages/SpotCoach.jsx
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button.jsx';
 import { Input } from '../components/ui/input.jsx';
 import { Label } from '../components/ui/label.jsx';
@@ -28,6 +29,7 @@ function parseMultiline(text) {
 }
 
 export default function SpotCoach() {
+  const navigate = useNavigate();
   const [form, setForm] = useState(initialState);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -61,21 +63,12 @@ export default function SpotCoach() {
             profile: {
               phrase_synchronie: existing.phrase_synchronie ?? '',
               archetype: existing.archetype ?? '',
-              couleur_dominante: existing.couleur_dominante ?? '',
               element: existing.element ?? '',
               signe_soleil: existing.signe_soleil ?? '',
               signe_lune: existing.signe_lune ?? '',
               signe_ascendant: existing.signe_ascendant ?? '',
               profile_text: existing.profile_text ?? '',
               passions,
-            },
-            astro: {
-              sun_deg: existing.soleil ?? null,
-              moon_deg: existing.lune ?? null,
-              asc_deg: existing.ascendant ?? null,
-              sun_sign: existing.signe_soleil ?? null,
-              moon_sign: existing.signe_lune ?? null,
-              asc_sign: existing.signe_ascendant ?? null,
             },
             stored: existing,
           };
@@ -207,14 +200,25 @@ export default function SpotCoach() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 py-10">
       <div className="max-w-6xl mx-auto px-4 space-y-10">
-        <div className="text-center space-y-3">
-          <h1 className="text-3xl md:text-4xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400">
-            SpotCoach – Profil Symbolique Personnalisé
-          </h1>
-          <p className="text-slate-300 max-w-3xl mx-auto">
-            Renseigne les informations de naissance, réponds aux mini-questionnaires passions / talents et partage tes intentions.
-            SpotCoach combinera ces données avec l&apos;analyse symbolique (DISC, 4 couleurs) pour générer un profil aligné sur ton essence.
-          </p>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Button
+              onClick={() => navigate('/')}
+              variant="outline"
+              className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800"
+            >
+              ← Retour à l'accueil
+            </Button>
+          </div>
+          <div className="text-center space-y-3">
+            <h1 className="text-3xl md:text-4xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400">
+              SpotCoach – Profil Symbolique Personnalisé
+            </h1>
+            <p className="text-slate-300 max-w-3xl mx-auto">
+              Renseigne les informations de naissance, réponds aux mini-questionnaires passions / talents et partage tes intentions.
+              SpotCoach combinera ces données avec l&apos;analyse symbolique pour générer un profil aligné sur ton essence.
+            </p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -222,7 +226,7 @@ export default function SpotCoach() {
             <CardHeader>
               <CardTitle>Questionnaire &amp; Informations</CardTitle>
               <CardDescription>
-                Fournis des données précises pour une lecture symbolique pertinente. Les champs latitude / longitude sont requis pour le calcul astro.
+                Fournis des données précises pour une lecture symbolique pertinente. Les champs latitude / longitude sont requis.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -357,7 +361,7 @@ export default function SpotCoach() {
 
               {loading && (
                 <div className="text-sm text-cyan-300 animate-pulse">
-                  Analyse symbolique en cours… SpotCoach fusionne les données astro, DISC et tes intentions.
+                  Analyse symbolique en cours… SpotCoach fusionne les données et tes intentions.
                 </div>
               )}
 
@@ -367,10 +371,6 @@ export default function SpotCoach() {
                     <div className="border border-slate-800 rounded-lg px-3 py-2">
                       <p className="text-xs uppercase text-slate-500">Mode</p>
                       <p>{result.mode === 'preview' ? 'Prévisualisation (non sauvegardée)' : 'Profil enregistré'}</p>
-                    </div>
-                    <div className="border border-slate-800 rounded-lg px-3 py-2">
-                      <p className="text-xs uppercase text-slate-500">Couleur dominante</p>
-                      <p className="font-medium text-slate-100">{result.profile.couleur_dominante}</p>
                     </div>
                     <div className="border border-slate-800 rounded-lg px-3 py-2">
                       <p className="text-xs uppercase text-slate-500">Élément</p>
@@ -434,15 +434,6 @@ export default function SpotCoach() {
                     );
                   })}
 
-                  {result.astro && (
-                    <div className="border border-slate-800 rounded-lg px-4 py-3 bg-slate-900/40 space-y-1 text-xs text-slate-400">
-                      <p className="uppercase tracking-wide">Référence calcul astro</p>
-                      <p>Soleil : {result.astro.sun_deg?.toFixed?.(1) ?? '–'}° ({result.astro.sun_sign ?? 'inconnu'})</p>
-                      <p>Lune : {result.astro.moon_deg?.toFixed?.(1) ?? '–'}° ({result.astro.moon_sign ?? 'inconnu'})</p>
-                      <p>Ascendant : {result.astro.asc_deg?.toFixed?.(1) ?? '–'}° ({result.astro.asc_sign ?? 'inconnu'})</p>
-                      {result.astro.ephe_mode && <p>Mode : {result.astro.ephe_mode}</p>}
-                    </div>
-                  )}
 
                   {result.stored && (
                     <div className="text-xs text-slate-500 border-t border-slate-800 pt-3">
