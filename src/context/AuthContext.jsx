@@ -107,30 +107,50 @@ export const AuthProvider = ({ children }) => {
   // Initialisation et gestion des changements d'état d'authentification
   useEffect(() => {
     let mounted = true;
+    let isInitializing = true;
 
     const initializeAuth = async () => {
       try {
-        // Vérifier et rafraîchir la session
-        const hasValidSession = await refreshSession();
+        // Always check getSession() first - it reads directly from storage
+        // This is more reliable than refreshSession() which might fail
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (!mounted) return;
 
-        if (hasValidSession) {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user) {
-            setUser(session.user);
-            const userProfile = await fetchUserProfile(session.user.id, session.user);
-            setProfile(userProfile);
-            setLoading(false);
+        if (session?.user) {
+          console.log('[Auth] Session found in storage:', session.user.id);
+          setUser(session.user);
+          const userProfile = await fetchUserProfile(session.user.id, session.user);
+          setProfile(userProfile);
+          
+          // Try to refresh in background (non-blocking)
+          refreshSession().catch(err => {
+            console.warn('[Auth] Background session refresh failed:', err);
+            // Don't clear the session if refresh fails - user is still logged in
+          });
+        } else {
+          console.log('[Auth] No session found in storage');
+          // Try refresh as last resort
+          const hasValidSession = await refreshSession();
+          
+          if (hasValidSession) {
+            const { data: { session: refreshedSession } } = await supabase.auth.getSession();
+            if (refreshedSession?.user) {
+              console.log('[Auth] Session restored after refresh:', refreshedSession.user.id);
+              setUser(refreshedSession.user);
+              const userProfile = await fetchUserProfile(refreshedSession.user.id, refreshedSession.user);
+              setProfile(userProfile);
+            }
           }
         }
       } catch (error) {
-        console.error('Erreur initialisation auth:', error);
+        console.error('[Auth] Erreur initialisation auth:', error);
         if (mounted) {
           setError(error.message);
         }
       } finally {
         if (mounted) {
+          isInitializing = false;
           setLoading(false);
         }
       }
@@ -143,18 +163,28 @@ export const AuthProvider = ({ children }) => {
       async (event, session) => {
         if (!mounted) return;
 
+        // Don't interfere during initialization (except for SIGNED_OUT)
+        if (isInitializing && event !== 'SIGNED_OUT') {
+          console.log('[Auth] onAuthStateChange ignored during initialization:', event);
+          return;
+        }
+
+        console.log('[Auth] onAuthStateChange:', event, session?.user?.id);
 
         if (session?.user) {
           setUser(session.user);
           const userProfile = await fetchUserProfile(session.user.id, session.user);
           setProfile(userProfile);
           setError(null);
-          setLoading(false);
         } else {
           setUser(null);
           setProfile(null);
         }
-        setLoading(false);
+        
+        // Only set loading to false if not initializing
+        if (!isInitializing) {
+          setLoading(false);
+        }
       }
     );
 
@@ -192,6 +222,12 @@ export const AuthProvider = ({ children }) => {
           email: data.user.email,
           user_metadata: data.user.user_metadata
         });
+        
+        // Immediately set user state to avoid race condition with onAuthStateChange
+        console.log('[Auth] signUp: Setting user state immediately:', data.user.id);
+        setUser(data.user);
+        const userProfile = await fetchUserProfile(data.user.id, data.user);
+        setProfile(userProfile);
       }
 
       return data;
@@ -216,6 +252,14 @@ export const AuthProvider = ({ children }) => {
       });
 
       if (error) throw error;
+
+      // Immediately set user state to avoid race condition with onAuthStateChange
+      if (data.user) {
+        console.log('[Auth] signIn: Setting user state immediately:', data.user.id);
+        setUser(data.user);
+        const userProfile = await fetchUserProfile(data.user.id, data.user);
+        setProfile(userProfile);
+      }
 
       return data;
     } catch (error) {
