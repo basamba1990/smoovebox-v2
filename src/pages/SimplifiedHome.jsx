@@ -60,17 +60,10 @@ const simplifiedTabs = [
     description: "Trouver des synergies",
   },
   {
-    id: "spotcoach",
-    name: "🎯 SpotCoach",
-    icon: "🎯",
-    priority: 6,
-    description: "Profil symbolique personnalisé",
-  },
-  {
     id: "more",
     name: "➕ Plus",
     icon: "➕",
-    priority: 7,
+    priority: 6,
     description: "Autres fonctionnalités",
   },
 ];
@@ -196,10 +189,6 @@ export default function SimplifiedHome({
 
   // ✅ Navigation par actions rapides via composant dédié
   const onSelectQuickAction = (id) => {
-    if (id === "spotcoach") {
-      navigate("/spotcoach");
-      return;
-    }
     setActiveTab(id);
     if (id === "more") setActiveSubTab("main");
   };
@@ -824,6 +813,15 @@ export default function SimplifiedHome({
 
       {/* ✅ Boutons d'action rapide flottants */}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+        {/* Bouton SpotCoach */}
+        <Button
+          onClick={() => navigate("/spotcoach")}
+          className="bg-purple-600 hover:bg-purple-700 text-white shadow-lg text-lg py-3 px-4 rounded-full flex items-center gap-2 hover:scale-105 transition-transform"
+          title="SpotCoach - Profil Symbolique"
+        >
+          🎯 SpotCoach
+        </Button>
+
         {/* Bouton Chat Football */}
         <Button
           onClick={() => setShowChatModal(true)}
