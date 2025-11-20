@@ -6,6 +6,8 @@ import { Button } from '../components/ui/button.jsx';
 import { Input } from '../components/ui/input.jsx';
 import { Label } from '../components/ui/label.jsx';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card.jsx';
+import { DatePicker } from '../components/ui/date-picker.jsx';
+import { TimePicker } from '../components/ui/time-picker.jsx';
 import { spotCoachService } from '../services/spotCoachService.js';
 
 const initialState = {
@@ -238,7 +240,7 @@ export default function SpotCoach() {
                       <h2 className="text-lg font-semibold text-slate-100">Identité &amp; Naissance</h2>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="coach-name">Nom (optionnel)</Label>
+                          <Label htmlFor="coach-name" className="text-white font-medium">Nom (optionnel)</Label>
                           <Input
                             id="coach-name"
                             placeholder="Ex: Alex Dupont"
@@ -248,28 +250,28 @@ export default function SpotCoach() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="coach-date">Date de naissance *</Label>
-                          <Input
-                            id="coach-date"
-                            type="date"
+                          <Label htmlFor="coach-date" className="text-white font-medium">Date de naissance *</Label>
+                          <DatePicker
                             value={form.birthDate}
                             onChange={handleChange('birthDate')}
+                            placeholder="Sélectionner votre date de naissance"
                             required
-                            className={inputClass}
+                            maxDate={new Date()} // Can't select future dates
+                            className="bg-slate-950/60 border-slate-800 text-slate-100 hover:bg-slate-900"
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="coach-time">Heure de naissance (optionnelle)</Label>
-                          <Input
-                            id="coach-time"
-                            type="time"
+                          <Label htmlFor="coach-time" className="text-white font-medium">Heure de naissance (optionnelle)</Label>
+                          <TimePicker
                             value={form.birthTime}
                             onChange={handleChange('birthTime')}
-                            className={inputClass}
+                            placeholder="Sélectionner l'heure de naissance"
+                            step={1}
+                            className="bg-slate-950/60 border-slate-800 text-slate-100 hover:bg-slate-900"
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="coach-city">Ville de naissance</Label>
+                          <Label htmlFor="coach-city" className="text-white font-medium">Ville de naissance</Label>
                           <Input
                             id="coach-city"
                             placeholder="Ex: Paris, France"
@@ -279,7 +281,7 @@ export default function SpotCoach() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="coach-lat">Latitude *</Label>
+                          <Label htmlFor="coach-lat" className="text-white font-medium">Latitude *</Label>
                           <Input
                             id="coach-lat"
                             type="number"
@@ -292,7 +294,7 @@ export default function SpotCoach() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="coach-lon">Longitude *</Label>
+                          <Label htmlFor="coach-lon" className="text-white font-medium">Longitude *</Label>
                           <Input
                             id="coach-lon"
                             type="number"
@@ -305,7 +307,7 @@ export default function SpotCoach() {
                           />
                         </div>
                         <div className="space-y-2 md:col-span-2">
-                          <Label htmlFor="coach-timezone">Fuseau horaire (optionnel)</Label>
+                          <Label htmlFor="coach-timezone" className="text-white font-medium">Fuseau horaire (optionnel)</Label>
                           <Input
                             id="coach-timezone"
                             placeholder="Ex: Europe/Paris"
