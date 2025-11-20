@@ -8,6 +8,7 @@ import { Label } from '../components/ui/label.jsx';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card.jsx';
 import { DatePicker } from '../components/ui/date-picker.jsx';
 import { TimePicker } from '../components/ui/time-picker.jsx';
+import { CityAutocomplete } from '../components/ui/city-autocomplete.jsx';
 import { spotCoachService } from '../services/spotCoachService.js';
 
 const initialState = {
@@ -144,6 +145,14 @@ export default function SpotCoach() {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  const handleCityCoordinates = ({ latitude, longitude }) => {
+    setForm((prev) => ({ 
+      ...prev, 
+      latitude: latitude?.toString() || prev.latitude,
+      longitude: longitude?.toString() || prev.longitude
+    }));
+  };
+
   const buildPayload = () => {
     const latitude = Number(form.latitude);
     const longitude = Number(form.longitude);
@@ -272,11 +281,11 @@ export default function SpotCoach() {
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="coach-city" className="text-white font-medium">Ville de naissance</Label>
-                          <Input
-                            id="coach-city"
-                            placeholder="Ex: Paris, France"
+                          <CityAutocomplete
                             value={form.birthCity}
                             onChange={handleChange('birthCity')}
+                            onCoordinatesChange={handleCityCoordinates}
+                            placeholder="Ex: Paris, France"
                             className={inputClass}
                           />
                         </div>
@@ -290,6 +299,7 @@ export default function SpotCoach() {
                             value={form.latitude}
                             onChange={handleChange('latitude')}
                             required
+                            disabled
                             className={inputClass}
                           />
                         </div>
@@ -303,6 +313,7 @@ export default function SpotCoach() {
                             value={form.longitude}
                             onChange={handleChange('longitude')}
                             required
+                            disabled
                             className={inputClass}
                           />
                         </div>
