@@ -7,7 +7,7 @@ import path from 'path';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   optimizeDeps: {
-    include: ['uuid', '@supabase/supabase-js'],
+    include: ['uuid', '@supabase/supabase-js', '@tanstack/react-query'],
   },
   resolve: {
     alias: {
