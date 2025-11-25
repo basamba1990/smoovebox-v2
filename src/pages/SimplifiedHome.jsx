@@ -1,5 +1,5 @@
 // src/pages/SimplifiedHome.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Dashboard from "../components/Dashboard.jsx";
 import RecordVideo from "./record-video.jsx";
 import ProfessionalHeader from "../components/ProfessionalHeader.jsx";
@@ -9,6 +9,8 @@ import { Button } from "../components/ui/button-enhanced.jsx";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useSupabaseClient } from "@supabase/auth-helpers-react";
+import { useVideos } from "../hooks/useVideos.js";
+import { useQueryClient } from "@tanstack/react-query";
 
 // ✅ AJOUT DES IMPORTS MANQUANTS
 import Questionnaire from "../components/Questionnaire.jsx";
@@ -76,14 +78,12 @@ export default function SimplifiedHome({
   dashboardData,
   loading,
   error,
-  loadDashboardData,
   onProfileUpdated,
 }) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("record");
   const [refreshKey, setRefreshKey] = useState(0);
   const [showQuestionnaire, setShowQuestionnaire] = useState(false);
-  const [userStats, setUserStats] = useState(null);
   const [activeSubTab, setActiveSubTab] = useState("main"); // Pour l'onglet "Plus"
   const [activeImmersionTab, setActiveImmersionTab] = useState("parcours");
   // ✅ NOUVEL ÉTAT : Langue sélectionnée
@@ -95,50 +95,58 @@ export default function SimplifiedHome({
   const [showLanguageOptions, setShowLanguageOptions] = useState(false);
 
   const supabase = useSupabaseClient();
+  const queryClient = useQueryClient();
 
-  // ✅ Chargement des statistiques utilisateur
-  useEffect(() => {
-    const loadUserStats = async () => {
-      if (!user) return;
+  // ✅ Use React Query hook for videos
+  const { data: videos = [], isLoading: videosLoading, error: videosError } = useVideos();
 
-      try {
-        const { data: videos, error } = await supabase
-          .from("videos")
-          .select("id, status, created_at, title")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
+  // ✅ Calculate stats from videos data (memoized for performance)
+  const userStats = useMemo(() => {
+    if (!videos || videos.length === 0) {
+      return {
+        totalVideos: 0,
+        recentVideos: [],
+        completedVideos: 0,
+        processingVideos: 0,
+      };
+    }
 
-        if (error) throw error;
-
-        const stats = {
-          totalVideos: videos?.length || 0,
-          recentVideos: videos?.slice(0, 3) || [],
-          completedVideos:
-            videos?.filter((v) => v.status === "analyzed").length || 0,
-          processingVideos:
-            videos?.filter(
-              (v) => v.status === "processing" || v.status === "analyzing"
-            ).length || 0,
-        };
-
-        setUserStats(stats);
-      } catch (err) {
-        console.error("❌ Erreur chargement stats:", err);
-        setAppError(`Erreur chargement statistiques: ${err.message}`);
-      }
+    return {
+      totalVideos: videos.length,
+      recentVideos: videos.slice(0, 3).map(v => ({
+        id: v.id,
+        status: v.status,
+        created_at: v.created_at,
+        title: v.title,
+      })),
+      completedVideos: videos.filter((v) => v.status === "analyzed").length,
+      processingVideos: videos.filter(
+        (v) => v.status === "processing" || v.status === "analyzing"
+      ).length,
     };
+  }, [videos]);
 
-    loadUserStats();
-  }, [user, supabase, refreshKey]);
+  // Show error if videos query fails
+  useEffect(() => {
+    if (videosError) {
+      console.error("❌ Erreur chargement stats:", videosError);
+      setAppError(`Erreur chargement statistiques: ${videosError.message}`);
+    }
+  }, [videosError]);
 
   const handleVideoUploaded = () => {
     console.log("🔄 Vidéo uploadée, rechargement des données");
-    setRefreshKey((prev) => prev + 1);
     toast.success("Vidéo uploadée avec succès !");
 
-    if (loadDashboardData) {
-      loadDashboardData();
+    // Invalidate videos query to refetch
+    if (user) {
+      queryClient.invalidateQueries({ queryKey: ['videos', user.id] });
     }
+
+    // Also invalidate refreshKey for Dashboard component compatibility
+    setRefreshKey((prev) => prev + 1);
+
+    // React Query will automatically refetch when needed
   };
 
   const handleProfileUpdated = () => {
@@ -153,9 +161,7 @@ export default function SimplifiedHome({
     toast.success(
       "Questionnaire complété ! Votre profil est maintenant enrichi."
     );
-    if (loadDashboardData) {
-      loadDashboardData();
-    }
+    // React Query will automatically refetch when needed
   };
 
   // ✅ CORRECTION : Gestionnaire de changement de langue amélioré

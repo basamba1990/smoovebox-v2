@@ -32,7 +32,6 @@ export default function AppRoutes({
   onSignOut,
   dashboardData,
   dashboardLoading,
-  loadDashboardData,
   handleVideoUploaded,
   cameraChecked,
   navigate,
@@ -53,7 +52,6 @@ export default function AppRoutes({
                 onSignOut={onSignOut}
                 dashboardData={dashboardData}
                 loading={dashboardLoading}
-                loadDashboardData={loadDashboardData}
               />
             </RequireAuth>
           ) : (
@@ -190,7 +188,6 @@ export default function AppRoutes({
               onSignOut={onSignOut}
               dashboardData={dashboardData}
               dashboardLoading={dashboardLoading}
-              loadDashboardData={loadDashboardData}
             />
           </RequireAuth>
         }

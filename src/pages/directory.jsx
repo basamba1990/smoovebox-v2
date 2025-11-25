@@ -1,118 +1,37 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '../components/ui/button-enhanced.jsx';
 import VideoPicker from '../components/VideoPicker.jsx';
+import { useDirectoryUsers, useExistingConnections, useUserVideos } from '../hooks/useDirectory.js';
 
 const Directory = () => {
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [filter, setFilter] = useState('all');
   const [connecting, setConnecting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [existingConnections, setExistingConnections] = useState(new Set());
   const [selectedVideos, setSelectedVideos] = useState({});
-  const [userVideos, setUserVideos] = useState([]);
 
   const supabase = useSupabaseClient();
   const user = useUser();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  // Récupération des données
+  // ✅ Use React Query hooks
+  const { data: users = [], isLoading: loading, error: usersError, refetch: refetchUsers } = useDirectoryUsers(filter, searchTerm);
+  const { data: existingConnections = new Set(), refetch: refetchConnections } = useExistingConnections();
+  const { data: userVideos = [] } = useUserVideos();
+
+  // Convert query error to string for display
+  const error = usersError ? (usersError.message || 'Erreur lors du chargement des utilisateurs') : null;
+
+  // Show toast error when query fails
   useEffect(() => {
-    const fetchData = async () => {
-      await Promise.all([
-        fetchUsers(),
-        user ? fetchExistingConnections() : Promise.resolve(),
-        user ? fetchUserVideos() : Promise.resolve()
-      ]);
-    };
-
-    fetchData();
-  }, [filter, searchTerm, user]);
-
-  const fetchUsers = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      console.log('🔍 Récupération des utilisateurs avec filtre:', filter);
-
-      let query = supabase
-        .from('profiles')
-        .select('id, full_name, bio, location, skills, avatar_url, is_creator, football_interest, is_major, passions, clubs, sex, created_at')
-        .neq('id', user?.id) // Exclure l'utilisateur actuel
-        .order('created_at', { ascending: false });
-
-      // Appliquer les filtres
-      if (filter === 'creators') {
-        query = query.eq('is_creator', true);
-      } else if (filter === 'football') {
-        query = query.eq('football_interest', true);
-      } else if (filter === 'adults') {
-        query = query.eq('is_major', true);
-      }
-
-      // Appliquer la recherche
-      if (searchTerm) {
-        query = query.or(`full_name.ilike.%${searchTerm}%,bio.ilike.%${searchTerm}%,skills.cs.{${searchTerm}}`);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('❌ Erreur fetchUsers:', error);
-        throw error;
-      }
-
-      console.log(`✅ ${data?.length || 0} utilisateurs trouvés`);
-      setUsers(data || []);
-    } catch (err) {
-      console.error('❌ Erreur fetchUsers:', err);
-      setError(`Erreur chargement annuaire: ${err.message}`);
+    if (usersError) {
       toast.error('Erreur lors du chargement des utilisateurs');
-    } finally {
-      setLoading(false);
     }
-  };
-
-  const fetchExistingConnections = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('connections')
-        .select('target_id, status')
-        .eq('requester_id', user.id);
-
-      if (error) throw error;
-
-      const ids = new Set(data?.map(connection => connection.target_id) || []);
-      setExistingConnections(ids);
-      console.log(`✅ ${ids.size} connexions existantes chargées`);
-    } catch (err) {
-      console.error('❌ Erreur fetchExistingConnections:', err.message);
-    }
-  };
-
-  const fetchUserVideos = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('videos')
-        .select('id, title, public_url, storage_path, created_at, status')
-        .eq('user_id', user.id)
-        .eq('status', 'analyzed') // Seulement les vidéos analysées
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      console.log(`✅ ${data?.length || 0} vidéos utilisateur chargées`);
-      setUserVideos(data || []);
-    } catch (err) {
-      console.error('❌ Erreur fetchUserVideos:', err.message);
-      toast.error('Erreur lors du chargement de vos vidéos');
-    }
-  };
+  }, [usersError]);
 
   const handleVideoSelect = (targetUserId, videoId) => {
     setSelectedVideos(prev => ({
@@ -178,8 +97,8 @@ const Directory = () => {
 
       console.log('✅ Réponse connexion:', data);
 
-      // Mettre à jour l'état local
-      setExistingConnections(prev => new Set([...prev, targetUserId]));
+      // Invalidate connections cache to refetch
+      queryClient.invalidateQueries({ queryKey: ['directory-connections', user.id] });
       
       // Réinitialiser la sélection vidéo pour cet utilisateur
       setSelectedVideos(prev => {
@@ -268,7 +187,7 @@ const Directory = () => {
             <div className="text-red-500 text-4xl mb-4">❌</div>
             <h3 className="text-red-800 text-xl font-semibold mb-2">Erreur de chargement</h3>
             <p className="text-red-600 mb-4">{error}</p>
-            <Button onClick={fetchUsers} className="bg-red-600 hover:bg-red-700 text-white">
+            <Button onClick={() => refetchUsers()} className="bg-red-600 hover:bg-red-700 text-white">
               🔄 Réessayer
             </Button>
           </div>
@@ -314,7 +233,12 @@ const Directory = () => {
           </div>
           
           <Button
-            onClick={fetchUsers}
+            onClick={() => {
+              refetchUsers();
+              if (user) {
+                refetchConnections();
+              }
+            }}
             className="bg-blue-600 hover:bg-blue-700 text-white py-3 px-6"
           >
             🔄 Actualiser

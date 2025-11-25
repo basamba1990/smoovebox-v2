@@ -9,6 +9,7 @@ import {
 } from "@supabase/auth-helpers-react";
 import { supabase } from "./lib/supabase.js";
 import { Toaster, toast } from "sonner";
+import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 
 // Import des composants
 import AuthModal from "./AuthModal.jsx";
@@ -270,17 +271,33 @@ const AppContent = () => {
 };
 
 // ✅ COMPOSANT RACINE
+// Create QueryClient instance for React Query (needed by other components)
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
+      retry: 3,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+      refetchOnMount: true,
+    },
+  },
+});
+
 function App() {
   console.log("🚀 Initialisation SpotBulle");
 
   return (
-    <SessionContextProvider supabaseClient={supabase}>
-      <AuthProvider>
-        <ErrorBoundaryWrapper>
-          <AppContent />
-        </ErrorBoundaryWrapper>
-      </AuthProvider>
-    </SessionContextProvider>
+    <QueryClientProvider client={queryClient}>
+      <SessionContextProvider supabaseClient={supabase}>
+        <AuthProvider>
+          <ErrorBoundaryWrapper>
+            <AppContent />
+          </ErrorBoundaryWrapper>
+        </AuthProvider>
+      </SessionContextProvider>
+    </QueryClientProvider>
   );
 }
 

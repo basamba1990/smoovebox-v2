@@ -1,93 +1,40 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import VideoPlayer from '../components/VideoPlayer';
 import VideoAnalysisResults from '../components/VideoAnalysisResults';
 import TranscriptionViewer from '../components/TranscriptionViewer';
 import VideoProcessingStatus from '../components/VideoProcessingStatus';
 import { Button } from '../components/ui/button-enhanced.jsx';
+import { useVideoManagementVideos, useVideoStats } from '../hooks/useVideoManagement.js';
 
 const VideoManagement = () => {
   const { user } = useAuth();
-  const [videos, setVideos] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const queryClient = useQueryClient();
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [processingVideoId, setProcessingVideoId] = useState(null);
   const [analysisProgress, setAnalysisProgress] = useState({});
   const channelRef = useRef(null);
   const mountedRef = useRef(true);
 
-  const fetchStats = useCallback(async () => {
-    if (!user || !mountedRef.current) return;
+  // ✅ Use React Query hooks
+  const { data: videos = [], isLoading: videosLoading, error: videosError, refetch: refetchVideos } = useVideoManagementVideos();
+  const { data: stats = null, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useVideoStats();
 
-    try {
-      const { data: session, error: authError } = await supabase.auth.getSession();
-      if (authError || !session?.session?.access_token) {
-        throw new Error('Session non valide, veuillez vous reconnecter');
-      }
-
-      const response = await fetch('https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/refresh-user-video-stats', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Erreur HTTP: ${response.status}`);
-      }
-
-      const result = await response.json();
-      if (result.error) {
-        throw new Error(result.error);
-      }
-
-      if (mountedRef.current) {
-        setStats(result.stats);
-      }
-    } catch (err) {
-      console.error('Erreur lors de la récupération des statistiques:', err);
-      if (mountedRef.current) {
-        setError('Impossible de récupérer les statistiques.');
-      }
-    }
-  }, [user]);
+  // Combined loading state
+  const loading = videosLoading || statsLoading;
+  
+  // Combined error state
+  const error = videosError || statsError;
 
   const refreshStats = async () => {
     try {
-      const { data: session, error: authError } = await supabase.auth.getSession();
-      if (authError || !session?.session?.access_token) {
-        throw new Error('Session non valide, veuillez vous reconnecter');
-      }
-
-      const response = await fetch('https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/refresh-user-video-stats', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Erreur HTTP: ${response.status}`);
-      }
-
-      const result = await response.json();
-      if (result.error) {
-        throw new Error(result.error);
-      }
-
-      if (mountedRef.current) {
-        setStats(result.stats);
-        toast.success('Statistiques mises à jour avec succès');
-      }
+      await refetchStats();
+      toast.success('Statistiques mises à jour avec succès');
     } catch (err) {
       console.error('Erreur lors du rafraîchissement des statistiques:', err);
-      setError('Impossible de rafraîchir les statistiques.');
       toast.error(`Erreur: ${err.message}`);
     }
   };
@@ -109,47 +56,9 @@ const VideoManagement = () => {
     return statusMap[status] || 'Inconnu';
   };
 
-  const fetchVideos = useCallback(async () => {
-    if (!user || !mountedRef.current) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      if (!supabase) {
-        throw new Error('Supabase client non initialisé');
-      }
-
-      const { data, error: supabaseError } = await supabase
-        .from('videos')
-        .select(`
-          id,
-          title,
-          description,
-          status,
-          created_at,
-          updated_at,
-          transcription_text,
-          transcription_data,
-          analysis,
-          ai_result,
-          error_message,
-          transcription_error,
-          user_id,
-          storage_path,
-          file_path,
-          public_url,
-          duration,
-          performance_score
-        `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (supabaseError) {
-        throw new Error(`Erreur Supabase: ${supabaseError.message}`);
-      }
-
-      const normalizedVideos = (data || []).map((video) => {
+  // Normalize videos data (memoized for performance)
+  const normalizedVideos = React.useMemo(() => {
+    return videos.map((video) => {
         const hasTranscription = !!(video.transcription_text || video.transcription_data);
         let analysisData = video.analysis || {};
 
@@ -203,27 +112,17 @@ const VideoManagement = () => {
           error_message: video.error_message || video.transcription_error || null,
         };
       });
+  }, [videos]);
 
-      if (mountedRef.current) {
-        setVideos(normalizedVideos);
-        setSelectedVideo((prevSelected) => {
-          if (!prevSelected) return null;
-          const updatedSelected = normalizedVideos.find((v) => v.id === prevSelected.id);
-          return updatedSelected || null;
-        });
-      }
-    } catch (error) {
-      console.error('Erreur lors du chargement des vidéos:', error);
-      if (mountedRef.current) {
-        setError(`Erreur de chargement: ${error.message}`);
-        setVideos([]);
-      }
-    } finally {
-      if (mountedRef.current) {
-        setLoading(false);
+  // Update selectedVideo when videos change
+  React.useEffect(() => {
+    if (selectedVideo) {
+      const updatedSelected = normalizedVideos.find((v) => v.id === selectedVideo.id);
+      if (updatedSelected) {
+        setSelectedVideo(updatedSelected);
       }
     }
-  }, [user]);
+  }, [normalizedVideos, selectedVideo]);
 
   const getPublicUrl = (video) => {
     if (!video) return null;
@@ -354,20 +253,10 @@ const VideoManagement = () => {
 
       toast.success('Analyse IA terminée avec succès !', { id: 'manual-analysis-toast' });
 
-      // Mettre à jour l'interface
-      setVideos((prev) =>
-        prev.map((v) => (v.id === video.id ? { ...v, status: 'analyzed' } : v))
-      );
-      setSelectedVideo((prev) =>
-        prev?.id === video.id ? { ...prev, status: 'analyzed' } : prev
-      );
-
-      // Rafraîchir les données après un court délai
+      // Invalidate queries to refetch data
       setTimeout(() => {
-        if (mountedRef.current) {
-          fetchVideos();
-          fetchStats();
-        }
+        queryClient.invalidateQueries({ queryKey: ['video-management-videos', user?.id] });
+        queryClient.invalidateQueries({ queryKey: ['video-stats', user?.id] });
       }, 2000);
 
     } catch (err) {
@@ -380,14 +269,8 @@ const VideoManagement = () => {
 
       toast.error(`Erreur: ${errorMessage}`, { id: 'manual-analysis-toast' });
 
-      setVideos((prev) =>
-        prev.map((v) =>
-          v.id === video.id ? { ...v, status: 'failed', error_message: errorMessage } : v
-        )
-      );
-      setSelectedVideo((prev) =>
-        prev?.id === video.id ? { ...prev, status: 'failed', error_message: errorMessage } : prev
-      );
+      // Invalidate to refetch and show updated error state
+      queryClient.invalidateQueries({ queryKey: ['video-management-videos', user?.id] });
     } finally {
       setProcessingVideoId(null);
       // Nettoyer la progression après 3 secondes
@@ -440,17 +323,13 @@ const VideoManagement = () => {
 
       toast.success('Transcription démarrée avec succès', { id: 'transcribe-toast' });
 
-      setVideos((prev) =>
-        prev.map((v) => (v.id === video.id ? { ...v, status: 'transcribing' } : v))
-      );
-      setSelectedVideo((prev) =>
-        prev?.id === video.id ? { ...prev, status: 'transcribing' } : prev
-      );
+      // Invalidate to refetch updated video status
+      queryClient.invalidateQueries({ queryKey: ['video-management-videos', user?.id] });
 
       setTimeout(() => {
         if (mountedRef.current) {
-          fetchVideos();
-          fetchStats();
+          queryClient.invalidateQueries({ queryKey: ['video-management-videos', user?.id] });
+          queryClient.invalidateQueries({ queryKey: ['video-stats', user?.id] });
         }
       }, 3000);
     } catch (err) {
@@ -463,14 +342,8 @@ const VideoManagement = () => {
 
       toast.error(`Erreur: ${errorMessage}`, { id: 'transcribe-toast' });
 
-      setVideos((prev) =>
-        prev.map((v) =>
-          v.id === video.id ? { ...v, status: 'failed', error_message: errorMessage } : v
-        )
-      );
-      setSelectedVideo((prev) =>
-        prev?.id === video.id ? { ...prev, status: 'failed', error_message: errorMessage } : prev
-      );
+      // Invalidate to refetch and show updated error state
+      queryClient.invalidateQueries({ queryKey: ['video-management-videos', user?.id] });
     } finally {
       setProcessingVideoId(null);
     }
@@ -518,17 +391,13 @@ const VideoManagement = () => {
 
       toast.success('Analyse IA démarrée avec succès', { id: 'analyze-toast' });
 
-      setVideos((prev) =>
-        prev.map((v) => (v.id === video.id ? { ...v, status: 'analyzing' } : v))
-      );
-      setSelectedVideo((prev) =>
-        prev?.id === video.id ? { ...prev, status: 'analyzing' } : prev
-      );
+      // Invalidate to refetch updated video status
+      queryClient.invalidateQueries({ queryKey: ['video-management-videos', user?.id] });
 
       setTimeout(() => {
         if (mountedRef.current) {
-          fetchVideos();
-          fetchStats();
+          queryClient.invalidateQueries({ queryKey: ['video-management-videos', user?.id] });
+          queryClient.invalidateQueries({ queryKey: ['video-stats', user?.id] });
         }
       }, 3000);
     } catch (err) {
@@ -541,14 +410,8 @@ const VideoManagement = () => {
 
       toast.error(`Erreur: ${errorMessage}`, { id: 'analyze-toast' });
 
-      setVideos((prev) =>
-        prev.map((v) =>
-          v.id === video.id ? { ...v, status: 'failed', error_message: errorMessage } : v
-        )
-      );
-      setSelectedVideo((prev) =>
-        prev?.id === video.id ? { ...prev, status: 'failed', error_message: errorMessage } : prev
-      );
+      // Invalidate to refetch and show updated error state
+      queryClient.invalidateQueries({ queryKey: ['video-management-videos', user?.id] });
     } finally {
       setProcessingVideoId(null);
     }
@@ -593,12 +456,13 @@ const VideoManagement = () => {
 
       toast.success('Vidéo supprimée avec succès');
 
-      setVideos((prev) => prev.filter((v) => v.id !== video.id));
+      // Invalidate queries to refetch videos and stats
+      queryClient.invalidateQueries({ queryKey: ['video-management-videos', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['video-stats', user?.id] });
+      
       if (selectedVideo?.id === video.id) {
         setSelectedVideo(null);
       }
-
-      await refreshStats();
     } catch (err) {
       console.error('Erreur lors de la suppression:', err);
       toast.error(`Erreur: ${err.message}`);
@@ -608,12 +472,7 @@ const VideoManagement = () => {
   useEffect(() => {
     if (!user) return;
 
-    setLoading(true);
-    Promise.all([fetchVideos(), fetchStats()]).finally(() => {
-      if (mountedRef.current) {
-        setLoading(false);
-      }
-    });
+    // React Query handles loading automatically, no need for manual loading state
 
     const setupRealtime = () => {
       try {
@@ -662,7 +521,7 @@ const VideoManagement = () => {
         }
       }
     };
-  }, [user, fetchVideos, fetchStats]);
+  }, [user, queryClient]);
 
   useEffect(() => {
     return () => {

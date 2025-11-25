@@ -38,7 +38,6 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
     onSignOut,
     dashboardData,
     dashboardLoading,
-    loadDashboardData,
     handleVideoUploaded,
     cameraChecked,
   } = context;
@@ -59,7 +58,6 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
         onSignOut,
         dashboardData,
         loading: dashboardLoading,
-        loadDashboardData,
       },
       conditionalPropsGuest: {
         onOpenAuthModal: () => setIsAuthModalOpen(true),
@@ -217,7 +215,6 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
         onSignOut,
         dashboardData,
         dashboardLoading,
-        loadDashboardData,
       },
     },
     {
