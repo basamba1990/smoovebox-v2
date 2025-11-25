@@ -1,5 +1,5 @@
 // ✅ VERSION CORRIGÉE : App.jsx
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 import {
@@ -9,7 +9,8 @@ import {
 } from "@supabase/auth-helpers-react";
 import { supabase } from "./lib/supabase.js";
 import { Toaster, toast } from "sonner";
-import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
+import { QueryClientProvider, QueryClient, useQueryClient } from "@tanstack/react-query";
+import { useVideos } from "./hooks/useVideos.js";
 
 // Import des composants
 import AuthModal from "./AuthModal.jsx";
@@ -57,14 +58,51 @@ const ServiceWorkerRegistration = () => {
 const AppContent = () => {
   const navigate = useNavigate();
   const supabase = useSupabaseClient();
+  const queryClient = useQueryClient();
   const { user, signOut, profile } = useAuth();
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [supabaseError, setSupabaseError] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState("checking");
   const [cameraChecked, setCameraChecked] = useState(false);
-  const [dashboardData, setDashboardData] = useState(null);
-  const [dashboardLoading, setDashboardLoading] = useState(false);
+
+  // ✅ Use React Query hook for videos
+  const { data: videos = [], isLoading: videosLoading } = useVideos();
+
+  // ✅ Calculate dashboard stats from videos data (memoized for performance)
+  const dashboardData = useMemo(() => {
+    if (!videos || videos.length === 0) {
+      return null;
+    }
+
+    return {
+      totalVideos: videos.length,
+      recentVideos: videos.slice(0, 5),
+      videosByStatus: {
+        ready: videos.filter((v) =>
+          ["ready", "uploaded"].includes(v.status)
+        ).length,
+        processing: videos.filter((v) =>
+          ["processing", "analyzing"].includes(v.status)
+        ).length,
+        analyzed: videos.filter((v) => v.status === "analyzed").length,
+        failed: videos.filter((v) =>
+          ["failed", "error"].includes(v.status)
+        ).length,
+      },
+      totalDuration: videos.reduce(
+        (sum, video) => sum + (video.duration || 0),
+        0
+      ),
+      transcribedCount: videos.filter(
+        (v) => v.transcription_data || v.transcription_text
+      ).length,
+      analyzedCount: videos.filter((v) => v.analysis || v.ai_result).length,
+    };
+  }, [videos]);
+
+  // Use videosLoading for dashboardLoading
+  const dashboardLoading = videosLoading;
 
   // ✅ Vérification connexion Supabase
   useEffect(() => {
@@ -113,64 +151,8 @@ const AppContent = () => {
     checkCameraPermissions();
   }, []);
 
-  // ✅ Chargement données dashboard
-  const loadDashboardData = useCallback(async () => {
-    if (!user) {
-      setDashboardData(null);
-      return;
-    }
-
-    try {
-      setDashboardLoading(true);
-
-      const { data: videos, error: videosError } = await supabase
-        .from("videos")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-
-      if (videosError) throw videosError;
-
-      const videoList = videos || [];
-      const stats = {
-        totalVideos: videoList.length,
-        recentVideos: videoList.slice(0, 5),
-        videosByStatus: {
-          ready: videoList.filter((v) =>
-            ["ready", "uploaded"].includes(v.status)
-          ).length,
-          processing: videoList.filter((v) =>
-            ["processing", "analyzing"].includes(v.status)
-          ).length,
-          analyzed: videoList.filter((v) => v.status === "analyzed").length,
-          failed: videoList.filter((v) =>
-            ["failed", "error"].includes(v.status)
-          ).length,
-        },
-        totalDuration: videoList.reduce(
-          (sum, video) => sum + (video.duration || 0),
-          0
-        ),
-        transcribedCount: videoList.filter(
-          (v) => v.transcription_data || v.transcription_text
-        ).length,
-        analyzedCount: videoList.filter((v) => v.analysis || v.ai_result)
-          .length,
-      };
-
-      setDashboardData(stats);
-    } catch (err) {
-      console.error("❌ Erreur chargement dashboard:", err);
-    } finally {
-      setDashboardLoading(false);
-    }
-  }, [user, supabase]);
-
-  useEffect(() => {
-    if (user && connectionStatus === "connected") {
-      loadDashboardData();
-    }
-  }, [user, connectionStatus, loadDashboardData]);
+  // Removed loadDashboardData - now using React Query hook
+  // Dashboard data is calculated from videos using useMemo
 
   // ✅ Gestionnaires d'événements
   const handleAuthSuccess = useCallback(
@@ -178,10 +160,11 @@ const AppContent = () => {
       console.log("✅ Utilisateur authentifié:", userData.id);
       setIsAuthModalOpen(false);
       setConnectionStatus("connected");
-      loadDashboardData();
+      // Invalidate videos query to refetch after authentication
+      queryClient.invalidateQueries({ queryKey: ['videos', userData.id] });
       navigate("/");
     },
-    [loadDashboardData, navigate]
+    [queryClient, navigate]
   );
 
   const handleSignOut = useCallback(async () => {
@@ -199,9 +182,12 @@ const AppContent = () => {
 
   const handleVideoUploaded = useCallback(() => {
     console.log("🎥 Vidéo uploadée - rechargement données");
-    loadDashboardData();
+    // Invalidate videos query to refetch
+    if (user) {
+      queryClient.invalidateQueries({ queryKey: ['videos', user.id] });
+    }
     toast.success("Vidéo traitée avec succès !");
-  }, [loadDashboardData]);
+  }, [user, queryClient]);
 
   const handleRetryConnection = useCallback(async () => {
     setConnectionStatus("checking");
@@ -211,7 +197,10 @@ const AppContent = () => {
       const result = await checkSupabaseConnection();
       if (result.connected) {
         setConnectionStatus("connected");
-        loadDashboardData();
+        // Invalidate videos query to refetch after reconnection
+        if (user) {
+          queryClient.invalidateQueries({ queryKey: ['videos', user.id] });
+        }
       } else {
         setConnectionStatus("disconnected");
         setSupabaseError(result.error);
@@ -220,7 +209,7 @@ const AppContent = () => {
       setConnectionStatus("disconnected");
       setSupabaseError(err.message);
     }
-  }, [loadDashboardData]);
+  }, [user, queryClient]);
 
   // ✅ Rendu conditionnel des erreurs
   if (supabaseError && connectionStatus === "disconnected") {
@@ -250,7 +239,6 @@ const AppContent = () => {
         onSignOut={handleSignOut}
         dashboardData={dashboardData}
         dashboardLoading={dashboardLoading}
-        loadDashboardData={loadDashboardData}
         handleVideoUploaded={handleVideoUploaded}
         cameraChecked={cameraChecked}
         navigate={navigate}
