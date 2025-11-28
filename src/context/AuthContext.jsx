@@ -117,11 +117,11 @@ export const AuthProvider = ({ children }) => {
         
         if (!mounted) return;
 
-        if (session?.user) {
+          if (session?.user) {
           console.log('[Auth] Session found in storage:', session.user.id);
-          setUser(session.user);
-          const userProfile = await fetchUserProfile(session.user.id, session.user);
-          setProfile(userProfile);
+            setUser(session.user);
+            const userProfile = await fetchUserProfile(session.user.id, session.user);
+            setProfile(userProfile);
           
           // Try to refresh in background (non-blocking)
           refreshSession().catch(err => {
@@ -183,7 +183,7 @@ export const AuthProvider = ({ children }) => {
         
         // Only set loading to false if not initializing
         if (!isInitializing) {
-          setLoading(false);
+        setLoading(false);
         }
       }
     );

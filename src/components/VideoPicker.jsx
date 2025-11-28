@@ -1,52 +1,29 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { toast } from 'sonner';
+import { useVideos } from '../hooks/useVideos.js';
 
 const VideoPicker = ({ onChange, selectedVideo }) => {
-  const [videos, setVideos] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const supabase = useSupabaseClient();
   const user = useUser();
 
-  useEffect(() => {
-    const fetchVideos = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        if (!user) {
-          console.log('Utilisateur non authentifié, pas de vidéos à charger');
-          return;
-        }
+  // ✅ Use React Query hook for videos
+  const { data: allVideos = [], isLoading: loading, error: videosError } = useVideos();
 
-        console.log('Récupération des vidéos pour:', user.id);
-        const { data, error } = await supabase
-          .from('videos')
-          .select('id, title, created_at, status, duration, thumbnail_url')
-          .eq('user_id', user.id)
-          .in('status', ['uploaded', 'processed', 'published', 'completed'])
-          .order('created_at', { ascending: false });
+  // Filter videos to only show the ones with valid status for picker
+  const videos = allVideos.filter(video => 
+    ['uploaded', 'processed', 'published', 'completed', 'analyzed'].includes(video.status)
+  );
 
-        if (error) {
-          console.error('Erreur récupération vidéos:', error);
-          throw error;
-        }
+  // Convert query error to string for display
+  const error = videosError ? (videosError.message || 'Erreur lors du chargement des vidéos') : null;
 
-        console.log("Vidéos trouvées :", data);
-        setVideos(data || []);
-        
-      } catch (err) {
-        console.error('Erreur récupération vidéos:', err);
-        setError('Erreur lors du chargement des vidéos');
-        toast.error('Erreur lors du chargement des vidéos');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchVideos();
-  }, [supabase, user]);
+  // Show toast error when query fails
+  React.useEffect(() => {
+    if (videosError) {
+      toast.error('Erreur lors du chargement des vidéos');
+    }
+  }, [videosError]);
 
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('fr-FR', {
