@@ -10,6 +10,7 @@ import { DatePicker } from '../components/ui/date-picker.jsx';
 import { TimePicker } from '../components/ui/time-picker.jsx';
 import { CityAutocomplete } from '../components/ui/city-autocomplete.jsx';
 import { spotCoachService } from '../services/spotCoachService.js';
+import { toast } from 'sonner';
 
 const initialState = {
   name: '',
@@ -134,11 +135,11 @@ export default function SpotCoach() {
   const inputClass = 'bg-slate-950/60 border-slate-800 focus:border-cyan-500 text-slate-100 placeholder:text-slate-500';
 
   const isSubmitDisabled = useMemo(() => {
-    if (!form.birthDate || !form.latitude || !form.longitude) {
+    if (!form.name || !form.birthDate || !form.birthTime || !form.latitude || !form.longitude) {
       return true;
     }
     return loading;
-  }, [form.birthDate, form.latitude, form.longitude, loading]);
+  }, [form.name, form.birthDate, form.birthTime, form.latitude, form.longitude, loading]);
 
   const handleChange = (field) => (event) => {
     const value = event?.target ? event.target.value : event;
@@ -233,29 +234,31 @@ export default function SpotCoach() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <Card className="lg:col-span-2 bg-slate-900/60 border border-slate-800 backdrop-blur">
-            <CardHeader>
-              <CardTitle>Questionnaire &amp; Informations</CardTitle>
-              <CardDescription>
-                Fournis des données précises pour une lecture symbolique pertinente. Les champs latitude / longitude sont requis.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loadingExisting ? (
-                <div className="text-sm text-slate-400">Chargement du profil…</div>
-              ) : showForm ? (
+          {showForm && (
+            <Card className="lg:col-span-2 bg-slate-900/60 border border-slate-800 backdrop-blur">
+              <CardHeader>
+                <CardTitle>Questionnaire &amp; Informations</CardTitle>
+                <CardDescription>
+                  Fournis des données précises pour une lecture symbolique pertinente. Les champs latitude / longitude sont requis.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loadingExisting ? (
+                  <div className="text-sm text-slate-400">Chargement du profil…</div>
+                ) : (
                 <form className="space-y-6" onSubmit={handleSubmit}>
                     <section className="space-y-4">
                       <h2 className="text-lg font-semibold text-slate-100">Identité &amp; Naissance</h2>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="coach-name" className="text-white font-medium">Nom (optionnel)</Label>
+                          <Label htmlFor="coach-name" className="text-white font-medium">Nom *</Label>
                           <Input
                             id="coach-name"
                             placeholder="Ex: Alex Dupont"
                             value={form.name}
                             onChange={handleChange('name')}
                             className={inputClass}
+                            required
                           />
                         </div>
                         <div className="space-y-2">
@@ -270,12 +273,13 @@ export default function SpotCoach() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="coach-time" className="text-white font-medium">Heure de naissance (optionnelle)</Label>
+                          <Label htmlFor="coach-time" className="text-white font-medium">Heure de naissance *</Label>
                           <TimePicker
                             value={form.birthTime}
                             onChange={handleChange('birthTime')}
                             placeholder="Sélectionner l'heure de naissance"
                             step={1}
+                            required
                             className="bg-slate-950/60 border-slate-800 text-slate-100 hover:bg-slate-900"
                           />
                         </div>
@@ -347,18 +351,12 @@ export default function SpotCoach() {
                       </div>
                     )}
                   </form>
-              ) : (
-                <div className="space-y-4 text-sm text-slate-300">
-                  <p>Un profil existe déjà pour cet utilisateur. Tu peux le consulter à droite ou le régénérer si besoin.</p>
-                  <Button onClick={() => { setShowForm(true); setError(null); }} className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-semibold">
-                    Régénérer le profil symbolique
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
-          <Card className="bg-slate-900/60 border border-slate-800 backdrop-blur h-max sticky top-6">
+          <Card className={showForm ? "bg-slate-900/60 border border-slate-800 backdrop-blur h-max sticky top-6" : "lg:col-span-3 bg-slate-900/60 border border-slate-800 backdrop-blur"}>
             <CardHeader>
               <CardTitle>Résultat SpotCoach</CardTitle>
               <CardDescription>
@@ -451,6 +449,34 @@ export default function SpotCoach() {
                   {result.stored && (
                     <div className="text-xs text-slate-500 border-t border-slate-800 pt-3">
                       Profil sauvegardé le {new Date(result.stored.updated_at).toLocaleString()}.
+                    </div>
+                  )}
+
+                  {result && !showForm && (
+                    <div className="pt-4 border-t border-slate-800">
+                      <Button 
+                        onClick={async () => {
+                          if (confirm('Êtes-vous sûr de vouloir supprimer ce profil ? Cette action est irréversible.')) {
+                            setLoading(true);
+                            const deleteResult = await spotCoachService.deleteProfile();
+                            setLoading(false);
+                            
+                            if (deleteResult.success) {
+                              setResult(null);
+                              setShowForm(true);
+                              setForm(initialState);
+                              toast.success('Profil supprimé avec succès');
+                            } else {
+                              toast.error(deleteResult.error || 'Erreur lors de la suppression');
+                            }
+                          }
+                        }}
+                        variant="outline"
+                        className="border-red-500/50 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                        disabled={loading}
+                      >
+                        Supprimer le profil
+                      </Button>
                     </div>
                   )}
                 </div>
