@@ -24,6 +24,7 @@ import Certification from "../components/Certification.jsx";
 import Home from "../pages/home.jsx";
 import VideoSuccess from "../pages/video-success.jsx";
 import Directory from "../pages/directory.jsx";
+import LumiOnboarding from "../pages/lumi-onboarding.jsx";
 
 export default function AppRoutes({
   user,
@@ -77,6 +78,14 @@ export default function AppRoutes({
         element={
           <RequireAuth>
             <SpotCoach />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/lumi/onboarding"
+        element={
+          <RequireAuth>
+            <LumiOnboarding />
           </RequireAuth>
         }
       />

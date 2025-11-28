@@ -819,6 +819,15 @@ export default function SimplifiedHome({
 
       {/* ✅ Boutons d'action rapide flottants */}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+        {/* Bouton Lumi */}
+        <Button
+          onClick={() => navigate("/lumi/onboarding")}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg text-lg py-3 px-4 rounded-full flex items-center gap-2 hover:scale-105 transition-transform"
+          title="Lumi - Découvre qui tu es"
+        >
+          ✨ Lumi
+        </Button>
+
         {/* Bouton SpotCoach */}
         <Button
           onClick={() => navigate("/spotcoach")}
