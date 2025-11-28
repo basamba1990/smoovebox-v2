@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useVideos } from '../hooks/useVideos';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
@@ -198,10 +200,11 @@ const VideoFilter = ({ videos, onFilterChange }) => {
 // ✅ COMPOSANT PRINCIPAL CORRIGÉ
 const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
   const { user } = useAuth();
-  const [videos, setVideos] = useState([]);
+  const queryClient = useQueryClient();
+  
+  // ✅ Use React Query for videos
+  const { data: videos = [], isLoading: loading, error: queryError, refetch } = useVideos();
   const [filteredVideos, setFilteredVideos] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('videos');
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
@@ -210,52 +213,27 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
   const [selectedVideoForAnalysis, setSelectedVideoForAnalysis] = useState(null);
   const [videoPlayerUrl, setVideoPlayerUrl] = useState(null);
 
-  // ✅ Rechargement amélioré
+  // Convert query error to string for display
+  const error = queryError ? (queryError.message || 'Erreur lors du chargement des vidéos') : null;
+
+  // ✅ Rechargement amélioré - invalidate cache when refreshKey changes
   useEffect(() => {
     console.log('🔄 Dashboard: refreshKey changé, rechargement des vidéos...', refreshKey);
     if (user) {
-      fetchVideos();
+      queryClient.invalidateQueries({ queryKey: ['videos', user.id] });
     }
-  }, [user, refreshKey, onVideoUploaded]);
+  }, [user, refreshKey, queryClient]);
+
+  // ✅ Invalidate when video is uploaded
+  useEffect(() => {
+    if (onVideoUploaded && user) {
+      queryClient.invalidateQueries({ queryKey: ['videos', user.id] });
+    }
+  }, [onVideoUploaded, user, queryClient]);
 
   useEffect(() => {
     setFilteredVideos(videos);
   }, [videos]);
-
-  // ✅ Fonction fetchVideos optimisée
-  const fetchVideos = async () => {
-    if (!user) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const { data, error } = await supabase
-        .from('videos')
-        .select(`
-          *,
-          transcription_data,
-          analysis,
-          transcript,
-          ai_result,
-          transcription_text
-        `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        throw error;
-      }
-
-      setVideos(data || []);
-
-    } catch (err) {
-      console.error('❌ Erreur fetchVideos:', err);
-      setError(`Erreur lors du chargement des vidéos: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // ✅ Fonction getVideoUrl améliorée
   const getVideoUrl = async (video) => {
@@ -320,7 +298,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
     if (!videoId) return;
 
     try {
-      setLoading(true);
       const video = videos.find(v => v.id === videoId);
 
       if (video?.file_path) {
@@ -340,14 +317,13 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
 
       if (error) throw error;
 
-      setVideos(prev => prev.filter(video => video.id !== videoId));
+      // Invalidate query to refetch videos after deletion
+      queryClient.invalidateQueries({ queryKey: ['videos', user?.id] });
       setDeleteConfirm(null);
 
     } catch (err) {
       console.error('❌ Erreur deleteVideo:', err);
       setError(`Erreur lors de la suppression: ${err.message}`);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -361,11 +337,9 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
         throw new Error('Vidéo non trouvée');
       }
 
-      setVideos(prev => prev.map(video => 
-        video.id === videoId 
-          ? { ...video, status: 'processing', transcription_status: 'processing' }
-          : video
-      ));
+      // Optimistic update: will refetch after transcription starts
+      // For now, we'll just invalidate to refetch
+      queryClient.invalidateQueries({ queryKey: ['videos', user?.id] });
 
       const { data, error } = await supabase.functions.invoke('transcribe-video', {
         body: { 
@@ -381,18 +355,15 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
 
       // ✅ RE-CHARGEMENT OPTIMISÉ
       setTimeout(() => {
-        fetchVideos();
+        refetch();
       }, 5000);
 
     } catch (err) {
       console.error('❌ Erreur startTranscription:', err);
       setError(`Erreur transcription: ${err.message}`);
       
-      setVideos(prev => prev.map(video => 
-        video.id === videoId 
-          ? { ...video, status: 'error', transcription_status: 'error' }
-          : video
-      ));
+      // Invalidate query to refetch videos after error
+      queryClient.invalidateQueries({ queryKey: ['videos', user?.id] });
     } finally {
       setTranscribing(false);
     }
@@ -403,11 +374,9 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
     try {
       setAnalyzing(true);
       
-      setVideos(prev => prev.map(video => 
-        video.id === videoId 
-          ? { ...video, status: 'analyzing' }
-          : video
-      ));
+      // Optimistically update: videos will be refetched after analysis
+      // For now, just invalidate to refetch
+      queryClient.invalidateQueries({ queryKey: ['videos', user?.id] });
 
       if (!transcriptionText?.trim()) {
         throw new Error('Texte de transcription manquant ou vide pour l\'analyse');
@@ -431,7 +400,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
 
       // ✅ RE-CHARGEMENT OPTIMISÉ
       setTimeout(() => {
-        fetchVideos();
+        refetch();
       }, 3000);
 
     } catch (err) {
@@ -447,11 +416,8 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
       
       setError(errorMessage);
       
-      setVideos(prev => prev.map(video => 
-        video.id === videoId 
-          ? { ...video, status: 'transcribed' }
-          : video
-      ));
+      // Invalidate query to refetch videos after analysis error
+      queryClient.invalidateQueries({ queryKey: ['videos', user?.id] });
     } finally {
       setAnalyzing(false);
     }
@@ -705,7 +671,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
           <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">Erreur de chargement</h3>
           <p className="text-gray-600 mb-4">{error}</p>
-          <Button onClick={fetchVideos}>
+          <Button onClick={() => refetch()}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Réessayer
           </Button>
@@ -924,7 +890,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Tableau de Bord Vidéos</h1>
         <div className="flex gap-2">
-          <Button onClick={fetchVideos} disabled={loading}>
+          <Button onClick={() => refetch()} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Actualiser
           </Button>
@@ -987,7 +953,7 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
         <TabsContent value="upload">
           <VideoUploader 
             onUploadComplete={() => {
-              fetchVideos();
+              refetch();
               if (onVideoUploaded) onVideoUploaded();
             }} 
           />

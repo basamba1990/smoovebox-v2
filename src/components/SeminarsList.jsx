@@ -1,73 +1,24 @@
 // components/SeminarsList.jsx
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from './ui/button-enhanced.jsx';
+import { useSeminars, useUserSeminarInscriptions } from '../hooks/useSeminars.js';
 
 const SeminarsList = () => {
-  const [seminars, setSeminars] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [inscriptions, setInscriptions] = useState({});
   const [inscribing, setInscribing] = useState(null);
 
   const supabase = useSupabaseClient();
   const user = useUser();
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    fetchSeminars();
-    if (user) {
-      fetchUserInscriptions();
-    }
-  }, [user]);
+  // ✅ Use React Query hooks
+  const { data: seminars = [], isLoading: loading, error: seminarsError, refetch: refetchSeminars } = useSeminars();
+  const { data: inscriptions = {} } = useUserSeminarInscriptions();
 
-  const fetchSeminars = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const { data, error } = await supabase
-        .from('seminars')
-        .select('*')
-        .order('date', { ascending: true });
-
-      if (error) {
-        console.error('Erreur récupération séminaires:', error);
-        setError('Impossible de charger les séminaires.');
-        toast.error('Erreur lors du chargement des séminaires.');
-        return;
-      }
-
-      setSeminars(data || []);
-    } catch (err) {
-      console.error('Erreur récupération séminaires:', err);
-      setError('Impossible de charger les séminaires.');
-      toast.error('Erreur lors du chargement des séminaires.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchUserInscriptions = async () => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('seminar_inscriptions')
-        .select('seminar_id, statut')
-        .eq('user_id', user.id);
-
-      if (!error && data) {
-        const inscriptionsMap = {};
-        data.forEach(inscription => {
-          inscriptionsMap[inscription.seminar_id] = inscription.statut;
-        });
-        setInscriptions(inscriptionsMap);
-      }
-    } catch (err) {
-      console.error('Erreur récupération inscriptions:', err);
-    }
-  };
+  // Convert query error to string for display
+  const error = seminarsError ? (seminarsError.message || 'Impossible de charger les séminaires.') : null;
 
   const handleInscription = async (seminarId) => {
     if (!user) {
@@ -110,16 +61,11 @@ const SeminarsList = () => {
           .eq('id', seminarId);
       }
 
-      // Mettre à jour l'état local
-      setInscriptions(prev => ({
-        ...prev,
-        [seminarId]: 'confirmé'
-      }));
-
       toast.success('Inscription au séminaire confirmée !');
       
-      // Recharger les séminaires pour avoir les compteurs à jour
-      fetchSeminars();
+      // Invalidate queries to refetch updated data
+      queryClient.invalidateQueries({ queryKey: ['seminar-inscriptions', user.id] });
+      queryClient.invalidateQueries({ queryKey: ['seminars'] });
 
     } catch (err) {
       console.error('Erreur inscription:', err);
@@ -184,7 +130,7 @@ const SeminarsList = () => {
     return (
       <div className="text-center py-10">
         <p className="text-red-500 mb-4">{error}</p>
-        <Button onClick={fetchSeminars} className="bg-primary-600 hover:bg-primary-700">
+        <Button onClick={() => refetchSeminars()} className="bg-primary-600 hover:bg-primary-700">
           Réessayer
         </Button>
       </div>
