@@ -823,9 +823,9 @@ export default function SimplifiedHome({
         <Button
           onClick={() => navigate("/lumi/onboarding")}
           className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg text-lg py-3 px-4 rounded-full flex items-center gap-2 hover:scale-105 transition-transform"
-          title="Lumi - Découvre qui tu es"
+          title="Découvre ta couleur DISC"
         >
-          ✨ Lumi
+          🎨 DISC
         </Button>
 
         {/* Bouton SpotCoach */}
