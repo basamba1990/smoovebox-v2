@@ -22,6 +22,7 @@ import VideoSuccess from "@/pages/video-success.jsx";
 import Directory from "@/pages/directory.jsx";
 import SimplifiedHome from "@/pages/SimplifiedHome.jsx";
 import WelcomeAgent from "@/components/WelcomeAgent.jsx";
+import LumiOnboarding from "@/pages/lumi-onboarding.jsx";
 
 /**
  * Route configuration
@@ -126,6 +127,11 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
     },
 
     // Protected routes
+    {
+      path: "/lumi/onboarding",
+      element: LumiOnboarding,
+      requiresAuth: true,
+    },
     {
       path: "/spotcoach",
       element: SpotCoach,
