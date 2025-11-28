@@ -1,7 +1,7 @@
 // src/pages/lumi-onboarding.jsx
 // Lumi Onboarding Page - Quick discovery flow
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button.jsx";
 import {
@@ -11,18 +11,48 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/card.jsx";
-import { startLumiSession, submitAnswer, computeProfile } from "../services/lumiService.js";
+import { startLumiSession, submitAnswer, computeProfile, getMyLumiProfile } from "../services/lumiService.js";
 import { toast } from "sonner";
 
 export default function LumiOnboarding() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [checkingProfile, setCheckingProfile] = useState(true);
   const [sessionId, setSessionId] = useState(null);
   const [currentQuestion, setCurrentQuestion] = useState(null);
   const [currentAnswer, setCurrentAnswer] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [computingProfile, setComputingProfile] = useState(false);
   const [computedProfile, setComputedProfile] = useState(null);
+
+  // Check if user already has a profile on mount
+  useEffect(() => {
+    const checkExistingProfile = async () => {
+      setCheckingProfile(true);
+      const result = await getMyLumiProfile();
+      setCheckingProfile(false);
+      
+      if (result.success && result.profile) {
+        setComputedProfile(result.profile);
+      }
+    };
+    
+    checkExistingProfile();
+  }, []);
+
+  // Show loading while checking for existing profile
+  if (checkingProfile) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 py-10">
+        <div className="max-w-4xl mx-auto px-4">
+          <div className="text-center py-12">
+            <div className="text-4xl mb-4">✨</div>
+            <p className="text-slate-400">Chargement...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 py-10">
@@ -45,8 +75,8 @@ export default function LumiOnboarding() {
           </p>
         </div>
 
-        {/* Welcome Card - Only show when no question */}
-        {!currentQuestion && (
+        {/* Welcome Card - Only show when no question and no existing profile */}
+        {!currentQuestion && !computedProfile && (
           <Card className="bg-slate-900/60 border-slate-800">
             <CardHeader>
               <CardTitle className="text-2xl text-white">

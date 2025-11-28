@@ -129,6 +129,44 @@ export async function computeProfile(session_id) {
 }
 
 /**
+ * Get user's existing Lumi profile
+ * @returns {Promise<{success: boolean, profile?: object, error?: string}>}
+ */
+export async function getMyLumiProfile() {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      return { success: false, error: 'Not authenticated' };
+    }
+
+    const { data, error } = await supabase
+      .from('lumi_profiles')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .order('computed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('[LumiService] Error fetching profile:', error);
+      return { success: false, error: error.message };
+    }
+
+    if (data) {
+      return {
+        success: true,
+        profile: data,
+      };
+    }
+
+    return { success: true, profile: null };
+  } catch (error) {
+    console.error('[LumiService] Exception fetching profile:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Get recommendations based on Lumi profile
  * @param {string} session_id - Session ID
  * @returns {Promise<{success: boolean, categories?: array, project_templates?: array, jobs?: array, error?: string}>}
