@@ -159,6 +159,40 @@ export const spotCoachService = {
       console.log('[SpotCoachService] getExistingProfile end', { ms: Date.now() - startedAt });
     }
   },
+
+  /**
+   * Delete the user's symbolic profile
+   * @returns {Promise<{success: boolean, error?: string}>}
+   */
+  async deleteProfile() {
+    const startedAt = Date.now();
+    console.log('[SpotCoachService] deleteProfile start');
+
+    try {
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+
+      if (authError || !session?.user) {
+        console.error('[SpotCoachService] deleteProfile auth error:', authError);
+        throw new Error('Not authenticated');
+      }
+
+      const { error } = await supabase
+        .from('profiles_symboliques')
+        .delete()
+        .eq('user_id', session.user.id);
+
+      if (error) {
+        console.error('[SpotCoachService] deleteProfile error:', error);
+        throw error;
+      }
+
+      console.log('[SpotCoachService] deleteProfile success', { ms: Date.now() - startedAt });
+      return { success: true };
+    } catch (err) {
+      console.error('[SpotCoachService] deleteProfile error:', err);
+      return { success: false, error: err?.message || 'Failed to delete profile' };
+    }
+  },
 };
 
 export default spotCoachService;
