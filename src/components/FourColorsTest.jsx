@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Button } from './ui/button-enhanced.jsx';
 import { toast } from 'sonner';
+import { DISC_QUESTIONS, DISC_PROFILES, DISC_QUESTION_COUNT } from '../constants/discData';
+import { calculateDominantColor } from '../utils/discUtils';
 import ProfessionalHeader from './ProfessionalHeader.jsx';
 
 const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
@@ -9,9 +11,37 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
   const [answers, setAnswers] = useState(Array(8).fill(null));
   const [showResults, setShowResults] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [existingAnswers, setExistingAnswers] = useState(null);
 
-  // ✅ CORRECTION : Questions sans aucune mention de couleurs
-  const questions = [
+  useEffect(() => {
+    // Si l'utilisateur a déjà répondu, on charge ses réponses
+    if (profile?.dominant_color && !showResults) {
+      loadExistingAnswers();
+    }
+  }, [profile]);
+
+  const loadExistingAnswers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('questionnaire_responses')
+        .select('color_quiz')
+        .eq('user_id', user.id)
+        .order('completed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        setExistingAnswers(data.color_quiz);
+        setAnswers(data.color_quiz);
+        setShowResults(true);
+      }
+    } catch (error) {
+      console.error('Erreur chargement réponses existantes:', error);
+    }
+  };
+  const questions = DISC_QUESTIONS;
     {
       id: 1,
       question: "Face à un problème difficile, tu as tendance à :",
@@ -222,39 +252,7 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
         }
       ]
     },
-    {
-      id: 8,
-      question: "Face à un échec ou une défaite :",
-      options: [
-        { 
-          id: 'A', 
-          text: "Tu veux immédiatement reprendre et te rattraper", 
-          type: 'red',
-          emoji: '💪'
-        },
-        { 
-          id: 'B', 
-          text: "Tu analyses ce qui n'a pas fonctionné pour progresser", 
-          type: 'blue',
-          emoji: '📊'
-        },
-        { 
-          id: 'C', 
-          text: "Tu cherches du soutien auprès de ton entourage", 
-          type: 'green',
-          emoji: '🤗'
-        },
-        { 
-          id: 'D', 
-          text: "Tu relativises et cherches le côté positif", 
-          type: 'yellow',
-          emoji: '🌈'
-        }
-      ]
-    }
-  ];
-
-  const profiles = {
+  const profiles = DISC_PROFILES;
     red: {
       name: "LEADER PASSIONNÉ",
       emoji: "🦁",
@@ -336,21 +334,13 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
       }
     });
 
-    let dominantType = 'red';
-    let maxCount = 0;
-
-    Object.entries(counts).forEach(([type, count]) => {
-      if (count > maxCount) {
-        maxCount = count;
-        dominantType = type;
-      }
-    });
+    const dominantType = calculateDominantColor(answers);
 
     setShowResults(true);
-    saveResults(dominantType);
+    saveResults(dominantType, answers);
   };
 
-  const saveResults = async (dominantType) => {
+  const saveResults = async (dominantType, finalAnswers) => {
     setLoading(true);
     try {
       // Sauvegarder dans questionnaire_responses
@@ -359,7 +349,7 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
         .upsert({
           user_id: user.id,
           dominant_color: dominantType,
-          color_quiz: answers,
+          color_quiz: finalAnswers,
           completed_at: new Date().toISOString()
         });
 
@@ -383,9 +373,11 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
     }
   };
 
-  const progress = ((currentQuestion + 1) / questions.length) * 100;
+  const progress = ((currentQuestion + 1) / DISC_QUESTION_COUNT) * 100;
 
   if (showResults) {
+    const dominantColorKey = calculateDominantColor(answers);
+
     const dominantType = answers.reduce((acc, answerIndex, questionIndex) => {
       if (answerIndex !== null) {
         const question = questions[questionIndex];
@@ -395,11 +387,46 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
       return acc;
     }, {});
 
-    const maxType = Object.entries(dominantType).reduce((max, [type, count]) => 
-      count > (max.count || 0) ? { type, count } : max, {}
-    );
+    const maxType = { type: dominantColorKey };
 
     const profile = profiles[maxType.type];
+
+    const handleRegenerateDISC = async () => {
+      if (!window.confirm("Êtes-vous sûr de vouloir relancer le questionnaire ? Votre ancien profil DISC sera supprimé.")) {
+        return;
+      }
+      setLoading(true);
+      try {
+        // 1. Supprimer l'ancien DISC
+        const { error: deleteError } = await supabase
+          .from('questionnaire_responses')
+          .delete()
+          .eq('user_id', user.id);
+
+        if (deleteError) throw deleteError;
+
+        // 2. Réinitialiser le profil utilisateur (couleur dominante)
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({ dominant_color: null })
+          .eq('id', user.id);
+
+        if (profileError) throw profileError;
+
+        toast.success('Ancien DISC supprimé. Redémarrage du questionnaire.');
+        
+        // 3. Réinitialiser l'état du composant pour relancer le questionnaire
+        setAnswers(Array(DISC_QUESTION_COUNT).fill(null));
+        setCurrentQuestion(0);
+        setShowResults(false);
+        setExistingAnswers(null);
+      } catch (error) {
+        console.error('Erreur régénération DISC:', error);
+        toast.error('Erreur lors de la régénération du DISC.');
+      } finally {
+        setLoading(false);
+      }
+    };
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
@@ -411,9 +438,15 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
             <h1 className="text-4xl font-bold text-gray-900 mb-4">
               Ton profil : {profile.name}
             </h1>
-            <p className="text-xl text-gray-600">
-              Découvre ta personnalité unique et comment elle influence ton approche du sport
-            </p>
+              <p className="text-xl text-gray-600">
+                Découvre ta personnalité unique et comment elle influence ton approche du sport
+              </p>
+              <a 
+                href="/update-disc" 
+                className="text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200 mt-2 inline-block"
+              >
+                Voir / Mettre à jour le DISC
+              </a>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
@@ -497,13 +530,21 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
             </div>
           </div>
 
-          <div className="text-center">
+          <div className="text-center space-y-4">
             <Button
               onClick={onComplete}
               loading={loading}
               className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 px-8 py-4 text-white font-semibold text-lg"
             >
               🚀 Commencer mon aventure SpotBulle
+            </Button>
+            <Button
+              onClick={handleRegenerateDISC}
+              loading={loading}
+              variant="outline"
+              className="w-full md:w-auto border-red-500 text-red-500 hover:bg-red-50"
+            >
+              🔄 Regénérer le DISC
             </Button>
           </div>
         </div>
@@ -528,7 +569,7 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
           {/* Barre de progression */}
           <div className="max-w-2xl mx-auto mb-8">
             <div className="flex justify-between text-sm text-gray-600 mb-2">
-              <span>Question {currentQuestion + 1} sur {questions.length}</span>
+              <span>Question {currentQuestion + 1} sur {DISC_QUESTION_COUNT}</span>
               <span>{Math.round(progress)}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-3">
@@ -544,7 +585,7 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
         <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
           <div className="text-center mb-8">
             <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-              {questions[currentQuestion].question}
+              {DISC_QUESTIONS[currentQuestion].question}
             </h2>
             <p className="text-gray-500">
               Choisis la réponse qui te correspond le plus naturellement
@@ -552,7 +593,7 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {questions[currentQuestion].options.map((option, index) => (
+            {DISC_QUESTIONS[currentQuestion].options.map((option, index) => (
               <button
                 key={option.id}
                 onClick={() => handleAnswer(index)}
@@ -587,11 +628,11 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
           </Button>
           
           <div className="text-sm text-gray-500">
-            Question {currentQuestion + 1} sur {questions.length}
+            Question {currentQuestion + 1} sur {DISC_QUESTION_COUNT}
           </div>
 
           <Button
-            onClick={() => currentQuestion < questions.length - 1 ? setCurrentQuestion(prev => prev + 1) : calculateResults()}
+            onClick={() => currentQuestion < DISC_QUESTION_COUNT - 1 ? setCurrentQuestion(prev => prev + 1) : calculateResults()}
             disabled={answers[currentQuestion] === null}
             className="bg-primary-600 hover:bg-primary-700 px-6"
           >
