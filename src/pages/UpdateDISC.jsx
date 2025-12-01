@@ -1,6 +1,6 @@
 // smoovebox-v2/src/pages/UpdateDISC.jsx
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { useSupabaseClient } from '@supabase/auth-helpers-react';
 import { Button } from '../components/ui/button-enhanced.jsx';
 import { toast } from 'sonner';
 import ProfessionalHeader from '../components/ProfessionalHeader.jsx';
@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 
 const UpdateDISC = ({ profile, onSignOut }) => {
   const { user } = useAuth();
+  const supabase = useSupabaseClient();
   const navigate = useNavigate();
   const [answers, setAnswers] = useState(Array(DISC_QUESTIONS.length).fill(null));
   const [loading, setLoading] = useState(true);
