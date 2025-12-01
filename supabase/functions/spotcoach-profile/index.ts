@@ -78,20 +78,23 @@ interface AiSymbolicProfile {
   ascendant_degre?: number | null;
 }
 
-const AI_RESPONSE_SCHEMA = [
-  "profile_text",
-  "phrase_synchronie",
-  "archetype",
-  "couleur_dominante",
-  "element",
-  "signe_soleil",
-  "signe_lune",
-  "signe_ascendant",
-  "passions",
-  "soleil_degre",
-  "lune_degre",
-  "ascendant_degre",
-] as const;
+  const AI_RESPONSE_SCHEMA = [
+    "profile_text",
+    "phrase_synchronie",
+    "archetype",
+    "couleur_dominante",
+    "element",
+    "signe_soleil",
+    "signe_lune",
+    "signe_ascendant",
+    "passions",
+  ] as const;
+
+  const AI_OPTIONAL_SCHEMA = [
+    "soleil_degre",
+    "lune_degre",
+    "ascendant_degre",
+  ] as const;
 
 const OPENAI_MODEL = "gpt-4o-mini";
 
@@ -255,6 +258,7 @@ async function callOpenAi(prompt: string, signal?: AbortSignal): Promise<AiSymbo
     },
     body: JSON.stringify({
       model: OPENAI_MODEL,
+      response_format: { type: "json_object" }, // Enforce JSON output
       messages: [
         { role: "system", content: "Tu es SpotCoach, un coach symbolique expert. Réponds en JSON strict." },
         { role: "user", content: prompt },
@@ -287,7 +291,7 @@ async function callOpenAi(prompt: string, signal?: AbortSignal): Promise<AiSymbo
 
   const result = parsed as Partial<AiSymbolicProfile>;
   for (const key of AI_RESPONSE_SCHEMA) {
-    if (!(key in result)) {
+    if (!(key in result) || result[key] === undefined || result[key] === null) {
       throw new Error(`OpenAI response missing required field: ${key}`);
     }
   }
@@ -582,5 +586,4 @@ DENO.serve(async (req: Request) => {
     });
   }
 });
-
 
