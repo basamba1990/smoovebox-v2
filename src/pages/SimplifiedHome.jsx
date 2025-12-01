@@ -1,4 +1,3 @@
-// src/pages/SimplifiedHome.jsx
 import React, { useState, useEffect, useMemo } from "react";
 import Dashboard from "../components/Dashboard.jsx";
 import RecordVideo from "./record-video.jsx";
@@ -23,6 +22,9 @@ import LanguageSelector from "../components/LanguageSelector.jsx";
 // ✅ NOUVEL IMPORT : Modal de chat football
 import FootballChatModal from "../components/FootballChatModal.jsx";
 import QuickActions from "../components/QuickActions.jsx";
+
+// ✅ AJOUT IMPORT POUR DISC
+import FourColorsTest from "../components/FourColorsTest.jsx";
 
 // ✅ Navigation simplifiée complète
 const simplifiedTabs = [
@@ -93,6 +95,8 @@ export default function SimplifiedHome({
   const [showChatModal, setShowChatModal] = useState(false);
   // ✅ NOUVEL ÉTAT : Affichage sélecteur de langue
   const [showLanguageOptions, setShowLanguageOptions] = useState(false);
+  // ✅ NOUVEL ÉTAT : Modal DISC
+  const [showDISCModal, setShowDISCModal] = useState(false);
 
   const supabase = useSupabaseClient();
   const queryClient = useQueryClient();
@@ -164,7 +168,7 @@ export default function SimplifiedHome({
     // React Query will automatically refetch when needed
   };
 
-  // ✅ CORRECTION : Gestionnaire de changement de langue amélioré
+  // ✅ Gestionnaire de changement de langue amélioré
   const handleLanguageChange = (languageCode) => {
     setSelectedLanguage(languageCode);
     console.log("🌐 Langue sélectionnée pour transcription:", languageCode);
@@ -421,6 +425,18 @@ export default function SimplifiedHome({
                 </p>
               </div>
 
+              {/* ✅ BOUTON DISC AJOUTÉ */}
+              <div
+                onClick={() => setShowDISCModal(true)}
+                className="bg-gradient-to-br from-red-600 to-orange-600 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
+              >
+                <div className="text-3xl mb-3">🎭</div>
+                <h3 className="text-xl font-bold mb-2">Test DISC</h3>
+                <p className="text-white/90 text-sm">
+                  Découvrez votre profil de personnalité couleur
+                </p>
+              </div>
+
               <div
                 onClick={() => setShowQuestionnaire(true)}
                 className="bg-gradient-to-br from-pink-600 to-pink-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
@@ -433,7 +449,7 @@ export default function SimplifiedHome({
               </div>
 
               <div
-                onClick={() => setActiveSubTab("language")} // ✅ NOUVEAU : Sélection de langue
+                onClick={() => setActiveSubTab("language")}
                 className="bg-gradient-to-br from-cyan-600 to-cyan-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
               >
                 <div className="text-3xl mb-3">🌐</div>
@@ -576,7 +592,7 @@ export default function SimplifiedHome({
     }
   };
 
-  // ✅ CORRECTION : Contenu des onglets principaux avec intégration du sélecteur de langue amélioré
+  // ✅ Contenu des onglets principaux avec intégration du sélecteur de langue amélioré
   const renderTabContent = () => {
     switch (activeTab) {
       case "record":
@@ -618,7 +634,7 @@ export default function SimplifiedHome({
             <RecordVideo
               user={user}
               onVideoUploaded={handleVideoUploaded}
-              selectedLanguage={selectedLanguage} // ✅ BIEN PASSÉ
+              selectedLanguage={selectedLanguage}
               onError={(error) => {
                 console.error("❌ Erreur RecordVideo:", error);
                 setAppError(`Erreur enregistrement: ${error.message}`);
@@ -690,6 +706,13 @@ export default function SimplifiedHome({
               </h2>
               <div className="flex gap-2">
                 <Button
+                  onClick={() => setShowDISCModal(true)}
+                  variant="outline"
+                  className="flex items-center gap-2 border-red-400 text-red-300 hover:bg-red-900"
+                >
+                  🎭 Test DISC
+                </Button>
+                <Button
                   onClick={() => setShowQuestionnaire(true)}
                   variant="outline"
                   className="flex items-center gap-2 border-blue-400 text-blue-300 hover:bg-blue-900"
@@ -724,7 +747,7 @@ export default function SimplifiedHome({
           <RecordVideo
             user={user}
             onVideoUploaded={handleVideoUploaded}
-            selectedLanguage={selectedLanguage} // ✅ PASSAGE DE LA LANGUE SÉLECTIONNÉE
+            selectedLanguage={selectedLanguage}
           />
         );
     }
@@ -753,7 +776,7 @@ export default function SimplifiedHome({
           <div className="mb-6 p-4 bg-red-900/30 border border-red-700 rounded-lg">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <AlertCircle className="h-5 w-5 text-red-400" />
+                <span className="text-red-400">⚠️</span>
                 <div>
                   <h4 className="font-semibold text-red-300">Erreur</h4>
                   <p className="text-red-200 text-sm mt-1">
@@ -819,13 +842,13 @@ export default function SimplifiedHome({
 
       {/* ✅ Boutons d'action rapide flottants */}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
-        {/* Bouton Lumi */}
+        {/* Bouton DISC */}
         <Button
-          onClick={() => navigate("/lumi/onboarding")}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg text-lg py-3 px-4 rounded-full flex items-center gap-2 hover:scale-105 transition-transform"
-          title="Découvre ta couleur DISC"
+          onClick={() => setShowDISCModal(true)}
+          className="bg-gradient-to-r from-red-600 to-orange-600 text-white shadow-lg text-lg py-3 px-4 rounded-full flex items-center gap-2 hover:scale-105 transition-transform"
+          title="Test de personnalité DISC"
         >
-          🎨 DISC
+          🎭 DISC
         </Button>
 
         {/* Bouton SpotCoach */}
@@ -876,6 +899,37 @@ export default function SimplifiedHome({
                 onComplete={handleQuestionnaireComplete}
                 showSkip={true}
                 isModal={true}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Modal DISC */}
+      {showDISCModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-gray-800 rounded-xl max-w-6xl w-full max-h-[95vh] overflow-y-auto shadow-2xl border border-gray-700">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-white">
+                  🎭 Test de Personnalité DISC
+                </h2>
+                <Button
+                  onClick={() => setShowDISCModal(false)}
+                  variant="outline"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  ✕ Fermer
+                </Button>
+              </div>
+              <FourColorsTest
+                user={user}
+                profile={profile}
+                onComplete={() => {
+                  setShowDISCModal(false);
+                  toast.success("Profil DISC enregistré avec succès !");
+                }}
+                onSignOut={onSignOut}
               />
             </div>
           </div>
