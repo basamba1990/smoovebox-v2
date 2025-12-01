@@ -24,6 +24,9 @@ export default function LumiUnifiedProfile() {
   const [symbolicProfile, setSymbolicProfile] = useState(null);
   const [lumiProfile, setLumiProfile] = useState(null);
   const [videoAnalysis, setVideoAnalysis] = useState(null);
+  const [jobs, setJobs] = useState([]);
+  const [jobsLoading, setJobsLoading] = useState(false);
+  const [jobsError, setJobsError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,10 +113,77 @@ export default function LumiUnifiedProfile() {
     };
   }, [user]);
 
+  const handleGenerateJobs = async () => {
+    setJobsError(null);
+    setJobs([]);
+    setJobsLoading(true);
+
+    try {
+      const unifiedPayload = {
+        symbolic_profile: symbolicProfile
+          ? {
+              archetype: symbolicProfile.archetype,
+              phrase_synchronie: symbolicProfile.phrase_synchronie,
+              element: symbolicProfile.element,
+              profile_text: symbolicProfile.profile_text,
+            }
+          : null,
+        lumi_profile: lumiProfile
+          ? {
+              dominant_color: lumiProfile.dominant_color,
+              secondary_color: lumiProfile.secondary_color,
+              disc_scores: lumiProfile.disc_scores,
+              traits: lumiProfile.traits,
+            }
+          : null,
+        video_analysis: videoAnalysis
+          ? {
+              summary: videoAnalysis.analysis?.summary,
+              ai_score: videoAnalysis.analysis?.ai_score,
+              metadata: videoAnalysis.analysis?.metadata,
+            }
+          : null,
+        language: "fr",
+      };
+
+      const { data, error } = await supabase.functions.invoke(
+        "lumi-gpt-future-jobs",
+        {
+          body: unifiedPayload,
+        }
+      );
+
+      if (error) {
+        console.error("[LumiUnifiedProfile] Error calling GPT jobs:", error);
+        setJobsError(
+          error.message || "Erreur lors de l'appel à l'IA pour les métiers."
+        );
+        return;
+      }
+
+      if (!data?.success || !Array.isArray(data.jobs)) {
+        console.error("[LumiUnifiedProfile] Invalid GPT jobs response:", data);
+        setJobsError(
+          "La réponse de l'IA n'a pas le format attendu. Réessaie plus tard."
+        );
+        return;
+      }
+
+      setJobs(data.jobs);
+    } catch (err) {
+      console.error("[LumiUnifiedProfile] Exception calling GPT jobs:", err);
+      setJobsError(
+        err?.message || "Erreur inattendue lors de l'appel à l'IA."
+      );
+    } finally {
+      setJobsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 py-10">
       <div className="max-w-6xl mx-auto px-4 space-y-8">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <Button
             variant="outline"
             onClick={() => navigate("/")}
@@ -121,9 +191,20 @@ export default function LumiUnifiedProfile() {
           >
             ← Retour à l'accueil
           </Button>
-          <h1 className="text-2xl md:text-3xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400">
-            Synthèse Lumi / SpotCoach / Vidéo
-          </h1>
+          <div className="flex-1 min-w-[220px] flex items-center justify-between gap-4">
+            <h1 className="text-2xl md:text-3xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400">
+              Synthèse Lumi / SpotCoach / Vidéo
+            </h1>
+            <Button
+              onClick={handleGenerateJobs}
+              disabled={jobsLoading}
+              className="bg-purple-600 hover:bg-purple-700 text-white whitespace-nowrap"
+            >
+              {jobsLoading
+                ? "Génération en cours..."
+                : "Générer 10 métiers du futur"}
+            </Button>
+          </div>
         </div>
 
         {loading && (
@@ -326,6 +407,94 @@ export default function LumiUnifiedProfile() {
                     Aucune analyse vidéo trouvée. Analyse une vidéo pour voir ce
                     bloc rempli.
                   </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* GPT Future Jobs */}
+        {!loading && !error && (
+          <div className="mt-8">
+            <Card className="bg-slate-900/60 border-slate-800">
+              <CardHeader>
+                <CardTitle>Métiers du futur (GPT)</CardTitle>
+                <CardDescription>
+                  Propositions générées à partir de ton profil symbolique, DISC
+                  et de ton analyse vidéo.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {jobsError && (
+                  <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 text-red-200 px-4 py-3 text-sm">
+                    {jobsError}
+                  </div>
+                )}
+
+                {!jobsError && !jobsLoading && jobs.length === 0 && (
+                  <p className="text-sm text-slate-400">
+                    Clique sur le bouton{" "}
+                    <span className="font-semibold">
+                      “Générer 10 métiers du futur”
+                    </span>{" "}
+                    pour voir des idées de rôles adaptés à ton profil.
+                  </p>
+                )}
+
+                {!jobsLoading && jobs.length > 0 && (
+                  <div className="space-y-4">
+                    {jobs.map((job, index) => (
+                      <div
+                        key={index}
+                        className="border border-slate-800 rounded-lg px-4 py-3 bg-slate-900/60 space-y-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm text-slate-400">
+                            Métier #{index + 1}
+                          </p>
+                          {(job.confidence !== undefined ||
+                            job.horizon_years !== undefined) && (
+                            <div className="text-xs text-slate-400 flex gap-3">
+                              {job.horizon_years !== undefined && (
+                                <span>
+                                  Horizon: {job.horizon_years} ans
+                                </span>
+                              )}
+                              {job.confidence !== undefined && (
+                                <span>
+                                  Confiance:{" "}
+                                  {Math.round(job.confidence * 100)}%
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <h3 className="text-lg font-semibold text-white">
+                          {job.title}
+                        </h3>
+                        <p className="text-sm text-slate-200">
+                          {job.why_fit}
+                        </p>
+                        {job.skills_needed && job.skills_needed.length > 0 && (
+                          <div className="mt-1">
+                            <p className="text-xs text-slate-400 mb-1">
+                              Compétences à développer :
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {job.skills_needed.map((skill, i) => (
+                                <span
+                                  key={i}
+                                  className="px-2 py-1 rounded-full bg-cyan-500/10 text-cyan-200 text-xs border border-cyan-500/40"
+                                >
+                                  {skill}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </CardContent>
             </Card>
