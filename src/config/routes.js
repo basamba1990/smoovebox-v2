@@ -14,6 +14,7 @@ import EnhancedRecordVideo from "@/pages/enhanced-record-video.jsx";
 import Dashboard from "@/components/Dashboard.jsx";
 import VideoVault from "@/pages/video-vault.jsx";
 import VideoAnalysisPage from "@/pages/video-analysis.jsx";
+import UpdateDISC from "@/pages/UpdateDISC.jsx";
 import FourColorsTest from "@/components/FourColorsTest.jsx";
 import SeminarsList from "@/components/SeminarsList.jsx";
 import Certification from "@/components/Certification.jsx";
@@ -191,6 +192,16 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
       },
     },
     {
+      path: "/update-disc",
+      element: UpdateDISC,
+      requiresAuth: true,
+      props: {
+        user,
+        profile,
+        onSignOut,
+      },
+    },
+    {
       path: "/seminars",
       element: SeminarsList,
       requiresAuth: true,
@@ -243,4 +254,3 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
     },
   ];
 };
-
