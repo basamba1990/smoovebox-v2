@@ -945,4 +945,4 @@ export default function SimplifiedHome({
       </footer>
     </div>
   );
-}q
+}
