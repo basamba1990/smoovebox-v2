@@ -25,6 +25,7 @@ import Home from "../pages/home.jsx";
 import VideoSuccess from "../pages/video-success.jsx";
 import Directory from "../pages/directory.jsx";
 import LumiOnboarding from "../pages/lumi-onboarding.jsx";
+import LumiUnifiedProfile from "../pages/LumiUnifiedProfile.jsx";
 
 export default function AppRoutes({
   user,
@@ -86,6 +87,14 @@ export default function AppRoutes({
         element={
           <RequireAuth>
             <LumiOnboarding />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/lumi/profile"
+        element={
+          <RequireAuth>
+            <LumiUnifiedProfile />
           </RequireAuth>
         }
       />
