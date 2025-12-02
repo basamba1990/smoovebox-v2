@@ -14,6 +14,21 @@ import { getMyLumiProfile } from "../services/lumiService.js";
 import { supabase } from "../lib/supabase.js";
 import { videoService } from "../services/videoService.js";
 
+const TRACK_OPTIONS = [
+  "Filière Informatique & Numérique",
+  "Filière Sport & Santé",
+  "Filière Commerce & Marketing",
+  "Filière Finance & Comptabilité",
+  "Filière Industrie & Production",
+  "Filière Logistique & Transport",
+  "Filière Hôtellerie, Tourisme & Restauration",
+  "Filière BTP & Architecture",
+  "Filière Communication, Design & Création",
+  "Filière Juridique & Administratif",
+  "Filière Agriculture & Environnement",
+  "Filière Éducation & Formation",
+];
+
 export default function LumiUnifiedProfile() {
   const user = useUser();
   const navigate = useNavigate();
@@ -27,6 +42,8 @@ export default function LumiUnifiedProfile() {
   const [jobs, setJobs] = useState([]);
   const [jobsLoading, setJobsLoading] = useState(false);
   const [jobsError, setJobsError] = useState(null);
+  const [selectedTracks, setSelectedTracks] = useState([]);
+  const [userDescription, setUserDescription] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -143,6 +160,10 @@ export default function LumiUnifiedProfile() {
               metadata: videoAnalysis.analysis?.metadata,
             }
           : null,
+        extra_preferences: {
+          sectors: selectedTracks,
+          description: userDescription?.trim() || null,
+        },
         language: "fr",
       };
 
@@ -420,11 +441,65 @@ export default function LumiUnifiedProfile() {
               <CardHeader>
                 <CardTitle>Métiers du futur (GPT)</CardTitle>
                 <CardDescription>
-                  Propositions générées à partir de ton profil symbolique, DISC
-                  et de ton analyse vidéo.
+                  Propositions générées à partir de ton profil symbolique, DISC,
+                  de ton analyse vidéo et, si tu le souhaites, de tes domaines
+                  d&apos;intérêt.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-6">
+                {/* Optional preferences */}
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-medium text-slate-100 mb-2">
+                      Domaines qui t&apos;intéressent (optionnel)
+                    </p>
+                    <p className="text-xs text-slate-400 mb-3">
+                      Sélectionne une ou plusieurs filières qui t&apos;attirent.
+                      Cela aidera l&apos;IA à proposer des métiers plus ciblés.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {TRACK_OPTIONS.map((track) => {
+                        const selected = selectedTracks.includes(track);
+                        return (
+                          <button
+                            key={track}
+                            type="button"
+                            onClick={() => {
+                              setSelectedTracks((prev) =>
+                                selected
+                                  ? prev.filter((t) => t !== track)
+                                  : [...prev, track]
+                              );
+                            }}
+                            className={
+                              "text-left px-3 py-2 rounded-lg border text-xs sm:text-sm transition-all " +
+                              (selected
+                                ? "bg-cyan-500/20 border-cyan-400 text-cyan-100"
+                                : "bg-slate-900 border-slate-700 text-slate-200 hover:border-slate-500")
+                            }
+                          >
+                            {track}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-slate-100 mb-2">
+                      Décris ton projet ou ce que tu aimerais explorer
+                      (optionnel)
+                    </p>
+                    <textarea
+                      rows={3}
+                      value={userDescription}
+                      onChange={(e) => setUserDescription(e.target.value)}
+                      placeholder="Ex : J'aimerais travailler avec des jeunes dans le sport, ou créer des expériences immersives autour du bien-être..."
+                      className="w-full px-3 py-2 rounded-lg bg-slate-950/60 border border-slate-700 text-slate-100 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                    />
+                  </div>
+                </div>
+
                 {jobsError && (
                   <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 text-red-200 px-4 py-3 text-sm">
                     {jobsError}

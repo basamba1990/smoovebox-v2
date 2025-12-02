@@ -31,6 +31,10 @@ type UnifiedProfilePayload = {
     ai_score?: number | null;
     metadata?: Record<string, any> | null;
   } | null;
+  extra_preferences?: {
+    sectors?: string[] | null;
+    description?: string | null;
+  } | null;
   language?: "fr" | "en";
 };
 
@@ -135,6 +139,7 @@ Deno.serve(async (req) => {
     const symbolic = body.symbolic_profile || null;
     const lumi = body.lumi_profile || null;
     const video = body.video_analysis || null;
+    const extras = body.extra_preferences || null;
 
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
@@ -143,15 +148,17 @@ Deno.serve(async (req) => {
       symbolic_profile: symbolic,
       lumi_profile: lumi,
       video_analysis: video,
+      extra_preferences: extras,
     };
 
     const systemPromptFr = `
 Tu es un conseiller d'orientation du futur, spécialisé dans les métiers 2035–2050.
-Tu reçois un profil utilisateur structuré (profil symbolique, DISC / couleurs, analyse vidéo).
+Tu reçois un profil utilisateur structuré (profil symbolique, DISC / couleurs, analyse vidéo, préférences de filière éventuelles).
 
 TON OBJECTIF :
 - Proposer 10 idées de métiers ou rôles du FUTUR, à horizon 5–20 ans, réalistes mais VISIONNAIRES.
 - Chaque métier doit être profondément aligné avec la personnalité, les talents, le style de communication ET le style émotionnel de la personne.
+- Quand des préférences de filière ou une description de projet sont fournies, tu les utilises pour spécialiser les métiers (par ex. version “numérique”, “sport & santé”, “éducation”, etc.).
 - Situe chaque métier dans un CONTEXTE FUTUR précis (ex : villes climato-résilientes, métavers éducatifs, équipes hybrides IA-humains, territoires connectés, etc.).
 - Évite absolument les intitulés génériques (“ingénieur”, “médecin”, “professeur”) : trouve des rôles hybrides, contextualisés, qui “sentent” 2035–2050.
 
