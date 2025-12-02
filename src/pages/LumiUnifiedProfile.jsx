@@ -44,6 +44,10 @@ export default function LumiUnifiedProfile() {
   const [jobsError, setJobsError] = useState(null);
   const [selectedTracks, setSelectedTracks] = useState([]);
   const [userDescription, setUserDescription] = useState("");
+  // chatStep can be: 'askTracks' | 'chooseTracks' | 'askDescription' | 'typingDescription' | 'generating' | 'done'
+  const [chatStep, setChatStep] = useState("askTracks");
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isChatExpanded, setIsChatExpanded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,6 +135,7 @@ export default function LumiUnifiedProfile() {
   }, [user]);
 
   const handleGenerateJobs = async () => {
+    setChatStep("generating");
     setJobsError(null);
     setJobs([]);
     setJobsLoading(true);
@@ -179,6 +184,7 @@ export default function LumiUnifiedProfile() {
         setJobsError(
           error.message || "Erreur lors de l'appel à l'IA pour les métiers."
         );
+        setChatStep("done");
         return;
       }
 
@@ -187,18 +193,29 @@ export default function LumiUnifiedProfile() {
         setJobsError(
           "La réponse de l'IA n'a pas le format attendu. Réessaie plus tard."
         );
+        setChatStep("done");
         return;
       }
 
       setJobs(data.jobs);
+      setChatStep("done");
     } catch (err) {
       console.error("[LumiUnifiedProfile] Exception calling GPT jobs:", err);
       setJobsError(
         err?.message || "Erreur inattendue lors de l'appel à l'IA."
       );
+      setChatStep("done");
     } finally {
       setJobsLoading(false);
     }
+  };
+
+  const handleRestartChat = () => {
+    setSelectedTracks([]);
+    setUserDescription("");
+    setJobs([]);
+    setJobsError(null);
+    setChatStep("askTracks");
   };
 
   return (
@@ -216,15 +233,6 @@ export default function LumiUnifiedProfile() {
             <h1 className="text-2xl md:text-3xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400">
               Synthèse Lumi / SpotCoach / Vidéo
             </h1>
-            <Button
-              onClick={handleGenerateJobs}
-              disabled={jobsLoading}
-              className="bg-purple-600 hover:bg-purple-700 text-white whitespace-nowrap"
-            >
-              {jobsLoading
-                ? "Génération en cours..."
-                : "Générer 10 métiers du futur"}
-            </Button>
           </div>
         </div>
 
@@ -434,73 +442,271 @@ export default function LumiUnifiedProfile() {
           </div>
         )}
 
-        {/* GPT Future Jobs */}
+        {/* GPT Future Jobs - bottom-right chat launcher + panel */}
         {!loading && !error && (
-          <div className="mt-8">
-            <Card className="bg-slate-900/60 border-slate-800">
-              <CardHeader>
-                <CardTitle>Métiers du futur (GPT)</CardTitle>
-                <CardDescription>
-                  Propositions générées à partir de ton profil symbolique, DISC,
-                  de ton analyse vidéo et, si tu le souhaites, de tes domaines
-                  d&apos;intérêt.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Optional preferences */}
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm font-medium text-slate-100 mb-2">
-                      Domaines qui t&apos;intéressent (optionnel)
-                    </p>
-                    <p className="text-xs text-slate-400 mb-3">
-                      Sélectionne une ou plusieurs filières qui t&apos;attirent.
-                      Cela aidera l&apos;IA à proposer des métiers plus ciblés.
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {TRACK_OPTIONS.map((track) => {
-                        const selected = selectedTracks.includes(track);
-                        return (
-                          <button
-                            key={track}
-                            type="button"
-                            onClick={() => {
-                              setSelectedTracks((prev) =>
-                                selected
-                                  ? prev.filter((t) => t !== track)
-                                  : [...prev, track]
-                              );
-                            }}
-                            className={
-                              "text-left px-3 py-2 rounded-lg border text-xs sm:text-sm transition-all " +
-                              (selected
-                                ? "bg-cyan-500/20 border-cyan-400 text-cyan-100"
-                                : "bg-slate-900 border-slate-700 text-slate-200 hover:border-slate-500")
-                            }
-                          >
-                            {track}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+          <>
+            {!isChatOpen && (
+              <Button
+                type="button"
+                className="fixed right-4 bottom-4 z-40 bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-semibold shadow-xl rounded-full px-4 py-3 flex items-center gap-2"
+                onClick={() => {
+                  setIsChatOpen(true);
+                  setChatStep("askTracks");
+                }}
+              >
+                <span className="h-7 w-7 rounded-full bg-slate-900/20 flex items-center justify-center font-bold">
+                  L
+                </span>
+                <span>Parler avec Lumi</span>
+              </Button>
+            )}
 
-                  <div>
-                    <p className="text-sm font-medium text-slate-100 mb-2">
-                      Décris ton projet ou ce que tu aimerais explorer
-                      (optionnel)
-                    </p>
-                    <textarea
-                      rows={3}
-                      value={userDescription}
-                      onChange={(e) => setUserDescription(e.target.value)}
-                      placeholder="Ex : J'aimerais travailler avec des jeunes dans le sport, ou créer des expériences immersives autour du bien-être..."
-                      className="w-full px-3 py-2 rounded-lg bg-slate-950/60 border border-slate-700 text-slate-100 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-                    />
-                  </div>
+            {isChatOpen && (
+          <div
+            className={
+              isChatExpanded
+                ? "fixed inset-0 z-40"
+                : "mt-8 fixed right-4 bottom-4 w-full max-w-sm max-h-[75vh] z-40 overflow-y-auto"
+            }
+          >
+            <Card
+              className={
+                isChatExpanded
+                  ? "bg-slate-900 border-slate-800 shadow-xl w-full h-full rounded-none flex flex-col"
+                  : "bg-slate-900/80 border-slate-800 shadow-xl"
+              }
+            >
+              <CardHeader className="flex flex-row items-start justify-between gap-2">
+                <div>
+                  <CardTitle>Métiers du futur (GPT)</CardTitle>
+                  <CardDescription>
+                    Lumi te pose quelques questions, puis te propose 10 idées de
+                    métiers du futur basées sur ton profil.
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-slate-400 hover:text-slate-100 hover:bg-slate-800"
+                    onClick={() => setIsChatExpanded((v) => !v)}
+                    title={isChatExpanded ? "Exit full screen" : "Full screen"}
+                  >
+                    <span className="text-xs leading-none">&lt;&gt;</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-slate-400 hover:text-slate-100 hover:bg-slate-800"
+                    onClick={() => setIsChatOpen(false)}
+                  >
+                    <span className="text-lg leading-none">−</span>
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className={isChatExpanded ? "space-y-6 flex-1 overflow-y-auto" : "space-y-6"}>
+                {/* Chat-style preferences */}
+                <div className="space-y-4">
+                  {/* Questions flow - only when no jobs yet */}
+                  {jobs.length === 0 && (
+                    <>
+                      {/* Lumi intro */}
+                      <div className="flex items-start gap-3">
+                        <div className="h-8 w-8 rounded-full bg-cyan-500 text-slate-950 flex items-center justify-center text-sm font-bold">
+                          L
+                        </div>
+                        <div className="bg-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-100 max-w-xl">
+                          Bonjour, je suis <span className="font-semibold">Lumi</span>. Je
+                          suis là pour t&apos;aider à explorer des pistes de métiers
+                          du futur à partir de ton profil. On commence en douceur 😊
+                        </div>
+                      </div>
+
+                      {/* Question 1: sectors */}
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-3">
+                          <div className="h-8 w-8 rounded-full bg-cyan-500 text-slate-950 flex items-center justify-center text-sm font-bold">
+                            L
+                          </div>
+                          <div className="bg-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-100 max-w-xl">
+                            Est-ce que tu veux choisir une ou plusieurs{" "}
+                            <span className="font-semibold">filières</span> qui
+                            t&apos;intéressent ?
+                          </div>
+                        </div>
+
+                        {chatStep === "askTracks" && (
+                          <div className="flex gap-3 pl-11">
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 text-sm"
+                              onClick={() => setChatStep("chooseTracks")}
+                            >
+                              Oui
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-sm"
+                              onClick={() => {
+                                setSelectedTracks([]);
+                                setChatStep("askDescription");
+                              }}
+                            >
+                              Non
+                            </Button>
+                          </div>
+                        )}
+
+                        {chatStep === "chooseTracks" && (
+                          <div className="space-y-2 pl-11">
+                            <p className="text-xs text-slate-400">
+                              Tu peux cliquer sur une ou plusieurs filières. Tu
+                              peux aussi continuer sans en choisir.
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {TRACK_OPTIONS.map((track) => {
+                                const selected = selectedTracks.includes(track);
+                                return (
+                                  <button
+                                    key={track}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedTracks((prev) =>
+                                        selected
+                                          ? prev.filter((t) => t !== track)
+                                          : [...prev, track]
+                                      );
+                                    }}
+                                    className={
+                                      "text-left px-3 py-2 rounded-lg border text-xs sm:text-sm transition-all " +
+                                      (selected
+                                        ? "bg-cyan-500/20 border-cyan-400 text-cyan-100"
+                                        : "bg-slate-900 border-slate-700 text-slate-200 hover:border-slate-500")
+                                    }
+                                  >
+                                    {track}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div className="pt-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="bg-purple-600 hover:bg-purple-700 text-white text-sm"
+                                onClick={() => setChatStep("askDescription")}
+                              >
+                                Continuer avec Lumi
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Question 2: description */}
+                      {(chatStep === "askDescription" ||
+                        chatStep === "typingDescription" ||
+                        chatStep === "generating" ||
+                        chatStep === "done") && (
+                        <div className="space-y-2">
+                          <div className="flex items-start gap-3">
+                            <div className="h-8 w-8 rounded-full bg-cyan-500 text-slate-950 flex items-center justify-center text-sm font-bold">
+                              L
+                            </div>
+                            <div className="bg-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-100 max-w-xl">
+                              Est-ce que tu veux ajouter une petite description de
+                              ce que tu aimerais faire ou explorer ? (optionnel)
+                            </div>
+                          </div>
+
+                          {chatStep === "askDescription" && (
+                            <div className="flex gap-3 pl-11">
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 text-sm"
+                                onClick={() => setChatStep("typingDescription")}
+                              >
+                                Oui
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-sm"
+                                onClick={() => {
+                                  setUserDescription("");
+                                  handleGenerateJobs();
+                                }}
+                              >
+                                Non
+                              </Button>
+                            </div>
+                          )}
+
+                          {chatStep === "typingDescription" && (
+                            <div className="space-y-2 pl-11">
+                              <textarea
+                                rows={3}
+                                value={userDescription}
+                                onChange={(e) =>
+                                  setUserDescription(e.target.value)
+                                }
+                                placeholder="Ex : J'aimerais travailler avec des jeunes dans le sport, ou créer des expériences immersives autour du bien-être..."
+                                className="w-full px-3 py-2 rounded-lg bg-slate-950/60 border border-slate-700 text-slate-100 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                              />
+                              <div className="flex gap-3">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="bg-purple-600 hover:bg-purple-700 text-white text-sm"
+                                  onClick={handleGenerateJobs}
+                                  disabled={jobsLoading}
+                                >
+                                  {jobsLoading
+                                    ? "Génération en cours..."
+                                    : "Générer mes 10 métiers"}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-sm"
+                                  onClick={() => {
+                                    setUserDescription("");
+                                    handleGenerateJobs();
+                                  }}
+                                  disabled={jobsLoading}
+                                >
+                                  Ignorer la description
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
 
-                {jobsError && (
+                {jobsLoading && (
+                  <div className="flex items-start gap-3">
+                    <div className="h-8 w-8 rounded-full bg-cyan-500 text-slate-950 flex items-center justify-center text-sm font-bold">
+                      L
+                    </div>
+                    <div className="bg-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-100 max-w-xl">
+                      Je réfléchis à des idées de métiers du futur pour toi...
+                      <span className="ml-1 animate-pulse">● ● ●</span>
+                    </div>
+                  </div>
+                )}
+
+                {jobsError && !jobsLoading && (
                   <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 text-red-200 px-4 py-3 text-sm">
                     {jobsError}
                   </div>
@@ -508,72 +714,106 @@ export default function LumiUnifiedProfile() {
 
                 {!jobsError && !jobsLoading && jobs.length === 0 && (
                   <p className="text-sm text-slate-400">
-                    Clique sur le bouton{" "}
-                    <span className="font-semibold">
-                      “Générer 10 métiers du futur”
-                    </span>{" "}
-                    pour voir des idées de rôles adaptés à ton profil.
+                    Réponds simplement aux questions de Lumi ci-dessus, puis
+                    laisse l&apos;IA te proposer des pistes adaptées à ton
+                    profil.
                   </p>
                 )}
 
                 {!jobsLoading && jobs.length > 0 && (
-                  <div className="space-y-4">
-                    {jobs.map((job, index) => (
-                      <div
-                        key={index}
-                        className="border border-slate-800 rounded-lg px-4 py-3 bg-slate-900/60 space-y-2"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm text-slate-400">
-                            Métier #{index + 1}
+                  <div className="space-y-6">
+                    {/* Ask if user wants to go again */}
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-3">
+                        <div className="h-8 w-8 rounded-full bg-cyan-500 text-slate-950 flex items-center justify-center text-sm font-bold">
+                          L
+                        </div>
+                        <div className="bg-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-100 max-w-xl">
+                          Est-ce que tu veux que je te propose une nouvelle
+                          série de métiers du futur avec d&apos;autres pistes ?
+                        </div>
+                      </div>
+                      <div className="flex gap-3 pl-11">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="bg-cyan-500 hover:bg-cyan-600 text-slate-950 text-sm"
+                          onClick={handleRestartChat}
+                        >
+                          Oui
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-sm"
+                        >
+                          Non
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Jobs list */}
+                    <div className="space-y-4">
+                      {jobs.map((job, index) => (
+                        <div
+                          key={index}
+                          className="border border-slate-800 rounded-lg px-4 py-3 bg-slate-900/60 space-y-2"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm text-slate-400">
+                              Métier #{index + 1}
+                            </p>
+                            {(job.confidence !== undefined ||
+                              job.horizon_years !== undefined) && (
+                              <div className="text-xs text-slate-400 flex gap-3">
+                                {job.horizon_years !== undefined && (
+                                  <span>
+                                    Horizon: {job.horizon_years} ans
+                                  </span>
+                                )}
+                                {job.confidence !== undefined && (
+                                  <span>
+                                    Confiance:{" "}
+                                    {Math.round(job.confidence * 100)}%
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <h3 className="text-lg font-semibold text-white">
+                            {job.title}
+                          </h3>
+                          <p className="text-sm text-slate-200">
+                            {job.why_fit}
                           </p>
-                          {(job.confidence !== undefined ||
-                            job.horizon_years !== undefined) && (
-                            <div className="text-xs text-slate-400 flex gap-3">
-                              {job.horizon_years !== undefined && (
-                                <span>
-                                  Horizon: {job.horizon_years} ans
-                                </span>
-                              )}
-                              {job.confidence !== undefined && (
-                                <span>
-                                  Confiance:{" "}
-                                  {Math.round(job.confidence * 100)}%
-                                </span>
-                              )}
+                          {job.skills_needed && job.skills_needed.length > 0 && (
+                            <div className="mt-1">
+                              <p className="text-xs text-slate-400 mb-1">
+                                Compétences à développer :
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {job.skills_needed.map((skill, i) => (
+                                  <span
+                                    key={i}
+                                    className="px-2 py-1 rounded-full bg-cyan-500/10 text-cyan-200 text-xs border border-cyan-500/40"
+                                  >
+                                    {skill}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
                           )}
                         </div>
-                        <h3 className="text-lg font-semibold text-white">
-                          {job.title}
-                        </h3>
-                        <p className="text-sm text-slate-200">
-                          {job.why_fit}
-                        </p>
-                        {job.skills_needed && job.skills_needed.length > 0 && (
-                          <div className="mt-1">
-                            <p className="text-xs text-slate-400 mb-1">
-                              Compétences à développer :
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              {job.skills_needed.map((skill, i) => (
-                                <span
-                                  key={i}
-                                  className="px-2 py-1 rounded-full bg-cyan-500/10 text-cyan-200 text-xs border border-cyan-500/40"
-                                >
-                                  {skill}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 )}
               </CardContent>
             </Card>
           </div>
+            )}
+          </>
         )}
       </div>
     </div>
