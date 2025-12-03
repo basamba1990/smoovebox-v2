@@ -49,6 +49,7 @@ export default function LumiUnifiedProfile() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isChatExpanded, setIsChatExpanded] = useState(false);
   const [creatingConversationId, setCreatingConversationId] = useState(null);
+  const [jobConversations, setJobConversations] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,6 +113,22 @@ export default function LumiUnifiedProfile() {
           if (analysis) {
             setVideoAnalysis({ video: latestVideo, analysis });
           }
+        }
+
+        // 4) Existing job conversations for this user
+        const { data: existingConversations, error: convError } = await supabase
+          .from("job_conversations")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+
+        if (convError) {
+          console.error(
+            "[LumiUnifiedProfile] Error fetching job_conversations:",
+            convError
+          );
+        } else if (!cancelled && existingConversations) {
+          setJobConversations(existingConversations);
         }
       } catch (err) {
         console.error("[LumiUnifiedProfile] Error loading data:", err);
@@ -252,6 +269,9 @@ export default function LumiUnifiedProfile() {
           job.title,
           data.conversation?.id
         );
+        if (data.conversation) {
+          setJobConversations((prev) => [data.conversation, ...(prev || [])]);
+        }
       }
     } catch (err) {
       console.error("[LumiUnifiedProfile] Exception creating job_conversation:", err);
@@ -797,72 +817,93 @@ export default function LumiUnifiedProfile() {
 
                     {/* Jobs list */}
                     <div className="space-y-4">
-                      {jobs.map((job, index) => (
-                        <div
-                          key={index}
-                          className="border border-slate-800 rounded-lg px-4 py-3 bg-slate-900/60 space-y-2"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-sm text-slate-400">
-                              Métier #{index + 1}
-                            </p>
-                            {(job.confidence !== undefined ||
-                              job.horizon_years !== undefined) && (
-                              <div className="text-xs text-slate-400 flex gap-3">
-                                {job.horizon_years !== undefined && (
-                                  <span>
-                                    Horizon: {job.horizon_years} ans
-                                  </span>
-                                )}
-                                {job.confidence !== undefined && (
-                                  <span>
-                                    Confiance:{" "}
-                                    {Math.round(job.confidence * 100)}%
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                          <h3 className="text-lg font-semibold text-white">
-                            {job.title}
-                          </h3>
-                          <p className="text-sm text-slate-200">
-                            {job.why_fit}
-                          </p>
-                          {job.skills_needed && job.skills_needed.length > 0 && (
-                            <div className="mt-1">
-                              <p className="text-xs text-slate-400 mb-1">
-                                Compétences à développer :
-                              </p>
-                              <div className="flex flex-wrap gap-2">
-                                {job.skills_needed.map((skill, i) => (
-                                  <span
-                                    key={i}
-                                    className="px-2 py-1 rounded-full bg-cyan-500/10 text-cyan-200 text-xs border border-cyan-500/40"
-                                  >
-                                    {skill}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
+                      {jobs.map((job, index) => {
+                        const hasConversation = jobConversations?.some(
+                          (conv) => conv.job_title === job.title
+                        );
 
-                          <div className="flex justify-end pt-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="border-cyan-500 text-cyan-300 hover:bg-cyan-500/10 hover:text-cyan-100 text-xs"
-                              onClick={() => handleStartJobConversation(job, index)}
-                              disabled={creatingConversationId === index}
-                            >
-                              {creatingConversationId === index
-                                ? "Enregistrement..."
-                                : "Explorer ce métier avec Lumi"}
-                            </Button>
+                        return (
+                          <div
+                            key={index}
+                            className="border border-slate-800 rounded-lg px-4 py-3 bg-slate-900/60 space-y-2"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm text-slate-400">
+                                Métier #{index + 1}
+                              </p>
+                              {(job.confidence !== undefined ||
+                                job.horizon_years !== undefined) && (
+                                <div className="text-xs text-slate-400 flex gap-3">
+                                  {job.horizon_years !== undefined && (
+                                    <span>
+                                      Horizon: {job.horizon_years} ans
+                                    </span>
+                                  )}
+                                  {job.confidence !== undefined && (
+                                    <span>
+                                      Confiance:{" "}
+                                      {Math.round(job.confidence * 100)}%
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            <h3 className="text-lg font-semibold text-white">
+                              {job.title}
+                            </h3>
+                            <p className="text-sm text-slate-200">
+                              {job.why_fit}
+                            </p>
+                            {job.skills_needed &&
+                              job.skills_needed.length > 0 && (
+                                <div className="mt-1">
+                                  <p className="text-xs text-slate-400 mb-1">
+                                    Compétences à développer :
+                                  </p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {job.skills_needed.map((skill, i) => (
+                                      <span
+                                        key={i}
+                                        className="px-2 py-1 rounded-full bg-cyan-500/10 text-cyan-200 text-xs border border-cyan-500/40"
+                                      >
+                                        {skill}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                            <div className="flex justify-end pt-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={hasConversation ? "ghost" : "outline"}
+                                className={
+                                  hasConversation
+                                    ? "text-slate-400 text-xs cursor-default"
+                                    : "border-cyan-500 text-cyan-300 hover:bg-cyan-500/10 hover:text-cyan-100 text-xs"
+                                }
+                                onClick={
+                                  hasConversation
+                                    ? undefined
+                                    : () =>
+                                        handleStartJobConversation(job, index)
+                                }
+                                disabled={
+                                  creatingConversationId === index ||
+                                  hasConversation
+                                }
+                              >
+                                {hasConversation
+                                  ? "Conversation créée"
+                                  : creatingConversationId === index
+                                  ? "Enregistrement..."
+                                  : "Explorer ce métier avec Lumi"}
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
