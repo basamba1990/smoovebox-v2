@@ -1,315 +1,43 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Button } from './ui/button-enhanced.jsx';
 import { toast } from 'sonner';
+import { DISC_QUESTIONS, DISC_PROFILES, DISC_QUESTION_COUNT } from '../constants/discData';
+import { calculateDominantColor } from '../utils/discUtils';
 import ProfessionalHeader from './ProfessionalHeader.jsx';
 
 const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [answers, setAnswers] = useState(Array(8).fill(null));
+  const [answers, setAnswers] = useState(Array(DISC_QUESTION_COUNT).fill(null));
   const [showResults, setShowResults] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [existingAnswers, setExistingAnswers] = useState(null);
 
-  // ✅ CORRECTION : Questions sans aucune mention de couleurs
-  const questions = [
-    {
-      id: 1,
-      question: "Face à un problème difficile, tu as tendance à :",
-      options: [
-        { 
-          id: 'A', 
-          text: "Prendre une décision rapide et agir immédiatement", 
-          type: 'red',
-          emoji: '⚡'
-        },
-        { 
-          id: 'B', 
-          text: "Analyser soigneusement toutes les options avant de décider", 
-          type: 'blue',
-          emoji: '🧠'
-        },
-        { 
-          id: 'C', 
-          text: "Demander l'avis des autres et chercher un consensus", 
-          type: 'green',
-          emoji: '🤝'
-        },
-        { 
-          id: 'D', 
-          text: "Imaginer des solutions créatives et originales", 
-          type: 'yellow',
-          emoji: '💡'
-        }
-      ]
-    },
-    {
-      id: 2,
-      question: "Dans une équipe, ton rôle naturel est plutôt :",
-      options: [
-        { 
-          id: 'A', 
-          text: "Prendre le leadership et diriger le groupe", 
-          type: 'red',
-          emoji: '👑'
-        },
-        { 
-          id: 'B', 
-          text: "Organiser et planifier le travail de l'équipe", 
-          type: 'blue',
-          emoji: '📋'
-        },
-        { 
-          id: 'C', 
-          text: "Faciliter la communication et soutenir les autres", 
-          type: 'green',
-          emoji: '🌟'
-        },
-        { 
-          id: 'D', 
-          text: "Proposer des idées nouvelles et motiver l'équipe", 
-          type: 'yellow',
-          emoji: '🎯'
-        }
-      ]
-    },
-    {
-      id: 3,
-      question: "Quand tu dois atteindre un objectif important :",
-      options: [
-        { 
-          id: 'A', 
-          text: "Tu fonces directement vers le but sans hésiter", 
-          type: 'red',
-          emoji: '🎯'
-        },
-        { 
-          id: 'B', 
-          text: "Tu établis un plan détaillé étape par étape", 
-          type: 'blue',
-          emoji: '🗓️'
-        },
-        { 
-          id: 'C', 
-          text: "Tu t'assures que tout le monde est d'accord et motivé", 
-          type: 'green',
-          emoji: '👥'
-        },
-        { 
-          id: 'D', 
-          text: "Tu explores différentes approches originales", 
-          type: 'yellow',
-          emoji: '🔍'
-        }
-      ]
-    },
-    {
-      id: 4,
-      question: "Face à une critique sur ton travail :",
-      options: [
-        { 
-          id: 'A', 
-          text: "Tu réponds directement et defends ton point de vue", 
-          type: 'red',
-          emoji: '🛡️'
-        },
-        { 
-          id: 'B', 
-          text: "Tu analyses la critique pour en tirer des améliorations", 
-          type: 'blue',
-          emoji: '🔎'
-        },
-        { 
-          id: 'C', 
-          text: "Tu cherches à comprendre le point de vue de l'autre", 
-          type: 'green',
-          emoji: '💝'
-        },
-        { 
-          id: 'D', 
-          text: "Tu vois ça comme une opportunité de changement", 
-          type: 'yellow',
-          emoji: '🔄'
-        }
-      ]
-    },
-    {
-      id: 5,
-      question: "Quand tu apprends quelque chose de nouveau :",
-      options: [
-        { 
-          id: 'A', 
-          text: "Tu aimes passer directement à la pratique", 
-          type: 'red',
-          emoji: '🏃'
-        },
-        { 
-          id: 'B', 
-          text: "Tu préfères étudier la théorie en détail d'abord", 
-          type: 'blue',
-          emoji: '📚'
-        },
-        { 
-          id: 'C', 
-          text: "Tu apprends mieux en groupe avec les autres", 
-          type: 'green',
-          emoji: '👨‍🏫'
-        },
-        { 
-          id: 'D', 
-          text: "Tu imagines comment l'appliquer de façon créative", 
-          type: 'yellow',
-          emoji: '🎨'
-        }
-      ]
-    },
-    {
-      id: 6,
-      question: "Dans ton sport, ce qui te motive le plus c'est :",
-      options: [
-        { 
-          id: 'A', 
-          text: "La compétition et la victoire", 
-          type: 'red',
-          emoji: '🏆'
-        },
-        { 
-          id: 'B', 
-          text: "La maîtrise technique et la précision", 
-          type: 'blue',
-          emoji: '⚙️'
-        },
-        { 
-          id: 'C', 
-          text: "L'esprit d'équipe et les relations", 
-          type: 'green',
-          emoji: '❤️'
-        },
-        { 
-          id: 'D', 
-          text: "L'expression libre et le plaisir du jeu", 
-          type: 'yellow',
-          emoji: '😄'
-        }
-      ]
-    },
-    {
-      id: 7,
-      question: "Quand tu organises ton temps :",
-      options: [
-        { 
-          id: 'A', 
-          text: "Tu priorises les actions qui donnent des résultats rapides", 
-          type: 'red',
-          emoji: '⏱️'
-        },
-        { 
-          id: 'B', 
-          text: "Tu planifies méticuleusement chaque moment de ta journée", 
-          type: 'blue',
-          emoji: '📅'
-        },
-        { 
-          id: 'C', 
-          text: "Tu adaptes ton planning en fonction des besoins des autres", 
-          type: 'green',
-          emoji: '🔄'
-        },
-        { 
-          id: 'D', 
-          text: "Tu laisses de la place à l'imprévu et la spontanéité", 
-          type: 'yellow',
-          emoji: '🎭'
-        }
-      ]
-    },
-    {
-      id: 8,
-      question: "Face à un échec ou une défaite :",
-      options: [
-        { 
-          id: 'A', 
-          text: "Tu veux immédiatement reprendre et te rattraper", 
-          type: 'red',
-          emoji: '💪'
-        },
-        { 
-          id: 'B', 
-          text: "Tu analyses ce qui n'a pas fonctionné pour progresser", 
-          type: 'blue',
-          emoji: '📊'
-        },
-        { 
-          id: 'C', 
-          text: "Tu cherches du soutien auprès de ton entourage", 
-          type: 'green',
-          emoji: '🤗'
-        },
-        { 
-          id: 'D', 
-          text: "Tu relativises et cherches le côté positif", 
-          type: 'yellow',
-          emoji: '🌈'
-        }
-      ]
+  useEffect(() => {
+    // Si l'utilisateur a déjà répondu, on charge ses réponses
+    if (profile?.dominant_color && !showResults) {
+      loadExistingAnswers();
     }
-  ];
+  }, [profile]);
 
-  const profiles = {
-    red: {
-      name: "LEADER PASSIONNÉ",
-      emoji: "🦁",
-      color: "#EF4444",
-      characteristics: [
-        "Prend des décisions rapides",
-        "Aime les défis et la compétition",
-        "Direct et orienté résultats",
-        "Naturellement confiant et déterminé"
-      ],
-      strengths: ["Leadership", "Courage", "Décision", "Ambition"],
-      challenges: ["Peut être impatient", "Parfois trop direct", "N'aime pas les lenteurs"],
-      sportStyle: "Compétiteur né, excelle sous pression, aime mener l'équipe"
-    },
-    blue: {
-      name: "STRATÈGE RIGOUREUX", 
-      emoji: "🧠",
-      color: "#3B82F6",
-      characteristics: [
-        "Aime les détails et la précision",
-        "Réfléchit avant d'agir",
-        "Organisé et méthodique",
-        "Fiable et consciencieux"
-      ],
-      strengths: ["Précision", "Organisation", "Analytique", "Fiabilité"],
-      challenges: ["Peut être perfectionniste", "Parfois trop prudent", "N'aime pas l'imprévu"],
-      sportStyle: "Technicien précis, excellent en stratégie, maîtrise parfaite des gestes"
-    },
-    green: {
-      name: "ÉQUIPIER EMPATHIQUE",
-      emoji: "🤝",
-      color: "#10B981",
-      characteristics: [
-        "Excellent communicateur",
-        "Soutient les autres naturellement",
-        "Crée l'harmonie dans le groupe",
-        "À l'écoute des besoins de chacun"
-      ],
-      strengths: ["Empathie", "Coopération", "Communication", "Loyauté"],
-      challenges: ["Peut éviter les conflits", "Parfois trop conciliant", "Difficile de dire non"],
-      sportStyle: "Cœur d'équipe, excellent coéquipier, renforce la cohésion"
-    },
-    yellow: {
-      name: "CRÉATIF ENTHOUSIASTE",
-      emoji: "💡",
-      color: "#F59E0B",
-      characteristics: [
-        "Plein d'idées nouvelles",
-        "Enthousiaste et énergique",
-        "Aime l'innovation et le changement",
-        "Excellent pour motiver les autres"
-      ],
-      strengths: ["Créativité", "Innovation", "Enthousiasme", "Adaptabilité"],
-      challenges: ["Peut manquer de suivi", "Parfois trop dispersé", "N'aime pas la routine"],
-      sportStyle: "Joueur imprévisible, plein de ressources, apporte la bonne humeur"
+  const loadExistingAnswers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('questionnaire_responses')
+        .select('color_quiz')
+        .eq('user_id', user.id)
+        .order('completed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) {
+        setExistingAnswers(data.color_quiz);
+        setAnswers(data.color_quiz);
+        setShowResults(true);
+      }
+    } catch (error) {
+      console.error('Erreur chargement réponses existantes:', error);
     }
   };
 
@@ -317,8 +45,8 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
     const newAnswers = [...answers];
     newAnswers[currentQuestion] = answerIndex;
     setAnswers(newAnswers);
-
-    if (currentQuestion < questions.length - 1) {
+    
+    if (currentQuestion < DISC_QUESTIONS.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
     } else {
       calculateResults();
@@ -326,31 +54,12 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
   };
 
   const calculateResults = () => {
-    const counts = { red: 0, blue: 0, green: 0, yellow: 0 };
-    
-    answers.forEach((answerIndex, questionIndex) => {
-      if (answerIndex !== null) {
-        const question = questions[questionIndex];
-        const selectedOption = question.options[answerIndex];
-        counts[selectedOption.type]++;
-      }
-    });
-
-    let dominantType = 'red';
-    let maxCount = 0;
-
-    Object.entries(counts).forEach(([type, count]) => {
-      if (count > maxCount) {
-        maxCount = count;
-        dominantType = type;
-      }
-    });
-
+    const dominantType = calculateDominantColor(answers);
     setShowResults(true);
-    saveResults(dominantType);
+    saveResults(dominantType, answers);
   };
 
-  const saveResults = async (dominantType) => {
+  const saveResults = async (dominantType, finalAnswers) => {
     setLoading(true);
     try {
       // Sauvegarder dans questionnaire_responses
@@ -359,7 +68,7 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
         .upsert({
           user_id: user.id,
           dominant_color: dominantType,
-          color_quiz: answers,
+          color_quiz: finalAnswers,
           completed_at: new Date().toISOString()
         });
 
@@ -368,9 +77,9 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
       // Mettre à jour le profil utilisateur
       await supabase
         .from('profiles')
-        .update({ 
+        .update({
           dominant_color: dominantType,
-          onboarding_completed: true 
+          onboarding_completed: true
         })
         .eq('id', user.id);
 
@@ -383,51 +92,97 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
     }
   };
 
-  const progress = ((currentQuestion + 1) / questions.length) * 100;
+  const progress = ((currentQuestion + 1) / DISC_QUESTION_COUNT) * 100;
 
   if (showResults) {
-    const dominantType = answers.reduce((acc, answerIndex, questionIndex) => {
+    const dominantColorKey = calculateDominantColor(answers);
+    const profileData = DISC_PROFILES[dominantColorKey];
+    
+    // Calculer la répartition des réponses
+    const answerDistribution = answers.reduce((acc, answerIndex, questionIndex) => {
       if (answerIndex !== null) {
-        const question = questions[questionIndex];
+        const question = DISC_QUESTIONS[questionIndex];
         const selectedOption = question.options[answerIndex];
         acc[selectedOption.type] = (acc[selectedOption.type] || 0) + 1;
       }
       return acc;
     }, {});
 
-    const maxType = Object.entries(dominantType).reduce((max, [type, count]) => 
-      count > (max.count || 0) ? { type, count } : max, {}
-    );
+    const handleRegenerateDISC = async () => {
+      if (!window.confirm("Êtes-vous sûr de vouloir relancer le questionnaire ? Votre ancien profil DISC sera supprimé.")) {
+        return;
+      }
+      
+      setLoading(true);
+      try {
+        // 1. Supprimer l'ancien DISC
+        const { error: deleteError } = await supabase
+          .from('questionnaire_responses')
+          .delete()
+          .eq('user_id', user.id);
 
-    const profile = profiles[maxType.type];
+        if (deleteError) throw deleteError;
+
+        // 2. Réinitialiser le profil utilisateur (couleur dominante)
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({ 
+            dominant_color: null,
+            onboarding_completed: false 
+          })
+          .eq('id', user.id);
+
+        if (profileError) throw profileError;
+
+        toast.success('Ancien DISC supprimé. Redémarrage du questionnaire.');
+        
+        // 3. Réinitialiser l'état du composant pour relancer le questionnaire
+        setAnswers(Array(DISC_QUESTION_COUNT).fill(null));
+        setCurrentQuestion(0);
+        setShowResults(false);
+        setExistingAnswers(null);
+      } catch (error) {
+        console.error('Erreur régénération DISC:', error);
+        toast.error('Erreur lors de la régénération du DISC.');
+      } finally {
+        setLoading(false);
+      }
+    };
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
         <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
-        
         <div className="container mx-auto px-4 py-8 max-w-4xl">
           <div className="text-center mb-8">
-            <div className="text-6xl mb-4">{profile.emoji}</div>
+            <div className="text-6xl mb-4">{profileData.emoji}</div>
             <h1 className="text-4xl font-bold text-gray-900 mb-4">
-              Ton profil : {profile.name}
+              Ton profil : {profileData.name}
             </h1>
             <p className="text-xl text-gray-600">
               Découvre ta personnalité unique et comment elle influence ton approche du sport
             </p>
+            <a 
+              href="/update-disc" 
+              className="text-sm text-blue-600 hover:text-blue-800 transition-colors duration-200 mt-2 inline-block"
+            >
+              Voir / Mettre à jour le DISC
+            </a>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
             {/* Carte profil */}
-            <div className="bg-white rounded-2xl shadow-lg p-6 border-2" style={{ borderColor: profile.color }}>
-              <h3 className="text-2xl font-bold mb-4" style={{ color: profile.color }}>
-                {profile.emoji} {profile.name}
+            <div 
+              className="bg-white rounded-2xl shadow-lg p-6 border-2" 
+              style={{ borderColor: profileData.color }}
+            >
+              <h3 className="text-2xl font-bold mb-4" style={{ color: profileData.color }}>
+                {profileData.emoji} {profileData.name}
               </h3>
-              
               <div className="space-y-4">
                 <div>
                   <h4 className="font-semibold text-gray-800 mb-2">Tes caractéristiques :</h4>
                   <ul className="space-y-2">
-                    {profile.characteristics.map((char, index) => (
+                    {profileData.characteristics.map((char, index) => (
                       <li key={index} className="flex items-center space-x-2">
                         <span className="text-green-500">✓</span>
                         <span className="text-gray-700">{char}</span>
@@ -435,15 +190,14 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
                     ))}
                   </ul>
                 </div>
-
                 <div>
                   <h4 className="font-semibold text-gray-800 mb-2">Forces principales :</h4>
                   <div className="flex flex-wrap gap-2">
-                    {profile.strengths.map((strength, index) => (
+                    {profileData.strengths.map((strength, index) => (
                       <span 
                         key={index}
                         className="px-3 py-1 rounded-full text-sm font-medium text-white"
-                        style={{ backgroundColor: profile.color }}
+                        style={{ backgroundColor: profileData.color }}
                       >
                         {strength}
                       </span>
@@ -457,16 +211,15 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
             <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
               <h3 className="text-2xl font-bold text-gray-900 mb-4">🎯 Ton style sportif</h3>
               <p className="text-gray-700 mb-6 text-lg leading-relaxed">
-                {profile.sportStyle}
+                {profileData.sportStyle}
               </p>
-              
               <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl p-4 border border-blue-200">
                 <h4 className="font-semibold text-blue-800 mb-2">💡 Conseil personnalisé :</h4>
                 <p className="text-blue-700 text-sm">
-                  {maxType.type === 'red' && "Concentre-toi sur le leadership d'équipe et la prise de décision rapide pendant les matchs."}
-                  {maxType.type === 'blue' && "Développe ta technique et deviens la référence stratégique de ton équipe."}
-                  {maxType.type === 'green' && "Utilise tes talents de communication pour renforcer la cohésion d'équipe."}
-                  {maxType.type === 'yellow' && "Apporte ton énergie créative pour surprendre l'adversaire et motiver ton équipe."}
+                  {dominantColorKey === 'red' && "Concentre-toi sur le leadership d'équipe et la prise de décision rapide pendant les matchs."}
+                  {dominantColorKey === 'blue' && "Développe ta technique et deviens la référence stratégique de ton équipe."}
+                  {dominantColorKey === 'green' && "Utilise tes talents de communication pour renforcer la cohésion d'équipe."}
+                  {dominantColorKey === 'yellow' && "Apporte ton énergie créative pour surprendre l'adversaire et motiver ton équipe."}
                 </p>
               </div>
             </div>
@@ -476,19 +229,19 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
           <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
             <h3 className="text-2xl font-bold text-gray-900 mb-6">📊 Ta répartition de personnalité</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {Object.entries(profiles).map(([type, prof]) => (
+              {Object.entries(DISC_PROFILES).map(([type, prof]) => (
                 <div key={type} className="text-center">
                   <div className="text-3xl mb-2">{prof.emoji}</div>
                   <div className="text-sm font-semibold text-gray-700 mb-1">{prof.name}</div>
                   <div className="text-2xl font-bold" style={{ color: prof.color }}>
-                    {dominantType[type] || 0}/{questions.length}
+                    {answerDistribution[type] || 0}/{DISC_QUESTIONS.length}
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
                     <div 
-                      className="h-2 rounded-full"
+                      className="h-2 rounded-full" 
                       style={{ 
-                        backgroundColor: prof.color,
-                        width: `${((dominantType[type] || 0) / questions.length) * 100}%` 
+                        backgroundColor: prof.color, 
+                        width: `${((answerDistribution[type] || 0) / DISC_QUESTIONS.length) * 100}%` 
                       }}
                     ></div>
                   </div>
@@ -497,13 +250,21 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
             </div>
           </div>
 
-          <div className="text-center">
-            <Button
-              onClick={onComplete}
+          <div className="text-center space-y-4">
+            <Button 
+              onClick={onComplete} 
               loading={loading}
               className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 px-8 py-4 text-white font-semibold text-lg"
             >
               🚀 Commencer mon aventure SpotBulle
+            </Button>
+            <Button 
+              onClick={handleRegenerateDISC} 
+              loading={loading}
+              variant="outline" 
+              className="w-full md:w-auto border-red-500 text-red-500 hover:bg-red-50"
+            >
+              🔄 Regénérer le DISC
             </Button>
           </div>
         </div>
@@ -514,7 +275,6 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
       <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
-      
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         {/* En-tête */}
         <div className="text-center mb-8">
@@ -524,16 +284,16 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
           <p className="text-xl text-gray-600 mb-6">
             Découvre ton profil unique pour un parcours SpotBulle 100% personnalisé
           </p>
-          
+
           {/* Barre de progression */}
           <div className="max-w-2xl mx-auto mb-8">
             <div className="flex justify-between text-sm text-gray-600 mb-2">
-              <span>Question {currentQuestion + 1} sur {questions.length}</span>
+              <span>Question {currentQuestion + 1} sur {DISC_QUESTION_COUNT}</span>
               <span>{Math.round(progress)}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-3">
               <div 
-                className="bg-primary-600 h-3 rounded-full transition-all duration-300"
+                className="bg-primary-600 h-3 rounded-full transition-all duration-300" 
                 style={{ width: `${progress}%` }}
               ></div>
             </div>
@@ -544,7 +304,7 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
         <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
           <div className="text-center mb-8">
             <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-              {questions[currentQuestion].question}
+              {DISC_QUESTIONS[currentQuestion].question}
             </h2>
             <p className="text-gray-500">
               Choisis la réponse qui te correspond le plus naturellement
@@ -552,13 +312,13 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {questions[currentQuestion].options.map((option, index) => (
+            {DISC_QUESTIONS[currentQuestion].options.map((option, index) => (
               <button
                 key={option.id}
                 onClick={() => handleAnswer(index)}
                 className={`p-6 border-2 rounded-xl text-left transition-all duration-200 hover:shadow-md ${
-                  answers[currentQuestion] === index
-                    ? 'border-primary-500 bg-primary-50 shadow-sm'
+                  answers[currentQuestion] === index 
+                    ? 'border-primary-500 bg-primary-50 shadow-sm' 
                     : 'border-gray-200 hover:border-primary-300'
                 }`}
               >
@@ -577,25 +337,28 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
 
         {/* Navigation */}
         <div className="flex justify-between items-center">
-          <Button
+          <Button 
             onClick={() => setCurrentQuestion(prev => Math.max(0, prev - 1))}
             disabled={currentQuestion === 0}
-            variant="outline"
+            variant="outline" 
             className="px-6"
           >
             ← Précédent
           </Button>
           
           <div className="text-sm text-gray-500">
-            Question {currentQuestion + 1} sur {questions.length}
+            Question {currentQuestion + 1} sur {DISC_QUESTION_COUNT}
           </div>
-
-          <Button
-            onClick={() => currentQuestion < questions.length - 1 ? setCurrentQuestion(prev => prev + 1) : calculateResults()}
+          
+          <Button 
+            onClick={() => currentQuestion < DISC_QUESTIONS.length - 1 
+              ? setCurrentQuestion(prev => prev + 1) 
+              : calculateResults()
+            }
             disabled={answers[currentQuestion] === null}
             className="bg-primary-600 hover:bg-primary-700 px-6"
           >
-            {currentQuestion < questions.length - 1 ? 'Suivant →' : 'Voir mes résultats'}
+            {currentQuestion < DISC_QUESTIONS.length - 1 ? 'Suivant →' : 'Voir mes résultats'}
           </Button>
         </div>
       </div>

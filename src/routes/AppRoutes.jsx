@@ -25,6 +25,7 @@ import Home from "../pages/home.jsx";
 import VideoSuccess from "../pages/video-success.jsx";
 import Directory from "../pages/directory.jsx";
 import LumiOnboarding from "../pages/lumi-onboarding.jsx";
+import UpdateDISC from "../pages/UpdateDISC.jsx";
 
 export default function AppRoutes({
   user,
@@ -81,14 +82,28 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
-      <Route
-        path="/lumi/onboarding"
-        element={
-          <RequireAuth>
-            <LumiOnboarding />
-          </RequireAuth>
-        }
-      />
+	      <Route
+	        path="/lumi/onboarding"
+	        element={
+	          <RequireAuth>
+	            <LumiOnboarding />
+	          </RequireAuth>
+	        }
+	      />
+	
+	      {/* ✅ Nouvelle Route DISC */}
+	      <Route
+	        path="/update-disc"
+	        element={
+	          <RequireAuth>
+	            <UpdateDISC
+	              user={user}
+	              profile={profile}
+	              onSignOut={onSignOut}
+	            />
+	          </RequireAuth>
+	        }
+	      />
 
       {/* Routes protégées */}
       <Route
@@ -258,4 +273,3 @@ export default function AppRoutes({
     </Routes>
   );
 }
-
