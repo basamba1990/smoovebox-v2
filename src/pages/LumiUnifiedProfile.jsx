@@ -48,6 +48,7 @@ export default function LumiUnifiedProfile() {
   const [chatStep, setChatStep] = useState("askTracks");
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isChatExpanded, setIsChatExpanded] = useState(false);
+  const [creatingConversationId, setCreatingConversationId] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -216,6 +217,47 @@ export default function LumiUnifiedProfile() {
     setJobs([]);
     setJobsError(null);
     setChatStep("askTracks");
+  };
+
+  const handleStartJobConversation = async (job, index) => {
+    if (!user) {
+      console.warn("[LumiUnifiedProfile] No user, cannot create job conversation");
+      return;
+    }
+
+    try {
+      setCreatingConversationId(index);
+
+      const payload = {
+        job_title: job.title,
+        job_description: job.why_fit || "",
+        reason: job.why_fit || "",
+        sectors: selectedTracks && selectedTracks.length > 0 ? selectedTracks : null,
+        user_description: userDescription || null,
+      };
+
+      const { data, error } = await supabase.functions.invoke(
+        "lumi-create-job-conversation",
+        { body: payload }
+      );
+
+      if (error || !data?.success) {
+        console.error(
+          "[LumiUnifiedProfile] Error creating job_conversation via function:",
+          error || data?.error
+        );
+      } else {
+        console.log(
+          "[LumiUnifiedProfile] job_conversation created for job:",
+          job.title,
+          data.conversation?.id
+        );
+      }
+    } catch (err) {
+      console.error("[LumiUnifiedProfile] Exception creating job_conversation:", err);
+    } finally {
+      setCreatingConversationId(null);
+    }
   };
 
   return (
@@ -804,6 +846,21 @@ export default function LumiUnifiedProfile() {
                               </div>
                             </div>
                           )}
+
+                          <div className="flex justify-end pt-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="border-cyan-500 text-cyan-300 hover:bg-cyan-500/10 hover:text-cyan-100 text-xs"
+                              onClick={() => handleStartJobConversation(job, index)}
+                              disabled={creatingConversationId === index}
+                            >
+                              {creatingConversationId === index
+                                ? "Enregistrement..."
+                                : "Explorer ce métier avec Lumi"}
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>
