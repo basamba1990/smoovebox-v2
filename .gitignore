@@ -4,8 +4,3 @@ dist/
 .env.development
 .env*
 *.env
-<<<<<<< HEAD
-.env.development
-.env.development
-=======
->>>>>>> 2c80774e0820560dd912a5cb52cc4a3b19a84030
