@@ -50,6 +50,7 @@ export default function LumiUnifiedProfile() {
   const [isChatExpanded, setIsChatExpanded] = useState(false);
   const [creatingConversationId, setCreatingConversationId] = useState(null);
   const [jobConversations, setJobConversations] = useState([]);
+  const [isJobListOpen, setIsJobListOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -507,6 +508,80 @@ export default function LumiUnifiedProfile() {
         {/* GPT Future Jobs - bottom-right chat launcher + panel */}
         {!loading && !error && (
           <>
+            {/* Floating jobs list launcher (only if user has saved conversations) */}
+            {jobConversations && jobConversations.length > 0 && (
+              <>
+                <Button
+                  type="button"
+                  className="fixed right-4 bottom-20 z-40 bg-slate-800 hover:bg-slate-700 text-slate-100 font-semibold shadow-xl rounded-full px-4 py-2 text-xs flex items-center gap-2"
+                  onClick={() => setIsJobListOpen((v) => !v)}
+                >
+                  <span className="h-6 w-6 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-xs font-bold">
+                    {jobConversations.length}
+                  </span>
+                  <span>Mes métiers</span>
+                </Button>
+
+                {isJobListOpen && (
+                  <div className="fixed right-4 bottom-32 z-50 w-80 max-h-80 bg-slate-950/95 border border-slate-800 rounded-xl shadow-2xl overflow-y-auto p-3 space-y-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs font-semibold text-slate-200">
+                        Mes pistes de métiers
+                      </p>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6 text-slate-400 hover:text-slate-100 hover:bg-slate-800"
+                        onClick={() => setIsJobListOpen(false)}
+                      >
+                        <span className="text-sm leading-none">×</span>
+                      </Button>
+                    </div>
+                    {jobConversations.map((conv) => (
+                      <div
+                        key={conv.id}
+                        className="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 space-y-1"
+                      >
+                        <p className="text-sm font-semibold text-white line-clamp-2">
+                          {conv.job_title}
+                        </p>
+                        {conv.reason && (
+                          <p className="text-xs text-slate-400 line-clamp-2">
+                            {conv.reason}
+                          </p>
+                        )}
+                        {conv.sectors && conv.sectors.length > 0 && (
+                          <div className="flex flex-wrap gap-1 pt-1">
+                            {conv.sectors.slice(0, 3).map((s) => (
+                              <span
+                                key={s}
+                                className="px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-200 text-[10px] border border-cyan-500/40"
+                              >
+                                {s}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {conv.created_at && (
+                          <p className="text-[10px] text-slate-500 pt-1">
+                            Créé le{" "}
+                            {new Date(conv.created_at).toLocaleDateString("fr-FR")}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                    {jobConversations.length === 0 && (
+                      <p className="text-xs text-slate-400">
+                        Aucun métier sauvegardé pour le moment.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Floating Lumi chat launcher */}
             {!isChatOpen && (
               <Button
                 type="button"
@@ -523,6 +598,7 @@ export default function LumiUnifiedProfile() {
               </Button>
             )}
 
+            {/* Chat panel */}
             {isChatOpen && (
           <div
             className={
