@@ -51,6 +51,7 @@ export default function LumiUnifiedProfile() {
   const [creatingConversationId, setCreatingConversationId] = useState(null);
   const [jobConversations, setJobConversations] = useState([]);
   const [isJobListOpen, setIsJobListOpen] = useState(false);
+  const [selectedConversation, setSelectedConversation] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -542,6 +543,11 @@ export default function LumiUnifiedProfile() {
                       <div
                         key={conv.id}
                         className="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 space-y-1"
+                        onClick={() => {
+                          setSelectedConversation(conv);
+                          setIsJobListOpen(false);
+                        }}
+                        style={{ cursor: "pointer" }}
                       >
                         <p className="text-sm font-semibold text-white line-clamp-2">
                           {conv.job_title}
@@ -596,6 +602,73 @@ export default function LumiUnifiedProfile() {
                 </span>
                 <span>Parler avec Lumi</span>
               </Button>
+            )}
+
+            {/* Job conversation panel (left of Lumi chat) */}
+            {selectedConversation && !isChatExpanded && (
+              <div className="fixed right-[22rem] bottom-4 w-full max-w-sm max-h-[75vh] z-40 overflow-y-auto">
+                <Card className="bg-slate-900/80 border-slate-800 shadow-xl flex flex-col">
+                  <CardHeader className="flex flex-row items-start justify-between gap-2">
+                    <div className="space-y-1">
+                      <CardTitle className="text-sm">
+                        {selectedConversation.job_title}
+                      </CardTitle>
+                      {selectedConversation.sectors &&
+                        selectedConversation.sectors.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {selectedConversation.sectors
+                              .slice(0, 3)
+                              .map((s) => (
+                                <span
+                                  key={s}
+                                  className="px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-200 text-[10px] border border-cyan-500/40"
+                                >
+                                  {s}
+                                </span>
+                              ))}
+                          </div>
+                        )}
+                    </div>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-slate-400 hover:text-slate-100 hover:bg-slate-800"
+                      onClick={() => setSelectedConversation(null)}
+                    >
+                      <span className="text-lg leading-none">×</span>
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="space-y-3 flex-1 overflow-y-auto">
+                    {selectedConversation.reason && (
+                      <div className="text-xs text-slate-300 space-y-1">
+                        <p className="font-semibold text-slate-100">
+                          Pourquoi Lumi t&apos;a proposé ce métier
+                        </p>
+                        <p className="text-slate-300">
+                          {selectedConversation.reason}
+                        </p>
+                      </div>
+                    )}
+
+                    {selectedConversation.user_description && (
+                      <div className="text-xs text-slate-300 space-y-1 border-t border-slate-800 pt-2">
+                        <p className="font-semibold text-slate-100">
+                          Ce que tu as partagé
+                        </p>
+                        <p className="text-slate-300">
+                          {selectedConversation.user_description}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="text-xs text-slate-500 border-t border-slate-800 pt-2">
+                      Bientôt, Lumi gardera ici la conversation complète pour ce
+                      métier et tu pourras lui poser toutes tes questions.
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             )}
 
             {/* Chat panel */}
