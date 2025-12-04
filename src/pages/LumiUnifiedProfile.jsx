@@ -52,6 +52,8 @@ export default function LumiUnifiedProfile() {
   const [jobConversations, setJobConversations] = useState([]);
   const [isJobListOpen, setIsJobListOpen] = useState(false);
   const [selectedConversation, setSelectedConversation] = useState(null);
+  const [jobMessageInput, setJobMessageInput] = useState("");
+  const [jobMessageSending, setJobMessageSending] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -279,6 +281,56 @@ export default function LumiUnifiedProfile() {
       console.error("[LumiUnifiedProfile] Exception creating job_conversation:", err);
     } finally {
       setCreatingConversationId(null);
+    }
+  };
+
+  const handleSendJobMessage = async () => {
+    if (
+      !selectedConversation ||
+      !jobMessageInput.trim() ||
+      jobMessageSending
+    ) {
+      return;
+    }
+
+    try {
+      setJobMessageSending(true);
+
+      const { data, error } = await supabase.functions.invoke(
+        "lumi-job-conversation-reply",
+        {
+          body: {
+            conversation_id: selectedConversation.id,
+            message: jobMessageInput.trim(),
+          },
+        }
+      );
+
+      if (error || !data?.success) {
+        console.error(
+          "[LumiUnifiedProfile] Error sending job conversation message:",
+          error || data?.error
+        );
+        return;
+      }
+
+      if (data.conversation) {
+        setSelectedConversation(data.conversation);
+        setJobConversations((prev) =>
+          (prev || []).map((conv) =>
+            conv.id === data.conversation.id ? data.conversation : conv
+          )
+        );
+      }
+
+      setJobMessageInput("");
+    } catch (err) {
+      console.error(
+        "[LumiUnifiedProfile] Exception sending job conversation message:",
+        err
+      );
+    } finally {
+      setJobMessageSending(false);
     }
   };
 
@@ -606,8 +658,8 @@ export default function LumiUnifiedProfile() {
 
             {/* Job conversation panel (left of Lumi chat) */}
             {selectedConversation && !isChatExpanded && (
-              <div className="fixed right-[22rem] bottom-4 w-full max-w-sm max-h-[75vh] z-40 overflow-y-auto">
-                <Card className="bg-slate-900/80 border-slate-800 shadow-xl flex flex-col">
+              <div className="fixed right-[22rem] bottom-4 w-full max-w-sm h-[420px] z-40">
+                <Card className="bg-slate-900/80 border-slate-800 shadow-xl flex flex-col h-full">
                   <CardHeader className="flex flex-row items-start justify-between gap-2">
                     <div className="space-y-1">
                       <CardTitle className="text-sm">
@@ -662,11 +714,58 @@ export default function LumiUnifiedProfile() {
                       </div>
                     )}
 
-                    <div className="text-xs text-slate-500 border-t border-slate-800 pt-2">
-                      Bientôt, Lumi gardera ici la conversation complète pour ce
-                      métier et tu pourras lui poser toutes tes questions.
-                    </div>
+                    {/* Messages thread */}
+                    {Array.isArray(selectedConversation.messages) &&
+                      selectedConversation.messages.length > 0 && (
+                        <div className="space-y-2 border-t border-slate-800 pt-2">
+                          {selectedConversation.messages.map((msg, idx) => (
+                            <div
+                              key={idx}
+                              className={
+                                msg.role === "user"
+                                  ? "flex justify-end"
+                                  : "flex justify-start"
+                              }
+                            >
+                              <div
+                                className={
+                                  "max-w-[80%] rounded-2xl px-3 py-2 text-xs " +
+                                  (msg.role === "user"
+                                    ? "bg-cyan-600 text-slate-950"
+                                    : "bg-slate-800 text-slate-100")
+                                }
+                              >
+                                {msg.content}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                   </CardContent>
+                  <div className="border-t border-slate-800 px-4 py-3 flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={jobMessageInput}
+                      onChange={(e) => setJobMessageInput(e.target.value)}
+                      placeholder="Pose une question à Lumi sur ce métier..."
+                      className="flex-1 bg-slate-950/60 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleSendJobMessage();
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-xs"
+                      onClick={handleSendJobMessage}
+                      disabled={jobMessageSending || !jobMessageInput.trim()}
+                    >
+                      {jobMessageSending ? "Envoi..." : "Envoyer"}
+                    </Button>
+                  </div>
                 </Card>
               </div>
             )}
