@@ -19,6 +19,11 @@ interface CreateJobConversationRequest {
   user_description?: string | null;
 }
 
+type ChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -96,6 +101,36 @@ Deno.serve(async (req) => {
       );
     }
 
+    const introLines: string[] = [];
+    introLines.push(
+      `Salut, je suis Lumi. Cette conversation est dédiée au métier "${body.job_title}".`,
+    );
+    introLines.push(
+      "On va voir ensemble si ce métier peut vraiment te correspondre et comment tu pourrais t'y préparer.",
+    );
+    if (body.sectors && body.sectors.length > 0) {
+      introLines.push(
+        `Tu m'as indiqué que tu t'intéressais particulièrement à : ${body.sectors.join(
+          ", ",
+        )}.`,
+      );
+    }
+    if (body.user_description && body.user_description.trim().length > 0) {
+      introLines.push(
+        `Tu m'as aussi partagé ceci sur ce que tu aimerais faire : "${body.user_description.trim()}".`,
+      );
+    }
+    introLines.push(
+      "Dis-moi d'abord ce qui t'attire le plus dans ce métier, ou ce qui t'inquiète le plus.",
+    );
+
+    const initialMessages: ChatMessage[] = [
+      {
+        role: "assistant",
+        content: introLines.join(" "),
+      },
+    ];
+
     const insertPayload = {
       user_id: user.id,
       job_title: body.job_title,
@@ -106,7 +141,7 @@ Deno.serve(async (req) => {
         body.user_description && body.user_description.trim().length > 0
           ? body.user_description
           : null,
-      messages: [],
+      messages: initialMessages,
     };
 
     const { data, error } = await supabaseClient

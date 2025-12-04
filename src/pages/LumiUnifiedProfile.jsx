@@ -13,6 +13,7 @@ import { spotCoachService } from "../services/spotCoachService.js";
 import { getMyLumiProfile } from "../services/lumiService.js";
 import { supabase } from "../lib/supabase.js";
 import { videoService } from "../services/videoService.js";
+import { JobConversationChat } from "../components/JobConversationChat.jsx";
 
 const TRACK_OPTIONS = [
   "Filière Informatique & Numérique",
@@ -54,6 +55,7 @@ export default function LumiUnifiedProfile() {
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [jobMessageInput, setJobMessageInput] = useState("");
   const [jobMessageSending, setJobMessageSending] = useState(false);
+  const [isJobChatExpanded, setIsJobChatExpanded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -598,6 +600,7 @@ export default function LumiUnifiedProfile() {
                         onClick={() => {
                           setSelectedConversation(conv);
                           setIsJobListOpen(false);
+                          setIsJobChatExpanded(false);
                         }}
                         style={{ cursor: "pointer" }}
                       >
@@ -643,7 +646,7 @@ export default function LumiUnifiedProfile() {
             {!isChatOpen && (
               <Button
                 type="button"
-                className="fixed right-4 bottom-4 z-40 bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-semibold shadow-xl rounded-full px-4 py-3 flex items-center gap-2"
+                className="fixed right-4 bottom-4 z-40 bg-cyan-500 hover:bg-cyan-600 text-slate-950 font-semibold shadow-xl rounded-full px-4 py-3 flex items-center gap-2 transition-transform duration-200"
                 onClick={() => {
                   setIsChatOpen(true);
                   setChatStep("askTracks");
@@ -658,115 +661,28 @@ export default function LumiUnifiedProfile() {
 
             {/* Job conversation panel (left of Lumi chat) */}
             {selectedConversation && !isChatExpanded && (
-              <div className="fixed right-[22rem] bottom-4 w-full max-w-sm h-[420px] z-40">
-                <Card className="bg-slate-900/80 border-slate-800 shadow-xl flex flex-col h-full">
-                  <CardHeader className="flex flex-row items-start justify-between gap-2">
-                    <div className="space-y-1">
-                      <CardTitle className="text-sm">
-                        {selectedConversation.job_title}
-                      </CardTitle>
-                      {selectedConversation.sectors &&
-                        selectedConversation.sectors.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {selectedConversation.sectors
-                              .slice(0, 3)
-                              .map((s) => (
-                                <span
-                                  key={s}
-                                  className="px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-200 text-[10px] border border-cyan-500/40"
-                                >
-                                  {s}
-                                </span>
-                              ))}
-                          </div>
-                        )}
-                    </div>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-slate-400 hover:text-slate-100 hover:bg-slate-800"
-                      onClick={() => setSelectedConversation(null)}
-                    >
-                      <span className="text-lg leading-none">×</span>
-                    </Button>
-                  </CardHeader>
-                  <CardContent className="space-y-3 flex-1 overflow-y-auto">
-                    {selectedConversation.reason && (
-                      <div className="text-xs text-slate-300 space-y-1">
-                        <p className="font-semibold text-slate-100">
-                          Pourquoi Lumi t&apos;a proposé ce métier
-                        </p>
-                        <p className="text-slate-300">
-                          {selectedConversation.reason}
-                        </p>
-                      </div>
-                    )}
-
-                    {selectedConversation.user_description && (
-                      <div className="text-xs text-slate-300 space-y-1 border-t border-slate-800 pt-2">
-                        <p className="font-semibold text-slate-100">
-                          Ce que tu as partagé
-                        </p>
-                        <p className="text-slate-300">
-                          {selectedConversation.user_description}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Messages thread */}
-                    {Array.isArray(selectedConversation.messages) &&
-                      selectedConversation.messages.length > 0 && (
-                        <div className="space-y-2 border-t border-slate-800 pt-2">
-                          {selectedConversation.messages.map((msg, idx) => (
-                            <div
-                              key={idx}
-                              className={
-                                msg.role === "user"
-                                  ? "flex justify-end"
-                                  : "flex justify-start"
-                              }
-                            >
-                              <div
-                                className={
-                                  "max-w-[80%] rounded-2xl px-3 py-2 text-xs " +
-                                  (msg.role === "user"
-                                    ? "bg-cyan-600 text-slate-950"
-                                    : "bg-slate-800 text-slate-100")
-                                }
-                              >
-                                {msg.content}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                  </CardContent>
-                  <div className="border-t border-slate-800 px-4 py-3 flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={jobMessageInput}
-                      onChange={(e) => setJobMessageInput(e.target.value)}
-                      placeholder="Pose une question à Lumi sur ce métier..."
-                      className="flex-1 bg-slate-950/60 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleSendJobMessage();
-                        }
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-xs"
-                      onClick={handleSendJobMessage}
-                      disabled={jobMessageSending || !jobMessageInput.trim()}
-                    >
-                      {jobMessageSending ? "Envoi..." : "Envoyer"}
-                    </Button>
-                  </div>
-                </Card>
+              <div
+                className={
+                  isJobChatExpanded
+                    ? "fixed inset-0 z-40 transition-all duration-200"
+                    : "fixed bottom-4 left-4 right-4 md:left-auto md:right-[22rem] w-auto max-w-sm h-[420px] z-40 transition-all duration-200"
+                }
+              >
+                <JobConversationChat
+                  conversation={selectedConversation}
+                  messageInput={jobMessageInput}
+                  onMessageChange={setJobMessageInput}
+                  onSend={handleSendJobMessage}
+                  sending={jobMessageSending}
+                  onClose={() => {
+                    setSelectedConversation(null);
+                    setIsJobChatExpanded(false);
+                  }}
+                  expanded={isJobChatExpanded}
+                  onToggleExpand={() =>
+                    setIsJobChatExpanded((prev) => !prev)
+                  }
+                />
               </div>
             )}
 
@@ -775,8 +691,8 @@ export default function LumiUnifiedProfile() {
           <div
             className={
               isChatExpanded
-                ? "fixed inset-0 z-40"
-                : "mt-8 fixed right-4 bottom-4 w-full max-w-sm max-h-[75vh] z-40 overflow-y-auto"
+                ? "fixed inset-0 z-40 transition-all duration-200"
+                : "mt-8 fixed bottom-4 left-4 right-4 md:left-auto md:right-4 w-auto max-w-sm max-h-[75vh] z-40 overflow-y-auto transition-all duration-200"
             }
           >
             <Card
