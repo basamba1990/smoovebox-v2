@@ -26,6 +26,7 @@ import VideoSuccess from "../pages/video-success.jsx";
 import Directory from "../pages/directory.jsx";
 import LumiOnboarding from "../pages/lumi-onboarding.jsx";
 import LumiUnifiedProfile from "../pages/LumiUnifiedProfile.jsx";
+import UpdateDISC from "../pages/UpdateDISC.jsx";
 
 export default function AppRoutes({
   user,
@@ -95,6 +96,16 @@ export default function AppRoutes({
         element={
           <RequireAuth>
             <LumiUnifiedProfile />
+          </RequireAuth>
+        }
+      />
+
+      {/* ✅ Nouvelle Route DISC */}
+      <Route
+        path="/update-disc"
+        element={
+          <RequireAuth>
+            <UpdateDISC user={user} profile={profile} onSignOut={onSignOut} />
           </RequireAuth>
         }
       />
@@ -172,11 +183,7 @@ export default function AppRoutes({
         path="/seminars"
         element={
           <RequireAuth>
-            <SeminarsList
-              user={user}
-              profile={profile}
-              onSignOut={onSignOut}
-            />
+            <SeminarsList user={user} profile={profile} onSignOut={onSignOut} />
           </RequireAuth>
         }
       />
@@ -231,10 +238,7 @@ export default function AppRoutes({
 
       {/* Routes de démonstration */}
       <Route path="/demo" element={<WelcomeAgent demoMode={true} />} />
-      <Route
-        path="/features"
-        element={<WelcomeAgent showFeatures={true} />}
-      />
+      <Route path="/features" element={<WelcomeAgent showFeatures={true} />} />
 
       {/* Gestion des erreurs 404 */}
       <Route
@@ -267,4 +271,3 @@ export default function AppRoutes({
     </Routes>
   );
 }
-

@@ -23,6 +23,7 @@ import Directory from "@/pages/directory.jsx";
 import SimplifiedHome from "@/pages/SimplifiedHome.jsx";
 import WelcomeAgent from "@/components/WelcomeAgent.jsx";
 import LumiOnboarding from "@/pages/lumi-onboarding.jsx";
+import UpdateDISC from "@/pages/UpdateDISC.jsx";
 
 /**
  * Route configuration
@@ -191,6 +192,16 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
       },
     },
     {
+      path: "/update-disc",
+      element: UpdateDISC,
+      requiresAuth: true,
+      props: {
+        user,
+        profile,
+        onSignOut,
+      },
+    },
+    {
       path: "/seminars",
       element: SeminarsList,
       requiresAuth: true,
@@ -243,4 +254,3 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
     },
   ];
 };
-
