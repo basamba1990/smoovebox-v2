@@ -888,6 +888,15 @@ export default function SimplifiedHome({
           🎯 SpotCoach
         </Button>
 
+        {/* Bouton Métiers du Futur */}
+        <Button
+          onClick={() => navigate("/lumi/profile")}
+          className="bg-cyan-600 hover:bg-cyan-700 text-white shadow-lg text-lg py-3 px-4 rounded-full flex items-center gap-2 hover:scale-105 transition-transform"
+          title="Découvre tes métiers du futur"
+        >
+          🚀 Métiers
+        </Button>
+
         {/* Bouton Chat Football */}
         <Button
           onClick={() => setShowChatModal(true)}
