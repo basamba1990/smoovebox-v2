@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
 
     const introLines: string[] = [];
     introLines.push(
-      `Salut, je suis Lumi. Cette conversation est dédiée au métier "${conversation.job_title}".`,
+      `Salut, je suis SpotCoach. Cette conversation est dédiée au métier "${conversation.job_title}".`,
     );
     introLines.push(
       "On va voir ensemble si ce métier peut vraiment te correspondre et comment tu pourrais t'y préparer.",
