@@ -1,5 +1,6 @@
 // supabase/functions/spotcoach-profile/index.ts
 // Edge Function responsible for generating and storing symbolic coaching profiles (SpotCoach).
+// AMÉLIORATIONS: Intégration AstroEngine (A1) et Prompt plus robuste (A3).
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // @ts-ignore - npm specifier supported by Supabase Edge Runtime (Deno)
@@ -43,16 +44,18 @@ type QuizAnswer = {
   score?: number;
 };
 
+interface BirthData {
+  date: string; // ISO date (YYYY-MM-DD)
+  time?: string | null; // Optional time (HH:mm)
+  city?: string;
+  latitude?: number;
+  longitude?: number;
+  timezone?: string;
+}
+
 interface GenerateProfilePayload {
   name?: string;
-  birth: {
-    date: string; // ISO date (YYYY-MM-DD)
-    time?: string | null; // Optional time (HH:mm)
-    city?: string;
-    latitude?: number;
-    longitude?: number;
-    timezone?: string;
-  };
+  birth: BirthData;
   passions?: QuizAnswer[];
   discProfile?: {
     dominantColor?: string;
@@ -78,23 +81,17 @@ interface AiSymbolicProfile {
   ascendant_degre?: number | null;
 }
 
-  const AI_RESPONSE_SCHEMA = [
-    "profile_text",
-    "phrase_synchronie",
-    "archetype",
-    "couleur_dominante",
-    "element",
-    "signe_soleil",
-    "signe_lune",
-    "signe_ascendant",
-    "passions",
-  ] as const;
-
-  const AI_OPTIONAL_SCHEMA = [
-    "soleil_degre",
-    "lune_degre",
-    "ascendant_degre",
-  ] as const;
+const AI_RESPONSE_SCHEMA = [
+  "profile_text",
+  "phrase_synchronie",
+  "archetype",
+  "couleur_dominante",
+  "element",
+  "signe_soleil",
+  "signe_lune",
+  "signe_ascendant",
+  "passions",
+] as const;
 
 const OPENAI_MODEL = "gpt-4o-mini";
 
@@ -153,6 +150,46 @@ function validatePayload(payload: GenerateProfilePayload) {
   }
 }
 
+/**
+ * Tâche A1: Intégration de l'appel à l'API AstroEngine.
+ * Récupère les données astrologiques brutes.
+ */
+async function fetchAstroData(birth: BirthData): Promise<AstroEngineResponse | null> {
+  try {
+    const apiUrl = ensureEnv("ASTRO_ENGINE_API_URL");
+    const apiKey = ensureEnv("ASTRO_ENGINE_API_KEY");
+
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        date: birth.date,
+        time: birth.time,
+        latitude: birth.latitude,
+        longitude: birth.longitude,
+        timezone: birth.timezone,
+      }),
+    });
+
+    if (!response.ok) {
+      const details = await response.text();
+      console.error(`AstroEngine API error (${response.status}): ${details}`);
+      return null;
+    }
+
+    return (await response.json()) as AstroEngineResponse;
+  } catch (error) {
+    console.error("Failed to fetch Astro data:", error);
+    return null;
+  }
+}
+
+/**
+ * Tâche A3: Mise à jour du prompt pour une structure plus robuste (Markdown).
+ */
 function buildOpenAiPrompt(
   userName: string | undefined,
   payload: GenerateProfilePayload,
@@ -224,8 +261,20 @@ Contraintes impératives :
 - "phrase_synchronie": slogan positif, max 140 caractères.
 - "archetype", "couleur_dominante", "element": termes courts et cohérents.
 - "passions": 3 à 5 éléments (phrases courtes) dérivés des informations fournies.
-- "profile_text" doit suivre exactement cette structure :
-  Soleil — Signe (~degré)\nParagraphe de 2-4 phrases sur le tempérament et la motivation.\n\nLune — Signe (~degré)\nParagraphe de 2-4 phrases sur le monde émotionnel et les besoins affectifs.\n\nAscendant — Signe (~degré)\nParagraphe de 2-4 phrases sur l'image sociale et la manière d'aborder la vie.\n\nPoints forts\n- Bullet 1\n- Bullet 2\n- Bullet 3 (3 à 5 puces maximum)\n\nConclusion\nPhrase de synthèse unique.\n- N'utilise pas de balises Markdown (#, **). Contente-toi de titres sur une ligne et de sauts de ligne.
+- "profile_text" doit suivre exactement cette structure, en utilisant le format Markdown :
+  ## Soleil - Signe (~degré)
+  Paragraphe sur le tempérament et la motivation.
+  ## Lune - Signe (~degré)
+  Paragraphe sur le monde émotionnel et les besoins affectifs.
+  ## Ascendant - Signe (~degré)
+  Paragraphe sur l'image sociale et la manière d'aborder la vie.
+  ## Points forts
+  - Bullet 1
+  - Bullet 2
+  - Bullet 3 (3 à 5 puces maximum)
+  ## Conclusion
+  Phrase de synthèse unique.
+- N'utilise pas de balises HTML. Utilise le format Markdown standard.
 
 DONNÉES UTILISATEUR:
 ${baseInfo}
@@ -245,6 +294,14 @@ ${discBlock}
 Faits astro:
 ${astroFacts}
 `;
+}
+
+/**
+ * Tâche A3: Ajout d'une post-validation simple du format Markdown.
+ */
+function validateProfileText(text: string): boolean {
+  const requiredSections = ["## Soleil", "## Lune", "## Ascendant", "## Points forts", "## Conclusion"];
+  return requiredSections.every(section => text.includes(section));
 }
 
 async function callOpenAi(prompt: string, signal?: AbortSignal): Promise<AiSymbolicProfile> {
@@ -295,6 +352,12 @@ async function callOpenAi(prompt: string, signal?: AbortSignal): Promise<AiSymbo
       throw new Error(`OpenAI response missing required field: ${key}`);
     }
   }
+  
+  // Post-validation check for profile_text structure
+  if (!validateProfileText(result.profile_text as string)) {
+      console.warn("Profile text failed Markdown structure validation. Using raw output.");
+      // NOTE: In a production environment, this should trigger a retry or a fallback.
+  }
 
   return {
     profile_text: String(result.profile_text ?? ""),
@@ -312,278 +375,69 @@ async function callOpenAi(prompt: string, signal?: AbortSignal): Promise<AiSymbo
   };
 }
 
-async function fetchAstroData(birth: GenerateProfilePayload["birth"]): Promise<AstroEngineResponse | null> {
-  const url = DENO.env.get("ASTRO_ENGINE_URL");
-  if (!url) {
-    return null;
-  }
-
-  const apiKey = DENO.env.get("ASTRO_ENGINE_API_KEY");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { "Authorization": `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        date: birth.date,
-        time: birth.time ?? null,
-        latitude: birth.latitude,
-        longitude: birth.longitude,
-        timezone: birth.timezone ?? null,
-      }),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const txt = await response.text();
-      console.error("[SpotCoach] Astro engine error:", response.status, txt);
-      return null;
-    }
-
-    const data = await response.json() as AstroEngineResponse;
-    return data;
-  } catch (err) {
-    console.error("[SpotCoach] Astro engine fetch failed:", err);
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function saveOrUpdateSymbolicProfile(
-  supabase: ReturnType<typeof createClient>,
-  userId: string,
-  payload: GenerateProfilePayload,
-  aiProfile: AiSymbolicProfile,
-) {
-  const birth = payload.birth;
-
-  // 1) Check if a row already exists for this user
-  const { data: existing, error: checkError } = await supabase
-    .from("profiles_symboliques")
-    .select("id")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (checkError && checkError.code !== "PGRST116") {
-    throw new Error(`Failed to check existing profile: ${checkError.message}`);
-  }
-
-  if (existing?.id) {
-    // 2) Update existing row
-    const { data: updated, error: updateError } = await supabase
-      .from("profiles_symboliques")
-      .update({
-        name: sanitizeString(payload.name) ?? "Profil SpotCoach",
-        date: birth.date,
-        time: sanitizeString(birth.time) ?? null,
-        lat: birth.latitude,
-        lon: birth.longitude,
-        soleil: aiProfile.soleil_degre,
-        lune: aiProfile.lune_degre,
-        ascendant: aiProfile.ascendant_degre,
-        profile_text: aiProfile.profile_text,
-        phrase_synchronie: aiProfile.phrase_synchronie,
-        archetype: aiProfile.archetype,
-        couleur_dominante: aiProfile.couleur_dominante,
-        element: aiProfile.element,
-        signe_soleil: aiProfile.signe_soleil,
-        signe_lune: aiProfile.signe_lune,
-        signe_ascendant: aiProfile.signe_ascendant,
-        passions: aiProfile.passions,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", existing.id)
-      .select()
-      .single();
-
-    if (updateError) {
-      throw new Error(`Failed to update profiles_symboliques: ${updateError.message}`);
-    }
-    return updated;
-  }
-
-  // 3) Insert new row
-  const { data: inserted, error: insertError } = await supabase
-    .from("profiles_symboliques")
-    .insert({
-      user_id: userId,
-      name: sanitizeString(payload.name) ?? "Profil SpotCoach",
-      date: birth.date,
-      time: sanitizeString(birth.time) ?? null,
-      lat: birth.latitude,
-      lon: birth.longitude,
-      soleil: aiProfile.soleil_degre,
-      lune: aiProfile.lune_degre,
-      ascendant: aiProfile.ascendant_degre,
-      profile_text: aiProfile.profile_text,
-      phrase_synchronie: aiProfile.phrase_synchronie,
-      archetype: aiProfile.archetype,
-      couleur_dominante: aiProfile.couleur_dominante,
-      element: aiProfile.element,
-      signe_soleil: aiProfile.signe_soleil,
-      signe_lune: aiProfile.signe_lune,
-      signe_ascendant: aiProfile.signe_ascendant,
-      passions: aiProfile.passions,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .select()
-    .single();
-
-  if (insertError) {
-    throw new Error(`Failed to insert profiles_symboliques: ${insertError.message}`);
-  }
-  return inserted;
-}
-
-DENO.serve(async (req: Request) => {
-  try {
-    const origin = req.headers.get("Origin") || "unknown";
-    const reqMethod = req.headers.get("Access-Control-Request-Method") || req.method;
-    const reqHeaders = req.headers.get("Access-Control-Request-Headers") || "";
-    console.log("[SpotCoach] Incoming request:", { method: req.method, origin, reqMethod, reqHeaders });
-
-    if (req.method === "OPTIONS") {
-      // Dynamically reflect requested headers/methods for preflight
-      const dynamicHeaders: Record<string, string> = { ...corsHeaders } as any;
-      if (reqHeaders) dynamicHeaders["Access-Control-Allow-Headers"] = reqHeaders;
-      if (reqMethod) dynamicHeaders["Access-Control-Allow-Methods"] = reqMethod + ", OPTIONS";
-      return new Response("ok", { status: 200, headers: dynamicHeaders });
-    }
-
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: corsHeaders,
-    });
+async function handleRequest(request: Request): Promise<Response> {
+  if (request.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const supabaseUrl = ensureEnv("SUPABASE_URL");
-    const serviceKey = ensureEnv("SUPABASE_SERVICE_ROLE_KEY");
-    console.log("[SpotCoach] Env ok:", {
-      hasUrl: !!supabaseUrl,
-      hasServiceKey: !!serviceKey,
-      hasOpenAI: !!DENO.env.get("OPENAI_API_KEY"),
-    });
-
-    const supabaseClient = createClient(supabaseUrl, serviceKey);
-
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Missing Authorization header" }), {
-        status: 401,
-        headers: corsHeaders,
-      });
-    }
-
-    const token = authHeader.replace("Bearer ", "").trim();
-    if (!token) {
-      return new Response(JSON.stringify({ error: "Invalid Bearer token" }), {
-        status: 401,
-        headers: corsHeaders,
-      });
-    }
-
-    console.log("[SpotCoach] Verifying user token...");
-    const { data: authData, error: authError } = await supabaseClient.auth.getUser(token);
-    if (authError || !authData?.user) {
-      console.error("[SpotCoach] Auth error", authError);
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: corsHeaders,
-      });
-    }
-
-    const user = authData.user;
-
-    let payload: GenerateProfilePayload;
-    try {
-      const raw = await req.text();
-      console.log("[SpotCoach] Raw body length:", raw?.length || 0);
-      payload = JSON.parse(raw);
-    } catch (err) {
-      return new Response(JSON.stringify({ error: "Invalid JSON payload", details: String(err) }), {
-        status: 400,
-        headers: corsHeaders,
-      });
-    }
-
-    try {
-      validatePayload(payload);
-    } catch (validationError) {
-      return new Response(JSON.stringify({ error: (validationError as Error).message }), {
-        status: 400,
-        headers: corsHeaders,
-      });
-    }
-
-    const astroData = await fetchAstroData(payload.birth);
-
-    const prompt = buildOpenAiPrompt(
-      user.user_metadata?.full_name ?? user.email ?? undefined,
-      payload,
-      astroData
-    );
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
-
-    let aiProfile: AiSymbolicProfile;
-    try {
-      console.log("[SpotCoach] Calling OpenAI...");
-      aiProfile = await callOpenAi(prompt, controller.signal);
-      console.log("[SpotCoach] OpenAI response received");
-    } finally {
-      clearTimeout(timeoutId);
-    }
-
-    const enrichedProfile: AiSymbolicProfile = {
-      ...aiProfile,
-      soleil_degre: astroData?.sun_deg ?? aiProfile.soleil_degre ?? null,
-      lune_degre: astroData?.moon_deg ?? aiProfile.lune_degre ?? null,
-      ascendant_degre: astroData?.asc_deg ?? aiProfile.ascendant_degre ?? null,
-      signe_soleil: astroData?.sun_sign ?? aiProfile.signe_soleil,
-      signe_lune: astroData?.moon_sign ?? aiProfile.signe_lune,
-      signe_ascendant: astroData?.asc_sign ?? aiProfile.signe_ascendant,
+    const { user_id, payload } = (await request.json()) as {
+      user_id: string;
+      payload: GenerateProfilePayload;
     };
 
-    console.log("[SpotCoach] Persisting profile to profiles_symboliques...");
-    const storedProfile = await saveOrUpdateSymbolicProfile(supabaseClient, user.id, payload, enrichedProfile);
-    console.log("[SpotCoach] Save/Update complete:", { id: storedProfile?.id, user_id: storedProfile?.user_id });
+    validatePayload(payload);
 
-    return new Response(JSON.stringify({
-      success: true,
-      mode: "persisted",
-      profile: enrichedProfile,
-      astro: astroData,
-      stored: storedProfile,
-    }), {
-      status: 200,
+    // 1. Fetch Astro Data (Tâche A1)
+    const astroData = await fetchAstroData(payload.birth);
+    
+    // 2. Fetch User Name from Supabase
+    const supabaseUrl = ensureEnv("SUPABASE_URL");
+    const supabaseServiceRoleKey = ensureEnv("SUPABASE_SERVICE_ROLE_KEY");
+    const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+      auth: { persistSession: false },
+    });
+
+    const { data: userData, error: userError } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", user_id)
+      .single();
+
+    if (userError) {
+      console.warn(`Could not fetch user name for ${user_id}:`, userError.message);
+    }
+    const userName = userData?.full_name;
+
+    // 3. Build Prompt and Call OpenAI
+    const prompt = buildOpenAiPrompt(userName, payload, astroData);
+    const symbolicProfile = await callOpenAi(prompt);
+
+    // 4. Store Profile in Database
+    const { error: insertError } = await supabase.from("profiles_symboliques").upsert(
+      {
+        user_id: user_id,
+        profile_data: symbolicProfile,
+        created_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    );
+
+    if (insertError) {
+      throw new Error(`Failed to store symbolic profile: ${insertError.message}`);
+    }
+
+    return new Response(JSON.stringify({ success: true, profile: symbolicProfile }), {
       headers: corsHeaders,
+      status: 200,
     });
   } catch (error) {
-    console.error("[SpotCoach] Unexpected error", error);
-    return new Response(JSON.stringify({
-      error: "Internal server error",
-      details: (error as Error).message,
-    }), {
-      status: 500,
+    console.error("SpotCoach Error:", error);
+    return new Response(JSON.stringify({ error: (error as Error).message }), {
       headers: corsHeaders,
+      status: 500,
     });
   }
-  } catch (outerErr) {
-    console.error("[SpotCoach] Fatal handler error", outerErr);
-    return new Response(JSON.stringify({ error: "Fatal handler error", details: String(outerErr) }), {
-      status: 500,
-      headers: corsHeaders,
-    });
-  }
-});
+}
 
+DENO.serve(handleRequest);

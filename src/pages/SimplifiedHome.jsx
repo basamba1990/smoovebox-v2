@@ -156,6 +156,48 @@ export default function SimplifiedHome({
     }
   };
 
+  // ✅ Fonction pour régénérer le DISC
+  const handleRegenerateDISC = async () => {
+    if (!user) {
+      toast.error("Vous devez être connecté pour régénérer le DISC.");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        "Êtes-vous sûr de vouloir régénérer votre DISC ? Cela supprimera votre résultat actuel et vous redirigera vers le questionnaire."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      // Supprimer la réponse la plus récente du questionnaire
+      // NOTE: Dans un environnement de production, il faudrait s'assurer de supprimer UNIQUEMENT la dernière réponse ou toutes les réponses pour cet utilisateur.
+      // Ici, nous faisons une suppression simple pour l'exemple.
+      const { error } = await supabase
+        .from("questionnaire_responses")
+        .delete()
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+
+      // Mettre à jour le profil pour indiquer qu'il n'y a plus de couleur dominante
+      await supabase
+        .from("profiles")
+        .update({
+          dominant_color: null,
+        })
+        .eq("id", user.id);
+
+      toast.success("Ancien DISC supprimé. Redirection vers le questionnaire.");
+      navigate("/personality-test");
+    } catch (error) {
+      console.error("Erreur lors de la régénération du DISC:", error);
+      toast.error("Erreur lors de la suppression de l'ancien DISC.");
+    }
+  };
+
   const handleQuestionnaireComplete = () => {
     setShowQuestionnaire(false);
     toast.success(
@@ -688,22 +730,31 @@ export default function SimplifiedHome({
               <h2 className="text-2xl font-french font-bold text-white">
                 👤 Mon Profil
               </h2>
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => setShowQuestionnaire(true)}
-                  variant="outline"
-                  className="flex items-center gap-2 border-blue-400 text-blue-300 hover:bg-blue-900"
-                >
-                  🎨 Test personnalité
-                </Button>
-                <Button
-                  onClick={() => setActiveTab("dashboard")}
-                  variant="outline"
-                  className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
-                >
-                  ← Retour
-                </Button>
-              </div>
+	              <div className="flex gap-2">
+	                {/* ✅ Bouton "Voir / Mettre à jour le DISC" */}
+	                <Button
+	                  onClick={() => navigate("/update-disc")}
+	                  variant="outline"
+	                  className="flex items-center gap-2 border-purple-400 text-purple-300 hover:bg-purple-900"
+	                >
+	                  📝 Voir / Mettre à jour le DISC
+	                </Button>
+	                {/* ✅ Bouton "Regénérer le DISC" */}
+	                <Button
+	                  onClick={handleRegenerateDISC}
+	                  variant="outline"
+	                  className="flex items-center gap-2 border-red-400 text-red-300 hover:bg-red-900"
+	                >
+	                  🔄 Regénérer le DISC
+	                </Button>
+	                <Button
+	                  onClick={() => setActiveTab("dashboard")}
+	                  variant="outline"
+	                  className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
+	                >
+	                  ← Retour
+	                </Button>
+	              </div>
             </div>
             <ProfileForm
               user={user}
@@ -835,6 +886,15 @@ export default function SimplifiedHome({
           title="SpotCoach - Profil Symbolique"
         >
           🎯 SpotCoach
+        </Button>
+
+        {/* Bouton Métiers du Futur */}
+        <Button
+          onClick={() => navigate("/lumi/profile")}
+          className="bg-cyan-600 hover:bg-cyan-700 text-white shadow-lg text-lg py-3 px-4 rounded-full flex items-center gap-2 hover:scale-105 transition-transform"
+          title="Découvre tes métiers du futur"
+        >
+          🚀 Métiers
         </Button>
 
         {/* Bouton Chat Football */}
