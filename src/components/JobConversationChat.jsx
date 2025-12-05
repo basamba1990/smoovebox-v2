@@ -15,6 +15,8 @@ import { Button } from "./ui/button.jsx";
  * - onClose: () => void
  * - expanded: boolean
  * - onToggleExpand: () => void
+ * - onReset?: () => void
+ * - onDelete?: () => void
  */
 export function JobConversationChat({
   conversation,
@@ -25,6 +27,8 @@ export function JobConversationChat({
   onClose,
   expanded = false,
   onToggleExpand,
+  onReset,
+  onDelete,
 }) {
   if (!conversation) return null;
 
@@ -65,6 +69,30 @@ export function JobConversationChat({
               title={expanded ? "Réduire" : "Plein écran"}
             >
               <span className="text-xs leading-none">&lt;&gt;</span>
+            </Button>
+          )}
+          {onReset && (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 text-slate-400 hover:text-slate-100 hover:bg-slate-800"
+              onClick={onReset}
+              title="Réinitialiser la discussion"
+            >
+              <span className="text-xs leading-none">↺</span>
+            </Button>
+          )}
+          {onDelete && (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 text-red-400 hover:text-red-100 hover:bg-red-900/40"
+              onClick={onDelete}
+              title="Supprimer ce métier"
+            >
+              <span className="text-xs leading-none">🗑</span>
             </Button>
           )}
           <Button

@@ -336,6 +336,92 @@ export default function LumiUnifiedProfile() {
     }
   };
 
+  const handleResetJobConversation = async () => {
+    if (!selectedConversation || jobMessageSending) return;
+
+    const confirmed = window.confirm(
+      "Tu vas réinitialiser cette discussion.\nLumi gardera le métier, mais tous les messages seront effacés et la conversation repartira depuis le message d'accueil.\n\nContinuer ?"
+    );
+    if (!confirmed) return;
+
+    try {
+      setJobMessageSending(true);
+
+      const { data, error } = await supabase.functions.invoke(
+        "lumi-reset-job-conversation",
+        {
+          body: { conversation_id: selectedConversation.id },
+        }
+      );
+
+      if (error || !data?.success) {
+        console.error(
+          "[LumiUnifiedProfile] Error resetting job conversation:",
+          error || data?.error
+        );
+        return;
+      }
+
+      if (data.conversation) {
+        setSelectedConversation(data.conversation);
+        setJobConversations((prev) =>
+          (prev || []).map((conv) =>
+            conv.id === data.conversation.id ? data.conversation : conv
+          )
+        );
+        setJobMessageInput("");
+      }
+    } catch (err) {
+      console.error(
+        "[LumiUnifiedProfile] Exception resetting job conversation:",
+        err
+      );
+    } finally {
+      setJobMessageSending(false);
+    }
+  };
+
+  const handleDeleteJobConversation = async () => {
+    if (!selectedConversation || jobMessageSending) return;
+
+    const confirmed = window.confirm(
+      "Tu vas supprimer ce métier de ta liste de conversations.\nCette action est définitive.\n\nContinuer ?"
+    );
+    if (!confirmed) return;
+
+    try {
+      setJobMessageSending(true);
+
+      const { data, error } = await supabase.functions.invoke(
+        "lumi-delete-job-conversation",
+        {
+          body: { conversation_id: selectedConversation.id },
+        }
+      );
+
+      if (error || !data?.success) {
+        console.error(
+          "[LumiUnifiedProfile] Error deleting job conversation via function:",
+          error || data?.error
+        );
+        return;
+      }
+
+      setJobConversations((prev) =>
+        (prev || []).filter((conv) => conv.id !== selectedConversation.id)
+      );
+      setSelectedConversation(null);
+      setJobMessageInput("");
+    } catch (err) {
+      console.error(
+        "[LumiUnifiedProfile] Exception deleting job conversation:",
+        err
+      );
+    } finally {
+      setJobMessageSending(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 py-10">
       <div className="max-w-6xl mx-auto px-4 space-y-8">
@@ -682,6 +768,8 @@ export default function LumiUnifiedProfile() {
                   onToggleExpand={() =>
                     setIsJobChatExpanded((prev) => !prev)
                   }
+                  onReset={handleResetJobConversation}
+                  onDelete={handleDeleteJobConversation}
                 />
               </div>
             )}
