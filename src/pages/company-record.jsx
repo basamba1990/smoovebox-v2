@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { supabase } from '../lib/supabase.js';
+import { supabase, refreshSession } from '../lib/supabase.js';
 import { Button } from '../components/ui/button.jsx';
 
 export const CompanyRecord = () => {
@@ -21,31 +21,67 @@ export const CompanyRecord = () => {
   const recordedChunksRef = useRef([]);
   const streamRef = useRef(null);
   const recordingIntervalRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
 
   const maxRecordingTime = 300; // 5 minutes
 
-  // Check if user is company user
+  // Initialize: Check company user and request camera access
   useEffect(() => {
-    const checkCompanyUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        navigate('/company-signin');
-        return;
-      }
+    let mounted = true;
 
-      const { data: membership } = await supabase
-        .from('user_companies')
-        .select('company_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
+    const initialize = async () => {
+      try {
+        console.log('🔄 Initialisation CompanyRecord...');
+        
+        // 1. Check if user is logged in
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        
+        if (userError || !user) {
+          console.error('❌ Utilisateur non connecté:', userError);
+          toast.error('Vous devez être connecté.');
+          navigate('/company-signin');
+          return;
+        }
 
-      if (!membership) {
-        // Not a company user, redirect to home
-        navigate('/');
+        // 2. Check if user is company user
+        const { data: membership } = await supabase
+          .from('user_companies')
+          .select('company_id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (!membership) {
+          // Not a company user, redirect to home
+          console.log('❌ Utilisateur n\'est pas un utilisateur entreprise');
+          navigate('/');
+          return;
+        }
+
+        console.log('✅ Utilisateur entreprise vérifié');
+        
+        // 3. Refresh session
+        await refreshSession();
+        
+        // 4. Request camera access
+        if (mounted) {
+          await requestCameraAccess();
+        }
+
+      } catch (err) {
+        console.error('❌ Erreur initialisation:', err);
+        if (mounted) {
+          setError('Erreur lors de l\'initialisation.');
+          toast.error('Erreur initialisation');
+        }
       }
     };
 
-    checkCompanyUser();
+    initialize();
+
+    return () => {
+      mounted = false;
+    };
   }, [navigate]);
 
   // Cleanup
@@ -59,9 +95,30 @@ export const CompanyRecord = () => {
     };
   }, [recordedVideo]);
 
+  // Recording timer
+  useEffect(() => {
+    let timer;
+    if (recording) {
+      timer = setInterval(() => {
+        setRecordingTime((prev) => {
+          const newTime = prev + 1;
+          if (newTime >= maxRecordingTime) {
+            stopRecording();
+            toast.warning('Temps d\'enregistrement maximum atteint (5 minutes).');
+            return maxRecordingTime;
+          }
+          return newTime;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [recording]);
+
   // Request camera access
   const requestCameraAccess = async () => {
     try {
+      console.log('📹 Demande accès caméra...');
+      
       const constraints = {
         video: {
           width: { ideal: 1280 },
@@ -79,27 +136,44 @@ export const CompanyRecord = () => {
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      
+      console.log('✅ Accès caméra accordé');
       streamRef.current = stream;
       setCameraAccess(true);
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(e => console.warn('Video play error:', e));
+        videoRef.current.play().catch(e => console.warn('⚠️ Lecture vidéo:', e));
       }
+
+      setupAudioAnalysis(stream);
     } catch (err) {
-      console.error('Camera access error:', err);
+      console.error('❌ Erreur accès caméra:', err);
       let errorMessage = 'Impossible d\'accéder à la caméra. ';
       
       if (err.name === 'NotAllowedError') {
-        errorMessage += 'Veuillez autoriser l\'accès à la caméra et au microphone.';
+        errorMessage += 'Veuillez autoriser l\'accès à la caméra et au microphone dans les paramètres de votre navigateur.';
+        toast.error('Autorisation caméra requise');
       } else if (err.name === 'NotFoundError') {
-        errorMessage += 'Aucune caméra n\'a été détectée.';
+        errorMessage += 'Aucune caméra détectée. Vérifiez votre connexion.';
+        toast.error('Aucune caméra détectée');
+      } else if (err.name === 'NotReadableError') {
+        errorMessage += 'La caméra est déjà utilisée par une autre application.';
+        toast.error('Caméra indisponible');
+      } else if (err.name === 'NotSupportedError') {
+        errorMessage += 'Votre navigateur ne supporte pas l\'enregistrement vidéo.';
+        toast.error('Navigateur non supporté');
       } else {
-        errorMessage += `Erreur: ${err.message}`;
+        errorMessage += `Erreur technique: ${err.message}`;
       }
       
       setError(errorMessage);
-      toast.error('Accès caméra refusé');
+      setCameraAccess(false);
+      
+      // Clear video source on error
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
     }
   };
 
@@ -108,14 +182,46 @@ export const CompanyRecord = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
+      setCameraAccess(false);
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+  };
+
+  // Setup audio analysis
+  const setupAudioAnalysis = (stream) => {
+    try {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      source.connect(analyserRef.current);
+      analyserRef.current.fftSize = 256;
+    } catch (err) {
+      console.warn('⚠️ Analyse audio non supportée:', err);
     }
   };
 
   // Start recording
   const startRecording = async () => {
     if (!cameraAccess) {
+      setError('Veuillez autoriser l\'accès à la caméra.');
+      toast.error('Accès caméra requis.');
+      return;
+    }
+
+    if (!streamRef.current) {
+      setError('Flux caméra non disponible.');
+      toast.error('Problème de flux vidéo.');
       await requestCameraAccess();
-      if (!cameraAccess) return;
+      return;
+    }
+
+    if (typeof MediaRecorder === 'undefined') {
+      setError('L\'enregistrement vidéo n\'est pas supporté sur votre navigateur. Essayez Chrome ou Firefox.');
+      toast.error('Enregistrement non supporté');
+      return;
     }
 
     // Countdown
@@ -157,18 +263,15 @@ export const CompanyRecord = () => {
         setRecordedVideo({ blob, url });
       };
 
-      mediaRecorderRef.current.start(1000); // Collect data every second
+      mediaRecorderRef.current.onerror = (event) => {
+        console.error('❌ Erreur MediaRecorder:', event);
+        setError('Erreur lors de l\'enregistrement vidéo.');
+        setRecording(false);
+        toast.error('Erreur d\'enregistrement');
+      };
 
-      // Recording timer
-      recordingIntervalRef.current = setInterval(() => {
-        setRecordingTime(prev => {
-          if (prev >= maxRecordingTime) {
-            stopRecording();
-            return maxRecordingTime;
-          }
-          return prev + 1;
-        });
-      }, 1000);
+      mediaRecorderRef.current.start(1000); // Collect data every second
+      toast.success('🎥 Enregistrement démarré !');
     } catch (err) {
       console.error('Recording error:', err);
       setError('Erreur lors de l\'enregistrement');
@@ -180,10 +283,13 @@ export const CompanyRecord = () => {
   // Stop recording
   const stopRecording = () => {
     if (mediaRecorderRef.current && recording) {
-      mediaRecorderRef.current.stop();
-      setRecording(false);
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
+      try {
+        mediaRecorderRef.current.stop();
+        setRecording(false);
+        toast.success('✅ Enregistrement terminé !');
+      } catch (err) {
+        console.error('❌ Erreur arrêt enregistrement:', err);
+        setRecording(false);
       }
     }
   };
@@ -299,6 +405,19 @@ export const CompanyRecord = () => {
               {countdown > 0 ? (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-10">
                   <div className="text-8xl font-bold text-white">{countdown}</div>
+                </div>
+              ) : null}
+              {!cameraAccess && !error ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-800/50 z-10">
+                  <div className="text-6xl mb-4">📹</div>
+                  <p className="text-white text-lg font-semibold mb-2">Autorisation requise</p>
+                  <p className="text-gray-300 text-sm mb-4">Veuillez autoriser l'accès à la caméra et au microphone</p>
+                  <Button
+                    onClick={requestCameraAccess}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2"
+                  >
+                    Autoriser l'accès
+                  </Button>
                 </div>
               ) : null}
               <video
