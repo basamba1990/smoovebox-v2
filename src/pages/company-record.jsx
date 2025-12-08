@@ -25,6 +25,7 @@ export const CompanyRecord = () => {
   const analyserRef = useRef(null);
 
   const maxRecordingTime = 300; // 5 minutes
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
   // Initialize: Check company user and request camera access
   useEffect(() => {
@@ -234,33 +235,60 @@ export const CompanyRecord = () => {
 
     try {
       recordedChunksRef.current = [];
+
+      // Find supported mimeType
+      let mimeType = 'video/webm';
+      if (isIOS) {
+        mimeType = 'video/mp4';
+      } else {
+        const codecs = [
+          'video/webm; codecs=vp9,opus',
+          'video/webm; codecs=vp8,opus',
+          'video/mp4; codecs=avc1.42E01E,mp4a.40.2',
+          'video/webm',
+          'video/mp4'
+        ];
+        
+        for (const codec of codecs) {
+          if (MediaRecorder.isTypeSupported(codec)) {
+            mimeType = codec;
+            break;
+          }
+        }
+      }
+
+      console.log('📹 Format sélectionné:', mimeType, 'iOS:', isIOS);
+
+      const recorderOptions = {
+        mimeType,
+        videoBitsPerSecond: 2500000,
+        audioBitsPerSecond: 128000
+      };
+
+      mediaRecorderRef.current = new MediaRecorder(streamRef.current, recorderOptions);
+      
       setRecording(true);
       setRecordingTime(0);
       setError(null);
 
-      const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9,opus')
-        ? 'video/webm; codecs=vp9,opus'
-        : MediaRecorder.isTypeSupported('video/webm; codecs=vp8,opus')
-        ? 'video/webm; codecs=vp8,opus'
-        : 'video/webm';
-
-      mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
-        mimeType,
-        videoBitsPerSecond: 2500000
-      });
-
       mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
+        if (event.data && event.data.size > 0) {
           recordedChunksRef.current.push(event.data);
         }
       };
 
       mediaRecorderRef.current.onstop = () => {
+        if (recordedChunksRef.current.length === 0) {
+          console.error('❌ Aucune donnée enregistrée');
+          setError('Aucune donnée vidéo enregistrée.');
+          return;
+        }
+
         const blob = new Blob(recordedChunksRef.current, {
-          type: recordedChunksRef.current[0]?.type || 'video/webm'
+          type: recordedChunksRef.current[0]?.type || mimeType
         });
         const url = URL.createObjectURL(blob);
-        setRecordedVideo({ blob, url });
+        setRecordedVideo({ blob, url, format: mimeType.split(';')[0] });
       };
 
       mediaRecorderRef.current.onerror = (event) => {
