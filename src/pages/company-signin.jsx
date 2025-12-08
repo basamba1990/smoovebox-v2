@@ -10,7 +10,7 @@ import { Label } from '../components/ui/label.jsx';
 export const CompanySignin = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { signIn, loading } = useAuth();
+  const { signIn } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -26,16 +26,22 @@ export const CompanySignin = () => {
       if (!companyParam) return;
 
       try {
+        console.log('[CompanySignin] Fetching company:', companyParam);
         const { data, error } = await supabase
           .from('companies')
           .select('id, name, logo')
           .ilike('name', companyParam)
           .maybeSingle();
 
-        if (error) throw error;
+        console.log('[CompanySignin] Company response:', { data, error });
+
+        if (error) {
+          console.error('[CompanySignin] Error fetching company:', error);
+          throw error;
+        }
         if (data) setCompany(data);
       } catch (err) {
-        console.error('Error fetching company:', err);
+        console.error('[CompanySignin] Error fetching company:', err);
       }
     };
 
@@ -166,10 +172,10 @@ export const CompanySignin = () => {
 
               <Button
                 type="submit"
-                disabled={loading || submitting}
+                disabled={submitting}
                 className="w-full h-11 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white border-0 shadow-lg"
               >
-                {loading || submitting ? 'Connexion…' : 'Se connecter'}
+                {submitting ? 'Connexion…' : 'Se connecter'}
               </Button>
 
               <div className="text-center text-sm text-gray-300">

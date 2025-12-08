@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 export const CompanySignup = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { signUp, loading } = useAuth();
+  const { signUp } = useAuth();
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -27,19 +27,40 @@ export const CompanySignup = () => {
 
   // Fetch companies
   useEffect(() => {
+    let mounted = true;
+    
     const fetchCompanies = async () => {
+      if (!mounted) return;
+      
       try {
+        setLoadingCompanies(true);
+        console.log('[CompanySignup] Starting to fetch companies...');
+        console.log('[CompanySignup] Supabase client:', supabase ? 'Available' : 'Missing');
+        
         const { data, error } = await supabase
           .from('companies')
           .select('id, name, logo')
           .order('name');
 
-        if (error) throw error;
+        console.log('[CompanySignup] Query completed. Data:', data, 'Error:', error);
 
+        if (!mounted) return;
+
+        if (error) {
+          console.error('[CompanySignup] Supabase error:', error);
+          console.error('[CompanySignup] Error code:', error.code);
+          console.error('[CompanySignup] Error message:', error.message);
+          toast.error(`Erreur: ${error.message || 'Impossible de charger les entreprises'}`);
+          setCompanies([]);
+          setLoadingCompanies(false);
+          return;
+        }
+
+        console.log('[CompanySignup] Setting companies:', data);
         setCompanies(data || []);
 
         // If company param provided, try to find and select it
-        if (companyParam && data) {
+        if (companyParam && data && data.length > 0) {
           const foundCompany = data.find(
             c => c.name.toLowerCase() === companyParam.toLowerCase()
           );
@@ -48,14 +69,26 @@ export const CompanySignup = () => {
           }
         }
       } catch (err) {
-        console.error('Error fetching companies:', err);
-        toast.error('Erreur lors du chargement des entreprises');
+        if (!mounted) return;
+        console.error('[CompanySignup] Exception caught:', err);
+        toast.error(`Erreur: ${err.message || 'Erreur inconnue'}`);
+        setCompanies([]);
       } finally {
-        setLoadingCompanies(false);
+        if (mounted) {
+          setLoadingCompanies(false);
+        }
       }
     };
 
-    fetchCompanies();
+    // Small delay to ensure component is mounted
+    const timer = setTimeout(() => {
+      fetchCompanies();
+    }, 100);
+
+    return () => {
+      mounted = false;
+      clearTimeout(timer);
+    };
   }, [companyParam]);
 
   const handleSubmit = async (e) => {
@@ -242,10 +275,10 @@ export const CompanySignup = () => {
 
               <Button
                 type="submit"
-                disabled={loading || submitting || !selectedCompanyId}
-                className="w-full h-11 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white border-0 shadow-lg"
+                disabled={submitting || (companies.length > 0 && !companyParam && !selectedCompanyId)}
+                className="w-full h-11 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white border-0 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading || submitting ? 'Création du compte…' : 'Créer mon compte'}
+                {submitting ? 'Création du compte…' : 'Créer mon compte'}
               </Button>
 
               <div className="text-center text-sm text-gray-300">

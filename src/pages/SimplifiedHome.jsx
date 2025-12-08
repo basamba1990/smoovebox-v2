@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useSupabaseClient } from "@supabase/auth-helpers-react";
 import { useVideos } from "../hooks/useVideos.js";
 import { useQueryClient } from "@tanstack/react-query";
+import { checkCompanyMembershipAndRedirect } from "../utils/companyRedirect.js";
 
 // ✅ AJOUT DES IMPORTS MANQUANTS
 import Questionnaire from "../components/Questionnaire.jsx";
@@ -125,6 +126,13 @@ export default function SimplifiedHome({
       ).length,
     };
   }, [videos]);
+
+  // Check if user is a company user and redirect
+  useEffect(() => {
+    if (user) {
+      checkCompanyMembershipAndRedirect(navigate);
+    }
+  }, [user, navigate]);
 
   // Show error if videos query fails
   useEffect(() => {

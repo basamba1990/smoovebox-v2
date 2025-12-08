@@ -27,6 +27,7 @@ import Directory from "../pages/directory.jsx";
 import LumiOnboarding from "../pages/lumi-onboarding.jsx";
 import LumiUnifiedProfile from "../pages/LumiUnifiedProfile.jsx";
 import UpdateDISC from "../pages/UpdateDISC.jsx";
+import { CompanyRecord } from "../pages/company-record.jsx";
 
 export default function AppRoutes({
   user,
@@ -77,6 +78,15 @@ export default function AppRoutes({
       {/* Legacy PSG routes - redirect to company routes */}
       <Route path="/psg-signup" element={<CompanySignup />} />
       <Route path="/psg-signin" element={<CompanySignin />} />
+      {/* Company recording page - only for company users */}
+      <Route
+        path="/company-record"
+        element={
+          <RequireAuth>
+            <CompanyRecord />
+          </RequireAuth>
+        }
+      />
       <Route path="/test-chat" element={<FootballChatTest />} />
       <Route path="/premium" element={<SpotBullePremium />} />
       <Route

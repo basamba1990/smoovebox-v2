@@ -7,6 +7,7 @@ import ResetPassword from "@/pages/ResetPassword.jsx";
 import { TransformationDemo } from "@/pages/TransformationDemo.jsx";
 import { CompanySignup } from "@/pages/company-signup.jsx";
 import { CompanySignin } from "@/pages/company-signin.jsx";
+import { CompanyRecord } from "@/pages/company-record.jsx";
 import FootballChatTest from "@/pages/FootballChatTest.jsx";
 import SpotBullePremium from "@/pages/SpotBullePremium.jsx";
 import SpotCoach from "@/pages/SpotCoach.jsx";
@@ -103,6 +104,11 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
       path: "/psg-signin",
       element: CompanySignin,
       requiresAuth: false,
+    },
+    {
+      path: "/company-record",
+      element: CompanyRecord,
+      requiresAuth: true,
     },
 
     // Demo/Test routes (public)
