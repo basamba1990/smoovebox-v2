@@ -9,8 +9,8 @@ import Login from "../pages/login.jsx";
 import AuthCallback from "../pages/AuthCallback.jsx";
 import ResetPassword from "../pages/ResetPassword.jsx";
 import { TransformationDemo } from "../pages/TransformationDemo.jsx";
-import { PsgSignup } from "../pages/psg-signup.jsx";
-import { PsgSignin } from "../pages/psg-signin.jsx";
+import { CompanySignup } from "../pages/company-signup.jsx";
+import { CompanySignin } from "../pages/company-signin.jsx";
 import FootballChatTest from "../pages/FootballChatTest.jsx";
 import SpotBullePremium from "../pages/SpotBullePremium.jsx";
 import SpotCoach from "../pages/SpotCoach.jsx";
@@ -27,6 +27,7 @@ import Directory from "../pages/directory.jsx";
 import LumiOnboarding from "../pages/lumi-onboarding.jsx";
 import LumiUnifiedProfile from "../pages/LumiUnifiedProfile.jsx";
 import UpdateDISC from "../pages/UpdateDISC.jsx";
+import { CompanyRecord } from "../pages/company-record.jsx";
 
 export default function AppRoutes({
   user,
@@ -71,8 +72,21 @@ export default function AppRoutes({
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/transformation-demo" element={<TransformationDemo />} />
-      <Route path="/psg-signup" element={<PsgSignup />} />
-      <Route path="/psg-signin" element={<PsgSignin />} />
+      {/* Company authentication routes */}
+      <Route path="/company-signup" element={<CompanySignup />} />
+      <Route path="/company-signin" element={<CompanySignin />} />
+      {/* Legacy PSG routes - redirect to company routes */}
+      <Route path="/psg-signup" element={<CompanySignup />} />
+      <Route path="/psg-signin" element={<CompanySignin />} />
+      {/* Company recording page - only for company users */}
+      <Route
+        path="/company-record"
+        element={
+          <RequireAuth>
+            <CompanyRecord />
+          </RequireAuth>
+        }
+      />
       <Route path="/test-chat" element={<FootballChatTest />} />
       <Route path="/premium" element={<SpotBullePremium />} />
       <Route

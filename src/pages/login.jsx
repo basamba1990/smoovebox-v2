@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '../components/ui/button-enhanced.jsx';
 import { Input } from '../components/ui/input.jsx';
 import { Label } from '../components/ui/label.jsx';
+import { checkCompanyMembershipAndRedirect } from '../utils/companyRedirect.js';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -36,7 +37,13 @@ const Login = () => {
 
       console.log('Connexion réussie:', data.user);
       toast.success('Connexion réussie !');
-      navigate('/record-video');
+      
+      // Check if user belongs to a company and redirect accordingly
+      const isCompanyUser = await checkCompanyMembershipAndRedirect(navigate);
+      if (!isCompanyUser) {
+        // Normal user, redirect to home
+        navigate('/');
+      }
     } catch (err) {
       console.error('Erreur lors de la connexion:', err);
       const errorMessage = err.message || 'Une erreur s\'est produite lors de la connexion';

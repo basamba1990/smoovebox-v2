@@ -5,8 +5,9 @@ import Login from "@/pages/login.jsx";
 import AuthCallback from "@/pages/AuthCallback.jsx";
 import ResetPassword from "@/pages/ResetPassword.jsx";
 import { TransformationDemo } from "@/pages/TransformationDemo.jsx";
-import { PsgSignup } from "@/pages/psg-signup.jsx";
-import { PsgSignin } from "@/pages/psg-signin.jsx";
+import { CompanySignup } from "@/pages/company-signup.jsx";
+import { CompanySignin } from "@/pages/company-signin.jsx";
+import { CompanyRecord } from "@/pages/company-record.jsx";
 import FootballChatTest from "@/pages/FootballChatTest.jsx";
 import SpotBullePremium from "@/pages/SpotBullePremium.jsx";
 import SpotCoach from "@/pages/SpotCoach.jsx";
@@ -84,14 +85,30 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
       requiresAuth: false,
     },
     {
+      path: "/company-signup",
+      element: CompanySignup,
+      requiresAuth: false,
+    },
+    {
+      path: "/company-signin",
+      element: CompanySignin,
+      requiresAuth: false,
+    },
+    // Legacy PSG routes - redirect to company routes
+    {
       path: "/psg-signup",
-      element: PsgSignup,
+      element: CompanySignup,
       requiresAuth: false,
     },
     {
       path: "/psg-signin",
-      element: PsgSignin,
+      element: CompanySignin,
       requiresAuth: false,
+    },
+    {
+      path: "/company-record",
+      element: CompanyRecord,
+      requiresAuth: true,
     },
 
     // Demo/Test routes (public)
