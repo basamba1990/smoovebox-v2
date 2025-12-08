@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { supabase, refreshSession } from '../lib/supabase.js';
 import { Button } from '../components/ui/button.jsx';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card.jsx';
+import { Video, X, Download } from 'lucide-react';
 
 export const CompanyRecord = () => {
   const navigate = useNavigate();
@@ -15,6 +17,10 @@ export const CompanyRecord = () => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [videoUrl, setVideoUrl] = useState(null);
+  const [showVideosModal, setShowVideosModal] = useState(false);
+  const [userVideos, setUserVideos] = useState([]);
+  const [loadingVideos, setLoadingVideos] = useState(false);
+  const [deletingVideo, setDeletingVideo] = useState(null);
 
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -356,20 +362,26 @@ export const CompanyRecord = () => {
           upsert: false
         });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('❌ Upload error details:', uploadError);
+        throw uploadError;
+      }
+
+      console.log('✅ Video uploaded successfully to:', filePath);
 
       // Get public URL
       const { data: urlData } = supabase.storage
         .from('videos')
         .getPublicUrl(filePath);
 
+      console.log('✅ Public URL:', urlData?.publicUrl);
       setVideoUrl(urlData.publicUrl);
       setUploadSuccess(true);
       toast.success('Vidéo enregistrée avec succès !');
     } catch (err) {
-      console.error('Upload error:', err);
+      console.error('❌ Upload error:', err);
       setError(err.message || 'Erreur lors de l\'upload');
-      toast.error('Erreur lors de l\'upload');
+      toast.error(`Erreur lors de l'upload: ${err.message || 'Erreur inconnue'}`);
     } finally {
       setUploading(false);
     }
@@ -403,6 +415,112 @@ export const CompanyRecord = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Load user videos
+  const loadUserVideos = async () => {
+    try {
+      setLoadingVideos(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // List files from videos bucket (company-videos folder)
+      // Videos are saved to: videos bucket, path: company-videos/${user.id}/${fileName}
+      const { data: files, error } = await supabase.storage
+        .from('videos')
+        .list(`company-videos/${user.id}`, {
+          limit: 100,
+          offset: 0
+        });
+
+      if (error) throw error;
+
+      // Get signed URLs for each video and sort by date
+      const videosWithUrls = await Promise.all(
+        (files || []).map(async (file) => {
+          const { data: urlData } = await supabase.storage
+            .from('videos')
+            .createSignedUrl(`company-videos/${user.id}/${file.name}`, 3600);
+
+          return {
+            id: file.id || file.name,
+            name: file.name,
+            path: `company-videos/${user.id}/${file.name}`,
+            size: file.metadata?.size || 0,
+            created_at: file.created_at || file.updated_at,
+            url: urlData?.signedUrl || null
+          };
+        })
+      );
+
+      // Sort by created_at descending (newest first)
+      videosWithUrls.sort((a, b) => {
+        const dateA = new Date(a.created_at || 0);
+        const dateB = new Date(b.created_at || 0);
+        return dateB - dateA;
+      });
+
+      setUserVideos(videosWithUrls);
+    } catch (err) {
+      console.error('❌ Erreur chargement vidéos:', err);
+      toast.error('Erreur lors du chargement des vidéos');
+    } finally {
+      setLoadingVideos(false);
+    }
+  };
+
+  // Delete video
+  const deleteVideo = async (video) => {
+    if (!window.confirm(`Êtes-vous sûr de vouloir supprimer "${video.name}" ? Cette action est irréversible.`)) {
+      return;
+    }
+
+    try {
+      setDeletingVideo(video.id);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase.storage
+        .from('videos')
+        .remove([video.path]);
+
+      if (error) throw error;
+
+      toast.success('Vidéo supprimée avec succès');
+      await loadUserVideos(); // Reload list
+    } catch (err) {
+      console.error('❌ Erreur suppression vidéo:', err);
+      toast.error('Erreur lors de la suppression');
+    } finally {
+      setDeletingVideo(null);
+    }
+  };
+
+  // Format file size
+  const formatFileSize = (bytes) => {
+    if (!bytes) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  // Format date
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Date inconnue';
+    return new Date(dateString).toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  // Open videos modal
+  const openVideosModal = async () => {
+    setShowVideosModal(true);
+    await loadUserVideos();
+  };
+
   // Logout function
   const handleLogout = async () => {
     try {
@@ -417,14 +535,23 @@ export const CompanyRecord = () => {
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4 relative">
-      {/* Logout button */}
-      <Button
-        onClick={handleLogout}
-        className="absolute top-4 right-4 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 text-sm"
-        variant="outline"
-      >
-        Déconnexion
-      </Button>
+      {/* Header buttons */}
+      <div className="absolute top-4 right-4 flex gap-2">
+        <Button
+          onClick={openVideosModal}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm flex items-center gap-2"
+        >
+          <Video className="h-4 w-4" />
+          Mes vidéos
+        </Button>
+        <Button
+          onClick={handleLogout}
+          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 text-sm"
+          variant="outline"
+        >
+          Déconnexion
+        </Button>
+      </div>
       <div className="w-full max-w-4xl">
         {!uploadSuccess ? (
           <div className="space-y-6">
@@ -543,6 +670,91 @@ export const CompanyRecord = () => {
           </div>
         )}
       </div>
+
+      {/* Videos Modal */}
+      {showVideosModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-4xl max-h-[90vh] bg-slate-800 border-slate-700">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-slate-700">
+              <CardTitle className="text-white flex items-center gap-2">
+                <Video className="h-5 w-5" />
+                Mes vidéos
+              </CardTitle>
+              <Button
+                onClick={() => setShowVideosModal(false)}
+                variant="ghost"
+                size="sm"
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </CardHeader>
+            <CardContent className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+              {loadingVideos ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                  <span className="ml-3 text-gray-300">Chargement des vidéos...</span>
+                </div>
+              ) : userVideos.length === 0 ? (
+                <div className="text-center py-12">
+                  <Video className="h-16 w-16 text-gray-500 mx-auto mb-4" />
+                  <p className="text-gray-400 text-lg">Aucune vidéo enregistrée</p>
+                  <p className="text-gray-500 text-sm mt-2">Vos vidéos apparaîtront ici après enregistrement</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {userVideos.map((video) => (
+                    <Card key={video.id} className="bg-slate-900 border-slate-700">
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-white font-semibold truncate mb-2">{video.name}</h3>
+                            <div className="space-y-1 text-sm text-gray-400">
+                              <p>Taille: {formatFileSize(video.size)}</p>
+                              <p>Date: {formatDate(video.created_at)}</p>
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            {video.url && (
+                              <Button
+                                onClick={() => {
+                                  const a = document.createElement('a');
+                                  a.href = video.url;
+                                  a.download = video.name;
+                                  a.target = '_blank';
+                                  document.body.appendChild(a);
+                                  a.click();
+                                  document.body.removeChild(a);
+                                }}
+                                size="sm"
+                                variant="outline"
+                                className="border-slate-600 text-gray-300 hover:bg-slate-800"
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        {video.url && (
+                          <div className="mt-4 rounded-lg overflow-hidden bg-black">
+                            <video
+                              src={video.url}
+                              controls
+                              className="w-full h-auto max-h-48"
+                            >
+                              Votre navigateur ne supporte pas la lecture vidéo.
+                            </video>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };
