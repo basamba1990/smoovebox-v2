@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { checkCompanyMembershipAndRedirect } from '../utils/companyRedirect.js';
 
 const AuthCallback = () => {
   const navigate = useNavigate();
@@ -18,7 +19,12 @@ const AuthCallback = () => {
 
         if (data?.session) {
           // Utilisateur connecté avec succès
-          navigate('/dashboard'); // ou la page principale de votre app
+          // Check if user belongs to a company and redirect accordingly
+          const isCompanyUser = await checkCompanyMembershipAndRedirect(navigate);
+          if (!isCompanyUser) {
+            // Normal user, redirect to home
+            navigate('/');
+          }
         } else {
           // Pas de session, rediriger vers login
           navigate('/login');
