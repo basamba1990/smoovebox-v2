@@ -21,6 +21,10 @@ import ImmersionSimulator from "../components/ImmersionSimulator.jsx";
 import ComplementaryMatches from "../components/ComplementaryMatches.jsx";
 // ✅ NOUVEAU IMPORT : Sélecteur de langue
 import LanguageSelector from "../components/LanguageSelector.jsx";
+// ✅ NOUVEAUX IMPORTS ESTELLE
+import PersonasSelector from "../components/PersonasSelector.jsx";
+import SoftPowerPassions from "../components/SoftPowerPassions.jsx";
+import PitchRecording from "../components/PitchRecording.jsx";
 // ✅ NOUVEL IMPORT : Modal de chat football
 import FootballChatModal from "../components/FootballChatModal.jsx";
 import QuickActions from "../components/QuickActions.jsx";
@@ -64,8 +68,8 @@ const simplifiedTabs = [
   },
   {
     id: "more",
-    name: "➕ Plus",
-    icon: "➕",
+    name: "☰ Menu",
+    icon: "☰",
     priority: 6,
     description: "Autres fonctionnalités",
   },
@@ -388,6 +392,63 @@ export default function SimplifiedHome({
           </div>
         );
 
+      case "pitchrecording": // ✅ NOUVEAU SOUS-ONGLET : Pitch Recording
+        return (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-french font-bold text-white">
+                🎤 Pitch Recording
+              </h2>
+              <Button
+                onClick={() => setActiveSubTab("main")}
+                variant="outline"
+                className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
+              >
+                ← Retour
+              </Button>
+            </div>
+            <PitchRecording user={user} profile={profile} />
+          </div>
+        );
+
+      case "softpower": // ✅ NOUVEAU SOUS-ONGLET : Soft Power Passions
+        return (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-french font-bold text-white">
+                🌟 Soft Power Passions
+              </h2>
+              <Button
+                onClick={() => setActiveSubTab("main")}
+                variant="outline"
+                className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
+              >
+                ← Retour
+              </Button>
+            </div>
+            <SoftPowerPassions user={user} profile={profile} />
+          </div>
+        );
+
+      case "personas": // ✅ NOUVEAU SOUS-ONGLET : Sélecteur de Personas et Modèle M/T
+        return (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-french font-bold text-white">
+                🎭 Personas & Modèle M/T
+              </h2>
+              <Button
+                onClick={() => setActiveSubTab("main")}
+                variant="outline"
+                className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
+              >
+                ← Retour
+              </Button>
+            </div>
+            <PersonasSelector user={user} profile={profile} />
+          </div>
+        );
+
       case "language": // ✅ NOUVEAU SOUS-ONGLET : Sélection de langue
         return (
           <div className="space-y-6">
@@ -490,6 +551,42 @@ export default function SimplifiedHome({
                 <h3 className="text-xl font-bold mb-2">Langues</h3>
                 <p className="text-white/90 text-sm">
                   Sélectionnez votre langue de transcription
+                </p>
+              </div>
+
+              {/* ✅ NOUVELLE CARTE : Sélecteur de Personas et Modèle M/T */}
+              <div
+                onClick={() => setActiveSubTab("personas")}
+                className="bg-gradient-to-br from-red-600 to-red-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
+              >
+                <div className="text-3xl mb-3">🎭</div>
+                <h3 className="text-xl font-bold mb-2">Personas & Modèle M/T</h3>
+                <p className="text-white/90 text-sm">
+                  Configurez votre assistant Estelle (Personas, Modèle M/T)
+                </p>
+              </div>
+
+              {/* ✅ NOUVELLE CARTE : Soft Power Passions */}
+              <div
+                onClick={() => setActiveSubTab("softpower")}
+                className="bg-gradient-to-br from-yellow-600 to-yellow-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
+              >
+                <div className="text-3xl mb-3">🌟</div>
+                <h3 className="text-xl font-bold mb-2">Soft Power Passions</h3>
+                <p className="text-white/90 text-sm">
+                  Découvrez et exprimez vos passions
+                </p>
+              </div>
+
+              {/* ✅ NOUVELLE CARTE : Pitch Recording */}
+              <div
+                onClick={() => setActiveSubTab("pitchrecording")}
+                className="bg-gradient-to-br from-teal-600 to-teal-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
+              >
+                <div className="text-3xl mb-3">🎤</div>
+                <h3 className="text-xl font-bold mb-2">Pitch Recording</h3>
+                <p className="text-white/90 text-sm">
+                  Enregistrez et analysez votre pitch de présentation
                 </p>
               </div>
             </div>
@@ -738,31 +835,31 @@ export default function SimplifiedHome({
               <h2 className="text-2xl font-french font-bold text-white">
                 👤 Mon Profil
               </h2>
-	              <div className="flex gap-2">
-	                {/* ✅ Bouton "Voir / Mettre à jour le DISC" */}
-	                <Button
-	                  onClick={() => navigate("/update-disc")}
-	                  variant="outline"
-	                  className="flex items-center gap-2 border-purple-400 text-purple-300 hover:bg-purple-900"
-	                >
-	                  📝 Voir / Mettre à jour le DISC
-	                </Button>
-	                {/* ✅ Bouton "Regénérer le DISC" */}
-	                <Button
-	                  onClick={handleRegenerateDISC}
-	                  variant="outline"
-	                  className="flex items-center gap-2 border-red-400 text-red-300 hover:bg-red-900"
-	                >
-	                  🔄 Regénérer le DISC
-	                </Button>
-	                <Button
-	                  onClick={() => setActiveTab("dashboard")}
-	                  variant="outline"
-	                  className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
-	                >
-	                  ← Retour
-	                </Button>
-	              </div>
+                  <div className="flex gap-2">
+                    {/* ✅ Bouton "Voir / Mettre à jour le DISC" */}
+                    <Button
+                      onClick={() => navigate("/update-disc")}
+                      variant="outline"
+                      className="flex items-center gap-2 border-purple-400 text-purple-300 hover:bg-purple-900"
+                    >
+                      📝 Voir / Mettre à jour le DISC
+                    </Button>
+                    {/* ✅ Bouton "Regénérer le DISC" */}
+                    <Button
+                      onClick={handleRegenerateDISC}
+                      variant="outline"
+                      className="flex items-center gap-2 border-red-400 text-red-300 hover:bg-red-900"
+                    >
+                      🔄 Regénérer le DISC
+                    </Button>
+                    <Button
+                      onClick={() => setActiveTab("dashboard")}
+                      variant="outline"
+                      className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
+                    >
+                      ← Retour
+                    </Button>
+                  </div>
             </div>
             <ProfileForm
               user={user}
@@ -958,7 +1055,7 @@ export default function SimplifiedHome({
 
       {/* Footer */}
       <footer className="mt-12 py-6 border-t border-gray-800 text-center text-gray-400">
-        <p>© 2024 SpotBulle - Tous droits réservés</p>
+        <p>© 2026 SpotBulle - Tous droits réservés</p>
       </footer>
     </div>
   );
