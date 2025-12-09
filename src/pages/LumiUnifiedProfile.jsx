@@ -141,7 +141,7 @@ export default function LumiUnifiedProfile() {
         if (!cancelled) {
           setError(
             err?.message ||
-              "Erreur lors du chargement des données de profil Lumi."
+              "Erreur lors du chargement des données de profil."
           );
         }
       } finally {
@@ -435,7 +435,7 @@ export default function LumiUnifiedProfile() {
           </Button>
           <div className="flex-1 min-w-[220px] flex items-center justify-between gap-4">
             <h1 className="text-2xl md:text-3xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400">
-              Synthèse Lumi / SpotCoach / Vidéo
+              Synthèse / SpotCoach / Vidéo
             </h1>
           </div>
         </div>
@@ -523,9 +523,9 @@ export default function LumiUnifiedProfile() {
             {/* Lumi / DISC Profile */}
             <Card className="bg-slate-900/60 border-slate-800 lg:col-span-1">
               <CardHeader>
-                <CardTitle>Profil Lumi (DISC)</CardTitle>
+                <CardTitle className="text-white">Profil  (DISC)</CardTitle>
                 <CardDescription>
-                  Calculé à partir des réponses au questionnaire Lumi.
+                  Calculé à partir des réponses au questionnaire.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -578,7 +578,7 @@ export default function LumiUnifiedProfile() {
                     {lumiProfile.traits && lumiProfile.traits.length > 0 && (
                       <div>
                         <p className="text-xs text-slate-400 mb-2">
-                          Traits Lumi
+                          Traits
                         </p>
                         <div className="flex flex-wrap gap-2">
                           {lumiProfile.traits.map((trait, idx) => (
@@ -595,8 +595,7 @@ export default function LumiUnifiedProfile() {
                   </div>
                 ) : (
                   <p className="text-sm text-slate-400">
-                    Aucun profil Lumi trouvé. Passe le questionnaire DISC dans
-                    l'espace Lumi.
+                    Aucun profil trouvé. Passe le questionnaire DISC.
                   </p>
                 )}
               </CardContent>
@@ -741,7 +740,7 @@ export default function LumiUnifiedProfile() {
                 <span className="h-7 w-7 rounded-full bg-slate-900/20 flex items-center justify-center font-bold">
                   L
                 </span>
-                <span>Parler avec Lumi</span>
+                <span>Parler avec Spot Coach</span>
               </Button>
             )}
 
@@ -794,7 +793,7 @@ export default function LumiUnifiedProfile() {
                 <div>
                   <CardTitle>Métiers du futur (GPT)</CardTitle>
                   <CardDescription>
-                    Lumi te pose quelques questions, puis te propose 10 idées de
+                    Spot coach te pose quelques questions, puis te propose 10 idées de
                     métiers du futur basées sur ton profil.
                   </CardDescription>
                 </div>
@@ -832,7 +831,7 @@ export default function LumiUnifiedProfile() {
                           L
                         </div>
                         <div className="bg-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-100 max-w-xl">
-                          Bonjour, je suis <span className="font-semibold">Lumi</span>. Je
+                          Bonjour, je suis <span className="font-semibold">Spot coach</span>. Je
                           suis là pour t&apos;aider à explorer des pistes de métiers
                           du futur à partir de ton profil. On commence en douceur 😊
                         </div>
@@ -915,7 +914,7 @@ export default function LumiUnifiedProfile() {
                                 className="bg-purple-600 hover:bg-purple-700 text-white text-sm"
                                 onClick={() => setChatStep("askDescription")}
                               >
-                                Continuer avec Lumi
+                                Continuer avec Spot coach
                               </Button>
                             </div>
                           </div>
@@ -1028,7 +1027,7 @@ export default function LumiUnifiedProfile() {
 
                 {!jobsError && !jobsLoading && jobs.length === 0 && (
                   <p className="text-sm text-slate-400">
-                    Réponds simplement aux questions de Lumi ci-dessus, puis
+                    Réponds simplement aux questions ci-dessus, puis
                     laisse l&apos;IA te proposer des pistes adaptées à ton
                     profil.
                   </p>
@@ -1150,7 +1149,7 @@ export default function LumiUnifiedProfile() {
                                   ? "Conversation créée"
                                   : creatingConversationId === index
                                   ? "Enregistrement..."
-                                  : "Explorer ce métier avec Lumi"}
+                                  : "Explorer ce métier"}
                               </Button>
                             </div>
                           </div>
