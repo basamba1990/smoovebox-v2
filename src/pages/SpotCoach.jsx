@@ -337,10 +337,11 @@ export default function SpotCoach() {
                           <Label htmlFor="coach-timezone" className="text-white font-medium">Fuseau horaire *</Label>
                           <Input
                             id="coach-timezone"
-                            placeholder="Ex: America/Bogota (détecté automatiquement)"
+                            placeholder="Sélectionnez une ville pour détecter automatiquement"
                             value={form.timezone}
                             onChange={handleChange('timezone')}
                             required
+                            disabled
                             className={inputClass}
                           />
                           {form.timezone && (
