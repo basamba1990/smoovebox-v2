@@ -135,11 +135,11 @@ export default function SpotCoach() {
   const inputClass = 'bg-slate-950/60 border-slate-800 focus:border-cyan-500 text-slate-100 placeholder:text-slate-500';
 
   const isSubmitDisabled = useMemo(() => {
-    if (!form.name || !form.birthDate || !form.birthTime || !form.latitude || !form.longitude) {
+    if (!form.name || !form.birthDate || !form.birthTime || !form.latitude || !form.longitude || !form.timezone) {
       return true;
     }
     return loading;
-  }, [form.name, form.birthDate, form.birthTime, form.latitude, form.longitude, loading]);
+  }, [form.name, form.birthDate, form.birthTime, form.latitude, form.longitude, form.timezone, loading]);
 
   const handleChange = (field) => (event) => {
     const value = event?.target ? event.target.value : event;
@@ -152,6 +152,15 @@ export default function SpotCoach() {
       latitude: latitude?.toString() || prev.latitude,
       longitude: longitude?.toString() || prev.longitude
     }));
+  };
+
+  const handleTimezoneChange = (timezone) => {
+    if (timezone) {
+      setForm((prev) => ({ 
+        ...prev, 
+        timezone: timezone
+      }));
+    }
   };
 
   const buildPayload = () => {
@@ -181,6 +190,7 @@ export default function SpotCoach() {
       setLoading(true);
       const startedAt = Date.now();
       const payload = buildPayload();
+      console.log('[SpotCoach] Full payload before sending:', JSON.stringify(payload, null, 2));
       console.log('[SpotCoach] submit start', { payloadSnapshot: {
         name: payload?.name,
         birth: payload?.birth,
@@ -290,6 +300,7 @@ export default function SpotCoach() {
                             value={form.birthCity}
                             onChange={handleChange('birthCity')}
                             onCoordinatesChange={handleCityCoordinates}
+                            onTimezoneChange={handleTimezoneChange}
                             placeholder="Ex: Paris, France"
                             className={inputClass}
                           />
@@ -323,14 +334,18 @@ export default function SpotCoach() {
                           />
                         </div>
                         <div className="space-y-2 md:col-span-2">
-                          <Label htmlFor="coach-timezone" className="text-white font-medium">Fuseau horaire (optionnel)</Label>
+                          <Label htmlFor="coach-timezone" className="text-white font-medium">Fuseau horaire *</Label>
                           <Input
                             id="coach-timezone"
-                            placeholder="Ex: Europe/Paris"
+                            placeholder="Ex: America/Bogota (détecté automatiquement)"
                             value={form.timezone}
                             onChange={handleChange('timezone')}
+                            required
                             className={inputClass}
                           />
+                          {form.timezone && (
+                            <p className="text-xs text-slate-400">Détecté automatiquement depuis la ville sélectionnée</p>
+                          )}
                         </div>
                       </div>
                     </section>
