@@ -314,25 +314,94 @@ OBJECTIF: Générer un profil symbolique structuré en JSON respectant stricteme
 
 Contraintes impératives :
 - Renvoie uniquement ce JSON (aucun autre texte).
-- Langue: français naturel, sans emoji.
+- Langue: français naturel, avec emojis pour enrichir le texte.
 - Utilise les faits astro pour renseigner signes et degrés (arrondis à une décimale avec ~xx.x°).
 - "phrase_synchronie": slogan positif, max 140 caractères.
 - "archetype", "couleur_dominante", "element": termes courts et cohérents.
 - "passions": 3 à 5 éléments (phrases courtes) dérivés des informations fournies.
-- "profile_text" doit suivre exactement cette structure, en utilisant le format Markdown :
-  ## Soleil - Signe (~degré)
-  Paragraphe sur le tempérament et la motivation.
-  ## Lune - Signe (~degré)
-  Paragraphe sur le monde émotionnel et les besoins affectifs.
-  ## Ascendant - Signe (~degré)
-  Paragraphe sur l'image sociale et la manière d'aborder la vie.
-  ## Points forts
-  - Bullet 1
-  - Bullet 2
-  - Bullet 3 (3 à 5 puces maximum)
-  ## Conclusion
-  Phrase de synthèse unique.
-- N'utilise pas de balises HTML. Utilise le format Markdown standard.
+- "profile_text" doit suivre EXACTEMENT cette structure avec emojis et formatage :
+
+# Profil astrologique complet
+
+## 🧬 Synthèse générale
+
+Un paragraphe de 2-3 phrases qui résume la personnalité globale créée par le trio Soleil/Lune/Ascendant. Style direct, personnel (tu/vous), chaleureux.
+
+## 🌟 Interprétation détaillée
+
+### ☀️ Soleil en [Signe] — [Titre évocateur]
+
+Paragraphe de 3-4 phrases sur le tempérament et la motivation centrale.
+Style personnel, direct.
+
+**Forces du [Signe] Soleil :**
+- Force 1
+- Force 2
+- Force 3
+
+**Défis :**
+- Défi 1
+- Défi 2
+- Défi 3
+
+### 🌙 Lune en [Signe] — [Titre évocateur]
+
+Paragraphe de 3-4 phrases sur le monde émotionnel et les besoins affectifs.
+Style personnel, direct.
+
+**Forces de la Lune en [Signe] :**
+- Force 1
+- Force 2
+- Force 3
+
+**Défis :**
+- Défi 1
+- Défi 2
+- Défi 3
+
+### ⬆️ Ascendant en [Signe] — [Titre évocateur]
+
+Paragraphe de 3-4 phrases sur l'image sociale et la manière d'aborder la vie.
+Style personnel, direct.
+
+**Traits dominants :**
+- Trait 1
+- Trait 2
+- Trait 3
+- Trait 4
+
+### 🔥 Archetype
+
+[Titre de l'archétype]
+
+Un paragraphe court (2-3 phrases) expliquant l'archétype unique créé par la combinaison.
+
+### ✨ Résumé narratif (style SpotCoach)
+
+Un paragraphe narratif de 5-7 phrases, style poétique mais accessible, qui raconte la personnalité comme une histoire. Utilise "tu/vous" pour créer une connexion personnelle.
+
+### 💪 Forces
+
+- Force 1
+- Force 2
+- Force 3
+- Force 4
+- Force 5
+
+### ⚠️ Défis
+
+- Défi 1
+- Défi 2
+- Défi 3
+
+### 🧭 Conseil
+
+Un conseil pratique et personnel en 1-2 phrases, qui guide vers l'équilibre et l'épanouissement.
+
+- Utilise les emojis exactement comme indiqué dans la structure.
+- Le texte doit être chaleureux, personnel, accessible (style conversationnel).
+- Adapte les titres évocateurs selon les signes (ex: "Le Cœur Protecteur" pour Cancer, "L'Esprit Agile" pour Gémeaux).
+- Utilise le format Markdown standard (## pour les titres, ### pour les sous-titres, ** pour le gras, - pour les listes).
 
 DONNÉES UTILISATEUR:
 ${baseInfo}
@@ -358,7 +427,7 @@ ${astroFacts}
  * Tâche A3: Ajout d'une post-validation simple du format Markdown.
  */
 function validateProfileText(text: string): boolean {
-  const requiredSections = ["## Soleil", "## Lune", "## Ascendant", "## Points forts", "## Conclusion"];
+  const requiredSections = ["🧬 Synthèse générale", "🌟 Interprétation détaillée", "☀️ Soleil", "🌙 Lune", "⬆️ Ascendant", "🔥 Archetype", "✨ Résumé narratif", "💪 Forces", "⚠️ Défis", "🧭 Conseil"];
   return requiredSections.every(section => text.includes(section));
 }
 
@@ -378,7 +447,7 @@ async function callOpenAi(prompt: string, signal?: AbortSignal): Promise<AiSymbo
         { role: "system", content: "Tu es SpotCoach, un coach symbolique expert. Réponds en JSON strict." },
         { role: "user", content: prompt },
       ],
-      max_tokens: 900,
+      max_tokens: 2000,
       temperature: 0.7,
     }),
     signal,
