@@ -171,6 +171,7 @@ export default function SpotCoach() {
     };
   };
 
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError(null);
@@ -408,6 +409,15 @@ export default function SpotCoach() {
                       <p className="font-medium text-slate-100">{result.profile.signe_ascendant}</p>
                     </div>
                   </div>
+
+                  {result.profile.profile_text && (
+                    <div className="border border-slate-800 rounded-lg px-4 py-4 bg-slate-900/50">
+                      <p className="text-xs uppercase tracking-wide text-slate-500 mb-3">Profil symbolique</p>
+                      <div className="text-slate-200 leading-relaxed whitespace-pre-wrap max-h-96 overflow-y-auto">
+                        {result.profile.profile_text}
+                      </div>
+                    </div>
+                  )}
 
                   {Array.isArray(result.profile.passions) && result.profile.passions.length > 0 && (
                     <div className="border border-slate-800 rounded-lg px-4 py-3 bg-slate-900/50">
