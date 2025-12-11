@@ -155,34 +155,92 @@ function validatePayload(payload: GenerateProfilePayload) {
  * Récupère les données astrologiques brutes.
  */
 async function fetchAstroData(birth: BirthData): Promise<AstroEngineResponse | null> {
+  const startTime = Date.now();
   try {
-    const apiUrl = ensureEnv("ASTRO_ENGINE_API_URL");
-    const apiKey = ensureEnv("ASTRO_ENGINE_API_KEY");
+    console.log("[SpotCoach] fetchAstroData START", { birth });
+    
+    let apiUrl: string;
+    let apiKey: string;
+    
+    try {
+      apiUrl = ensureEnv("ASTRO_ENGINE_URL");
+      console.log("[SpotCoach] ASTRO_ENGINE_URL found:", apiUrl);
+    } catch (err) {
+      console.error("[SpotCoach] Missing ASTRO_ENGINE_URL:", err);
+      return null;
+    }
+    
+    try {
+      apiKey = ensureEnv("ASTRO_ENGINE_API_KEY");
+      console.log("[SpotCoach] ASTRO_ENGINE_API_KEY found:", apiKey ? "***" : "MISSING");
+    } catch (err) {
+      console.error("[SpotCoach] Missing ASTRO_ENGINE_API_KEY:", err);
+      return null;
+    }
 
+    const requestBody = {
+      date: birth.date,
+      time: birth.time,
+      latitude: birth.latitude,
+      longitude: birth.longitude,
+      timezone: birth.timezone,
+    };
+    
+    console.log("[SpotCoach] Calling Astro Engine:", { 
+      url: apiUrl, 
+      hasKey: !!apiKey,
+      requestBody
+    });
+
+    const fetchStart = Date.now();
     const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        date: birth.date,
-        time: birth.time,
-        latitude: birth.latitude,
-        longitude: birth.longitude,
-        timezone: birth.timezone,
-      }),
+      body: JSON.stringify(requestBody),
+    });
+
+    const fetchTime = Date.now() - fetchStart;
+    console.log("[SpotCoach] Astro Engine response received:", {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+      fetchTimeMs: fetchTime
     });
 
     if (!response.ok) {
       const details = await response.text();
-      console.error(`AstroEngine API error (${response.status}): ${details}`);
+      console.error(`[SpotCoach] AstroEngine API error (${response.status}):`, details);
       return null;
     }
 
-    return (await response.json()) as AstroEngineResponse;
+    const responseText = await response.text();
+    console.log("[SpotCoach] Astro Engine response text:", responseText.substring(0, 200));
+    
+    let astroResult: AstroEngineResponse;
+    try {
+      astroResult = JSON.parse(responseText) as AstroEngineResponse;
+      console.log("[SpotCoach] Astro Engine parsed successfully:", astroResult);
+    } catch (parseError) {
+      console.error("[SpotCoach] Failed to parse Astro response:", parseError, "Response:", responseText);
+      return null;
+    }
+
+    const totalTime = Date.now() - startTime;
+    console.log("[SpotCoach] Astro Engine success (total time:", totalTime, "ms):", astroResult);
+    return astroResult;
   } catch (error) {
-    console.error("Failed to fetch Astro data:", error);
+    const totalTime = Date.now() - startTime;
+    console.error("[SpotCoach] Failed to fetch Astro data (time:", totalTime, "ms):", error);
+    if (error instanceof Error) {
+      console.error("[SpotCoach] Error name:", error.name);
+      console.error("[SpotCoach] Error message:", error.message);
+      console.error("[SpotCoach] Error stack:", error.stack);
+    } else {
+      console.error("[SpotCoach] Error (unknown type):", String(error));
+    }
     return null;
   }
 }
@@ -256,25 +314,94 @@ OBJECTIF: Générer un profil symbolique structuré en JSON respectant stricteme
 
 Contraintes impératives :
 - Renvoie uniquement ce JSON (aucun autre texte).
-- Langue: français naturel, sans emoji.
+- Langue: français naturel, avec emojis pour enrichir le texte.
 - Utilise les faits astro pour renseigner signes et degrés (arrondis à une décimale avec ~xx.x°).
 - "phrase_synchronie": slogan positif, max 140 caractères.
 - "archetype", "couleur_dominante", "element": termes courts et cohérents.
 - "passions": 3 à 5 éléments (phrases courtes) dérivés des informations fournies.
-- "profile_text" doit suivre exactement cette structure, en utilisant le format Markdown :
-  ## Soleil - Signe (~degré)
-  Paragraphe sur le tempérament et la motivation.
-  ## Lune - Signe (~degré)
-  Paragraphe sur le monde émotionnel et les besoins affectifs.
-  ## Ascendant - Signe (~degré)
-  Paragraphe sur l'image sociale et la manière d'aborder la vie.
-  ## Points forts
-  - Bullet 1
-  - Bullet 2
-  - Bullet 3 (3 à 5 puces maximum)
-  ## Conclusion
-  Phrase de synthèse unique.
-- N'utilise pas de balises HTML. Utilise le format Markdown standard.
+- "profile_text" doit suivre EXACTEMENT cette structure avec emojis et formatage :
+
+# Profil astrologique complet
+
+## 🧬 Synthèse générale
+
+Un paragraphe de 2-3 phrases qui résume la personnalité globale créée par le trio Soleil/Lune/Ascendant. Style direct, personnel (tu/vous), chaleureux.
+
+## 🌟 Interprétation détaillée
+
+### ☀️ Soleil en [Signe] — [Titre évocateur]
+
+Paragraphe de 3-4 phrases sur le tempérament et la motivation centrale.
+Style personnel, direct.
+
+**Forces du [Signe] Soleil :**
+- Force 1
+- Force 2
+- Force 3
+
+**Défis :**
+- Défi 1
+- Défi 2
+- Défi 3
+
+### 🌙 Lune en [Signe] — [Titre évocateur]
+
+Paragraphe de 3-4 phrases sur le monde émotionnel et les besoins affectifs.
+Style personnel, direct.
+
+**Forces de la Lune en [Signe] :**
+- Force 1
+- Force 2
+- Force 3
+
+**Défis :**
+- Défi 1
+- Défi 2
+- Défi 3
+
+### ⬆️ Ascendant en [Signe] — [Titre évocateur]
+
+Paragraphe de 3-4 phrases sur l'image sociale et la manière d'aborder la vie.
+Style personnel, direct.
+
+**Traits dominants :**
+- Trait 1
+- Trait 2
+- Trait 3
+- Trait 4
+
+### 🔥 Archetype
+
+[Titre de l'archétype]
+
+Un paragraphe court (2-3 phrases) expliquant l'archétype unique créé par la combinaison.
+
+### ✨ Résumé narratif (style SpotCoach)
+
+Un paragraphe narratif de 5-7 phrases, style poétique mais accessible, qui raconte la personnalité comme une histoire. Utilise "tu/vous" pour créer une connexion personnelle.
+
+### 💪 Forces
+
+- Force 1
+- Force 2
+- Force 3
+- Force 4
+- Force 5
+
+### ⚠️ Défis
+
+- Défi 1
+- Défi 2
+- Défi 3
+
+### 🧭 Conseil
+
+Un conseil pratique et personnel en 1-2 phrases, qui guide vers l'équilibre et l'épanouissement.
+
+- Utilise les emojis exactement comme indiqué dans la structure.
+- Le texte doit être chaleureux, personnel, accessible (style conversationnel).
+- Adapte les titres évocateurs selon les signes (ex: "Le Cœur Protecteur" pour Cancer, "L'Esprit Agile" pour Gémeaux).
+- Utilise le format Markdown standard (## pour les titres, ### pour les sous-titres, ** pour le gras, - pour les listes).
 
 DONNÉES UTILISATEUR:
 ${baseInfo}
@@ -300,7 +427,7 @@ ${astroFacts}
  * Tâche A3: Ajout d'une post-validation simple du format Markdown.
  */
 function validateProfileText(text: string): boolean {
-  const requiredSections = ["## Soleil", "## Lune", "## Ascendant", "## Points forts", "## Conclusion"];
+  const requiredSections = ["🧬 Synthèse générale", "🌟 Interprétation détaillée", "☀️ Soleil", "🌙 Lune", "⬆️ Ascendant", "🔥 Archetype", "✨ Résumé narratif", "💪 Forces", "⚠️ Défis", "🧭 Conseil"];
   return requiredSections.every(section => text.includes(section));
 }
 
@@ -320,7 +447,7 @@ async function callOpenAi(prompt: string, signal?: AbortSignal): Promise<AiSymbo
         { role: "system", content: "Tu es SpotCoach, un coach symbolique expert. Réponds en JSON strict." },
         { role: "user", content: prompt },
       ],
-      max_tokens: 900,
+      max_tokens: 2000,
       temperature: 0.7,
     }),
     signal,
@@ -381,23 +508,43 @@ async function handleRequest(request: Request): Promise<Response> {
   }
 
   try {
-    const { user_id, payload } = (await request.json()) as {
-      user_id: string;
-      payload: GenerateProfilePayload;
-    };
+    // Get auth token and user
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Missing authorization header" }),
+        { headers: corsHeaders, status: 401 }
+      );
+    }
 
-    validatePayload(payload);
-
-    // 1. Fetch Astro Data (Tâche A1)
-    const astroData = await fetchAstroData(payload.birth);
-    
-    // 2. Fetch User Name from Supabase
     const supabaseUrl = ensureEnv("SUPABASE_URL");
     const supabaseServiceRoleKey = ensureEnv("SUPABASE_SERVICE_ROLE_KEY");
     const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
       auth: { persistSession: false },
     });
 
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { headers: corsHeaders, status: 401 }
+      );
+    }
+
+    const user_id = user.id;
+
+    // Get payload from request body (frontend sends payload directly, not wrapped)
+    const requestBody = await request.json();
+    const payload = (requestBody.payload || requestBody) as GenerateProfilePayload;
+
+    validatePayload(payload);
+
+    // 1. Fetch Astro Data (Tâche A1)
+    const astroData = await fetchAstroData(payload.birth);
+    
+    // 2. Fetch User Name from Supabase (reuse supabase client created above)
     const { data: userData, error: userError } = await supabase
       .from("profiles")
       .select("full_name")
@@ -414,20 +561,60 @@ async function handleRequest(request: Request): Promise<Response> {
     const symbolicProfile = await callOpenAi(prompt);
 
     // 4. Store Profile in Database
-    const { error: insertError } = await supabase.from("profiles_symboliques").upsert(
-      {
-        user_id: user_id,
-        profile_data: symbolicProfile,
-        created_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id" }
-    );
+    // Check if profile exists, then update or insert
+    const { data: existingProfile } = await supabase
+      .from("profiles_symboliques")
+      .select("id")
+      .eq("user_id", user_id)
+      .maybeSingle();
+
+    const profileData = {
+      user_id: user_id,
+      name: payload.name || null,
+      date: payload.birth.date,
+      time: payload.birth.time || null,
+      lat: payload.birth.latitude || null,
+      lon: payload.birth.longitude || null,
+      soleil: symbolicProfile.soleil_degre || null,
+      lune: symbolicProfile.lune_degre || null,
+      ascendant: symbolicProfile.ascendant_degre || null,
+      profile_text: symbolicProfile.profile_text,
+      phrase_synchronie: symbolicProfile.phrase_synchronie,
+      archetype: symbolicProfile.archetype,
+      couleur_dominante: symbolicProfile.couleur_dominante,
+      element: symbolicProfile.element,
+      signe_soleil: symbolicProfile.signe_soleil,
+      signe_lune: symbolicProfile.signe_lune,
+      signe_ascendant: symbolicProfile.signe_ascendant,
+      passions: symbolicProfile.passions || [],
+      updated_at: new Date().toISOString(),
+    };
+
+    let insertError;
+    if (existingProfile) {
+      // Update existing profile
+      const { error } = await supabase
+        .from("profiles_symboliques")
+        .update(profileData)
+        .eq("user_id", user_id);
+      insertError = error;
+    } else {
+      // Insert new profile
+      const { error } = await supabase
+        .from("profiles_symboliques")
+        .insert(profileData);
+      insertError = error;
+    }
 
     if (insertError) {
       throw new Error(`Failed to store symbolic profile: ${insertError.message}`);
     }
 
-    return new Response(JSON.stringify({ success: true, profile: symbolicProfile }), {
+    return new Response(JSON.stringify({ 
+      success: true, 
+      profile: symbolicProfile,
+      astro: astroData // Include astro engine result for testing
+    }), {
       headers: corsHeaders,
       status: 200,
     });

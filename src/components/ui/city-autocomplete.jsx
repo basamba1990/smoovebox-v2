@@ -29,6 +29,7 @@ export function CityAutocomplete({
   value, 
   onChange, 
   onCoordinatesChange,
+  onTimezoneChange,
   placeholder = "Ex: Paris, France",
   className,
   disabled,
@@ -38,7 +39,6 @@ export function CityAutocomplete({
   const [suggestions, setSuggestions] = React.useState([])
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState(null)
-  const inputRef = React.useRef(null)
   
   const debouncedValue = useDebounce(value, 500) // Wait 500ms after user stops typing
 
@@ -78,6 +78,122 @@ export function CityAutocomplete({
     }
   }, [])
 
+  // Fetch timezone from coordinates using free API
+  const fetchTimezone = React.useCallback(async (lat, lon) => {
+    if (!onTimezoneChange) {
+      console.warn('[CityAutocomplete] onTimezoneChange callback not provided')
+      return
+    }
+    
+    try {
+      // Using TimeZoneDB free API (no key required for basic usage) or WorldTimeAPI
+      // Try WorldTimeAPI first (free, no key needed)
+      const response = await fetch(
+        `https://worldtimeapi.org/api/timezone`
+      )
+      
+      if (response.ok) {
+        const allTimezones = await response.json()
+        // WorldTimeAPI doesn't support reverse lookup, so use a coordinate-based approach
+        // Fallback to a simple timezone estimation based on coordinates
+        const estimatedTimezone = estimateTimezoneFromCoordinates(lat, lon)
+        if (estimatedTimezone) {
+          console.log('[CityAutocomplete] Estimated timezone:', estimatedTimezone)
+          onTimezoneChange(estimatedTimezone)
+          return
+        }
+      }
+      
+      // Fallback: Use BigDataCloud API
+      const geoResponse = await fetch(
+        `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`
+      )
+      
+      if (geoResponse.ok) {
+        const data = await geoResponse.json()
+        console.log('[CityAutocomplete] BigDataCloud API response:', data)
+        
+        // Check all possible timezone fields
+        let timezone = data.timezone?.name || 
+                      data.timezone || 
+                      data.timeZone?.name || 
+                      data.timeZone ||
+                      data.timezoneId ||
+                      null
+        
+        if (timezone) {
+          console.log('[CityAutocomplete] Detected timezone:', timezone)
+          onTimezoneChange(timezone)
+        } else {
+          // Fallback to estimation
+          const estimatedTimezone = estimateTimezoneFromCoordinates(lat, lon)
+          if (estimatedTimezone) {
+            console.log('[CityAutocomplete] Using estimated timezone:', estimatedTimezone)
+            onTimezoneChange(estimatedTimezone)
+          } else {
+            console.warn('[CityAutocomplete] No timezone found in API response and estimation failed')
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[CityAutocomplete] Error detecting timezone:', err)
+      // Fallback to estimation on error
+      try {
+        const estimatedTimezone = estimateTimezoneFromCoordinates(lat, lon)
+        if (estimatedTimezone) {
+          console.log('[CityAutocomplete] Using estimated timezone after error:', estimatedTimezone)
+          onTimezoneChange(estimatedTimezone)
+        }
+      } catch (estErr) {
+        console.error('[CityAutocomplete] Timezone estimation also failed:', estErr)
+      }
+    }
+  }, [onTimezoneChange])
+
+  // Simple timezone estimation from coordinates (fallback)
+  const estimateTimezoneFromCoordinates = (lat, lon) => {
+    // Basic timezone estimation based on longitude
+    // Each 15 degrees of longitude ≈ 1 hour timezone offset
+    const offset = Math.round(lon / 15)
+    
+    // Common timezone mappings (simplified but covers most major cities)
+    const timezoneMap = {
+      '-12': 'Pacific/Midway',
+      '-11': 'Pacific/Honolulu',
+      '-10': 'Pacific/Honolulu',
+      '-9': 'America/Anchorage',
+      '-8': 'America/Los_Angeles',
+      '-7': 'America/Denver',
+      '-6': 'America/Chicago',
+      '-5': 'America/New_York',
+      '-4': 'America/Caracas',
+      '-3': 'America/Sao_Paulo',
+      '-2': 'Atlantic/South_Georgia',
+      '-1': 'Atlantic/Azores',
+      '0': 'Europe/London',
+      '1': 'Europe/Paris',
+      '2': 'Europe/Berlin',
+      '3': 'Europe/Moscow',
+      '4': 'Asia/Dubai',
+      '5': 'Asia/Karachi',
+      '6': 'Asia/Dhaka',
+      '7': 'Asia/Bangkok',
+      '8': 'Asia/Shanghai',
+      '9': 'Asia/Tokyo',
+      '10': 'Australia/Sydney',
+      '11': 'Pacific/Auckland',
+      '12': 'Pacific/Auckland'
+    }
+    
+    // Special cases for common cities
+    if (lat >= 4 && lat <= 5 && lon >= -75 && lon <= -74) return 'America/Bogota'
+    if (lat >= 48 && lat <= 49 && lon >= 2 && lon <= 3) return 'Europe/Paris'
+    if (lat >= 40 && lat <= 41 && lon >= -74 && lon <= -73) return 'America/New_York'
+    if (lat >= 51 && lat <= 52 && lon >= -1 && lon <= 0) return 'Europe/London'
+    
+    return timezoneMap[offset.toString()] || 'UTC'
+  }
+
   // Fetch coordinates when city is selected
   const fetchCoordinates = React.useCallback(async (cityName) => {
     if (!cityName || cityName.length < 3) return
@@ -110,6 +226,9 @@ export function CityAutocomplete({
         if (onCoordinatesChange) {
           onCoordinatesChange({ latitude: lat, longitude: lon })
         }
+        
+        // Detect timezone from coordinates
+        await fetchTimezone(lat, lon)
       }
     } catch (err) {
       console.error('Erreur géolocalisation:', err)
@@ -117,7 +236,7 @@ export function CityAutocomplete({
     } finally {
       setLoading(false)
     }
-  }, [onCoordinatesChange])
+  }, [onCoordinatesChange, fetchTimezone])
 
   // Fetch suggestions when debounced value changes
   React.useEffect(() => {
@@ -135,7 +254,7 @@ export function CityAutocomplete({
     setError(null)
   }
 
-  const handleSelectCity = (suggestion) => {
+  const handleSelectCity = async (suggestion) => {
     const displayName = suggestion.display_name || suggestion.name || ''
     onChange?.(displayName)
     setOpen(false)
@@ -148,6 +267,8 @@ export function CityAutocomplete({
       if (onCoordinatesChange) {
         onCoordinatesChange({ latitude: lat, longitude: lon })
       }
+      // Detect timezone from coordinates (await to ensure it completes)
+      await fetchTimezone(lat, lon)
     } else {
       fetchCoordinates(displayName)
     }
@@ -172,7 +293,6 @@ export function CityAutocomplete({
         <PopoverTrigger asChild>
           <div className="relative">
             <Input
-              ref={inputRef}
               type="text"
               value={value || ''}
               onChange={handleInputChange}
