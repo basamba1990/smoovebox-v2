@@ -37,11 +37,17 @@ const UpdateDISC = ({ profile, onSignOut }) => {
       if (error) throw error;
 
       if (data && data.color_quiz) {
-        // Le format existant est un tableau de réponses uniques (indices).
-        // On le convertit en tableau de tableaux pour supporter la sélection multiple.
-        const loadedAnswers = data.color_quiz.map(answerIndex => 
-          answerIndex !== null ? [answerIndex] : []
-        );
+          // Vérifier si les données sont dans l'ancien format (tableau d'indices) ou le nouveau (tableau de tableaux)
+        let loadedAnswers;
+        if (Array.isArray(data.color_quiz) && data.color_quiz.length > 0 && !Array.isArray(data.color_quiz[0])) {
+          // Ancien format (tableau d'indices), on convertit en tableau de tableaux pour la sélection multiple
+          loadedAnswers = data.color_quiz.map(answerIndex => 
+            answerIndex !== null ? [answerIndex] : []
+          );
+        } else {
+          // Nouveau format (tableau de tableaux) ou initialisation
+          loadedAnswers = data.color_quiz || [];
+        }
         
         // S'assurer que le tableau a la bonne taille
         while (loadedAnswers.length < QUESTION_COUNT) {
@@ -115,16 +121,17 @@ const UpdateDISC = ({ profile, onSignOut }) => {
       // 2. Calculer le nouveau profil dominant
       const dominantType = calculateDominantColor(answersForCalculation);
 
-      // 3. Sauvegarder les nouvelles réponses. On sauvegarde le tableau de tableaux de sélections.
+      // 3. Sauvegarder les nouvelles réponses. On utilise insert pour créer une nouvelle entrée,
+      // car la logique de chargement prend la dernière entrée.
       const { error: saveError } = await supabase
         .from('questionnaire_responses')
-        .upsert({
+        .insert({
           user_id: user.id,
           dominant_color: dominantType,
           // On sauvegarde le nouveau format (tableau de tableaux)
           color_quiz: answers, 
           completed_at: new Date().toISOString()
-        }, { onConflict: 'user_id' }); // Utiliser upsert avec onConflict si on veut écraser l'ancienne entrée
+        });
 
       if (saveError) throw saveError;
 
