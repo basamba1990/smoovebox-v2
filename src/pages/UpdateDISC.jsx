@@ -178,7 +178,10 @@ const UpdateDISC = ({ profile, onSignOut }) => {
       toast.success("Votre profil DISC a été supprimé avec succès.");
       
       // Rediriger l'utilisateur après la suppression
-      navigate('/personality-test'); 
+      // Une déconnexion est plus sûre pour s'assurer que le jeton JWT est réinitialisé
+      // et que l'utilisateur est redirigé vers la page de connexion.
+      await supabase.auth.signOut();
+      navigate('/login'); 
 
     } catch (error) {
       console.error('Erreur suppression DISC:', error);
@@ -317,4 +320,4 @@ const UpdateDISC = ({ profile, onSignOut }) => {
   );
 };
 
-export default UpdateDISC;
+export default UpdateDISC;''
