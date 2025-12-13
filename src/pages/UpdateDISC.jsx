@@ -121,17 +121,17 @@ const UpdateDISC = ({ profile, onSignOut }) => {
       // 2. Calculer le nouveau profil dominant
       const dominantType = calculateDominantColor(answersForCalculation);
 
-      // 3. Sauvegarder les nouvelles réponses. On utilise insert pour créer une nouvelle entrée,
-      // car la logique de chargement prend la dernière entrée.
+      // 3. Sauvegarder les nouvelles réponses. On utilise upsert avec onConflict: 'user_id'
+      // pour mettre à jour l'entrée existante, car la table a une contrainte d'unicité sur user_id.
       const { error: saveError } = await supabase
         .from('questionnaire_responses')
-        .insert({
+        .upsert({
           user_id: user.id,
           dominant_color: dominantType,
           // On sauvegarde le nouveau format (tableau de tableaux)
           color_quiz: answers, 
           completed_at: new Date().toISOString()
-        });
+        }, { onConflict: 'user_id' });
 
       if (saveError) throw saveError;
 
