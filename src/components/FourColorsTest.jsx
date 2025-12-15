@@ -261,8 +261,8 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
             <Button 
               onClick={handleRegenerateDISC} 
               loading={loading}
-              variant="outline" 
-              className="w-full md:w-auto border-red-500 text-red-500 hover:bg-red-50"
+              variant="destructive" 
+              className="w-full md:w-auto"
             >
               🔄 Regénérer le DISC
             </Button>
@@ -285,7 +285,6 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
             Découvre ton profil unique pour un parcours SpotBulle 100% personnalisé
           </p>
 
-          {/* Barre de progression */}
           <div className="max-w-2xl mx-auto mb-8">
             <div className="flex justify-between text-sm text-gray-600 mb-2">
               <span>Question {currentQuestion + 1} sur {DISC_QUESTION_COUNT}</span>
@@ -293,7 +292,7 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
             </div>
             <div className="w-full bg-gray-200 rounded-full h-3">
               <div 
-                className="bg-primary-600 h-3 rounded-full transition-all duration-300" 
+                className="bg-gradient-to-r from-primary-600 to-secondary-600 h-3 rounded-full transition-all duration-300" 
                 style={{ width: `${progress}%` }}
               ></div>
             </div>
@@ -356,7 +355,7 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
               : calculateResults()
             }
             disabled={answers[currentQuestion] === null}
-            className="bg-primary-600 hover:bg-primary-700 px-6"
+            className="px-6"
           >
             {currentQuestion < DISC_QUESTIONS.length - 1 ? 'Suivant →' : 'Voir mes résultats'}
           </Button>
