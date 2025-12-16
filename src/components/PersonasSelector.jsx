@@ -25,7 +25,9 @@ const PERSONAS = [
     promise: 'Une expérience transformationnelle : "Je découvre qui je suis et je deviens visible"',
     icon: '🌟',
     color: 'from-blue-500 to-cyan-500',
-    softPromptTask: 'young_talent_guidance'
+    softPromptTask: 'young_talent_guidance',
+    pitchAgentName: 'pitch_young-talent_agent',
+    pitchSoftPromptTask: 'pitch_analysis'
   },
   {
     id: 'adult-reconversion',
@@ -40,7 +42,9 @@ const PERSONAS = [
     promise: 'Un miroir éclairant : "Je reconnecte mon histoire, mes passions et un futur viable"',
     icon: '🔄',
     color: 'from-purple-500 to-pink-500',
-    softPromptTask: 'adult_reconversion_guidance'
+    softPromptTask: 'adult_reconversion_guidance',
+    pitchAgentName: 'pitch_adult-reconversion_agent',
+    pitchSoftPromptTask: 'pitch_analysis'
   },
   {
     id: 'mentor-senior',
@@ -55,7 +59,9 @@ const PERSONAS = [
     promise: 'Un cercle d\'impact : "Je transmets mon expérience et je laisse une trace positive"',
     icon: '🏆',
     color: 'from-amber-500 to-orange-500',
-    softPromptTask: 'mentor_senior_guidance'
+    softPromptTask: 'mentor_senior_guidance',
+    pitchAgentName: 'pitch_mentor-senior_agent',
+    pitchSoftPromptTask: 'pitch_analysis'
   },
   {
     id: 'entrepreneur',
@@ -71,7 +77,9 @@ const PERSONAS = [
     promise: 'Un outil de marque et de recrutement : "Je repère les talents, je m\'engage, je gagne en visibilité"',
     icon: '💼',
     color: 'from-green-500 to-emerald-500',
-    softPromptTask: 'entrepreneur_guidance'
+    softPromptTask: 'entrepreneur_guidance',
+    pitchAgentName: 'pitch_entrepreneur_agent',
+    pitchSoftPromptTask: 'pitch_analysis'
   },
   {
     id: 'institution',
@@ -86,7 +94,9 @@ const PERSONAS = [
     promise: 'Une capsule territoriale : "Votre région valorise ses jeunes et devient pionnière"',
     icon: '🏛️',
     color: 'from-red-500 to-rose-500',
-    softPromptTask: 'institution_guidance'
+    softPromptTask: 'institution_guidance',
+    pitchAgentName: 'pitch_institution_agent',
+    pitchSoftPromptTask: 'pitch_analysis'
   },
   {
     id: 'sponsor',
@@ -102,7 +112,9 @@ const PERSONAS = [
     promise: 'Un projet futuriste, humain et scalable : "Nous sponsorisons l\'émergence de la génération 2050"',
     icon: '💎',
     color: 'from-indigo-500 to-violet-500',
-    softPromptTask: 'sponsor_guidance'
+    softPromptTask: 'sponsor_guidance',
+    pitchAgentName: 'pitch_sponsor_agent',
+    pitchSoftPromptTask: 'pitch_analysis'
   },
   {
     id: 'educational-partner',
@@ -117,11 +129,13 @@ const PERSONAS = [
     promise: 'Un levier pédagogique complet : "Nous révélons les talents et construisons des trajectoires"',
     icon: '📚',
     color: 'from-teal-500 to-cyan-500',
-    softPromptTask: 'educational_partner_guidance'
+    softPromptTask: 'educational_partner_guidance',
+    pitchAgentName: 'pitch_educational-partner_agent',
+    pitchSoftPromptTask: 'pitch_analysis'
   }
 ]
 
-export default function PersonasSelector() {
+export default function PersonasSelector({ onPersonaSelected }) {
   const [selectedPersona, setSelectedPersona] = useState(null)
   const [softPromptLoaded, setSoftPromptLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -140,13 +154,13 @@ export default function PersonasSelector() {
       // 1. Charger le Soft Prompt optimisé pour ce persona
       const { data: softPromptData, error: softPromptError } = await supabase
         .from('llm_soft_prompts')
-        .select('id, embeddings, prompt_length')
+        .select('id, prompt_text, prompt_length')
         .eq('task_name', persona.softPromptTask)
         .eq('is_active', true)
-        .single()
+        .maybeSingle()
 
       if (softPromptError && softPromptError.code !== 'PGRST116') {
-        throw new Error(`Erreur lors du chargement du soft prompt: ${softPromptError.message}`)
+        console.warn(`Soft prompt non trouvé pour ${persona.softPromptTask}:`, softPromptError.message)
       }
 
       // 2. Charger la configuration active de l'agent pour ce persona
@@ -155,27 +169,65 @@ export default function PersonasSelector() {
         .select('id, configuration, metrics')
         .eq('agent_name', `personas_${persona.id}`)
         .eq('is_active', true)
-        .single()
+        .maybeSingle()
 
       if (configError && configError.code !== 'PGRST116') {
-        throw new Error(`Erreur lors du chargement de la configuration: ${configError.message}`)
+        console.warn(`Configuration agent non trouvée pour personas_${persona.id}:`, configError.message)
       }
 
-      // 3. Mettre à jour l'état
+      // 3. Charger la configuration spécifique pour l'analyse de pitch
+      const { data: pitchConfigData, error: pitchConfigError } = await supabase
+        .from('agent_configurations')
+        .select('id, configuration, metrics')
+        .eq('agent_name', persona.pitchAgentName)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      if (pitchConfigError && pitchConfigError.code !== 'PGRST116') {
+        console.warn(`Configuration pitch agent non trouvée pour ${persona.pitchAgentName}:`, pitchConfigError.message)
+      }
+
+      // 4. Mettre à jour l'état
       setSoftPromptLoaded(!!softPromptData)
       setAgentConfig(configData)
-      setSelectedPersona({
+      
+      const enrichedPersona = {
         ...persona,
         softPrompt: softPromptData,
-        config: configData
-      })
+        config: configData,
+        pitchConfig: pitchConfigData
+      }
+      
+      setSelectedPersona(enrichedPersona)
+      
+      // 5. Sauvegarder dans le localStorage pour les autres composants
+      localStorage.setItem('selectedPersona', JSON.stringify(enrichedPersona))
+      
+      // 6. Notifier le parent si nécessaire
+      if (onPersonaSelected) {
+        onPersonaSelected(enrichedPersona)
+      }
     } catch (err) {
       setError(err.message)
+      console.error('Erreur lors du chargement du persona:', err)
       setSelectedPersona(persona)
     } finally {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    // Vérifier si un persona est déjà sélectionné dans le localStorage
+    const savedPersona = localStorage.getItem('selectedPersona')
+    if (savedPersona) {
+      try {
+        const persona = JSON.parse(savedPersona)
+        setSelectedPersona(persona)
+      } catch (e) {
+        console.error('Erreur lors du parsing du persona sauvegardé:', e)
+      }
+    }
+  }, [])
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 p-8">
@@ -266,6 +318,11 @@ export default function PersonasSelector() {
                       <p className="text-xs text-gray-200">
                         Tâche: {selectedPersona.softPromptTask} | Longueur: {selectedPersona.softPrompt?.prompt_length || 'N/A'} tokens
                       </p>
+                      {selectedPersona.softPrompt?.prompt_text && (
+                        <p className="text-xs text-gray-300 mt-2 line-clamp-2">
+                          {selectedPersona.softPrompt.prompt_text.substring(0, 100)}...
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <p className="text-yellow-200">⚠️ Soft prompt par défaut (aucune optimisation personnalisée)</p>
@@ -275,8 +332,9 @@ export default function PersonasSelector() {
                 {/* Agent Configuration */}
                 {agentConfig && (
                   <div className="bg-white bg-opacity-10 rounded-lg p-4">
-                    <h3 className="text-white font-bold mb-2">⚙️ Configuration Agent</h3>
+                    <h3 className="text-white font-bold mb-2">⚙️ Configuration Agent Principal</h3>
                     <div className="text-white text-sm space-y-2">
+                      <p><strong>Agent:</strong> personas_{selectedPersona.id}</p>
                       <p><strong>Système Prompt:</strong> {agentConfig.configuration?.system_prompt?.substring(0, 80)}...</p>
                       {agentConfig.metrics && (
                         <p><strong>Fitness Score:</strong> {(agentConfig.metrics.fitness_score * 100).toFixed(1)}%</p>
@@ -285,8 +343,28 @@ export default function PersonasSelector() {
                   </div>
                 )}
 
+                {/* Pitch Agent Configuration */}
+                {selectedPersona.pitchConfig && (
+                  <div className="bg-white bg-opacity-10 rounded-lg p-4 mb-6">
+                    <h3 className="text-white font-bold mb-2">🎤 Configuration Agent Pitch</h3>
+                    <div className="text-white text-sm space-y-2">
+                      <p><strong>Agent:</strong> {selectedPersona.pitchAgentName}</p>
+                      <p><strong>Système Prompt:</strong> {selectedPersona.pitchConfig.configuration?.system_prompt?.substring(0, 80)}...</p>
+                      {selectedPersona.pitchConfig.metrics && (
+                        <p><strong>Fitness Score:</strong> {(selectedPersona.pitchConfig.metrics.fitness_score * 100).toFixed(1)}%</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Action Button */}
-                <button className="w-full mt-6 bg-white text-slate-900 font-bold py-3 rounded-lg hover:bg-gray-100 transition-all duration-200">
+                <button 
+                  className="w-full mt-6 bg-white text-slate-900 font-bold py-3 rounded-lg hover:bg-gray-100 transition-all duration-200"
+                  onClick={() => {
+                    // Navigation vers l'étape suivante (à implémenter selon votre routing)
+                    window.location.href = '/passions'
+                  }}
+                >
                   Commencer l'expérience SpotBulle
                 </button>
               </>
