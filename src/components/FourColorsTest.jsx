@@ -128,7 +128,6 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
           .from('profiles')
           .update({ 
             dominant_color: null,
-            onboarding_completed: false 
           })
           .eq('id', user.id);
 
@@ -285,6 +284,7 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
             Découvre ton profil unique pour un parcours SpotBulle 100% personnalisé
           </p>
 
+          {/* Barre de progression */}
           <div className="max-w-2xl mx-auto mb-8">
             <div className="flex justify-between text-sm text-gray-600 mb-2">
               <span>Question {currentQuestion + 1} sur {DISC_QUESTION_COUNT}</span>
@@ -292,7 +292,7 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
             </div>
             <div className="w-full bg-gray-200 rounded-full h-3">
               <div 
-                className="bg-gradient-to-r from-primary-600 to-secondary-600 h-3 rounded-full transition-all duration-300" 
+                className="bg-primary-600 h-3 rounded-full transition-all duration-300" 
                 style={{ width: `${progress}%` }}
               ></div>
             </div>
@@ -355,7 +355,7 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
               : calculateResults()
             }
             disabled={answers[currentQuestion] === null}
-            className="px-6"
+            variant="success" className="px-6"
           >
             {currentQuestion < DISC_QUESTIONS.length - 1 ? 'Question suivante →' : 'Voir mes résultats'}
           </Button>
