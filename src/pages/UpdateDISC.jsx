@@ -143,8 +143,8 @@ const UpdateDISC = ({ profile, onSignOut }) => {
                     onClick={() => handleAnswerChange(qIndex, oIndex)}
                     className={`p-4 border-2 rounded-xl text-left transition-all duration-200 hover:shadow-md ${
                       answers[qIndex] === oIndex
-                        ? 'border-primary-500 bg-primary-50 shadow-sm'
-                        : 'border-gray-200 hover:border-primary-300'
+                        ? 'border-blue-600 bg-blue-50 shadow-lg ring-2 ring-blue-600'
+                        : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
                     }`}
                   >
                     <div className="flex items-start space-x-4">
