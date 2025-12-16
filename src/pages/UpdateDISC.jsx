@@ -156,10 +156,14 @@ const UpdateDISC = ({ profile, onSignOut }) => {
     }
   };
 
-  const handleDelete = async () => {
-    setIsDeleting(true);
+  const handleDeleteDISC = async () => {
+    if (!window.confirm("Êtes-vous sûr de vouloir supprimer votre profil DISC ? Cette action est irréversible.")) {
+      return;
+    }
+
+    setLoading(true);
     try {
-      // 1. Supprimer l'entrée dans questionnaire_responses
+      // 1. Supprimer le DISC de questionnaire_responses
       const { error: deleteError } = await supabase
         .from('questionnaire_responses')
         .delete()
@@ -167,27 +171,27 @@ const UpdateDISC = ({ profile, onSignOut }) => {
 
       if (deleteError) throw deleteError;
 
-      // 2. Optionnel: Réinitialiser la couleur dominante dans le profil utilisateur
-      await supabase
+      // 2. Réinitialiser le profil utilisateur (couleur dominante)
+      const { error: profileError } = await supabase
         .from('profiles')
         .update({ 
           dominant_color: null,
+          onboarding_completed: false 
         })
         .eq('id', user.id);
 
-      toast.success("Votre profil DISC a été supprimé avec succès.");
-      
-      // Rediriger l'utilisateur après la suppression
-      // Une déconnexion est plus sûre pour s'assurer que le jeton JWT est réinitialisé
-      // et que l'utilisateur est redirigé vers la page de connexion.
-      await supabase.auth.signOut();
-      navigate('/login'); 
+      if (profileError) throw profileError;
 
+      toast.success('Profil DISC supprimé avec succès.');
+      
+      // 3. Réinitialiser l'état du composant
+      setAnswers(Array(DISC_QUESTIONS.length).fill(null));
+      navigate('/personality-test');
     } catch (error) {
       console.error('Erreur suppression DISC:', error);
-      toast.error('Erreur lors de la suppression du profil DISC.');
+      toast.error('Erreur lors de la suppression du DISC.');
     } finally {
-      setIsDeleting(false);
+      setLoading(false);
     }
   };
 
@@ -257,8 +261,7 @@ const UpdateDISC = ({ profile, onSignOut }) => {
           </div>
         </div>
 
-        <div className="mt-10 flex justify-between items-center">
-          {/* Bouton Précédent */}
+        <div className="mt-10 text-center space-y-4">
           <Button
             onClick={handlePrevious}
             disabled={currentQuestionIndex === 0}
@@ -267,53 +270,14 @@ const UpdateDISC = ({ profile, onSignOut }) => {
           >
             ← Question précédente
           </Button>
-
-          {/* Bouton Suivant / Sauvegarder */}
-          {isLastQuestion ? (
-            <Button
-              onClick={handleSave}
-              loading={isSaving}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 px-8 py-4 text-white font-semibold text-lg"
-            >
-              {isSaving ? 'Sauvegarde en cours...' : '💾 Sauvegarder et mettre à jour mon DISC'}
-            </Button>
-          ) : (
-            <Button
-              onClick={handleNext}
-              className="bg-primary-500 hover:bg-primary-600 px-6 py-3 text-white font-semibold text-lg"
-            >
-              Question suivante →
-            </Button>
-          )}
-        </div>
-
-        {/* Bouton de suppression du profil DISC */}
-        <div className="mt-10 text-center">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" className="text-sm" disabled={isDeleting}>
-                Supprimer mon profil DISC
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Êtes-vous absolument sûr ?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Cette action est irréversible. Toutes vos réponses au questionnaire DISC seront définitivement supprimées.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Annuler</AlertDialogCancel>
-                <AlertDialogAction 
-                  onClick={handleDelete} 
-                  className="bg-red-600 hover:bg-red-700"
-                  disabled={isDeleting}
-                >
-                  {isDeleting ? 'Suppression en cours...' : 'Oui, supprimer mon profil'}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          
+          <Button
+            onClick={handleDeleteDISC}
+            variant="destructive"
+            className="w-full md:w-auto"
+          >
+            🗑️ Supprimer mon profil DISC
+          </Button>
         </div>
       </div>
     </div>
