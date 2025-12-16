@@ -180,18 +180,8 @@ export default function AppRoutes({
         }
       />
 
-      <Route
-        path="/personality-test"
-        element={
-          <RequireAuth>
-            <FourColorsTest
-              user={user}
-              profile={profile}
-              onSignOut={onSignOut}
-            />
-          </RequireAuth>
-        }
-      />
+      {/* Route /personality-test dépréciée, redirige vers /update-disc */}
+      <Route path="/personality-test" element={<Navigate to="/update-disc" replace />} />
 
       <Route
         path="/seminars"
