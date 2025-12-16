@@ -121,6 +121,20 @@ export default function SoftPowerPassions() {
   const [agentConfig, setAgentConfig] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [selectedPersona, setSelectedPersona] = useState(null)
+
+  // Récupérer le persona sélectionné depuis le localStorage
+  useEffect(() => {
+    const savedPersona = localStorage.getItem('selectedPersona')
+    if (savedPersona) {
+      try {
+        const persona = JSON.parse(savedPersona)
+        setSelectedPersona(persona)
+      } catch (e) {
+        console.error('Erreur lors du parsing du persona:', e)
+      }
+    }
+  }, [])
 
   /**
    * Ajoute/retire une passion de la sélection
@@ -150,13 +164,13 @@ export default function SoftPowerPassions() {
       // 1. Charger le Soft Prompt pour les recommandations de carrière hybride
       const { data: softPromptData, error: softPromptError } = await supabase
         .from('llm_soft_prompts')
-        .select('id, embeddings, prompt_length')
+        .select('id, prompt_text, prompt_length')
         .eq('task_name', 'hybrid_career_recommendations')
         .eq('is_active', true)
-        .single()
+        .maybeSingle()
 
       if (softPromptError && softPromptError.code !== 'PGRST116') {
-        console.warn('Soft prompt non trouvé, utilisation de la configuration par défaut')
+        console.warn('Soft prompt non trouvé, utilisation de la configuration par défaut:', softPromptError.message)
       }
 
       // 2. Charger la configuration active de l'agent pour les recommandations
@@ -165,10 +179,10 @@ export default function SoftPowerPassions() {
         .select('id, configuration, metrics')
         .eq('agent_name', 'hybrid_career_agent')
         .eq('is_active', true)
-        .single()
+        .maybeSingle()
 
       if (configError && configError.code !== 'PGRST116') {
-        console.warn('Configuration agent non trouvée')
+        console.warn('Configuration agent non trouvée:', configError.message)
       }
 
       setSoftPromptRecommendations(softPromptData)
@@ -204,6 +218,7 @@ export default function SoftPowerPassions() {
       await logRecommendationExecution(recommendationsData)
     } catch (err) {
       setError(err.message)
+      console.error('Erreur lors de la génération des recommandations:', err)
     } finally {
       setLoading(false)
     }
@@ -218,7 +233,8 @@ export default function SoftPowerPassions() {
         .from('agent_execution_logs')
         .insert({
           input_data: {
-            selected_passions: selectedPassions
+            selected_passions: selectedPassions,
+            persona_id: selectedPersona?.id || null
           },
           output_data: {
             recommendations: recommendationsData?.careers || [],
@@ -263,6 +279,21 @@ export default function SoftPowerPassions() {
         <p className="text-gray-400">
           SpotBulle crée des métiers nouveaux à partir de vos combinaisons uniques (Modèle T/M)
         </p>
+        
+        {/* Persona Info */}
+        {selectedPersona && (
+          <div className="mt-6 p-4 bg-slate-700 rounded-lg border border-gray-600 max-w-md">
+            <div className="flex items-center">
+              <span className="text-2xl mr-3">{selectedPersona.icon}</span>
+              <div>
+                <h3 className="text-white font-bold">{selectedPersona.name}</h3>
+                <p className="text-gray-300 text-sm">
+                  Vos recommandations seront adaptées à votre profil
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Passion Categories Grid */}
@@ -325,7 +356,7 @@ export default function SoftPowerPassions() {
                     <span>{passion?.name}</span>
                     <button
                       onClick={() => togglePassion(passionId)}
-                      className="ml-2 hover:text-gray-200"
+                      className="ml-2 hover:text-gray-200 text-sm"
                     >
                       ✕
                     </button>
@@ -360,7 +391,7 @@ export default function SoftPowerPassions() {
       {suggestedCareers.length > 0 && (
         <div className="max-w-6xl mx-auto">
           <h2 className="text-3xl font-bold text-white mb-8">
-            🚀 Métiers Hybrides Recommandés
+            🚀 Métiers Hybrides Recommandés ({suggestedCareers.length})
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
@@ -393,6 +424,22 @@ export default function SoftPowerPassions() {
                   </div>
                 )}
 
+                {career.skills && (
+                  <div className="mb-4">
+                    <p className="text-gray-400 text-sm mb-2">Compétences requises :</p>
+                    <div className="flex flex-wrap gap-2">
+                      {career.skills.slice(0, 3).map((skill, idx) => (
+                        <span
+                          key={idx}
+                          className="bg-blue-600 text-white text-xs px-3 py-1 rounded-full"
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <button className="w-full bg-purple-600 text-white font-bold py-2 rounded-lg hover:bg-purple-700 transition-all">
                   En savoir plus
                 </button>
@@ -407,7 +454,14 @@ export default function SoftPowerPassions() {
               <div>
                 <p className="text-gray-400 text-sm">Soft Prompt (Prompt Tuning)</p>
                 {softPromptRecommendations ? (
-                  <p className="text-green-400">✅ Actif et optimisé</p>
+                  <div className="text-green-400">
+                    <p>✅ Actif et optimisé</p>
+                    {softPromptRecommendations.prompt_text && (
+                      <p className="text-xs text-gray-300 mt-1 line-clamp-1">
+                        {softPromptRecommendations.prompt_text.substring(0, 80)}...
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   <p className="text-yellow-400">⚠️ Configuration par défaut</p>
                 )}
@@ -415,7 +469,12 @@ export default function SoftPowerPassions() {
               <div>
                 <p className="text-gray-400 text-sm">Configuration Agent</p>
                 {agentConfig ? (
-                  <p className="text-green-400">✅ Chargée ({agentConfig.metrics?.fitness_score?.toFixed(2) || 'N/A'})</p>
+                  <div className="text-green-400">
+                    <p>✅ Chargée (Fitness: {(agentConfig.metrics?.fitness_score * 100).toFixed(1)}%)</p>
+                    <p className="text-xs text-gray-300 mt-1">
+                      Latence: {agentConfig.metrics?.latency_ms}ms | Tokens: {agentConfig.metrics?.cost_tokens}
+                    </p>
+                  </div>
                 ) : (
                   <p className="text-yellow-400">⚠️ Configuration par défaut</p>
                 )}
@@ -431,7 +490,13 @@ export default function SoftPowerPassions() {
             >
               Nouvelle sélection
             </button>
-            <button className="bg-white text-slate-900 font-bold py-3 px-8 rounded-lg hover:bg-gray-100 transition-all">
+            <button className="bg-white text-slate-900 font-bold py-3 px-8 rounded-lg hover:bg-gray-100 transition-all"
+              onClick={() => {
+                // Sauvegarder les passions sélectionnées pour l'étape suivante
+                localStorage.setItem('selectedPassions', JSON.stringify(selectedPassions))
+                window.location.href = '/pitch-recording'
+              }}
+            >
               Continuer vers le Pitch
             </button>
           </div>
