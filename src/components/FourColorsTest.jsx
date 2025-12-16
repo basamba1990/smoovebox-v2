@@ -337,12 +337,12 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
         {/* Navigation */}
         <div className="flex justify-between items-center">
           <Button 
-            onClick={() => setCurrentQuestion(prev => Math.max(0, prev - 1))}
+            onClick={() => currentQuestion > 0 ? setCurrentQuestion(prev => prev - 1) : null}
             disabled={currentQuestion === 0}
             variant="outline" 
             className="px-6"
           >
-            ← Précédent
+            {currentQuestion > 0 ? '← Question précédente' : 'Question suivante →'}
           </Button>
           
           <div className="text-sm text-gray-500">
@@ -357,7 +357,7 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
             disabled={answers[currentQuestion] === null}
             className="px-6"
           >
-            {currentQuestion < DISC_QUESTIONS.length - 1 ? 'Suivant →' : 'Voir mes résultats'}
+            {currentQuestion < DISC_QUESTIONS.length - 1 ? 'Question suivante →' : 'Voir mes résultats'}
           </Button>
         </div>
       </div>
