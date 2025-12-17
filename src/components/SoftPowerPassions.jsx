@@ -187,7 +187,8 @@ export default function SoftPowerPassions() {
       )
 
       if (functionError) {
-        throw new Error(`Erreur de la fonction Edge: ${functionError.message}`)
+        console.error('Erreur détaillée de la fonction Edge:', functionError)
+        throw new Error(`Erreur de la fonction Edge: ${functionError.message}. Veuillez vérifier les logs de la fonction Edge sur Supabase.`)
       }
 
       // 4. Combiner les recommandations de l'IA avec les métiers hybrides prédéfinis
