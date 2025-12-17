@@ -1,130 +1,57 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-/**
- * PersonasSelector - Sélecteur de Personas SpotBulle
- * 
- * Basé sur l'architecture d'Estelle :
- * - 7 Personas-Archétypes (Jeune Talent, Adulte en reconversion, Mentor Senior, etc.)
- * - Modèle T/M (Multipotentialité et Hybridation)
- * - Intégration avec le Prompt Tuning pour personnalisation IA
- */
-
 const PERSONAS = [
   {
     id: 'young-talent',
-    name: 'Le·la Jeune Talent',
-    ageRange: '12–25 ans',
-    objective: 'Se découvrir, se valoriser, trouver une direction',
-    expectations: [
-      'Un espace fun, immersif, inspirant',
-      'Un feedback personnalisé',
-      'Se sentir "héros de l\'histoire"',
-      'Réseau, mentorat, visibilité'
-    ],
-    promise: 'Une expérience transformationnelle : "Je découvre qui je suis et je deviens visible"',
+    name: 'Jeune Talent',
+    ageRange: '16-25 ans',
     icon: '🌟',
-    color: 'from-blue-500 to-cyan-500',
+    color: 'from-purple-600 to-pink-600',
+    objective: 'Découvrir ses passions et construire son parcours professionnel',
+    promise: 'Révéler qui tu es. Imaginer qui tu peux devenir.',
+    expectations: [
+      'Découvrir mes passions multiples',
+      'Construire un parcours hybride unique',
+      'Recevoir un accompagnement personnalisé',
+      'Être inspiré par des exemples concrets'
+    ],
     softPromptTask: 'young_talent_guidance',
     agentName: 'personas_young_talent'
   },
   {
-    id: 'adult-reconversion',
-    name: 'L\'Adulte en reconversion',
-    ageRange: '25–45 ans',
-    objective: 'Retrouver du sens, pivoter, se réinventer',
-    expectations: [
-      'Un outil qui clarifie leurs compétences',
-      'Une projection vers les métiers d\'avenir',
-      'Un accompagnement rassurant et intelligent'
-    ],
-    promise: 'Un miroir éclairant : "Je reconnecte mon histoire, mes passions et un futur viable"',
-    icon: '🔄',
-    color: 'from-purple-500 to-pink-500',
-    softPromptTask: 'adult_reconversion_guidance',
-    agentName: 'personas_adult_reconversion'
-  },
-  {
-    id: 'mentor-senior',
-    name: 'Le Mentor Senior',
-    ageRange: '50–75 ans',
-    objective: 'Transmettre, soutenir la jeunesse, garder un rôle social',
-    expectations: [
-      'Être utile',
-      'Participer à un projet inspirant',
-      'S\'impliquer sans lourdeur administrative'
-    ],
-    promise: 'Un cercle d\'impact : "Je transmets mon expérience et je laisse une trace positive"',
-    icon: '🏆',
-    color: 'from-amber-500 to-orange-500',
-    softPromptTask: 'mentor_senior_guidance',
-    agentName: 'personas_mentor_senior'
-  },
-  {
-    id: 'entrepreneur',
-    name: 'Le Chef d\'entreprise / Entrepreneur',
-    ageRange: 'Tous âges',
-    objective: 'Recruter, communiquer, investir dans la jeunesse',
-    expectations: [
-      'Valorisation de marque',
-      'Vivier de talents',
-      'Événements innovants',
-      'Contenus vidéo partageables'
-    ],
-    promise: 'Un outil de marque et de recrutement : "Je repère les talents, je m\'engage, je gagne en visibilité"',
-    icon: '💼',
-    color: 'from-green-500 to-emerald-500',
-    softPromptTask: 'entrepreneur_guidance',
-    agentName: 'personas_entrepreneur'
-  },
-  {
     id: 'institution',
-    name: 'La Collectivité / Institution',
-    ageRange: 'Gouvernance',
-    objective: 'Soutenir la jeunesse, dynamiser le territoire',
-    expectations: [
-      'Projet concret, innovant, visible',
-      'Inclusion, mixité, culture',
-      'Évaluation d\'impact'
-    ],
-    promise: 'Une capsule territoriale : "Votre région valorise ses jeunes et devient pionnière"',
+    name: 'Institution',
+    ageRange: '25-40 ans',
     icon: '🏛️',
-    color: 'from-red-500 to-rose-500',
+    color: 'from-blue-600 to-cyan-600',
+    objective: 'Accompagner les jeunes talents dans leur parcours',
+    promise: 'Accompagner avec expertise et bienveillance.',
+    expectations: [
+      'Avoir des outils d\'accompagnement performants',
+      'Comprendre les besoins des jeunes talents',
+      'Proposer des parcours personnalisés',
+      'Mesurer l\'impact de l\'accompagnement'
+    ],
     softPromptTask: 'institution_guidance',
     agentName: 'personas_institution'
   },
   {
-    id: 'sponsor',
-    name: 'Le Sponsor / Banque / Entreprise tech',
-    ageRange: 'B2B',
-    objective: 'Associer leur marque à un projet visionnaire',
+    id: 'entrepreneur',
+    name: 'Entrepreneur',
+    ageRange: '25-40 ans',
+    icon: '🚀',
+    color: 'from-green-600 to-emerald-600',
+    objective: 'Développer son projet et sa carrière',
+    promise: 'Développer avec ambition et stratégie.',
     expectations: [
-      'Innovation / différenciation',
-      'Impact mesurable',
-      'Storytelling inspirant',
-      'Contenus partageables'
+      'Valider mon projet et ma vision',
+      'Trouver des synergies entre mes compétences',
+      'Optimiser ma communication',
+      'Gagner en confiance et en impact'
     ],
-    promise: 'Un projet futuriste, humain et scalable : "Nous sponsorisons l\'émergence de la génération 2050"',
-    icon: '💎',
-    color: 'from-indigo-500 to-violet-500',
-    softPromptTask: 'sponsor_guidance',
-    agentName: 'personas_sponsor'
-  },
-  {
-    id: 'educational-partner',
-    name: 'Le Partenaire Éducatif',
-    ageRange: 'Institutions',
-    objective: 'Offrir des outils d\'orientation et valoriser les parcours',
-    expectations: [
-      'Un dispositif clé-en-main',
-      'Une vision pédagogique moderne',
-      'Une intégration simple'
-    ],
-    promise: 'Un levier pédagogique complet : "Nous révélons les talents et construisons des trajectoires"',
-    icon: '📚',
-    color: 'from-teal-500 to-cyan-500',
-    softPromptTask: 'educational_partner_guidance',
-    agentName: 'personas_educational_partner'
+    softPromptTask: 'entrepreneur_guidance',
+    agentName: 'personas_entrepreneur'
   }
 ]
 

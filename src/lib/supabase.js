@@ -40,7 +40,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   global: {
     headers: {
       'X-Client-Info': 'spotbulle-secure',
-      'X-Client-Version': '2.0.0'
+      'X-Client-Version': '2.0.0',
+      'Accept': 'application/json' // ✅ CORRECTION: Ajout de l'en-tête Accept
     },
   },
   db: {
@@ -264,7 +265,7 @@ const invokeEdgeFunctionDirectHttps = async (functionName, body, timeout = 30000
     }
 
     // ✅ CONSTRUCTION URL HTTPS ABSOLUE
-    const baseUrl = supabaseUrl.replace(/^http:/, 'https:');
+    const baseUrl = supabaseUrl.replace(/^http:/, 'https');
     const functionUrl = `${baseUrl}/functions/v1/${functionName}`;
 
     console.log(`🔗 Appel direct HTTPS vers: ${functionUrl.substring(0, 80)}...`);
@@ -554,7 +555,8 @@ export const handleSupabaseError = (error, operation = 'operation', context = {}
       error: 'Format non acceptable',
       details: 'Le format de réponse demandé n\'est pas supporté',
       userMessage: 'Erreur technique. Veuillez réessayer.',
-      severity: 'error'
+      severity: 'error',
+      action: 'retry' // ✅ CORRECTION: Ajout de l'action retry
     },
     '401': {
       error: 'Non autorisé',
