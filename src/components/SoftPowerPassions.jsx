@@ -182,12 +182,18 @@ export default function SoftPowerPassions() {
             selectedPassions: selectedPassions,
             softPromptId: softPromptData?.id || null,
             configId: configData?.id || null
+          },
+          headers: {
+            'x-client-info': 'spotbulle-secure',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`, // Utilisation de la clé anon
+            'Content-Type': 'application/json',
           }
         }
       )
 
       if (functionError) {
-        throw new Error(`Erreur de la fonction Edge: ${functionError.message}`)
+        console.error('Erreur détaillée de la fonction Edge:', functionError)
+        throw new Error(`Erreur de la fonction Edge: ${functionError.message}. Veuillez vérifier les logs de la fonction Edge sur Supabase.`)
       }
 
       // 4. Combiner les recommandations de l'IA avec les métiers hybrides prédéfinis

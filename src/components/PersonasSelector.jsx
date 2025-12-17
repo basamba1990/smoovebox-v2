@@ -296,7 +296,10 @@ export default function PersonasSelector() {
                 )}
 
                 {/* Action Button */}
-                <button className="w-full mt-6 bg-white text-slate-900 font-bold py-3 rounded-lg hover:bg-gray-100 transition-all duration-200">
+                <button 
+  onClick={() => console.log('Démarrage de l\'expérience pour le persona:', selectedPersona.id)}
+  className="w-full mt-6 bg-white text-slate-900 font-bold py-3 rounded-lg hover:bg-gray-100 transition-all duration-200"
+>
                   Commencer l'expérience SpotBulle
                 </button>
               </>
