@@ -90,14 +90,6 @@ export default function PitchRecording() {
       reader.onload = async () => {
         const audioBase64 = reader.result.split(',')[1]
 
-        // --- DÉBUT DES CORRECTIONS (Contrat de Données Étendu) ---
-        // NOTE: Dans une application réelle, 'selectedPersona' devrait être passé via props ou Context
-        // depuis le composant PersonaSelector.
-        const selectedPersona = 'young-talent' // Valeur par défaut pour la démonstration
-        const softPromptTask = 'pitch_analysis'
-        const agentName = `pitch_${selectedPersona}_agent`
-        // --- FIN DES CORRECTIONS ---
-
         // 2. Appeler la Edge Function pour transcription + analyse
         const { data, error: functionError } = await supabase.functions.invoke(
           'analyze-pitch-recording',
@@ -105,9 +97,9 @@ export default function PitchRecording() {
             body: {
               audio: audioBase64,
               duration: duration,
-              personaId: selectedPersona, // Correction: Utilise la variable
-              softPromptTask: softPromptTask, // Correction: Ajout du champ
-              agentName: agentName // Correction: Ajout du champ
+              personaId: 'young-talent',
+              softPromptTask: 'young_talent_guidance',
+              agentName: 'personas_young_talent'
             }
           }
         )
@@ -162,7 +154,7 @@ export default function PitchRecording() {
         console.warn('Erreur lors du logging:', error.message)
       }
     } catch (err) {
-      console.error("Erreur lors du logging de l'exécution:", err)
+      console.error('Erreur lors du logging de l\'exécution:', err)
     }
   }
 
@@ -223,8 +215,8 @@ export default function PitchRecording() {
               {/* Instructions */}
               <p className="text-white text-lg mb-8">
                 {recordingState === 'idle'
-                  ? "Cliquez sur le bouton ci-dessous pour commencer à enregistrer votre pitch"
-                  : "Enregistrement en cours... Parlez librement"}
+                  ? 'Cliquez sur le bouton ci-dessous pour commencer à enregistrer votre pitch'
+                  : 'Enregistrement en cours... Parlez librement'}
               </p>
 
               {/* Recording Controls */}

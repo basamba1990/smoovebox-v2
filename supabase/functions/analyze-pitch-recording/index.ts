@@ -1,11 +1,8 @@
-// Fichier: analyze-pitch-recording/index.ts (Version Complètement Corrigée)
 import { createClient } from "npm:@supabase/supabase-js@2.45.4"
 
-// --- Interfaces Mises à Jour ---
 interface AnalyzePitchRequest {
   audio: string
   duration: number
-  // Nouveaux champs pour la liaison sémantique Persona -> Agent
   personaId: string
   softPromptTask: string
   agentName: string
@@ -40,7 +37,6 @@ interface AnalyzePitchResponse {
   config_id: string | null
 }
 
-// --- Initialisation Supabase ---
 const supabaseUrl = Deno.env.get("SUPABASE_URL")
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
 const openaiApiKey = Deno.env.get("OPENAI_API_KEY")
@@ -51,9 +47,6 @@ if (!supabaseUrl || !supabaseServiceRoleKey || !openaiApiKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
 
-// --- Fonctions utilitaires (avec gestion CORS) ---
-
-// Fonction pour toutes les réponses d'erreur avec gestion CORS
 function errorResponse(msg: string, status: number = 400) {
   return new Response(JSON.stringify({ error: msg }), {
     status: status,
@@ -66,7 +59,6 @@ function errorResponse(msg: string, status: number = 400) {
   })
 }
 
-// Fonction de transcription (inchangée)
 async function transcribeAudio(audioBase64: string): Promise<TranscriptionResult> {
   if (audioBase64.length > 20_000_000) throw new Error("Audio trop volumineux")
   const binaryString = atob(audioBase64)
@@ -89,11 +81,10 @@ async function transcribeAudio(audioBase64: string): Promise<TranscriptionResult
   return { text: String(data.text ?? "").trim(), confidence: 0.95, language: "fr" }
 }
 
-// loadSoftPrompt mis à jour pour utiliser softPromptTask et retourner le texte (non les embeddings)
 async function loadSoftPrompt(taskName: string): Promise<string | null> {
   const { data, error } = await supabase
     .from("llm_soft_prompts")
-    .select("prompt_text") // Assurez-vous que cette colonne existe dans votre DB
+    .select("prompt_text")
     .eq("task_name", taskName)
     .eq("is_active", true)
     .maybeSingle()
@@ -101,11 +92,9 @@ async function loadSoftPrompt(taskName: string): Promise<string | null> {
     console.warn(`Soft prompt non trouvé pour ${taskName}:`, error.message); 
     return null 
   }
-  // Retourne le texte du prompt, non les embeddings sérialisés
   return data?.prompt_text ?? null 
 }
 
-// loadAgentConfig mis à jour pour utiliser agentName
 async function loadAgentConfig(agentName: string): Promise<{ id: string; configuration: any } | null> {
   const { data, error } = await supabase
     .from("agent_configurations")
@@ -126,7 +115,6 @@ function safeJsonExtractObject(text: string): any {
   try { return JSON.parse(match[0]) } catch { return {} }
 }
 
-// analyzePitch mis à jour pour utiliser le softPrompt comme texte et gérer le persona
 async function analyzePitch(
   transcription: string,
   softPromptText: string | null,
@@ -138,13 +126,10 @@ async function analyzePitch(
     agentConfig?.configuration?.system_prompt ??
     "You are Spot, an expert coach analyzing a young talent's pitch. Provide constructive feedback on tone, emotions, and areas for improvement. Respond ONLY in JSON when possible."
 
-  // 1. Adaptation du ton selon le persona (Recommandation)
   if (personaId === 'young-talent') {
       systemPrompt += `\n\nInstructions de ton: Utiliser un langage simple, être encourageant et éviter tout jugement.`
   }
-  // Ajoutez d'autres conditions pour d'autres personas ici (ex: 'mentor', 'entrepreneur')
 
-  // 2. Ajout du soft prompt comme contexte pédagogique (Correction d'Injection d'Embeddings)
   if (softPromptText) {
       systemPrompt += `\n\nContexte pédagogique supplémentaire: ${softPromptText}`
   }
@@ -193,7 +178,6 @@ Répondez en JSON avec la structure suivante:
   return { analysis, tokensUsed }
 }
 
-// generateFeedback (inchangé, utilise la config de l'agent)
 async function generateFeedback(analysis: AnalysisResult, agentConfig: any): Promise<FeedbackResult> {
   const systemPrompt = agentConfig?.configuration?.system_prompt ?? "You are Spot, a supportive and encouraging coach."
   const userMessage = `Basé sur cette analyse de pitch:
@@ -268,7 +252,6 @@ async function logExecution(request: AnalyzePitchRequest, result: AnalyzePitchRe
 console.info("analyze-pitch-recording started")
 Deno.serve(async (req: Request) => {
   try {
-    // CORRECTION : Gestion correcte de la méthode OPTIONS
     if (req.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
@@ -280,7 +263,6 @@ Deno.serve(async (req: Request) => {
       })
     }
     
-    // CORRECTION : Utiliser errorResponse pour les méthodes non autorisées
     if (req.method !== "POST") {
       return errorResponse("Method not allowed", 405)
     }
@@ -292,17 +274,14 @@ Deno.serve(async (req: Request) => {
       return errorResponse("Body JSON invalide", 400) 
     }
 
-    // 2. Validation des nouveaux champs
     if (!body?.audio || typeof body.duration !== "number" || !body.personaId || !body.softPromptTask || !body.agentName) {
       return errorResponse("Champs requis manquants: audio (base64), duration (nombre), personaId, softPromptTask, agentName", 400)
     }
 
     const start = Date.now()
     
-    // 3. Exécution de la logique
     const transcription = await transcribeAudio(body.audio)
     
-    // Chargement dynamique des configurations
     const softPromptText = await loadSoftPrompt(body.softPromptTask)
     const agentConfig = await loadAgentConfig(body.agentName)
 
@@ -325,7 +304,6 @@ Deno.serve(async (req: Request) => {
 
     EdgeRuntime.waitUntil(logExecution(body, response))
 
-    // 4. Réponse avec headers CORS
     return new Response(JSON.stringify(response), { 
       headers: { 
         "Content-Type": "application/json", 
@@ -338,7 +316,6 @@ Deno.serve(async (req: Request) => {
     })
   } catch (e) {
     console.error("Erreur analyze-pitch-recording:", e)
-    // Réponse d'erreur avec headers CORS
     return errorResponse(e instanceof Error ? e.message : "Internal server error", 500)
   }
 })
