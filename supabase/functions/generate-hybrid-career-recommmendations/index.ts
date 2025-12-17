@@ -1,4 +1,3 @@
-// File: supabase/functions/generate-hybrid-career-recommendations/index.ts
 import { createClient } from "npm:@supabase/supabase-js@2.45.4"
 
 interface GenerateRecommendationsRequest {
@@ -36,7 +35,12 @@ const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
 function badRequest(msg: string) {
   return new Response(JSON.stringify({ error: msg }), {
     status: 400,
-    headers: { "Content-Type": "application/json" },
+    headers: { 
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    },
   })
 }
 
@@ -144,7 +148,7 @@ Répondez en JSON uniquement, structure tableau:
       ],
       temperature: agentConfig?.configuration?.hyperparameters?.temperature ?? 0.8,
       max_tokens: agentConfig?.configuration?.hyperparameters?.max_tokens ?? 1500,
-      response_format: { type: "json_object" }, // l’API renvoie un objet; on extrait le tableau si présent
+      response_format: { type: "json_object" },
     }),
   })
 
@@ -163,7 +167,6 @@ Répondez en JSON uniquement, structure tableau:
     parsed = {}
   }
 
-  // Supporte deux formes: soit l’LLM renvoie un tableau direct, soit un objet avec key "careers"
   let careers: CareerRecommendation[] = []
   if (Array.isArray(parsed)) {
     careers = parsed
@@ -206,7 +209,26 @@ async function logExecution(
 console.info("generate-hybrid-career-recommendations started")
 Deno.serve({ port: 8000 }, async (req: Request) => {
   try {
-    if (req.method !== "POST") return new Response("Method not allowed", { status: 405 })
+    // CORRECTION : Retourner null pour OPTIONS au lieu de "ok"
+    if (req.method === "OPTIONS") {
+      return new Response(null, {
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+        },
+        status: 204,
+      })
+    }
+    
+    if (req.method !== "POST") return new Response("Method not allowed", { 
+      status: 405,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+      }
+    })
 
     let body: GenerateRecommendationsRequest
     try {
@@ -237,13 +259,24 @@ Deno.serve({ port: 8000 }, async (req: Request) => {
     EdgeRuntime.waitUntil(logExecution(body, response))
 
     return new Response(JSON.stringify(response), {
-      headers: { "Content-Type": "application/json", "Connection": "keep-alive" },
+      headers: { 
+        "Content-Type": "application/json", 
+        "Connection": "keep-alive",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+      },
       status: 200,
     })
   } catch (e) {
     console.error("Erreur generate-hybrid-career-recommendations:", e)
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Internal server error" }), {
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+      },
       status: 500,
     })
   }
