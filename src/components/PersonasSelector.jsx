@@ -25,7 +25,8 @@ const PERSONAS = [
     promise: 'Une expérience transformationnelle : "Je découvre qui je suis et je deviens visible"',
     icon: '🌟',
     color: 'from-blue-500 to-cyan-500',
-    softPromptTask: 'young_talent_guidance'
+    softPromptTask: 'young_talent_guidance',
+    agentName: 'personas_young_talent'
   },
   {
     id: 'adult-reconversion',
@@ -40,7 +41,8 @@ const PERSONAS = [
     promise: 'Un miroir éclairant : "Je reconnecte mon histoire, mes passions et un futur viable"',
     icon: '🔄',
     color: 'from-purple-500 to-pink-500',
-    softPromptTask: 'adult_reconversion_guidance'
+    softPromptTask: 'adult_reconversion_guidance',
+    agentName: 'personas_adult_reconversion'
   },
   {
     id: 'mentor-senior',
@@ -55,7 +57,8 @@ const PERSONAS = [
     promise: 'Un cercle d\'impact : "Je transmets mon expérience et je laisse une trace positive"',
     icon: '🏆',
     color: 'from-amber-500 to-orange-500',
-    softPromptTask: 'mentor_senior_guidance'
+    softPromptTask: 'mentor_senior_guidance',
+    agentName: 'personas_mentor_senior'
   },
   {
     id: 'entrepreneur',
@@ -71,7 +74,8 @@ const PERSONAS = [
     promise: 'Un outil de marque et de recrutement : "Je repère les talents, je m\'engage, je gagne en visibilité"',
     icon: '💼',
     color: 'from-green-500 to-emerald-500',
-    softPromptTask: 'entrepreneur_guidance'
+    softPromptTask: 'entrepreneur_guidance',
+    agentName: 'personas_entrepreneur'
   },
   {
     id: 'institution',
@@ -86,7 +90,8 @@ const PERSONAS = [
     promise: 'Une capsule territoriale : "Votre région valorise ses jeunes et devient pionnière"',
     icon: '🏛️',
     color: 'from-red-500 to-rose-500',
-    softPromptTask: 'institution_guidance'
+    softPromptTask: 'institution_guidance',
+    agentName: 'personas_institution'
   },
   {
     id: 'sponsor',
@@ -102,7 +107,8 @@ const PERSONAS = [
     promise: 'Un projet futuriste, humain et scalable : "Nous sponsorisons l\'émergence de la génération 2050"',
     icon: '💎',
     color: 'from-indigo-500 to-violet-500',
-    softPromptTask: 'sponsor_guidance'
+    softPromptTask: 'sponsor_guidance',
+    agentName: 'personas_sponsor'
   },
   {
     id: 'educational-partner',
@@ -117,11 +123,12 @@ const PERSONAS = [
     promise: 'Un levier pédagogique complet : "Nous révélons les talents et construisons des trajectoires"',
     icon: '📚',
     color: 'from-teal-500 to-cyan-500',
-    softPromptTask: 'educational_partner_guidance'
+    softPromptTask: 'educational_partner_guidance',
+    agentName: 'personas_educational_partner'
   }
 ]
 
-export default function PersonasSelector({ onSelectPersona }) {
+export default function PersonasSelector() {
   const [selectedPersona, setSelectedPersona] = useState(null)
   const [softPromptLoaded, setSoftPromptLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -140,41 +147,35 @@ export default function PersonasSelector({ onSelectPersona }) {
       // 1. Charger le Soft Prompt optimisé pour ce persona
       const { data: softPromptData, error: softPromptError } = await supabase
         .from('llm_soft_prompts')
-        .select('id, embeddings, prompt_length')
+        .select('id, prompt_text, is_active, task_name')
         .eq('task_name', persona.softPromptTask)
         .eq('is_active', true)
         .single()
 
       if (softPromptError && softPromptError.code !== 'PGRST116') {
-        throw new Error(`Erreur lors du chargement du soft prompt: ${softPromptError.message}`)
+        console.warn(`Soft prompt non trouvé pour ${persona.softPromptTask}:`, softPromptError.message)
       }
 
       // 2. Charger la configuration active de l'agent pour ce persona
       const { data: configData, error: configError } = await supabase
         .from('agent_configurations')
-        .select('id, configuration, metrics')
-        .eq('agent_name', `personas_${persona.id}`)
+        .select('id, configuration, agent_name, is_active')
+        .eq('agent_name', persona.agentName)
         .eq('is_active', true)
         .single()
 
       if (configError && configError.code !== 'PGRST116') {
-        throw new Error(`Erreur lors du chargement de la configuration: ${configError.message}`)
+        console.warn(`Configuration agent non trouvée pour ${persona.agentName}:`, configError.message)
       }
 
       // 3. Mettre à jour l'état
       setSoftPromptLoaded(!!softPromptData)
-      const fullPersonaData = {
+      setAgentConfig(configData)
+      setSelectedPersona({
         ...persona,
         softPrompt: softPromptData,
         config: configData
-      }
-      setAgentConfig(configData)
-      setSelectedPersona(fullPersonaData)
-      
-      // Appel de la fonction de callback pour informer le composant parent
-      if (onSelectPersona) {
-        onSelectPersona(fullPersonaData)
-      }
+      })
     } catch (err) {
       setError(err.message)
       setSelectedPersona(persona)
@@ -270,7 +271,7 @@ export default function PersonasSelector({ onSelectPersona }) {
                     <div className="text-green-200">
                       <p className="mb-2">✅ Soft prompt actif et chargé</p>
                       <p className="text-xs text-gray-200">
-                        Tâche: {selectedPersona.softPromptTask} | Longueur: {selectedPersona.softPrompt?.prompt_length || 'N/A'} tokens
+                        Tâche: {selectedPersona.softPromptTask}
                       </p>
                     </div>
                   ) : (
@@ -283,21 +284,21 @@ export default function PersonasSelector({ onSelectPersona }) {
                   <div className="bg-white bg-opacity-10 rounded-lg p-4">
                     <h3 className="text-white font-bold mb-2">⚙️ Configuration Agent</h3>
                     <div className="text-white text-sm space-y-2">
-                      <p><strong>Système Prompt:</strong> {agentConfig.configuration?.system_prompt?.substring(0, 80)}...</p>
-                      {agentConfig.metrics && (
-                        <p><strong>Fitness Score:</strong> {(agentConfig.metrics.fitness_score * 100).toFixed(1)}%</p>
-                      )}
+                      <p>
+                        <strong>Système Prompt:</strong> {
+                          agentConfig.configuration?.system_prompt 
+                          ? agentConfig.configuration.system_prompt.substring(0, 80) + '...'
+                          : 'Configuration chargée'
+                        }
+                      </p>
                     </div>
                   </div>
                 )}
 
-		                {/* Action Button (Désactivé ici, la logique de navigation sera dans le parent) */}
-		                <button 
-		                  className="w-full mt-6 bg-white text-slate-900 font-bold py-3 rounded-lg hover:bg-gray-100 transition-all duration-200"
-		                  disabled={loading || !selectedPersona}
-		                >
-		                  Configuration chargée
-		                </button>
+                {/* Action Button */}
+                <button className="w-full mt-6 bg-white text-slate-900 font-bold py-3 rounded-lg hover:bg-gray-100 transition-all duration-200">
+                  Commencer l'expérience SpotBulle
+                </button>
               </>
             )}
           </div>

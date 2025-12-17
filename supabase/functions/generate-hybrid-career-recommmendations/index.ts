@@ -207,9 +207,8 @@ async function logExecution(
 }
 
 console.info("generate-hybrid-career-recommendations started")
-Deno.serve({ port: 8000 }, async (req: Request) => {
+Deno.serve(async (req: Request) => {
   try {
-    // CORRECTION : Retourner null pour OPTIONS au lieu de "ok"
     if (req.method === "OPTIONS") {
       return new Response(null, {
         headers: {
