@@ -182,6 +182,11 @@ export default function SoftPowerPassions() {
             selectedPassions: selectedPassions,
             softPromptId: softPromptData?.id || null,
             configId: configData?.id || null
+          },
+          headers: {
+            'x-client-info': 'spotbulle-secure',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`, // Utilisation de la clé anon
+            'Content-Type': 'application/json',
           }
         }
       )
