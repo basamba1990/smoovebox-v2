@@ -153,7 +153,7 @@ export default function SoftPowerPassions() {
         .select('id, prompt_text, is_active, task_name')
         .eq('task_name', 'hybrid_career_recommendations')
         .eq('is_active', true)
-        .single()
+        .maybeSingle()
 
       if (softPromptError && softPromptError.code !== 'PGRST116') {
         console.warn('Soft prompt non trouvé, utilisation de la configuration par défaut')
@@ -165,7 +165,7 @@ export default function SoftPowerPassions() {
         .select('id, configuration, agent_name, is_active')
         .eq('agent_name', 'hybrid_career_agent')
         .eq('is_active', true)
-        .single()
+        .maybeSingle()
 
       if (configError && configError.code !== 'PGRST116') {
         console.warn('Configuration agent non trouvée')
