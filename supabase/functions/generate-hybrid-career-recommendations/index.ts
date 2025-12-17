@@ -32,14 +32,25 @@ if (!supabaseUrl || !supabaseServiceRoleKey || !openaiApiKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
 
-function badRequest(msg: string) {
+const ALLOWED_ORIGINS = new Set([
+  "https://spotbulle.vercel.app",
+])
+
+function corsHeaders(origin?: string) {
+  const allowed = origin && ALLOWED_ORIGINS.has(origin) ? origin : "https://spotbulle.vercel.app"
+  return {
+    "Access-Control-Allow-Origin": allowed,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  }
+}
+
+function badRequest(msg: string, origin?: string) {
   return new Response(JSON.stringify({ error: msg }), {
     status: 400,
     headers: { 
       "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+      ...corsHeaders(origin),
     },
   })
 }
@@ -206,38 +217,52 @@ async function logExecution(
   if (error) console.warn("Erreur lors du logging:", error.message)
 }
 
-console.info("generate-hybrid-career-recommendations started")
+async function requireAuthenticatedUser(req: Request): Promise<{ userId: string } | Response> {
+  const auth = req.headers.get("authorization") || req.headers.get("Authorization")
+  if (!auth?.startsWith("Bearer ")) {
+    return new Response(JSON.stringify({ error: "Authorization Bearer requis" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json", ...corsHeaders(req.headers.get("origin") || undefined) },
+    })
+  }
+  const jwt = auth.slice("Bearer ".length)
+  // Vérifie le JWT côté Edge via auth.getUser
+  const serverClient = createClient(supabaseUrl!, jwt)
+  const { data, error } = await serverClient.auth.getUser()
+  if (error || !data.user) {
+    return new Response(JSON.stringify({ error: "Token invalide ou expiré" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json", ...corsHeaders(req.headers.get("origin") || undefined) },
+    })
+  }
+  return { userId: data.user.id }
+}
+
+console.info("generate-hybrid-career-recommendations secured start")
 Deno.serve(async (req: Request) => {
+  const origin = req.headers.get("origin") || undefined
   try {
     if (req.method === "OPTIONS") {
-      return new Response(null, {
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "POST, OPTIONS",
-          "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-        },
-        status: 204,
-      })
+      return new Response(null, { headers: { ...corsHeaders(origin) }, status: 204 })
     }
-    
-    if (req.method !== "POST") return new Response("Method not allowed", { 
-      status: 405,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-      }
-    })
+
+    if (req.method !== "POST") {
+      return new Response("Method not allowed", { status: 405, headers: { ...corsHeaders(origin) } })
+    }
+
+    // Auth obligatoire
+    const authResult = await requireAuthenticatedUser(req)
+    if (authResult instanceof Response) return authResult
 
     let body: GenerateRecommendationsRequest
     try {
       body = await req.json()
     } catch {
-      return badRequest("Body JSON invalide")
+      return badRequest("Body JSON invalide", origin)
     }
 
     if (!Array.isArray(body.selectedPassions) || body.selectedPassions.length === 0) {
-      return badRequest("Champs requis: selectedPassions (array non vide)")
+      return badRequest("Champs requis: selectedPassions (array non vide)", origin)
     }
 
     const start = Date.now()
@@ -259,23 +284,16 @@ Deno.serve(async (req: Request) => {
 
     return new Response(JSON.stringify(response), {
       headers: { 
-        "Content-Type": "application/json", 
-        "Connection": "keep-alive",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+        "Content-Type": "application/json",
+        Connection: "keep-alive",
+        ...corsHeaders(origin),
       },
       status: 200,
     })
   } catch (e) {
     console.error("Erreur generate-hybrid-career-recommendations:", e)
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Internal server error" }), {
-      headers: { 
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-      },
+      headers: { "Content-Type": "application/json", ...corsHeaders(req.headers.get("origin") || undefined) },
       status: 500,
     })
   }
