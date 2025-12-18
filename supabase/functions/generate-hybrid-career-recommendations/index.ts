@@ -32,17 +32,9 @@ if (!supabaseUrl || !supabaseServiceRoleKey || !openaiApiKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
 
-const ALLOWED_ORIGINS = new Set([
-  "https://spotbulle.vercel.app",
-  "https://smoovebox-v2-samba-bas-projects.vercel.app/",
-])
-
 function corsHeaders(origin?: string) {
-  // Pour accepter toutes les origines, on utilise '*'
-  // NOTE: En production, il est fortement recommandé de lister explicitement les domaines autorisés.
-  const allowed = "*" 
   return {
-    "Access-Control-Allow-Origin": allowed,
+    "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   }
@@ -162,7 +154,7 @@ Répondez en JSON uniquement, structure tableau:
       ],
       temperature: agentConfig?.configuration?.hyperparameters?.temperature ?? 0.8,
       max_tokens: agentConfig?.configuration?.hyperparameters?.max_tokens ?? 1500,
-      response_format: { type: "json_object" },
+      // Suppression de response_format pour éviter les conflits avec le format tableau
     }),
   })
 
@@ -220,28 +212,7 @@ async function logExecution(
   if (error) console.warn("Erreur lors du logging:", error.message)
 }
 
-async function requireAuthenticatedUser(req: Request): Promise<{ userId: string } | Response> {
-  const auth = req.headers.get("authorization") || req.headers.get("Authorization")
-  if (!auth?.startsWith("Bearer ")) {
-    return new Response(JSON.stringify({ error: "Authorization Bearer requis" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json", ...corsHeaders(req.headers.get("origin") || undefined) },
-    })
-  }
-  const jwt = auth.slice("Bearer ".length)
-  // Vérifie le JWT côté Edge via auth.getUser
-  const serverClient = createClient(supabaseUrl!, jwt)
-  const { data, error } = await serverClient.auth.getUser()
-  if (error || !data.user) {
-    return new Response(JSON.stringify({ error: "Token invalide ou expiré" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json", ...corsHeaders(req.headers.get("origin") || undefined) },
-    })
-  }
-  return { userId: data.user.id }
-}
-
-console.info("generate-hybrid-career-recommendations secured start")
+console.info("generate-hybrid-career-recommendations public start")
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin") || undefined
   try {
@@ -253,9 +224,8 @@ Deno.serve(async (req: Request) => {
       return new Response("Method not allowed", { status: 405, headers: { ...corsHeaders(origin) } })
     }
 
-    // Auth obligatoire
-    const authResult = await requireAuthenticatedUser(req)
-    if (authResult instanceof Response) return authResult
+    // SUPPRESSION DE L'AUTHENTIFICATION OBLIGATOIRE
+    // Cette fonction est publique et accessible sans JWT
 
     let body: GenerateRecommendationsRequest
     try {
