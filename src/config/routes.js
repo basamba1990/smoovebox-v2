@@ -25,6 +25,7 @@ import SimplifiedHome from "@/pages/SimplifiedHome.jsx";
 import WelcomeAgent from "@/components/WelcomeAgent.jsx";
 import LumiOnboarding from "@/pages/lumi-onboarding.jsx";
 import UpdateDISC from "@/pages/UpdateDISC.jsx";
+import SoftPowerPassions from "@/components/SoftPowerPassions.jsx"; // ✅ AJOUT
 
 /**
  * Route configuration
@@ -49,11 +50,11 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
     // Root route - conditional based on auth (handled dynamically)
     {
       path: "/",
-      element: SimplifiedHome, // Default, but won't be used for conditional routes
-      requiresAuth: false, // Handled conditionally, not with RequireAuth wrapper
-      isConditional: true, // Flag to indicate conditional rendering
-      conditionalElement: SimplifiedHome, // Component for authenticated users
-      conditionalElementGuest: WelcomeAgent, // Component for guests
+      element: SimplifiedHome,
+      requiresAuth: false,
+      isConditional: true,
+      conditionalElement: SimplifiedHome,
+      conditionalElementGuest: WelcomeAgent,
       conditionalProps: {
         user,
         profile,
@@ -69,92 +70,40 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
     },
 
     // Auth routes (public)
-    {
-      path: "/login",
-      element: Login,
-      requiresAuth: false,
-    },
-    {
-      path: "/auth/callback",
-      element: AuthCallback,
-      requiresAuth: false,
-    },
-    {
-      path: "/reset-password",
-      element: ResetPassword,
-      requiresAuth: false,
-    },
-    {
-      path: "/company-signup",
-      element: CompanySignup,
-      requiresAuth: false,
-    },
-    {
-      path: "/company-signin",
-      element: CompanySignin,
-      requiresAuth: false,
-    },
-    // Legacy PSG routes - redirect to company routes
-    {
-      path: "/psg-signup",
-      element: CompanySignup,
-      requiresAuth: false,
-    },
-    {
-      path: "/psg-signin",
-      element: CompanySignin,
-      requiresAuth: false,
-    },
-    {
-      path: "/company-record",
-      element: CompanyRecord,
-      requiresAuth: true,
-    },
+    { path: "/login", element: Login, requiresAuth: false },
+    { path: "/auth/callback", element: AuthCallback, requiresAuth: false },
+    { path: "/reset-password", element: ResetPassword, requiresAuth: false },
+    { path: "/company-signup", element: CompanySignup, requiresAuth: false },
+    { path: "/company-signin", element: CompanySignin, requiresAuth: false },
 
-    // Demo/Test routes (public)
-    {
-      path: "/transformation-demo",
-      element: TransformationDemo,
-      requiresAuth: false,
-    },
-    {
-      path: "/test-chat",
-      element: FootballChatTest,
-      requiresAuth: false,
-    },
-    {
-      path: "/premium",
-      element: SpotBullePremium,
-      requiresAuth: false,
-    },
+    // Legacy PSG routes
+    { path: "/psg-signup", element: CompanySignup, requiresAuth: false },
+    { path: "/psg-signin", element: CompanySignin, requiresAuth: false },
+
+    // Company
+    { path: "/company-record", element: CompanyRecord, requiresAuth: true },
+
+    // Demo / Test (public)
+    { path: "/transformation-demo", element: TransformationDemo, requiresAuth: false },
+    { path: "/test-chat", element: FootballChatTest, requiresAuth: false },
+    { path: "/premium", element: SpotBullePremium, requiresAuth: false },
     {
       path: "/demo",
       element: WelcomeAgent,
       requiresAuth: false,
-      props: {
-        demoMode: true,
-      },
+      props: { demoMode: true },
     },
     {
       path: "/features",
       element: WelcomeAgent,
       requiresAuth: false,
-      props: {
-        showFeatures: true,
-      },
+      props: { showFeatures: true },
     },
 
     // Protected routes
-    {
-      path: "/lumi/onboarding",
-      element: LumiOnboarding,
-      requiresAuth: true,
-    },
-    {
-      path: "/spotcoach",
-      element: SpotCoach,
-      requiresAuth: true,
-    },
+    { path: "/lumi/onboarding", element: LumiOnboarding, requiresAuth: true },
+    { path: "/spotcoach", element: SpotCoach, requiresAuth: true },
+
     {
       path: "/record-video",
       element: EnhancedRecordVideo,
@@ -192,51 +141,31 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
       path: "/video-analysis/:videoId",
       element: VideoAnalysisPage,
       requiresAuth: true,
-      props: {
-        user,
-        profile,
-        onSignOut,
-      },
+      props: { user, profile, onSignOut },
     },
     {
       path: "/personality-test",
       element: FourColorsTest,
       requiresAuth: true,
-      props: {
-        user,
-        profile,
-        onSignOut,
-      },
+      props: { user, profile, onSignOut },
     },
     {
       path: "/update-disc",
       element: UpdateDISC,
       requiresAuth: true,
-      props: {
-        user,
-        profile,
-        onSignOut,
-      },
+      props: { user, profile, onSignOut },
     },
     {
       path: "/seminars",
       element: SeminarsList,
       requiresAuth: true,
-      props: {
-        user,
-        profile,
-        onSignOut,
-      },
+      props: { user, profile, onSignOut },
     },
     {
       path: "/certification",
       element: Certification,
       requiresAuth: true,
-      props: {
-        user,
-        profile,
-        onSignOut,
-      },
+      props: { user, profile, onSignOut },
     },
     {
       path: "/classic",
@@ -251,23 +180,22 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
         dashboardLoading,
       },
     },
+    { path: "/video-success", element: VideoSuccess, requiresAuth: true },
+    { path: "/directory", element: Directory, requiresAuth: true },
+
+    // ✅ FIX 404 — ROUTE MANQUANTE
     {
-      path: "/video-success",
-      element: VideoSuccess,
-      requiresAuth: true,
-    },
-    {
-      path: "/directory",
-      element: Directory,
+      path: "/soft-power-passions",
+      element: SoftPowerPassions,
       requiresAuth: true,
     },
 
     // Error routes
     {
       path: "/404",
-      element: null, // Custom component, handled separately
+      element: null,
       requiresAuth: false,
-      isCustom: true, // Flag for custom 404 handling
+      isCustom: true,
     },
   ];
 };
