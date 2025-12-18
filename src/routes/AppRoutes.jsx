@@ -123,6 +123,14 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+      <Route
+        path="/soft-power-passions"
+        element={
+          <RequireAuth>
+            <SoftPowerPassions />
+          </RequireAuth>
+        }
+      />
 
       {/* ✅ Nouvelle Route DISC */}
       <Route
