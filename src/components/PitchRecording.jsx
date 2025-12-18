@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
 /**
@@ -21,6 +21,7 @@ export default function PitchRecording() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [duration, setDuration] = useState(0)
+  const [hasAnalyzed, setHasAnalyzed] = useState(false) // ⚠️ NOUVEAU: Protection contre les appels répétés
 
   const mediaRecorderRef = useRef(null)
   const streamRef = useRef(null)
@@ -77,7 +78,7 @@ export default function PitchRecording() {
    * Envoie l'audio à Supabase Edge Function pour transcription et analyse
    */
   const submitPitch = async () => {
-    if (!audioBlob) return
+    if (!audioBlob || hasAnalyzed) return // ⚠️ PROTECTION: Empêcher les appels répétés
 
     setLoading(true)
     setError(null)
@@ -105,6 +106,7 @@ export default function PitchRecording() {
         )
 
         if (functionError) {
+          console.error('Erreur détaillée de la fonction Edge:', functionError)
           throw new Error(`Erreur de la fonction Edge: ${functionError.message}`)
         }
 
@@ -113,12 +115,14 @@ export default function PitchRecording() {
         setAnalysis(data.analysis)
         setFeedback(data.feedback)
         setRecordingState('completed')
+        setHasAnalyzed(true) // ⚠️ MARQUER COMME ANALYSÉ
 
         // 4. Logger l'exécution pour l'optimisation d'agents (Artemis feedback)
         await logPitchExecution(data)
       }
     } catch (err) {
-      setError(err.message)
+      console.error('Erreur complète:', err)
+      setError(`Erreur lors de l'analyse: ${err.message}`)
       setRecordingState('idle')
     } finally {
       setLoading(false)
@@ -154,7 +158,7 @@ export default function PitchRecording() {
         console.warn('Erreur lors du logging:', error.message)
       }
     } catch (err) {
-      console.error('Erreur lors du logging de l\'exécution:', err)
+      console.error('Erreur lors du logging de l'exécution:', err)
     }
   }
 
@@ -169,6 +173,7 @@ export default function PitchRecording() {
     setFeedback(null)
     setError(null)
     setDuration(0)
+    setHasAnalyzed(false) // ⚠️ RÉINITIALISER LE FLAG
   }
 
   return (
@@ -238,7 +243,7 @@ export default function PitchRecording() {
                     </button>
                     <button
                       onClick={submitPitch}
-                      disabled={loading}
+                      disabled={loading || hasAnalyzed}
                       className="bg-green-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-green-600 transition-all duration-200 disabled:opacity-50"
                     >
                       {loading ? 'Analyse en cours...' : 'Analyser'}
@@ -349,12 +354,12 @@ export default function PitchRecording() {
 
         {/* Error Display */}
         {error && (
-          <div className="bg-red-600 rounded-xl p-6 text-white mb-8">
+          <div className="bg-red-600 rounded-xl p-6 text-white">
             <p className="font-bold mb-2">Erreur</p>
             <p>{error}</p>
             <button
               onClick={resetRecording}
-              className="mt-4 bg-white text-red-600 font-bold py-2 px-4 rounded hover:bg-gray-100 transition-all"
+              className="mt-4 bg-red-700 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-800 transition-all"
             >
               Réessayer
             </button>

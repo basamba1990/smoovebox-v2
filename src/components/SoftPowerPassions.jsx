@@ -182,11 +182,6 @@ export default function SoftPowerPassions() {
             selectedPassions: selectedPassions,
             softPromptId: softPromptData?.id || null,
             configId: configData?.id || null
-          },
-          headers: {
-            'x-client-info': 'spotbulle-secure',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`, // Utilisation de la clé anon
-            'Content-Type': 'application/json',
           }
         }
       )
@@ -209,7 +204,8 @@ export default function SoftPowerPassions() {
       // 5. Logger l'exécution pour l'optimisation d'agents (Artemis feedback)
       await logRecommendationExecution(recommendationsData)
     } catch (err) {
-      setError(err.message)
+      console.error('Erreur complète:', err)
+      setError(`Erreur lors de la génération des recommandations: ${err.message}`)
     } finally {
       setLoading(false)
     }
@@ -291,7 +287,7 @@ export default function SoftPowerPassions() {
                     onClick={() => togglePassion(passion.id)}
                     className={`w-full p-3 rounded-lg text-left transition-all duration-200 flex items-center justify-between ${
                       selectedPassions.includes(passion.id)
-                        ? `bg-gradient-to-r ${category.color} text-white shadow-lg`
+                        ? 'bg-purple-600 text-white'
                         : 'bg-slate-600 text-gray-200 hover:bg-slate-500'
                     }`}
                   >

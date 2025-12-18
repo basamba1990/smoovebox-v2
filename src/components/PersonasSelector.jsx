@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { useNavigate } from 'react-router-dom'
 
 /**
  * PersonasSelector - Sélecteur de Personas SpotBulle
@@ -134,6 +135,7 @@ export default function PersonasSelector() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [agentConfig, setAgentConfig] = useState(null)
+  const navigate = useNavigate()
 
   /**
    * Charge le Soft Prompt et la configuration d'agent pour le persona sélectionné
@@ -181,6 +183,37 @@ export default function PersonasSelector() {
       setSelectedPersona(persona)
     } finally {
       setLoading(false)
+    }
+  }
+
+  /**
+   * Sauvegarde le persona sélectionné et navigue vers la page suivante
+   */
+  const startExperience = async () => {
+    if (!selectedPersona) return
+
+    try {
+      // Sauvegarder le choix dans Supabase (optionnel)
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (session) {
+        await supabase
+          .from('user_personas')
+          .upsert({
+            user_id: session.user.id,
+            persona_id: selectedPersona.id,
+            selected_at: new Date().toISOString()
+          })
+      }
+
+      // Sauvegarder dans localStorage pour accès rapide
+      localStorage.setItem('selectedPersona', selectedPersona.id)
+      localStorage.setItem('selectedPersonaData', JSON.stringify(selectedPersona))
+
+      // Naviguer vers la page suivante
+      navigate('/soft-power-passions')
+    } catch (err) {
+      setError(`Erreur lors du démarrage: ${err.message}`)
     }
   }
 
@@ -297,9 +330,10 @@ export default function PersonasSelector() {
 
                 {/* Action Button */}
                 <button 
-  onClick={() => console.log('Démarrage de l\'expérience pour le persona:', selectedPersona.id)}
-  className="w-full mt-6 bg-white text-slate-900 font-bold py-3 rounded-lg hover:bg-gray-100 transition-all duration-200"
->
+                  onClick={startExperience}
+                  disabled={loading}
+                  className="w-full mt-6 bg-white text-slate-900 font-bold py-3 rounded-lg hover:bg-gray-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   Commencer l'expérience SpotBulle
                 </button>
               </>
