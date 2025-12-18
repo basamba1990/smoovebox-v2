@@ -34,10 +34,13 @@ const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
 
 const ALLOWED_ORIGINS = new Set([
   "https://spotbulle.vercel.app",
+  "https://smoovebox-v2-samba-bas-projects.vercel.app/",
 ])
 
 function corsHeaders(origin?: string) {
-  const allowed = origin && ALLOWED_ORIGINS.has(origin) ? origin : "https://spotbulle.vercel.app"
+  // Pour accepter toutes les origines, on utilise '*'
+  // NOTE: En production, il est fortement recommandé de lister explicitement les domaines autorisés.
+  const allowed = "*" 
   return {
     "Access-Control-Allow-Origin": allowed,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
