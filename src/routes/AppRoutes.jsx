@@ -29,6 +29,7 @@ import LumiUnifiedProfile from "../pages/LumiUnifiedProfile.jsx";
 import UpdateDISC from "../pages/UpdateDISC.jsx";
 import PitchAnalysisPage from "../pages/PitchAnalysisPage.jsx"; // NOUVEL IMPORT
 import { CompanyRecord } from "../pages/company-record.jsx";
+import SoftPowerPassions from "../components/SoftPowerPassions.jsx";
 
 export default function AppRoutes({
   user,
