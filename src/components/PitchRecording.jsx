@@ -1,14 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
 /**
  * PitchRecording - Enregistrement et Analyse du Pitch
  * 
- * Intègre :
- * - Enregistrement audio/vidéo du pitch (speech)
+ * Integre :
+ * - Enregistrement audio/video du pitch (speech)
  * - Transcription via Supabase Edge Function
- * - Analyse du ton et des émotions (via Prompt Tuning)
- * - Feedback personnalisé basé sur la configuration agent optimisée
+ * - Analyse du ton et des emotions (via Prompt Tuning)
+ * - Feedback personnalise base sur la configuration agent optimisee
  * - Stockage des logs pour l'optimisation continue (Artemis feedback)
  */
 
@@ -21,7 +21,7 @@ export default function PitchRecording() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [duration, setDuration] = useState(0)
-  const [hasAnalyzed, setHasAnalyzed] = useState(false) // ⚠️ NOUVEAU: Protection contre les appels répétés
+  const [hasAnalyzed, setHasAnalyzed] = useState(false) // NOUVEAU: Protection contre les appels repetes
 
   const mediaRecorderRef = useRef(null)
   const streamRef = useRef(null)
@@ -29,7 +29,7 @@ export default function PitchRecording() {
   const timerRef = useRef(null)
 
   /**
-   * Démarre l'enregistrement audio
+   * Demarre l'enregistrement audio
    */
   const startRecording = async () => {
     try {
@@ -54,17 +54,17 @@ export default function PitchRecording() {
       setRecordingState('recording')
       setDuration(0)
 
-      // Timer pour afficher la durée
+      // Timer pour afficher la duree
       timerRef.current = setInterval(() => {
         setDuration((d) => d + 1)
       }, 1000)
     } catch (err) {
-      setError(`Erreur d'accès au microphone: ${err.message}`)
+      setError(`Erreur d'acces au microphone: ${err.message}`)
     }
   }
 
   /**
-   * Arrête l'enregistrement audio
+   * Arrete l'enregistrement audio
    */
   const stopRecording = () => {
     if (mediaRecorderRef.current && recordingState === 'recording') {
@@ -75,10 +75,10 @@ export default function PitchRecording() {
   }
 
   /**
-   * Envoie l'audio à Supabase Edge Function pour transcription et analyse
+   * Envoie l'audio a Supabase Edge Function pour transcription et analyse
    */
   const submitPitch = async () => {
-    if (!audioBlob || hasAnalyzed) return // ⚠️ PROTECTION: Empêcher les appels répétés
+    if (!audioBlob || hasAnalyzed) return // PROTECTION: Empecher les appels repetes
 
     setLoading(true)
     setError(null)
@@ -106,22 +106,27 @@ export default function PitchRecording() {
         )
 
         if (functionError) {
-          console.error('Erreur détaillée de la fonction Edge:', functionError)
+          console.error('Erreur detaillee de la fonction Edge:', functionError)
           throw new Error(`Erreur de la fonction Edge: ${functionError.message}`)
         }
 
-        // 3. Mettre à jour l'état avec les résultats
+        // 3. Mettre a jour l'etat avec les resultats
         setTranscription(data.transcription)
         setAnalysis(data.analysis)
         setFeedback(data.feedback)
         setRecordingState('completed')
-        setHasAnalyzed(true) // ⚠️ MARQUER COMME ANALYSÉ
+        setHasAnalyzed(true) // MARQUER COMME ANALYSE
 
-        // 4. Logger l'exécution pour l'optimisation d'agents (Artemis feedback)
-        await logPitchExecution(data)
+        // 4. Logger l'execution (avec protection)
+        try {
+          await logPitchExecution(data)
+        } catch (logError) {
+          console.warn('Erreur lors du logging:', logError.message)
+          // Ne pas bloquer l'affichage des resultats
+        }
       }
     } catch (err) {
-      console.error('Erreur complète:', err)
+      console.error('Erreur complete:', err)
       setError(`Erreur lors de l'analyse: ${err.message}`)
       setRecordingState('idle')
     } finally {
@@ -130,8 +135,8 @@ export default function PitchRecording() {
   }
 
   /**
-   * Enregistre l'exécution du pitch pour le calcul de la fitness
-   * (Feedback pour l'optimisation évolutionnaire d'agents)
+   * Enregistre l'execution du pitch pour le calcul de la fitness
+   * (Feedback pour l'optimisation evolutionnaire d'agents)
    */
   const logPitchExecution = async (analysisData) => {
     try {
@@ -158,12 +163,12 @@ export default function PitchRecording() {
         console.warn('Erreur lors du logging:', error.message)
       }
     } catch (err) {
-      console.error('Erreur lors du logging de l'exécution:', err)
+      console.error('Erreur lors du logging de l\'execution:', err)
     }
   }
 
   /**
-   * Réinitialise l'état pour un nouvel enregistrement
+   * Reinitialise l'etat pour un nouvel enregistrement
    */
   const resetRecording = () => {
     setRecordingState('idle')
@@ -173,7 +178,7 @@ export default function PitchRecording() {
     setFeedback(null)
     setError(null)
     setDuration(0)
-    setHasAnalyzed(false) // ⚠️ RÉINITIALISER LE FLAG
+    setHasAnalyzed(false) // REINITIALISER LE FLAG
   }
 
   return (
@@ -184,7 +189,7 @@ export default function PitchRecording() {
           🎤 Enregistrez Votre Pitch
         </h1>
         <p className="text-gray-300">
-          Exprimez-vous librement. Spot écoute, analyse et vous offre un feedback personnalisé.
+          Exprimez-vous librement. Spot ecoute, analyse et vous offre un feedback personnalise.
         </p>
       </div>
 
@@ -220,7 +225,7 @@ export default function PitchRecording() {
               {/* Instructions */}
               <p className="text-white text-lg mb-8">
                 {recordingState === 'idle'
-                  ? 'Cliquez sur le bouton ci-dessous pour commencer à enregistrer votre pitch'
+                  ? 'Cliquez sur le bouton ci-dessous pour commencer a enregistrer votre pitch'
                   : 'Enregistrement en cours... Parlez librement'}
               </p>
 
@@ -231,7 +236,7 @@ export default function PitchRecording() {
                     onClick={startRecording}
                     className="bg-white text-purple-600 font-bold py-3 px-8 rounded-lg hover:bg-gray-100 transition-all duration-200 transform hover:scale-105"
                   >
-                    Démarrer l'enregistrement
+                    Demarrer l'enregistrement
                   </button>
                 ) : (
                   <>
@@ -239,7 +244,7 @@ export default function PitchRecording() {
                       onClick={stopRecording}
                       className="bg-red-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-red-600 transition-all duration-200"
                     >
-                      Arrêter
+                      Arreter
                     </button>
                     <button
                       onClick={submitPitch}
@@ -256,7 +261,7 @@ export default function PitchRecording() {
         ) : null}
 
         {/* Processing State */}
-        {recordingState === 'processing' && !loading && (
+        {recordingState === 'processing' && (
           <div className="bg-blue-600 rounded-2xl p-8 shadow-2xl text-center mb-8">
             <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white mx-auto mb-4"></div>
             <p className="text-white text-lg">Transcription et analyse en cours...</p>
@@ -287,7 +292,7 @@ export default function PitchRecording() {
                   )}
                   {analysis.emotions && (
                     <div>
-                      <p className="text-gray-300 text-sm">Émotions détectées</p>
+                      <p className="text-gray-300 text-sm">Emotions detectees</p>
                       <div className="flex flex-wrap gap-2 mt-2">
                         {analysis.emotions.map((emotion, idx) => (
                           <span
@@ -319,11 +324,11 @@ export default function PitchRecording() {
             {/* Feedback */}
             {feedback && (
               <div className="bg-gradient-to-br from-green-600 to-emerald-600 rounded-xl p-6 shadow-lg">
-                <h2 className="text-white font-bold text-lg mb-3">💡 Feedback Personnalisé</h2>
+                <h2 className="text-white font-bold text-lg mb-3">💡 Feedback Personnalise</h2>
                 <p className="text-white mb-4">{feedback.message}</p>
                 {feedback.suggestions && (
                   <div>
-                    <p className="text-white font-semibold mb-2">Suggestions d'amélioration :</p>
+                    <p className="text-white font-semibold mb-2">Suggestions d'amelioration :</p>
                     <ul className="text-white space-y-2">
                       {feedback.suggestions.map((suggestion, idx) => (
                         <li key={idx} className="flex items-start">
@@ -354,14 +359,14 @@ export default function PitchRecording() {
 
         {/* Error Display */}
         {error && (
-          <div className="bg-red-600 rounded-xl p-6 text-white">
+          <div className="bg-red-600 rounded-xl p-6 text-white mb-8">
             <p className="font-bold mb-2">Erreur</p>
             <p>{error}</p>
             <button
               onClick={resetRecording}
-              className="mt-4 bg-red-700 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-800 transition-all"
+              className="mt-4 bg-white text-red-600 font-bold py-2 px-4 rounded hover:bg-gray-100 transition-all"
             >
-              Réessayer
+              Reessayer
             </button>
           </div>
         )}
