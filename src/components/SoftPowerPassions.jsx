@@ -3,13 +3,6 @@ import { supabase } from '../lib/supabase'
 
 /**
  * SoftPowerPassions - Sélecteur de Passions Multiples et Modèle T/M
- * 
- * Basé sur la vision d'Estelle :
- * - Multipotentialité : ne pas forcer à choisir UNE passion
- * - Modèle T/M : hybrider plusieurs verticales pour créer des métiers nouveaux
- * - Exemple : Maria (danse + biologie + vidéo) → créer un métier unique
- * - Intégration avec le Prompt Tuning pour recommandations personnalisées
- * - Utilisation de la configuration agent pour adapter les suggestions
  */
 
 const PASSION_CATEGORIES = [
@@ -121,6 +114,7 @@ export default function SoftPowerPassions() {
   const [agentConfig, setAgentConfig] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [retryCount, setRetryCount] = useState(0)
 
   /**
    * Ajoute/retire une passion de la sélection
@@ -134,8 +128,21 @@ export default function SoftPowerPassions() {
   }
 
   /**
-   * Charge les recommandations optimisées via Prompt Tuning
-   * et la configuration agent pour adapter les suggestions
+   * CORRECTION CRITIQUE : Récupère le token d'authentification
+   */
+  const getAuthToken = async () => {
+    try {
+      // Méthode moderne (Supabase v2+)
+      const { data } = await supabase.auth.getSession()
+      return data.session?.access_token || ''
+    } catch (err) {
+      console.warn('Impossible de récupérer le token auth:', err)
+      return ''
+    }
+  }
+
+  /**
+   * Charge les recommandations optimisées
    */
   const generateRecommendations = async () => {
     if (selectedPassions.length === 0) {
@@ -147,7 +154,10 @@ export default function SoftPowerPassions() {
     setError(null)
 
     try {
-      // 1. Charger le Soft Prompt pour les recommandations de carrière hybride
+      // 1. Récupérer le token d'authentification (CORRIGÉ)
+      const authToken = await getAuthToken()
+      
+      // 2. Charger le Soft Prompt
       const { data: softPromptData, error: softPromptError } = await supabase
         .from('llm_soft_prompts')
         .select('id, prompt_text, is_active, task_name')
@@ -156,10 +166,10 @@ export default function SoftPowerPassions() {
         .maybeSingle()
 
       if (softPromptError && softPromptError.code !== 'PGRST116') {
-        console.warn('Soft prompt non trouvé, utilisation de la configuration par défaut:', softPromptError.message)
+        console.warn('Soft prompt non trouvé:', softPromptError.message)
       }
 
-      // 2. Charger la configuration active de l'agent pour les recommandations
+      // 3. Charger la configuration agent
       const { data: configData, error: configError } = await supabase
         .from('agent_configurations')
         .select('id, configuration, agent_name, is_active')
@@ -174,22 +184,28 @@ export default function SoftPowerPassions() {
       setSoftPromptRecommendations(softPromptData)
       setAgentConfig(configData)
 
-      // 3. CORRECTION CRITIQUE : Appel DIRECT à la fonction Edge avec fetch
-      // au lieu de supabase.functions.invoke pour garantir la méthode POST
+      // 4. Appel à l'Edge Function (CORRIGÉ)
       const EDGE_FUNCTION_URL = 'https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/generate-hybrid-career-recommendations'
       
-      console.log('Envoi des données à l\'Edge Function:', {
+      console.log('Envoi des données:', {
         selectedPassions,
         softPromptId: softPromptData?.id || null,
         configId: configData?.id || null
       })
 
+      // Construire les headers
+      const headers = {
+        'Content-Type': 'application/json',
+      }
+
+      // Ajouter l'authentification seulement si le token existe
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`
+      }
+
       const response = await fetch(EDGE_FUNCTION_URL, {
-        method: 'POST', // CORRIGÉ : Méthode POST explicite
-        headers: {
-          'Content-Type': 'application/json', // CORRIGÉ : Header obligatoire
-          'Authorization': `Bearer ${supabase.auth.session()?.access_token || ''}`
-        },
+        method: 'POST',
+        headers,
         body: JSON.stringify({
           selectedPassions: selectedPassions,
           softPromptId: softPromptData?.id || null,
@@ -199,38 +215,89 @@ export default function SoftPowerPassions() {
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error('Erreur de réponse Edge Function:', response.status, errorText)
-        throw new Error(`Erreur ${response.status}: ${errorText || 'Réponse non valide de l\'Edge Function'}`)
+        console.error('Erreur Edge Function:', response.status, errorText)
+        
+        // Tentative de récupération sans auth si 401/403
+        if (response.status === 401 || response.status === 403) {
+          console.warn('Tentative sans authentification...')
+          const retryResponse = await fetch(EDGE_FUNCTION_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              selectedPassions: selectedPassions,
+              softPromptId: softPromptData?.id || null,
+              configId: configData?.id || null
+            })
+          })
+          
+          if (!retryResponse.ok) {
+            throw new Error(`Échec de l'authentification et de l'accès public`)
+          }
+          
+          const retryData = await retryResponse.json()
+          processRecommendations(retryData, softPromptData, configData)
+          return
+        }
+        
+        throw new Error(`Erreur ${response.status}: ${errorText || 'Réponse invalide'}`)
       }
 
       const recommendationsData = await response.json()
-      console.log('Réponse reçue de l\'Edge Function:', recommendationsData)
+      console.log('Réponse reçue:', recommendationsData)
 
-      // 4. Combiner les recommandations de l'IA avec les métiers hybrides prédéfinis
-      const filteredCareers = HYBRID_CAREERS.filter((career) =>
-        career.passions.some((p) => selectedPassions.includes(p))
-      )
+      // 5. Traiter les recommandations
+      processRecommendations(recommendationsData, softPromptData, configData)
 
-      setSuggestedCareers([
-        ...(recommendationsData?.careers || []),
-        ...filteredCareers
-      ])
-
-      // 5. Logger l'exécution pour l'optimisation d'agents (Artemis feedback)
-      await logRecommendationExecution(recommendationsData)
+      // 6. Logger l'exécution
+      await logRecommendationExecution(recommendationsData, configData?.id)
 
     } catch (err) {
-      console.error('Erreur complète lors de la génération des recommandations:', err)
-      setError(`Erreur lors de la génération des recommandations: ${err.message}. Vérifiez la console pour plus de détails.`)
+      console.error('Erreur complète:', err)
+      setError(`Erreur lors de la génération des recommandations: ${err.message}`)
+      
+      // Fallback aux carrières prédéfinies
+      if (retryCount < 1) {
+        setRetryCount(prev => prev + 1)
+        console.log('Utilisation du fallback aux carrières prédéfinies')
+        const filteredCareers = HYBRID_CAREERS.filter((career) =>
+          career.passions.some((p) => selectedPassions.includes(p))
+        )
+        if (filteredCareers.length > 0) {
+          setSuggestedCareers(filteredCareers)
+          setError(null)
+        }
+      }
     } finally {
       setLoading(false)
     }
   }
 
   /**
-   * Enregistre l'exécution de la recommandation pour le calcul de la fitness
+   * Traite les recommandations reçues
    */
-  const logRecommendationExecution = async (recommendationsData) => {
+  const processRecommendations = (recommendationsData, softPromptData, configData) => {
+    // Combiner les recommandations de l'IA avec les métiers hybrides prédéfinis
+    const filteredCareers = HYBRID_CAREERS.filter((career) =>
+      career.passions.some((p) => selectedPassions.includes(p))
+    )
+
+    const allCareers = [
+      ...(recommendationsData?.careers || []),
+      ...filteredCareers
+    ]
+
+    // Éliminer les doublons
+    const uniqueCareers = allCareers.filter((career, index, self) =>
+      index === self.findIndex((c) => c.name === career.name)
+    )
+
+    setSuggestedCareers(uniqueCareers)
+  }
+
+  /**
+   * Enregistre l'exécution
+   */
+  const logRecommendationExecution = async (recommendationsData, agentConfigId) => {
     try {
       const { error } = await supabase
         .from('agent_execution_logs')
@@ -245,7 +312,7 @@ export default function SoftPowerPassions() {
             latency_ms: recommendationsData?.latency_ms || 0,
             relevance_score: recommendationsData?.relevance_score || 0
           },
-          agent_config_id: agentConfig?.id || null
+          agent_config_id: agentConfigId || null
         })
 
       if (error) {
@@ -264,12 +331,31 @@ export default function SoftPowerPassions() {
     setSuggestedCareers([])
     setSoftPromptRecommendations(null)
     setError(null)
+    setRetryCount(0)
+  }
+
+  /**
+   * Réessaie la génération
+   */
+  const retryGeneration = () => {
+    setError(null)
+    generateRecommendations()
   }
 
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
-      {/* Header */}
-      <div className="max-w-6xl mx-auto mb-12">
+      {/* Header avec bouton retour */}
+      <div className="max-w-6xl mx-auto mb-8">
+        <a 
+          href="/" 
+          className="inline-flex items-center text-gray-400 hover:text-white mb-6 transition-colors"
+        >
+          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+          </svg>
+          ← Retour
+        </a>
+        
         <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-purple-400 to-pink-600 bg-clip-text text-transparent">
           ✨ Vos Passions Multiples
         </h1>
@@ -341,7 +427,7 @@ export default function SoftPowerPassions() {
                     <span>{passion?.name}</span>
                     <button
                       onClick={() => togglePassion(passionId)}
-                      className="ml-2 hover:text-gray-200"
+                      className="ml-2 hover:text-gray-200 text-sm"
                     >
                       ✕
                     </button>
@@ -358,7 +444,7 @@ export default function SoftPowerPassions() {
         <button
           onClick={generateRecommendations}
           disabled={selectedPassions.length === 0 || loading}
-          className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-4 px-12 rounded-lg hover:shadow-2xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105"
+          className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-4 px-12 rounded-lg hover:shadow-2xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 shadow-lg"
         >
           {loading ? (
             <span className="flex items-center justify-center">
@@ -369,17 +455,54 @@ export default function SoftPowerPassions() {
               Génération des recommandations...
             </span>
           ) : (
-            'Découvrir mes Métiers Hybrides'
+            '🚀 Découvrir mes Métiers Hybrides'
           )}
         </button>
       </div>
 
-      {/* Error Display */}
+      {/* Error Display avec bouton Réessayer */}
       {error && (
-        <div className="max-w-6xl mx-auto mb-8 bg-red-600 rounded-xl p-6 text-white">
-          <p className="font-bold mb-2">⚠️ Erreur</p>
-          <p>{error}</p>
-          <p className="text-sm mt-2">Consultez la console du navigateur pour plus de détails.</p>
+        <div className="max-w-6xl mx-auto mb-8 bg-gradient-to-r from-red-600 to-orange-600 rounded-xl p-6 text-white shadow-lg">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="text-2xl">⚠️</span>
+            <div>
+              <p className="font-bold mb-1">Erreur</p>
+              <p className="text-sm opacity-90">{error}</p>
+            </div>
+          </div>
+          
+          <div className="flex gap-4 mt-6">
+            <button
+              onClick={retryGeneration}
+              className="bg-white text-red-600 font-bold py-3 px-6 rounded-lg hover:bg-gray-100 transition-all shadow-md"
+            >
+              🔄 Réessayer
+            </button>
+            <button
+              onClick={resetSelection}
+              className="bg-transparent border border-white text-white font-bold py-3 px-6 rounded-lg hover:bg-white/10 transition-all"
+            >
+              Nouvelle sélection
+            </button>
+          </div>
+          
+          <div className="mt-6 pt-4 border-t border-white/30">
+            <p className="text-sm font-medium mb-2">Conseils de dépannage :</p>
+            <ul className="text-sm space-y-1 opacity-90">
+              <li className="flex items-center">
+                <span className="mr-2">•</span>
+                Vérifiez votre connexion Internet
+              </li>
+              <li className="flex items-center">
+                <span className="mr-2">•</span>
+                Essayez de vous reconnecter à votre compte
+              </li>
+              <li className="flex items-center">
+                <span className="mr-2">•</span>
+                Contactez le support si le problème persiste
+              </li>
+            </ul>
+          </div>
         </div>
       )}
 
@@ -394,7 +517,7 @@ export default function SoftPowerPassions() {
             {suggestedCareers.map((career, idx) => (
               <div
                 key={idx}
-                className="bg-gradient-to-br from-slate-700 to-slate-800 rounded-xl p-6 border border-gray-600 hover:border-purple-500 transition-all"
+                className="bg-gradient-to-br from-slate-700 to-slate-800 rounded-xl p-6 border border-gray-600 hover:border-purple-500 transition-all shadow-lg"
               >
                 <h3 className="text-white font-bold text-xl mb-3">{career.name}</h3>
                 <p className="text-gray-300 mb-4">{career.description}</p>
@@ -420,45 +543,22 @@ export default function SoftPowerPassions() {
                   </div>
                 )}
 
-                <button className="w-full bg-purple-600 text-white font-bold py-2 rounded-lg hover:bg-purple-700 transition-all">
+                <button className="w-full bg-purple-600 text-white font-bold py-3 rounded-lg hover:bg-purple-700 transition-all">
                   En savoir plus
                 </button>
               </div>
             ))}
           </div>
 
-          {/* Optimization Info */}
-          <div className="bg-slate-700 rounded-xl p-6 border border-gray-600 mb-8">
-            <h3 className="text-white font-bold text-lg mb-3">🤖 Optimisation IA</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="text-gray-400 text-sm">Soft Prompt (Prompt Tuning)</p>
-                {softPromptRecommendations ? (
-                  <p className="text-green-400">✅ Actif et optimisé</p>
-                ) : (
-                  <p className="text-yellow-400">⚠️ Configuration par défaut</p>
-                )}
-              </div>
-              <div>
-                <p className="text-gray-400 text-sm">Configuration Agent</p>
-                {agentConfig ? (
-                  <p className="text-green-400">✅ Chargée</p>
-                ) : (
-                  <p className="text-yellow-400">⚠️ Configuration par défaut</p>
-                )}
-              </div>
-            </div>
-          </div>
-
           {/* Action Buttons */}
           <div className="flex gap-4 justify-center">
             <button
               onClick={resetSelection}
-              className="bg-slate-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-slate-700 transition-all"
+              className="bg-slate-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-slate-700 transition-all shadow-md"
             >
-              Nouvelle sélection
+              🔄 Nouvelle sélection
             </button>
-            <button className="bg-white text-slate-900 font-bold py-3 px-8 rounded-lg hover:bg-gray-100 transition-all">
+            <button className="bg-white text-slate-900 font-bold py-3 px-8 rounded-lg hover:bg-gray-100 transition-all shadow-md">
               Continuer vers le Pitch
             </button>
           </div>
