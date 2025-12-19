@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { useNavigate } from 'react-router-dom' // ou next/router pour Next.js
 
 /**
  * SoftPowerPassions - Sélecteur de Passions Multiples et Modèle T/M
@@ -83,27 +84,32 @@ const HYBRID_CAREERS = [
   { 
     name: 'Créateur de Contenu Scientifique', 
     passions: ['video-editing', 'biology', 'writing'], 
-    description: 'Vulgariser la science via des vidéos engageantes' 
+    description: 'Vulgariser la science via des vidéos engageantes',
+    details: 'Ce métier combine la création vidéo, la biologie et l\'écriture pour produire du contenu scientifique accessible au grand public.'
   },
   { 
     name: 'Coach de Performance Créative', 
     passions: ['coaching', 'psychology', 'dance'], 
-    description: 'Aider les artistes à optimiser leur créativité' 
+    description: 'Aider les artistes à optimiser leur créativité',
+    details: 'Accompagne les artistes dans leur développement créatif en combinant techniques de coaching et psychologie.'
   },
   { 
     name: 'Entrepreneur en HealthTech', 
     passions: ['healthcare', 'programming', 'entrepreneurship'], 
-    description: 'Créer des solutions technologiques pour la santé' 
+    description: 'Créer des solutions technologiques pour la santé',
+    details: 'Développe des applications et solutions technologiques innovantes pour améliorer les soins de santé.'
   },
   { 
     name: 'Directeur Artistique de Projets Sociaux', 
     passions: ['graphic-design', 'social-justice', 'leadership'], 
-    description: 'Concevoir des campagnes visuelles pour l\'impact social' 
+    description: 'Concevoir des campagnes visuelles pour l\'impact social',
+    details: 'Crée des campagnes visuelles percutantes pour des causes sociales et humanitaires.'
   },
   { 
     name: 'Spécialiste en Biomécanique Sportive', 
     passions: ['physics', 'sports-management', 'fitness'], 
-    description: 'Optimiser les performances athlétiques via la science' 
+    description: 'Optimiser les performances athlétiques via la science',
+    details: 'Utilise les principes de la physique pour analyser et améliorer les performances sportives.'
   }
 ]
 
@@ -115,6 +121,8 @@ export default function SoftPowerPassions() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [retryCount, setRetryCount] = useState(0)
+  const [selectedCareerDetails, setSelectedCareerDetails] = useState(null)
+  const navigate = useNavigate()
 
   /**
    * Ajoute/retire une passion de la sélection
@@ -132,7 +140,6 @@ export default function SoftPowerPassions() {
    */
   const getAuthToken = async () => {
     try {
-      // Méthode moderne (Supabase v2+)
       const { data } = await supabase.auth.getSession()
       return data.session?.access_token || ''
     } catch (err) {
@@ -332,6 +339,7 @@ export default function SoftPowerPassions() {
     setSoftPromptRecommendations(null)
     setError(null)
     setRetryCount(0)
+    setSelectedCareerDetails(null)
   }
 
   /**
@@ -342,19 +350,38 @@ export default function SoftPowerPassions() {
     generateRecommendations()
   }
 
+  /**
+   * Affiche les détails d'une carrière
+   */
+  const showCareerDetails = (career) => {
+    setSelectedCareerDetails(career)
+  }
+
+  /**
+   * Navigue vers la page d'enregistrement du pitch
+   */
+  const goToPitchRecording = () => {
+    // Sauvegarder les passions sélectionnées pour les réutiliser
+    localStorage.setItem('selectedPassions', JSON.stringify(selectedPassions))
+    localStorage.setItem('suggestedCareers', JSON.stringify(suggestedCareers))
+    
+    // Navigation vers la page PitchRecording
+    navigate('/pitch-recording')
+  }
+
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
       {/* Header avec bouton retour */}
       <div className="max-w-6xl mx-auto mb-8">
-        <a 
-          href="/" 
+        <button 
+          onClick={() => navigate(-1)}
           className="inline-flex items-center text-gray-400 hover:text-white mb-6 transition-colors"
         >
           <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
           </svg>
           ← Retour
-        </a>
+        </button>
         
         <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-purple-400 to-pink-600 bg-clip-text text-transparent">
           ✨ Vos Passions Multiples
@@ -543,7 +570,10 @@ export default function SoftPowerPassions() {
                   </div>
                 )}
 
-                <button className="w-full bg-purple-600 text-white font-bold py-3 rounded-lg hover:bg-purple-700 transition-all">
+                <button 
+                  onClick={() => showCareerDetails(career)}
+                  className="w-full bg-purple-600 text-white font-bold py-3 rounded-lg hover:bg-purple-700 transition-all"
+                >
                   En savoir plus
                 </button>
               </div>
@@ -558,9 +588,88 @@ export default function SoftPowerPassions() {
             >
               🔄 Nouvelle sélection
             </button>
-            <button className="bg-white text-slate-900 font-bold py-3 px-8 rounded-lg hover:bg-gray-100 transition-all shadow-md">
-              Continuer vers le Pitch
+            <button 
+              onClick={goToPitchRecording}
+              className="bg-white text-slate-900 font-bold py-3 px-8 rounded-lg hover:bg-gray-100 transition-all shadow-md"
+            >
+              🎤 Continuer vers le Pitch
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal pour les détails de carrière */}
+      {selectedCareerDetails && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-800 rounded-xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-6">
+              <h3 className="text-2xl font-bold text-white">{selectedCareerDetails.name}</h3>
+              <button
+                onClick={() => setSelectedCareerDetails(null)}
+                className="text-gray-400 hover:text-white text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-lg font-semibold text-white mb-2">📝 Description</h4>
+                <p className="text-gray-300">{selectedCareerDetails.details || selectedCareerDetails.description}</p>
+              </div>
+              
+              {selectedCareerDetails.passions && (
+                <div>
+                  <h4 className="text-lg font-semibold text-white mb-2">✨ Passions requises</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedCareerDetails.passions.map((passionId) => {
+                      const passion = PASSION_CATEGORIES.flatMap((cat) => cat.passions).find(
+                        (p) => p.id === passionId
+                      )
+                      return (
+                        <span
+                          key={passionId}
+                          className="bg-purple-600 text-white px-4 py-2 rounded-full"
+                        >
+                          {passion?.emoji} {passion?.name}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+              
+              <div>
+                <h4 className="text-lg font-semibold text-white mb-2">💼 Compétences clés</h4>
+                <ul className="text-gray-300 space-y-2">
+                  <li>• Créativité et innovation</li>
+                  <li>• Capacité d'adaptation</li>
+                  <li>• Compétences techniques spécifiques</li>
+                  <li>• Communication efficace</li>
+                  <li>• Résolution de problèmes complexes</li>
+                </ul>
+              </div>
+              
+              <div>
+                <h4 className="text-lg font-semibold text-white mb-2">💰 Perspectives</h4>
+                <p className="text-gray-300">Ce métier hybride offre des perspectives uniques dans un marché en pleine évolution, avec une forte demande pour des profils capables de combiner plusieurs domaines d'expertise.</p>
+              </div>
+            </div>
+            
+            <div className="mt-8 flex gap-4">
+              <button
+                onClick={() => setSelectedCareerDetails(null)}
+                className="flex-1 bg-slate-600 text-white font-bold py-3 rounded-lg hover:bg-slate-700 transition-all"
+              >
+                Fermer
+              </button>
+              <button 
+                onClick={goToPitchRecording}
+                className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 rounded-lg hover:opacity-90 transition-all"
+              >
+                🎤 Pratiquer mon pitch pour ce métier
+              </button>
+            </div>
           </div>
         </div>
       )}
