@@ -27,9 +27,10 @@ import Directory from "../pages/directory.jsx";
 import LumiOnboarding from "../pages/lumi-onboarding.jsx";
 import LumiUnifiedProfile from "../pages/LumiUnifiedProfile.jsx";
 import UpdateDISC from "../pages/UpdateDISC.jsx";
-import PitchAnalysisPage from "../pages/PitchAnalysisPage.jsx"; // NOUVEL IMPORT
+import PitchAnalysisPage from "../pages/PitchAnalysisPage.jsx";
 import { CompanyRecord } from "../pages/company-record.jsx";
 import SoftPowerPassions from "../components/SoftPowerPassions.jsx";
+import PitchRecording from "../components/PitchRecording.jsx"; // NOUVEL IMPORT
 
 export default function AppRoutes({
   user,
@@ -90,7 +91,24 @@ export default function AppRoutes({
         }
       />
       <Route path="/test-chat" element={<FootballChatTest />} />
-      {/* NOUVELLE ROUTE POUR L'ANALYSE DE PITCH */}
+      
+      {/* ROUTES POUR LES PASSIONS ET LE PITCH */}
+      <Route
+        path="/soft-power-passions"
+        element={
+          <RequireAuth>
+            <SoftPowerPassions />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/pitch-recording"
+        element={
+          <RequireAuth>
+            <PitchRecording />
+          </RequireAuth>
+        }
+      />
       <Route
         path="/pitch-analysis"
         element={
@@ -99,6 +117,7 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+
       <Route path="/premium" element={<SpotBullePremium />} />
       <Route
         path="/spotcoach"
@@ -121,14 +140,6 @@ export default function AppRoutes({
         element={
           <RequireAuth>
             <LumiUnifiedProfile />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/soft-power-passions"
-        element={
-          <RequireAuth>
-            <SoftPowerPassions />
           </RequireAuth>
         }
       />

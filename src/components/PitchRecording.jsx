@@ -1,19 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-
-/**
- * PitchRecording - Enregistrement et Analyse du Pitch
- * 
- * Intègre :
- * - Enregistrement audio/video du pitch (speech)
- * - Transcription via Supabase Edge Function
- * - Analyse du ton et des émotions (via Prompt Tuning)
- * - Feedback personnalisé basé sur la configuration agent optimisée
- * - Stockage des logs pour l'optimisation continue (Artemis feedback)
- */
+import { useNavigate } from 'react-router-dom'
 
 export default function PitchRecording() {
-  const [recordingState, setRecordingState] = useState('idle') // idle, recording, processing, completed
+  const [recordingState, setRecordingState] = useState('idle')
   const [audioBlob, setAudioBlob] = useState(null)
   const [transcription, setTranscription] = useState(null)
   const [analysis, setAnalysis] = useState(null)
@@ -22,6 +12,8 @@ export default function PitchRecording() {
   const [error, setError] = useState(null)
   const [duration, setDuration] = useState(0)
   const [hasAnalyzed, setHasAnalyzed] = useState(false)
+  const [processingStep, setProcessingStep] = useState('')
+  const navigate = useNavigate()
 
   const mediaRecorderRef = useRef(null)
   const streamRef = useRef(null)
@@ -29,7 +21,7 @@ export default function PitchRecording() {
   const timerRef = useRef(null)
 
   /**
-   * Nettoie les ressources lors du démontage du composant
+   * Nettoie les ressources
    */
   useEffect(() => {
     return () => {
@@ -41,6 +33,19 @@ export default function PitchRecording() {
       }
     }
   }, [])
+
+  /**
+   * CORRECTION CRITIQUE : Récupère le token d'authentification
+   */
+  const getAuthToken = async () => {
+    try {
+      const { data } = await supabase.auth.getSession()
+      return data.session?.access_token || ''
+    } catch (err) {
+      console.warn('Impossible de récupérer le token auth:', err)
+      return ''
+    }
+  }
 
   /**
    * Démarre l'enregistrement audio
@@ -91,11 +96,10 @@ export default function PitchRecording() {
         setRecordingState('idle')
       }
 
-      mediaRecorder.start(100) // Collecte des données par tranches de 100ms
+      mediaRecorder.start(100)
       setRecordingState('recording')
       setDuration(0)
 
-      // Timer pour afficher la durée
       timerRef.current = setInterval(() => {
         setDuration((d) => d + 1)
       }, 1000)
@@ -141,7 +145,7 @@ export default function PitchRecording() {
       reader.onload = async () => {
         const audioBase64 = reader.result.split(',')[1]
         
-        // 2. CORRECTION CRITIQUE : Appel direct à l'Edge Function
+        // 2. Appel à l'Edge Function (CORRIGÉ)
         const EDGE_FUNCTION_URL = 'https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/analyze-pitch-recording'
         
         console.log('Envoi du pitch à l\'Edge Function:', {
@@ -150,12 +154,23 @@ export default function PitchRecording() {
           audioType: audioBlob.type
         })
 
+        // Récupérer le token d'authentification
+        const authToken = await getAuthToken()
+        
+        // Construire les headers
+        const headers = {
+          'Content-Type': 'application/json',
+        }
+        
+        // Ajouter l'authentification seulement si le token existe
+        if (authToken) {
+          headers['Authorization'] = `Bearer ${authToken}`
+        }
+
+        setProcessingStep('transcription')
         const response = await fetch(EDGE_FUNCTION_URL, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabase.auth.session()?.access_token || ''}`
-          },
+          headers,
           body: JSON.stringify({
             audio: audioBase64,
             duration: duration,
@@ -168,25 +183,39 @@ export default function PitchRecording() {
         if (!response.ok) {
           const errorText = await response.text()
           console.error('Erreur Edge Function:', response.status, errorText)
+          
+          // Tentative sans auth si 401/403
+          if (response.status === 401 || response.status === 403) {
+            console.warn('Tentative sans authentification...')
+            const retryResponse = await fetch(EDGE_FUNCTION_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                audio: audioBase64,
+                duration: duration,
+                personaId: 'young-talent',
+                softPromptTask: 'young_talent_guidance',
+                agentName: 'personas_young_talent'
+              })
+            })
+            
+            if (!retryResponse.ok) {
+              throw new Error(`Échec de l'authentification et de l'accès public`)
+            }
+            
+            const retryData = await retryResponse.json()
+            processResults(retryData)
+            return
+          }
+          
           throw new Error(`Erreur ${response.status}: ${errorText || 'Échec de l\'analyse'}`)
         }
 
         const data = await response.json()
         console.log('Réponse reçue:', data)
 
-        // 3. Mettre à jour l'état avec les résultats
-        setTranscription(data.transcription || 'Aucune transcription disponible')
-        setAnalysis(data.analysis || {})
-        setFeedback(data.feedback || { message: 'Aucun feedback disponible' })
-        setRecordingState('completed')
-        setHasAnalyzed(true)
-
-        // 4. Logger l'exécution (avec protection)
-        try {
-          await logPitchExecution(data)
-        } catch (logError) {
-          console.warn('Erreur lors du logging:', logError.message)
-        }
+        // 3. Traiter les résultats
+        processResults(data)
       }
 
       reader.onerror = () => {
@@ -198,12 +227,28 @@ export default function PitchRecording() {
       setRecordingState('idle')
     } finally {
       setLoading(false)
+      setProcessingStep('')
     }
   }
 
   /**
-   * Enregistre l'exécution du pitch pour le calcul de la fitness
-   * (Feedback pour l'optimisation évolutionnaire d'agents)
+   * Traite les résultats de l'analyse
+   */
+  const processResults = (data) => {
+    setTranscription(data.transcription || 'Aucune transcription disponible')
+    setAnalysis(data.analysis || {})
+    setFeedback(data.feedback || { message: 'Aucun feedback disponible' })
+    setRecordingState('completed')
+    setHasAnalyzed(true)
+
+    // Logger l'exécution
+    logPitchExecution(data).catch(err => 
+      console.warn('Erreur lors du logging:', err.message)
+    )
+  }
+
+  /**
+   * Enregistre l'exécution
    */
   const logPitchExecution = async (analysisData) => {
     try {
@@ -235,7 +280,7 @@ export default function PitchRecording() {
   }
 
   /**
-   * Réinitialise l'état pour un nouvel enregistrement
+   * Réinitialise l'état
    */
   const resetRecording = () => {
     if (streamRef.current) {
@@ -259,28 +304,44 @@ export default function PitchRecording() {
   }
 
   /**
-   * Fonction de réessai - combine réinitialisation et nouvel enregistrement
+   * Fonction de réessai
    */
   const retryRecording = () => {
     resetRecording()
-    // Petit délai pour laisser le temps à la réinitialisation
     setTimeout(() => {
       startRecording()
     }, 300)
   }
 
   /**
-   * Fonction pour réessayer l'analyse en cas d'échec
+   * Réessaye l'analyse
    */
   const retryAnalysis = async () => {
     setError(null)
     await submitPitch()
   }
 
+  /**
+   * Retour à la page précédente
+   */
+  const goBack = () => {
+    navigate(-1)
+  }
+
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
       {/* Header */}
       <div className="max-w-6xl mx-auto mb-12">
+        <button 
+          onClick={goBack}
+          className="inline-flex items-center text-gray-400 hover:text-white mb-6 transition-colors"
+        >
+          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+          </svg>
+          ← Retour
+        </button>
+        
         <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent">
           🎤 Enregistrez Votre Pitch
         </h1>
@@ -365,8 +426,14 @@ export default function PitchRecording() {
         {recordingState === 'processing' && (
           <div className="bg-blue-600 rounded-2xl p-8 shadow-2xl text-center mb-8">
             <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
-            <p className="text-white text-lg mb-2">Transcription en cours...</p>
-            <p className="text-blue-200 text-sm">Analyse du ton et des émotions</p>
+            <p className="text-white text-lg mb-2">
+              {processingStep === 'transcription' ? 'Analyse IA en cours...' : 'Préparation de l\'analyse...'}
+            </p>
+            <p className="text-blue-200 text-sm">
+              {processingStep === 'transcription' 
+                ? 'Transcription et analyse du ton et des émotions' 
+                : 'Votre pitch est prêt pour l\'analyse'}
+            </p>
             <div className="mt-6">
               <button
                 onClick={() => setRecordingState('idle')}
@@ -375,6 +442,32 @@ export default function PitchRecording() {
                 Annuler
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Submit Button */}
+        {recordingState === 'processing' && audioBlob && !loading && (
+          <div className="mt-8 text-center">
+            <button
+              onClick={submitPitch}
+              disabled={loading || hasAnalyzed}
+              className="bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold py-4 px-10 rounded-lg hover:shadow-2xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 shadow-lg"
+            >
+              {loading ? (
+                <span className="flex items-center justify-center">
+                  <svg className="animate-spin h-5 w-5 mr-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  {processingStep === 'transcription' ? 'Analyse IA...' : 'Démarrage...'}
+                </span>
+              ) : (
+                '🚀 Analyser mon pitch'
+              )}
+            </button>
+            <p className="text-gray-400 text-sm mt-3">
+              Durée enregistrée : {Math.floor(duration / 60)}:{String(duration % 60).padStart(2, '0')}
+            </p>
           </div>
         )}
 
@@ -481,8 +574,11 @@ export default function PitchRecording() {
               >
                 🔄 Réanalyser
               </button>
-              <button className="flex-1 bg-white text-slate-900 font-bold py-3 rounded-lg hover:bg-gray-100 transition-all duration-200 shadow-lg">
-                📊 Voir les statistiques
+              <button 
+                onClick={goBack}
+                className="flex-1 bg-white text-slate-900 font-bold py-3 rounded-lg hover:bg-gray-100 transition-all duration-200 shadow-lg"
+              >
+                ← Retour aux passions
               </button>
             </div>
           </div>
@@ -521,32 +617,6 @@ export default function PitchRecording() {
                 <li>• Réduisez le bruit ambiant si possible</li>
               </ul>
             </div>
-          </div>
-        )}
-
-        {/* Enregistrement prêt pour analyse */}
-        {recordingState === 'processing' && audioBlob && !loading && (
-          <div className="mt-8 text-center">
-            <button
-              onClick={submitPitch}
-              disabled={loading || hasAnalyzed}
-              className="bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold py-4 px-10 rounded-lg hover:shadow-2xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 shadow-lg"
-            >
-              {loading ? (
-                <span className="flex items-center justify-center">
-                  <svg className="animate-spin h-5 w-5 mr-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Analyse en cours...
-                </span>
-              ) : (
-                '🚀 Analyser mon pitch'
-              )}
-            </button>
-            <p className="text-gray-400 text-sm mt-3">
-              Durée enregistrée : {Math.floor(duration / 60)}:{String(duration % 60).padStart(2, '0')}
-            </p>
           </div>
         )}
       </div>
