@@ -1,5 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js"
 
+// =========================
+// Types
+// =========================
 interface GenerateRecommendationsRequest {
   selectedPassions: string[]
   softPromptId?: string | null
@@ -22,32 +25,42 @@ interface GenerateRecommendationsResponse {
   relevance_score: number
 }
 
+// =========================
+// Env & Clients
+// =========================
 const supabaseUrl = Deno.env.get("SUPABASE_URL")
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
 const openaiApiKey = Deno.env.get("OPENAI_API_KEY")
 
 if (!supabaseUrl || !supabaseServiceRoleKey || !openaiApiKey) {
-  throw new Error("Variables d'environnement manquantes: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY")
+  throw new Error("Missing env vars: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY")
 }
 
 const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
 
+// =========================
+// Helpers
+// =========================
 function corsHeaders(origin?: string) {
   return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Origin": origin ?? "*",
+    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   }
 }
 
-function badRequest(msg: string, origin?: string) {
-  return new Response(JSON.stringify({ error: msg }), {
-    status: 400,
-    headers: { 
+function jsonResponse(body: unknown, status = 200, origin?: string) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
       "Content-Type": "application/json",
       ...corsHeaders(origin),
     },
   })
+}
+
+function badRequest(msg: string, origin?: string) {
+  return jsonResponse({ error: msg }, 400, origin)
 }
 
 function getPassionNames(passionIds: string[]): string[] {
@@ -86,17 +99,14 @@ function getPassionNames(passionIds: string[]): string[] {
   return passionIds.map((id) => passionMap[id] ?? id)
 }
 
-async function loadAgentConfig(configId: string | null): Promise<any> {
+async function loadAgentConfig(configId: string | null): Promise<any | null> {
   if (!configId) return null
   const { data, error } = await supabase
     .from("agent_configurations")
     .select("configuration")
     .eq("id", configId)
     .maybeSingle()
-  if (error) {
-    console.warn("Configuration agent non trouvée:", error.message)
-    return null
-  }
+  if (error) return null
   return data
 }
 
@@ -110,35 +120,24 @@ function safeJsonExtractArray(text: string): any[] {
   }
 }
 
+// =========================
+// LLM
+// =========================
 async function generateRecommendationsViaLLM(
   passionNames: string[],
   agentConfig: any
 ): Promise<{ careers: CareerRecommendation[]; tokensUsed: number }> {
   const systemPrompt =
     agentConfig?.configuration?.system_prompt ??
-    `You are Spot, an expert career advisor specializing in hybrid careers and multipotentiality.
-Respond in French and provide creative, realistic, and inspiring career recommendations as pure JSON.`
+    "You are Spot, an expert career advisor specializing in hybrid careers and multipotentiality. Respond in French and output pure JSON only."
 
-  const userMessage = `L'utilisateur a sélectionné les passions suivantes: ${passionNames.join(", ")}
+  const userMessage = `L'utilisateur a sélectionné: ${passionNames.join(", ")}
 
-Générez 3-5 recommandations de carrière HYBRIDE combinant ces passions de manière créative et réaliste.
-Exigences:
-- Innovantes et uniques
-- Combinant au moins 2 passions
-- Viables avec potentiel de croissance
-- Alignées avec les métiers de demain (2050)
-
-Répondez en JSON uniquement, structure tableau:
-[
-  {
-    "name": "Nom du métier",
-    "description": "Description détaillée du rôle",
-    "passions": ["passion1", "passion2"],
-    "skills": ["compétence1", "compétence2"],
-    "futureOutlook": "Perspective d'avenir",
-    "salaryRange": "Fourchette salariale"
-  }
-]`
+Génère 3–5 métiers HYBRIDES combinant ces passions.
+Contraintes:
+- Combiner ≥ 2 passions
+- Réalistes, innovants, métiers du futur
+- Réponse JSON uniquement (tableau).`
 
   const resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -154,31 +153,23 @@ Répondez en JSON uniquement, structure tableau:
       ],
       temperature: agentConfig?.configuration?.hyperparameters?.temperature ?? 0.8,
       max_tokens: agentConfig?.configuration?.hyperparameters?.max_tokens ?? 1500,
-      // Suppression de response_format pour éviter les conflits avec le format tableau
     }),
   })
 
   if (!resp.ok) {
     const t = await resp.text().catch(() => "")
-    throw new Error(`OpenAI API error: ${resp.status} ${resp.statusText} ${t}`)
+    throw new Error(`OpenAI error ${resp.status}: ${t}`)
   }
 
   const data = await resp.json()
-  const content = data.choices?.[0]?.message?.content ?? "[]"
-
-  let parsed: any
-  try {
-    parsed = JSON.parse(content)
-  } catch {
-    parsed = {}
-  }
+  const content = data?.choices?.[0]?.message?.content ?? "[]"
 
   let careers: CareerRecommendation[] = []
-  if (Array.isArray(parsed)) {
-    careers = parsed
-  } else if (Array.isArray(parsed?.careers)) {
-    careers = parsed.careers
-  } else {
+  try {
+    const parsed = JSON.parse(content)
+    if (Array.isArray(parsed)) careers = parsed
+    else if (Array.isArray(parsed?.careers)) careers = parsed.careers
+  } catch {
     careers = safeJsonExtractArray(content) as CareerRecommendation[]
   }
 
@@ -186,65 +177,80 @@ Répondez en JSON uniquement, structure tableau:
   return { careers, tokensUsed }
 }
 
+// =========================
+// Logging
+// =========================
 async function logExecution(
   request: GenerateRecommendationsRequest,
   result: GenerateRecommendationsResponse
 ): Promise<void> {
-  const { error } = await supabase
-    .from("agent_execution_logs")
-    .insert({
-      input_data: {
-        selected_passions: request.selectedPassions,
-        config_id: request.configId ?? null,
-      },
-      output_data: {
-        recommendations: result.careers,
-        count: result.careers.length,
-      },
-      performance_feedback: {
-        tokens_used: result.tokens_used,
-        latency_ms: result.latency_ms,
-        relevance_score: result.relevance_score,
-      },
-      agent_config_id: request.configId ?? null,
-    })
-
-  if (error) console.warn("Erreur lors du logging:", error.message)
+  await supabase.from("agent_execution_logs").insert({
+    input_data: {
+      selected_passions: request.selectedPassions,
+      config_id: request.configId ?? null,
+    },
+    output_data: {
+      recommendations: result.careers,
+      count: result.careers.length,
+    },
+    performance_feedback: {
+      tokens_used: result.tokens_used,
+      latency_ms: result.latency_ms,
+      relevance_score: result.relevance_score,
+    },
+    agent_config_id: request.configId ?? null,
+  })
 }
 
+// =========================
+// Server
+// =========================
 console.info("generate-hybrid-career-recommendations public start")
+
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin") || undefined
+
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders(origin) })
+  }
+
+  if (req.method === "GET") {
+    return new Response("OK", {
+      status: 200,
+      headers: { "Content-Type": "text/plain", ...corsHeaders(origin) },
+    })
+  }
+
+  if (req.method !== "POST") {
+    return new Response("Method Not Allowed", {
+      status: 405,
+      headers: corsHeaders(origin),
+    })
+  }
+
   try {
-    if (req.method === "OPTIONS") {
-      return new Response(null, { headers: { ...corsHeaders(origin) }, status: 204 })
-    }
-
-    if (req.method !== "POST") {
-      return new Response("Method not allowed", { status: 405, headers: { ...corsHeaders(origin) } })
-    }
-
-    // SUPPRESSION DE L'AUTHENTIFICATION OBLIGATOIRE
-    // Cette fonction est publique et accessible sans JWT
-
     let body: GenerateRecommendationsRequest
     try {
       body = await req.json()
     } catch {
-      return badRequest("Body JSON invalide", origin)
+      return badRequest("Invalid JSON body", origin)
     }
 
     if (!Array.isArray(body.selectedPassions) || body.selectedPassions.length === 0) {
-      return badRequest("Champs requis: selectedPassions (array non vide)", origin)
+      return badRequest("selectedPassions must be a non-empty array", origin)
     }
 
     const start = Date.now()
     const passionNames = getPassionNames(body.selectedPassions)
     const agentConfig = await loadAgentConfig(body.configId ?? null)
-    const { careers, tokensUsed } = await generateRecommendationsViaLLM(passionNames, agentConfig)
+
+    const { careers, tokensUsed } = await generateRecommendationsViaLLM(
+      passionNames,
+      agentConfig
+    )
 
     const latency = Date.now() - start
-    const relevanceScore = Math.min(careers.length / 5, 1.0)
+    const relevanceScore = Math.min(careers.length / 5, 1)
 
     const response: GenerateRecommendationsResponse = {
       careers,
@@ -255,19 +261,12 @@ Deno.serve(async (req: Request) => {
 
     EdgeRuntime.waitUntil(logExecution(body, response))
 
-    return new Response(JSON.stringify(response), {
-      headers: { 
-        "Content-Type": "application/json",
-        Connection: "keep-alive",
-        ...corsHeaders(origin),
-      },
-      status: 200,
-    })
+    return jsonResponse(response, 200, origin)
   } catch (e) {
-    console.error("Erreur generate-hybrid-career-recommendations:", e)
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Internal server error" }), {
-      headers: { "Content-Type": "application/json", ...corsHeaders(req.headers.get("origin") || undefined) },
-      status: 500,
-    })
+    return jsonResponse(
+      { error: e instanceof Error ? e.message : "Internal server error" },
+      500,
+      origin
+    )
   }
 })
