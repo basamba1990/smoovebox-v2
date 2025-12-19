@@ -27,7 +27,10 @@ import Directory from "../pages/directory.jsx";
 import LumiOnboarding from "../pages/lumi-onboarding.jsx";
 import LumiUnifiedProfile from "../pages/LumiUnifiedProfile.jsx";
 import UpdateDISC from "../pages/UpdateDISC.jsx";
+import PitchAnalysisPage from "../pages/PitchAnalysisPage.jsx";
 import { CompanyRecord } from "../pages/company-record.jsx";
+import SoftPowerPassions from "../components/SoftPowerPassions.jsx";
+import PitchRecording from "../components/PitchRecording.jsx"; // NOUVEL IMPORT
 
 export default function AppRoutes({
   user,
@@ -88,6 +91,33 @@ export default function AppRoutes({
         }
       />
       <Route path="/test-chat" element={<FootballChatTest />} />
+      
+      {/* ROUTES POUR LES PASSIONS ET LE PITCH */}
+      <Route
+        path="/soft-power-passions"
+        element={
+          <RequireAuth>
+            <SoftPowerPassions />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/pitch-recording"
+        element={
+          <RequireAuth>
+            <PitchRecording />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/pitch-analysis"
+        element={
+          <RequireAuth>
+            <PitchAnalysisPage />
+          </RequireAuth>
+        }
+      />
+
       <Route path="/premium" element={<SpotBullePremium />} />
       <Route
         path="/spotcoach"
@@ -180,18 +210,8 @@ export default function AppRoutes({
         }
       />
 
-      <Route
-        path="/personality-test"
-        element={
-          <RequireAuth>
-            <FourColorsTest
-              user={user}
-              profile={profile}
-              onSignOut={onSignOut}
-            />
-          </RequireAuth>
-        }
-      />
+      {/* Route /personality-test dépréciée, redirige vers /update-disc */}
+      <Route path="/personality-test" element={<Navigate to="/update-disc" replace />} />
 
       <Route
         path="/seminars"

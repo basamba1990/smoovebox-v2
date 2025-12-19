@@ -128,7 +128,6 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
           .from('profiles')
           .update({ 
             dominant_color: null,
-            onboarding_completed: false 
           })
           .eq('id', user.id);
 
@@ -261,8 +260,8 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
             <Button 
               onClick={handleRegenerateDISC} 
               loading={loading}
-              variant="outline" 
-              className="w-full md:w-auto border-red-500 text-red-500 hover:bg-red-50"
+              variant="destructive" 
+              className="w-full md:w-auto"
             >
               🔄 Regénérer le DISC
             </Button>
@@ -338,12 +337,12 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
         {/* Navigation */}
         <div className="flex justify-between items-center">
           <Button 
-            onClick={() => setCurrentQuestion(prev => Math.max(0, prev - 1))}
+            onClick={() => currentQuestion > 0 ? setCurrentQuestion(prev => prev - 1) : null}
             disabled={currentQuestion === 0}
             variant="outline" 
             className="px-6"
           >
-            ← Précédent
+            {currentQuestion > 0 ? '← Question précédente' : 'Question suivante →'}
           </Button>
           
           <div className="text-sm text-gray-500">
@@ -356,9 +355,9 @@ const FourColorsTest = ({ user, profile, onComplete, onSignOut }) => {
               : calculateResults()
             }
             disabled={answers[currentQuestion] === null}
-            className="bg-primary-600 hover:bg-primary-700 px-6"
+            variant="success" className="px-6"
           >
-            {currentQuestion < DISC_QUESTIONS.length - 1 ? 'Suivant →' : 'Voir mes résultats'}
+            {currentQuestion < DISC_QUESTIONS.length - 1 ? 'Question suivante →' : 'Voir mes résultats'}
           </Button>
         </div>
       </div>
