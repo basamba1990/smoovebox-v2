@@ -303,15 +303,92 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
         throw new Error('URL vidéo manquante pour l\'analyse');
       }
 
-      const { data, error } = await supabase.functions.invoke('analyze-video', {
-        body: {
-          videoId: video.id,
-          videoUrl: video.video_url || video.public_url
-        }
-      });
+      // Get session for auth
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+      if (authError || !session?.access_token) {
+        throw new Error('Session non valide, veuillez vous reconnecter');
+      }
 
-      if (error) {
-        throw error;
+      // Check if video has transcription
+      let transcriptionText = video.transcription_text;
+      if (!transcriptionText && video.transcription_data) {
+        try {
+          const transcriptionData = typeof video.transcription_data === 'string' 
+            ? JSON.parse(video.transcription_data) 
+            : video.transcription_data;
+          transcriptionText = transcriptionData?.text || transcriptionData?.full_text;
+        } catch (e) {
+          console.warn('Error parsing transcription_data:', e);
+        }
+      }
+
+      // If no transcription, transcribe first
+      if (!transcriptionText || transcriptionText.trim().length < 20) {
+        console.log('📝 Video needs transcription first...');
+        toast.loading('Transcription en cours...', { id: 'transcribe-toast' });
+        
+        const transcribeResponse = await fetch(
+          'https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/transcribe-video',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ 
+              videoId: video.id,
+              userId: video.user_id,
+              videoUrl: video.video_url || video.public_url
+            }),
+          }
+        );
+
+        if (!transcribeResponse.ok) {
+          const errorResult = await transcribeResponse.json().catch(() => ({}));
+          toast.error('Erreur lors de la transcription', { id: 'transcribe-toast' });
+          throw new Error(errorResult.error || 'Erreur lors de la transcription');
+        }
+
+        toast.success('Transcription démarrée. L\'analyse commencera automatiquement.', { id: 'transcribe-toast' });
+        return; // Exit - user needs to wait for transcription, then analyze again
+      }
+
+      // Video has transcription, proceed with analysis
+      console.log('🔍 Starting analysis with transcription...');
+      toast.loading('Démarrage de l\'analyse IA...', { id: 'analyze-toast' });
+
+      const response = await fetch(
+        'https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/analyze-transcription',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            videoId: video.id,
+            transcriptionText: transcriptionText.trim(),
+            userId: video.user_id
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        let errorMessage = 'Erreur lors de l\'analyse';
+        try {
+          const errorResult = await response.json();
+          errorMessage = errorResult.error || errorResult.details || errorMessage;
+        } catch (e) {
+          errorMessage = `${response.status} ${response.statusText}`;
+        }
+        toast.error(errorMessage, { id: 'analyze-toast' });
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+      if (result.error) {
+        toast.error(result.error, { id: 'analyze-toast' });
+        throw new Error(result.error);
       }
 
       toast.success(`Analyse démarrée pour: ${video.title}`);
