@@ -1,0 +1,140 @@
+/* Styles pour le gĆ©nĆ©rateur de prompts vidĆ©o PINN-like */
+
+.future-jobs-generator {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+}
+
+.future-jobs-generator select,
+.future-jobs-generator input {
+  transition: all 0.3s ease;
+}
+
+.future-jobs-generator select:focus,
+.future-jobs-generator input:focus {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.future-jobs-generator button {
+  transition: all 0.3s ease;
+}
+
+.future-jobs-generator button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.future-jobs-generator button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Animation pour le chargement */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.future-jobs-generator button:disabled {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Styles pour le texte du prompt */
+.future-jobs-generator .font-mono {
+  font-family: 'Courier New', 'Courier', monospace;
+  line-height: 1.6;
+}
+
+/* Scrollbar personnalisĆ©e */
+.future-jobs-generator ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.future-jobs-generator ::-webkit-scrollbar-track {
+  background: rgba(71, 85, 105, 0.2);
+  border-radius: 10px;
+}
+
+.future-jobs-generator ::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.5);
+  border-radius: 10px;
+}
+
+.future-jobs-generator ::-webkit-scrollbar-thumb:hover {
+  background: rgba(71, 85, 105, 0.7);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .future-jobs-generator {
+    padding: 1rem;
+  }
+
+  .future-jobs-generator h1 {
+    font-size: 1.875rem;
+  }
+
+  .future-jobs-generator .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Animation d'entrĆ©e */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.future-jobs-generator > div > div {
+  animation: slideIn 0.5s ease-out;
+}
+
+/* Styles pour les badges */
+.future-jobs-generator .badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  color: #3b82f6;
+  margin-right: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Styles pour les alertes */
+.future-jobs-generator .alert {
+  padding: 1rem;
+  border-radius: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.future-jobs-generator .alert-success {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+}
+
+.future-jobs-generator .alert-error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.future-jobs-generator .alert-info {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #3b82f6;
+}
