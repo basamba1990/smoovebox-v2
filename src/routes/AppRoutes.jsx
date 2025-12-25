@@ -31,6 +31,7 @@ import PitchAnalysisPage from "../pages/PitchAnalysisPage.jsx";
 import { CompanyRecord } from "../pages/company-record.jsx";
 import SoftPowerPassions from "../components/SoftPowerPassions.jsx";
 import PitchRecording from "../components/PitchRecording.jsx"; // NOUVEL IMPORT
+import FutureJobsGenerator from "../pages/future-jobs-generator.jsx";
 
 export default function AppRoutes({
   user,
@@ -266,6 +267,17 @@ export default function AppRoutes({
         element={
           <RequireAuth>
             <Directory />
+          </RequireAuth>
+        }
+      />
+
+      {/* Routes de démonstration */}
+      {/* Route pour le générateur de prompts vidéo PINN-like */}
+      <Route
+        path="/future-jobs-generator"
+        element={
+          <RequireAuth>
+            <FutureJobsGenerator />
           </RequireAuth>
         }
       />
