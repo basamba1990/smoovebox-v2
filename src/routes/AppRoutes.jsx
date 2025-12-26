@@ -1,6 +1,4 @@
 // src/routes/AppRoutes.jsx
-// Simple component that contains all route definitions
-
 import { Routes, Route, Navigate } from "react-router-dom";
 import RequireAuth from "../components/RequireAuth.jsx";
 import WelcomeAgent from "../components/WelcomeAgent.jsx";
@@ -30,9 +28,16 @@ import UpdateDISC from "../pages/UpdateDISC.jsx";
 import PitchAnalysisPage from "../pages/PitchAnalysisPage.jsx";
 import { CompanyRecord } from "../pages/company-record.jsx";
 import SoftPowerPassions from "../components/SoftPowerPassions.jsx";
-import PitchRecording from "../components/PitchRecording.jsx"; // NOUVEL IMPORT
+import PitchRecording from "../components/PitchRecording.jsx";
 import FutureJobsGenerator from "../pages/future-jobs-generator.jsx";
-import TrendsDashboard from "../pages/TrendsDashboard";
+import TrendsDashboard from "../pages/TrendsDashboard.jsx";
+import PersonasSelector from "../components/PersonasSelector.jsx";
+import LanguageSelectorPage from "../pages/LanguageSelectorPage.jsx";
+import ImmersionSimulator from "../components/ImmersionSimulator.jsx";
+import ComplementaryMatches from "../components/ComplementaryMatches.jsx";
+import Questionnaire from "../components/Questionnaire.jsx";
+import FootballChatModal from "../components/FootballChatModal.jsx";
+import QuickActions from "../components/QuickActions.jsx";
 
 export default function AppRoutes({
   user,
@@ -94,12 +99,12 @@ export default function AppRoutes({
       />
       <Route path="/test-chat" element={<FootballChatTest />} />
       
-      {/* ROUTES POUR LES PASSIONS ET LE PITCH */}
+      {/* ✅ ROUTES POUR LES NOUVELLES FONCTIONNALITÉS */}
       <Route
         path="/soft-power-passions"
         element={
           <RequireAuth>
-            <SoftPowerPassions />
+            <SoftPowerPassions user={user} profile={profile} />
           </RequireAuth>
         }
       />
@@ -107,7 +112,7 @@ export default function AppRoutes({
         path="/pitch-recording"
         element={
           <RequireAuth>
-            <PitchRecording />
+            <PitchRecording user={user} profile={profile} />
           </RequireAuth>
         }
       />
@@ -115,17 +120,62 @@ export default function AppRoutes({
         path="/pitch-analysis"
         element={
           <RequireAuth>
-            <PitchAnalysisPage />
+            <PitchAnalysisPage user={user} profile={profile} />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/personas-selector"
+        element={
+          <RequireAuth>
+            <PersonasSelector user={user} profile={profile} />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/language-selector"
+        element={
+          <RequireAuth>
+            <LanguageSelectorPage user={user} profile={profile} />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/immersion-simulator"
+        element={
+          <RequireAuth>
+            <ImmersionSimulator user={user} profile={profile} />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/complementary-matches"
+        element={
+          <RequireAuth>
+            <ComplementaryMatches user={user} profile={profile} />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/questionnaire"
+        element={
+          <RequireAuth>
+            <Questionnaire 
+              user={user} 
+              profile={profile} 
+              onComplete={() => navigate("/")}
+            />
           </RequireAuth>
         }
       />
 
+      {/* Routes Premium & Coaching */}
       <Route path="/premium" element={<SpotBullePremium />} />
       <Route
         path="/spotcoach"
         element={
           <RequireAuth>
-            <SpotCoach />
+            <SpotCoach user={user} profile={profile} />
           </RequireAuth>
         }
       />
@@ -133,7 +183,7 @@ export default function AppRoutes({
         path="/lumi/onboarding"
         element={
           <RequireAuth>
-            <LumiOnboarding />
+            <LumiOnboarding user={user} profile={profile} />
           </RequireAuth>
         }
       />
@@ -141,12 +191,12 @@ export default function AppRoutes({
         path="/lumi/profile"
         element={
           <RequireAuth>
-            <LumiUnifiedProfile />
+            <LumiUnifiedProfile user={user} profile={profile} />
           </RequireAuth>
         }
       />
 
-      {/* ✅ Nouvelle Route DISC */}
+      {/* ✅ Route DISC */}
       <Route
         path="/update-disc"
         element={
@@ -156,7 +206,7 @@ export default function AppRoutes({
         }
       />
 
-      {/* Routes protégées */}
+      {/* Routes principales */}
       <Route
         path="/record-video"
         element={
@@ -212,9 +262,10 @@ export default function AppRoutes({
         }
       />
 
-      {/* Route /personality-test dépréciée, redirige vers /update-disc */}
+      {/* Route /personality-test dépréciée */}
       <Route path="/personality-test" element={<Navigate to="/update-disc" replace />} />
 
+      {/* Routes formations */}
       <Route
         path="/seminars"
         element={
@@ -258,7 +309,7 @@ export default function AppRoutes({
         path="/video-success"
         element={
           <RequireAuth>
-            <VideoSuccess />
+            <VideoSuccess user={user} profile={profile} />
           </RequireAuth>
         }
       />
@@ -267,18 +318,17 @@ export default function AppRoutes({
         path="/directory"
         element={
           <RequireAuth>
-            <Directory />
+            <Directory user={user} profile={profile} />
           </RequireAuth>
         }
       />
 
-      {/* Routes de démonstration */}
-      {/* Route pour le générateur de prompts vidéo PINN-like */}
+      {/* ✅ NOUVELLES ROUTES FUTUR & IA */}
       <Route
         path="/future-jobs-generator"
         element={
           <RequireAuth>
-            <FutureJobsGenerator />
+            <FutureJobsGenerator user={user} profile={profile} />
           </RequireAuth>
         }
       />
@@ -286,7 +336,7 @@ export default function AppRoutes({
         path="/trends-dashboard"
         element={
           <RequireAuth>
-            <TrendsDashboard />
+            <TrendsDashboard user={user} profile={profile} />
           </RequireAuth>
         }
       />
