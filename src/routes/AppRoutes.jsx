@@ -32,7 +32,6 @@ import PitchRecording from "../components/PitchRecording.jsx";
 import FutureJobsGenerator from "../pages/future-jobs-generator.jsx";
 import TrendsDashboard from "../pages/TrendsDashboard.jsx";
 import PersonasSelector from "../components/PersonasSelector.jsx";
-import LanguageSelectorPage from "../pages/LanguageSelectorPage.jsx";
 import ImmersionSimulator from "../components/ImmersionSimulator.jsx";
 import ComplementaryMatches from "../components/ComplementaryMatches.jsx";
 import Questionnaire from "../components/Questionnaire.jsx";
@@ -129,14 +128,6 @@ export default function AppRoutes({
         element={
           <RequireAuth>
             <PersonasSelector user={user} profile={profile} />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/language-selector"
-        element={
-          <RequireAuth>
-            <LanguageSelectorPage user={user} profile={profile} />
           </RequireAuth>
         }
       />
