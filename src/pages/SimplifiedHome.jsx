@@ -12,20 +12,18 @@ import { useSupabaseClient } from "@supabase/auth-helpers-react";
 import { useVideos } from "../hooks/useVideos.js";
 import { useQueryClient } from "@tanstack/react-query";
 import { checkCompanyMembershipAndRedirect } from "../utils/companyRedirect.js";
+import { AlertCircle } from "lucide-react";
 
-// ✅ AJOUT DES IMPORTS MANQUANTS
+// ✅ TOUS LES IMPORTS DES COMPOSANTS
 import Questionnaire from "../components/Questionnaire.jsx";
 import SeminarsList from "../components/SeminarsList.jsx";
 import Certification from "../components/Certification.jsx";
 import ImmersionSimulator from "../components/ImmersionSimulator.jsx";
 import ComplementaryMatches from "../components/ComplementaryMatches.jsx";
-// ✅ NOUVEAU IMPORT : Sélecteur de langue
-import LanguageSelector from "../components/LanguageSelector.jsx";
-// ✅ NOUVEAUX IMPORTS ESTELLE
+import LanguageSelector from "../components/LanguageSelector.jsx"; // ✅ CORRECT
 import PersonasSelector from "../components/PersonasSelector.jsx";
 import SoftPowerPassions from "../components/SoftPowerPassions.jsx";
 import PitchRecording from "../components/PitchRecording.jsx";
-// ✅ NOUVEL IMPORT : Modal de chat football
 import FootballChatModal from "../components/FootballChatModal.jsx";
 import QuickActions from "../components/QuickActions.jsx";
 
@@ -89,23 +87,20 @@ export default function SimplifiedHome({
   const [activeTab, setActiveTab] = useState("record");
   const [refreshKey, setRefreshKey] = useState(0);
   const [showQuestionnaire, setShowQuestionnaire] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState("main"); // Pour l'onglet "Plus"
+  const [activeSubTab, setActiveSubTab] = useState("main");
   const [activeImmersionTab, setActiveImmersionTab] = useState("parcours");
-  // ✅ NOUVEL ÉTAT : Langue sélectionnée
   const [selectedLanguage, setSelectedLanguage] = useState(null);
   const [appError, setAppError] = useState(null);
-  // ✅ NOUVEL ÉTAT : Modal de chat football
   const [showChatModal, setShowChatModal] = useState(false);
-  // ✅ NOUVEL ÉTAT : Affichage sélecteur de langue
   const [showLanguageOptions, setShowLanguageOptions] = useState(false);
 
   const supabase = useSupabaseClient();
   const queryClient = useQueryClient();
 
-  // ✅ Use React Query hook for videos
+  // ✅ Hook React Query pour les vidéos
   const { data: videos = [], isLoading: videosLoading, error: videosError } = useVideos();
 
-  // ✅ Calculate stats from videos data (memoized for performance)
+  // ✅ Calcul des statistiques utilisateur
   const userStats = useMemo(() => {
     if (!videos || videos.length === 0) {
       return {
@@ -131,14 +126,14 @@ export default function SimplifiedHome({
     };
   }, [videos]);
 
-  // Check if user is a company user and redirect
+  // ✅ Vérifier si l'utilisateur est une entreprise
   useEffect(() => {
     if (user) {
       checkCompanyMembershipAndRedirect(navigate);
     }
   }, [user, navigate]);
 
-  // Show error if videos query fails
+  // ✅ Gestion des erreurs
   useEffect(() => {
     if (videosError) {
       console.error("❌ Erreur chargement stats:", videosError);
@@ -150,15 +145,11 @@ export default function SimplifiedHome({
     console.log("🔄 Vidéo uploadée, rechargement des données");
     toast.success("Vidéo uploadée avec succès !");
 
-    // Invalidate videos query to refetch
     if (user) {
       queryClient.invalidateQueries({ queryKey: ['videos', user.id] });
     }
 
-    // Also invalidate refreshKey for Dashboard component compatibility
     setRefreshKey((prev) => prev + 1);
-
-    // React Query will automatically refetch when needed
   };
 
   const handleProfileUpdated = () => {
@@ -168,25 +159,18 @@ export default function SimplifiedHome({
     }
   };
 
-  // ✅ Fonction pour régénérer le DISC
+  // ✅ Régénérer le DISC
   const handleRegenerateDISC = async () => {
     if (!user) {
       toast.error("Vous devez être connecté pour régénérer le DISC.");
       return;
     }
 
-    if (
-      !window.confirm(
-        "Êtes-vous sûr de vouloir régénérer votre DISC ? Cela supprimera votre résultat actuel et vous redirigera vers le questionnaire."
-      )
-    ) {
+    if (!window.confirm("Êtes-vous sûr de vouloir régénérer votre DISC ?")) {
       return;
     }
 
     try {
-      // Supprimer la réponse la plus récente du questionnaire
-      // NOTE: Dans un environnement de production, il faudrait s'assurer de supprimer UNIQUEMENT la dernière réponse ou toutes les réponses pour cet utilisateur.
-      // Ici, nous faisons une suppression simple pour l'exemple.
       const { error } = await supabase
         .from("questionnaire_responses")
         .delete()
@@ -194,7 +178,6 @@ export default function SimplifiedHome({
 
       if (error) throw error;
 
-      // Mettre à jour le profil pour indiquer qu'il n'y a plus de couleur dominante
       await supabase
         .from("profiles")
         .update({
@@ -203,7 +186,7 @@ export default function SimplifiedHome({
         .eq("id", user.id);
 
       toast.success("Ancien DISC supprimé. Redirection vers le questionnaire.");
-      navigate("/personality-test");
+      navigate("/update-disc");
     } catch (error) {
       console.error("Erreur lors de la régénération du DISC:", error);
       toast.error("Erreur lors de la suppression de l'ancien DISC.");
@@ -212,19 +195,14 @@ export default function SimplifiedHome({
 
   const handleQuestionnaireComplete = () => {
     setShowQuestionnaire(false);
-    toast.success(
-      "Questionnaire complété ! Votre profil est maintenant enrichi."
-    );
-    // React Query will automatically refetch when needed
+    toast.success("Questionnaire complété ! Votre profil est maintenant enrichi.");
   };
 
-  // ✅ CORRECTION : Gestionnaire de changement de langue amélioré
+  // ✅ Gestionnaire de langue
   const handleLanguageChange = (languageCode) => {
     setSelectedLanguage(languageCode);
     console.log("🌐 Langue sélectionnée pour transcription:", languageCode);
-    toast.success(
-      `Langue sélectionnée: ${languageCode || "Détection automatique"}`
-    );
+    toast.success(`Langue sélectionnée: ${languageCode || "Détection automatique"}`);
   };
 
   // ✅ Scénarios d'enregistrement
@@ -247,7 +225,7 @@ export default function SimplifiedHome({
     ],
   };
 
-  // ✅ Navigation par actions rapides via composant dédié
+  // ✅ Navigation par actions rapides
   const onSelectQuickAction = (id) => {
     setActiveTab(id);
     if (id === "more") setActiveSubTab("main");
@@ -260,27 +238,19 @@ export default function SimplifiedHome({
     return (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-blue-900/30 rounded-lg p-4 text-center border border-blue-700">
-          <div className="text-2xl font-bold text-white">
-            {userStats.totalVideos}
-          </div>
+          <div className="text-2xl font-bold text-white">{userStats.totalVideos}</div>
           <div className="text-blue-300 text-sm">Total Vidéos</div>
         </div>
         <div className="bg-green-900/30 rounded-lg p-4 text-center border border-green-700">
-          <div className="text-2xl font-bold text-white">
-            {userStats.completedVideos}
-          </div>
+          <div className="text-2xl font-bold text-white">{userStats.completedVideos}</div>
           <div className="text-green-300 text-sm">Analysées</div>
         </div>
         <div className="bg-purple-900/30 rounded-lg p-4 text-center border border-purple-700">
-          <div className="text-2xl font-bold text-white">
-            {userStats.recentVideos.length}
-          </div>
+          <div className="text-2xl font-bold text-white">{userStats.recentVideos.length}</div>
           <div className="text-purple-300 text-sm">Récentes</div>
         </div>
         <div className="bg-yellow-900/30 rounded-lg p-4 text-center border border-yellow-700">
-          <div className="text-2xl font-bold text-white">
-            {userStats.processingVideos}
-          </div>
+          <div className="text-2xl font-bold text-white">{userStats.processingVideos}</div>
           <div className="text-yellow-300 text-sm">En traitement</div>
         </div>
       </div>
@@ -292,17 +262,11 @@ export default function SimplifiedHome({
     return (
       <div className="space-y-6">
         <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-french font-bold text-white">
-            👥 Communauté & Synergies
-          </h2>
-          <Button
-            onClick={() => setActiveTab("record")}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
+          <h2 className="text-2xl font-french font-bold text-white">👥 Communauté & Synergies</h2>
+          <Button onClick={() => setActiveTab("record")} className="bg-blue-600 hover:bg-blue-700 text-white">
             🎥 Nouvelle Vidéo
           </Button>
         </div>
-
         <ComplementaryMatches user={user} profile={profile} />
       </div>
     );
@@ -315,14 +279,8 @@ export default function SimplifiedHome({
         return (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">
-                🎓 Séminaires & Formations
-              </h2>
-              <Button
-                onClick={() => setActiveSubTab("main")}
-                variant="outline"
-                className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
-              >
+              <h2 className="text-2xl font-french font-bold text-white">🎓 Séminaires & Formations</h2>
+              <Button onClick={() => setActiveSubTab("main")} variant="outline" className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700">
                 ← Retour
               </Button>
             </div>
@@ -334,22 +292,12 @@ export default function SimplifiedHome({
         return (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">
-                🏆 Certification
-              </h2>
-              <Button
-                onClick={() => setActiveSubTab("main")}
-                variant="outline"
-                className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
-              >
+              <h2 className="text-2xl font-french font-bold text-white">🏆 Certification</h2>
+              <Button onClick={() => setActiveSubTab("main")} variant="outline" className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700">
                 ← Retour
               </Button>
             </div>
-            <Certification
-              user={user}
-              profile={profile}
-              onSignOut={onSignOut}
-            />
+            <Certification user={user} profile={profile} onSignOut={onSignOut} />
           </div>
         );
 
@@ -357,33 +305,15 @@ export default function SimplifiedHome({
         return (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">
-                🎮 Préparation & Immersion
-              </h2>
+              <h2 className="text-2xl font-french font-bold text-white">🎮 Préparation & Immersion</h2>
               <div className="flex gap-2">
-                <Button
-                  variant={
-                    activeImmersionTab === "parcours" ? "default" : "outline"
-                  }
-                  onClick={() => setActiveImmersionTab("parcours")}
-                  className="btn-spotbulle-dark"
-                >
+                <Button variant={activeImmersionTab === "parcours" ? "default" : "outline"} onClick={() => setActiveImmersionTab("parcours")} className="btn-spotbulle-dark">
                   🧭 Parcours
                 </Button>
-                <Button
-                  variant={
-                    activeImmersionTab === "scenarios" ? "default" : "outline"
-                  }
-                  onClick={() => setActiveImmersionTab("scenarios")}
-                  className="btn-spotbulle-dark"
-                >
+                <Button variant={activeImmersionTab === "scenarios" ? "default" : "outline"} onClick={() => setActiveImmersionTab("scenarios")} className="btn-spotbulle-dark">
                   🎬 Scénarios
                 </Button>
-                <Button
-                  onClick={() => setActiveSubTab("main")}
-                  variant="outline"
-                  className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
-                >
+                <Button onClick={() => setActiveSubTab("main")} variant="outline" className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700">
                   ← Retour
                 </Button>
               </div>
@@ -392,18 +322,12 @@ export default function SimplifiedHome({
           </div>
         );
 
-      case "pitchrecording": // ✅ NOUVEAU SOUS-ONGLET : Pitch Recording
+      case "pitchrecording":
         return (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">
-                🎤 Pitch Recording
-              </h2>
-              <Button
-                onClick={() => setActiveSubTab("main")}
-                variant="outline"
-                className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
-              >
+              <h2 className="text-2xl font-french font-bold text-white">🎤 Pitch Recording</h2>
+              <Button onClick={() => setActiveSubTab("main")} variant="outline" className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700">
                 ← Retour
               </Button>
             </div>
@@ -411,18 +335,12 @@ export default function SimplifiedHome({
           </div>
         );
 
-      case "softpower": // ✅ NOUVEAU SOUS-ONGLET : Soft Power Passions
+      case "softpower":
         return (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">
-                🌟 Soft Power Passions
-              </h2>
-              <Button
-                onClick={() => setActiveSubTab("main")}
-                variant="outline"
-                className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
-              >
+              <h2 className="text-2xl font-french font-bold text-white">🌟 Soft Power Passions</h2>
+              <Button onClick={() => setActiveSubTab("main")} variant="outline" className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700">
                 ← Retour
               </Button>
             </div>
@@ -430,18 +348,12 @@ export default function SimplifiedHome({
           </div>
         );
 
-      case "personas": // ✅ NOUVEAU SOUS-ONGLET : Sélecteur de Personas et Modèle M/T
+      case "personas":
         return (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">
-                🎭 Personas & Modèle M/T
-              </h2>
-              <Button
-                onClick={() => setActiveSubTab("main")}
-                variant="outline"
-                className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
-              >
+              <h2 className="text-2xl font-french font-bold text-white">🎭 Personas & Modèle M/T</h2>
+              <Button onClick={() => setActiveSubTab("main")} variant="outline" className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700">
                 ← Retour
               </Button>
             </div>
@@ -449,25 +361,19 @@ export default function SimplifiedHome({
           </div>
         );
 
-      case "language": // ✅ NOUVEAU SOUS-ONGLET : Sélection de langue
+      case "language":
         return (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">
-                🌐 Sélection de la Langue
-              </h2>
-              <Button
-                onClick={() => setActiveSubTab("main")}
-                variant="outline"
-                className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
-              >
+              <h2 className="text-2xl font-french font-bold text-white">🌐 Sélection de la Langue</h2>
+              <Button onClick={() => setActiveSubTab("main")} variant="outline" className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700">
                 ← Retour
               </Button>
             </div>
-            <LanguageSelector
-              selectedLanguage={selectedLanguage}
-              onLanguageChange={handleLanguageChange}
-              showAutoDetect={true}
+            <LanguageSelector 
+              selectedLanguage={selectedLanguage} 
+              onLanguageChange={handleLanguageChange} 
+              showAutoDetect={true} 
             />
           </div>
         );
@@ -476,18 +382,14 @@ export default function SimplifiedHome({
         return (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">
-                ➕ Fonctionnalités Avancées
-              </h2>
-              <Button
-                onClick={() => setActiveTab("record")}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-              >
+              <h2 className="text-2xl font-french font-bold text-white">➕ Fonctionnalités Avancées</h2>
+              <Button onClick={() => setActiveTab("record")} className="bg-blue-600 hover:bg-blue-700 text-white">
                 🎥 Nouvelle Vidéo
               </Button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Cartes existantes */}
               <div
                 onClick={() => setActiveSubTab("seminars")}
                 className="bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
@@ -544,7 +446,7 @@ export default function SimplifiedHome({
               </div>
 
               <div
-                onClick={() => setActiveSubTab("language")} // ✅ NOUVEAU : Sélection de langue
+                onClick={() => setActiveSubTab("language")}
                 className="bg-gradient-to-br from-cyan-600 to-cyan-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
               >
                 <div className="text-3xl mb-3">🌐</div>
@@ -554,7 +456,6 @@ export default function SimplifiedHome({
                 </p>
               </div>
 
-              {/* ✅ NOUVELLE CARTE : Sélecteur de Personas et Modèle M/T */}
               <div
                 onClick={() => setActiveSubTab("personas")}
                 className="bg-gradient-to-br from-red-600 to-red-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
@@ -566,7 +467,6 @@ export default function SimplifiedHome({
                 </p>
               </div>
 
-              {/* ✅ NOUVELLE CARTE : Soft Power Passions */}
               <div
                 onClick={() => setActiveSubTab("softpower")}
                 className="bg-gradient-to-br from-yellow-600 to-yellow-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
@@ -578,7 +478,6 @@ export default function SimplifiedHome({
                 </p>
               </div>
 
-              {/* ✅ NOUVELLE CARTE : Pitch Recording */}
               <div
                 onClick={() => setActiveSubTab("pitchrecording")}
                 className="bg-gradient-to-br from-teal-600 to-teal-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
@@ -587,6 +486,28 @@ export default function SimplifiedHome({
                 <h3 className="text-xl font-bold mb-2">Pitch Recording</h3>
                 <p className="text-white/90 text-sm">
                   Enregistrez et analysez votre pitch de présentation
+                </p>
+              </div>
+
+              <div
+                onClick={() => navigate("/future-jobs-generator")}
+                className="bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
+              >
+                <div className="text-3xl mb-3">🚀</div>
+                <h3 className="text-xl font-bold mb-2">Métiers du Futur</h3>
+                <p className="text-white/90 text-sm">
+                  Générez des vidéos sur les métiers du futur
+                </p>
+              </div>
+
+              <div
+                onClick={() => navigate("/trends-dashboard")}
+                className="bg-gradient-to-br from-amber-600 to-amber-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
+              >
+                <div className="text-3xl mb-3">📈</div>
+                <h3 className="text-xl font-bold mb-2">Tendances</h3>
+                <p className="text-white/90 text-sm">
+                  Visualisez les tendances du marché de l'emploi
                 </p>
               </div>
             </div>
@@ -631,7 +552,6 @@ export default function SimplifiedHome({
                   key={activity.id}
                   className={`bg-gradient-to-br ${activity.color} rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg`}
                   onClick={() => {
-                    // Pour l'instant, on redirige vers l'enregistrement avec un message
                     setActiveTab("record");
                     toast.info(`Activité ${activity.name} sélectionnée`);
                   }}
@@ -723,7 +643,7 @@ export default function SimplifiedHome({
     }
   };
 
-  // ✅ CORRECTION : Contenu des onglets principaux avec intégration du sélecteur de langue amélioré
+  // ✅ Contenu des onglets principaux
   const renderTabContent = () => {
     switch (activeTab) {
       case "record":
@@ -751,10 +671,7 @@ export default function SimplifiedHome({
                   selectedLanguage={selectedLanguage}
                   onLanguageChange={(lang) => {
                     setSelectedLanguage(lang);
-                    console.log(
-                      "🌐 Langue sélectionnée pour transcription:",
-                      lang
-                    );
+                    console.log("🌐 Langue sélectionnée:", lang);
                   }}
                   showAutoDetect={true}
                   compact={false}
@@ -765,7 +682,7 @@ export default function SimplifiedHome({
             <RecordVideo
               user={user}
               onVideoUploaded={handleVideoUploaded}
-              selectedLanguage={selectedLanguage} // ✅ BIEN PASSÉ
+              selectedLanguage={selectedLanguage}
               onError={(error) => {
                 console.error("❌ Erreur RecordVideo:", error);
                 setAppError(`Erreur enregistrement: ${error.message}`);
@@ -836,7 +753,6 @@ export default function SimplifiedHome({
                 👤 Mon Profil
               </h2>
                   <div className="flex gap-2">
-                    {/* ✅ Bouton "Voir / Mettre à jour le DISC" */}
                     <Button
                       onClick={() => navigate("/update-disc")}
                       variant="outline"
@@ -844,7 +760,6 @@ export default function SimplifiedHome({
                     >
                       📝 Voir / Mettre à jour le DISC
                     </Button>
-                    {/* ✅ Bouton "Regénérer le DISC" */}
                     <Button
                       onClick={handleRegenerateDISC}
                       variant="outline"
@@ -880,7 +795,7 @@ export default function SimplifiedHome({
           <RecordVideo
             user={user}
             onVideoUploaded={handleVideoUploaded}
-            selectedLanguage={selectedLanguage} // ✅ PASSAGE DE LA LANGUE SÉLECTIONNÉE
+            selectedLanguage={selectedLanguage}
           />
         );
     }
@@ -888,7 +803,6 @@ export default function SimplifiedHome({
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
-      {/* Header */}
       <ProfessionalHeader
         user={user}
         profile={profile}
@@ -900,11 +814,7 @@ export default function SimplifiedHome({
         } !`}
       />
 
-      {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        {/* En-tête déplacé dans ProfessionalHeader */}
-
-        {/* ✅ Affichage des erreurs globales */}
         {(appError || error) && (
           <div className="mb-6 p-4 bg-red-900/30 border border-red-700 rounded-lg">
             <div className="flex items-center justify-between">
@@ -931,17 +841,14 @@ export default function SimplifiedHome({
           </div>
         )}
 
-        {/* ✅ Navigation par actions rapides */}
         <QuickActions
           simplifiedTabs={simplifiedTabs}
           activeTab={activeTab}
           onSelectTab={onSelectQuickAction}
         />
 
-        {/* ✅ Statistiques rapides */}
         {userStats && userStats.totalVideos > 0 && renderQuickStats()}
 
-        {/* ✅ Indicateur pour nouvelle utilisateur */}
         {userStats && userStats.totalVideos === 0 && activeTab !== "record" && (
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 rounded-lg mb-6 animate-pulse">
             <div className="flex items-center justify-between">
@@ -967,15 +874,12 @@ export default function SimplifiedHome({
           </div>
         )}
 
-        {/* Contenu de l'onglet */}
         <div className="card-spotbulle-dark p-6 bg-gray-800 border-gray-700 rounded-xl">
           {renderTabContent()}
         </div>
       </main>
 
-      {/* ✅ Boutons d'action rapide flottants */}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
-        {/* Bouton Lumi */}
         <Button
           onClick={() => navigate("/lumi/onboarding")}
           className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg text-lg py-3 px-4 rounded-full flex items-center gap-2 hover:scale-105 transition-transform"
@@ -984,7 +888,6 @@ export default function SimplifiedHome({
           🎨 DISC
         </Button>
 
-        {/* Bouton SpotCoach */}
         <Button
           onClick={() => navigate("/spotcoach")}
           className="bg-purple-600 hover:bg-purple-700 text-white shadow-lg text-lg py-3 px-4 rounded-full flex items-center gap-2 hover:scale-105 transition-transform"
@@ -993,7 +896,6 @@ export default function SimplifiedHome({
           🎯 SpotCoach
         </Button>
 
-        {/* Bouton Métiers du Futur */}
         <Button
           onClick={() => navigate("/lumi/profile")}
           className="bg-cyan-600 hover:bg-cyan-700 text-white shadow-lg text-lg py-3 px-4 rounded-full flex items-center gap-2 hover:scale-105 transition-transform"
@@ -1002,7 +904,6 @@ export default function SimplifiedHome({
           🚀 Métiers
         </Button>
 
-        {/* Bouton Chat Football */}
         <Button
           onClick={() => setShowChatModal(true)}
           className="bg-green-600 hover:bg-green-700 text-white shadow-lg text-lg py-3 px-4 rounded-full flex items-center gap-2 hover:scale-105 transition-transform"
@@ -1011,7 +912,6 @@ export default function SimplifiedHome({
           ⚽
         </Button>
 
-        {/* Bouton Nouvelle Vidéo */}
         <Button
           onClick={() => setActiveTab("record")}
           className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg text-lg py-4 px-6 rounded-full flex items-center gap-2 animate-bounce"
@@ -1020,7 +920,6 @@ export default function SimplifiedHome({
         </Button>
       </div>
 
-      {/* ✅ Modal Questionnaire */}
       {showQuestionnaire && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
           <div className="bg-gray-800 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-700">
@@ -1047,13 +946,11 @@ export default function SimplifiedHome({
         </div>
       )}
 
-      {/* ✅ Modal Chat Football */}
       <FootballChatModal
         isOpen={showChatModal}
         onClose={() => setShowChatModal(false)}
       />
 
-      {/* Footer */}
       <footer className="mt-12 py-6 border-t border-gray-800 text-center text-gray-400">
         <p>© 2026 SpotBulle - Tous droits réservés</p>
       </footer>
