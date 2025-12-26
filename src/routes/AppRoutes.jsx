@@ -32,6 +32,7 @@ import { CompanyRecord } from "../pages/company-record.jsx";
 import SoftPowerPassions from "../components/SoftPowerPassions.jsx";
 import PitchRecording from "../components/PitchRecording.jsx"; // NOUVEL IMPORT
 import FutureJobsGenerator from "../pages/future-jobs-generator.jsx";
+import TrendsDashboard from "../pages/TrendsDashboard";
 
 export default function AppRoutes({
   user,
@@ -278,6 +279,14 @@ export default function AppRoutes({
         element={
           <RequireAuth>
             <FutureJobsGenerator />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/trends-dashboard"
+        element={
+          <RequireAuth>
+            <TrendsDashboard />
           </RequireAuth>
         }
       />

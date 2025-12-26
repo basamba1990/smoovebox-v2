@@ -589,6 +589,30 @@ export default function SimplifiedHome({
                   Enregistrez et analysez votre pitch de présentation
                 </p>
               </div>
+
+              {/* ✅ NOUVELLE CARTE : Métiers du Futur */}
+              <div
+                onClick={() => navigate("/future-jobs-generator")}
+                className="bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
+              >
+                <div className="text-3xl mb-3">🚀</div>
+                <h3 className="text-xl font-bold mb-2">Métiers du Futur</h3>
+                <p className="text-white/90 text-sm">
+                  Générez des vidéos sur les métiers du futur
+                </p>
+              </div>
+
+              {/* ✅ NOUVELLE CARTE : Dashboard Tendances */}
+              <div
+                onClick={() => navigate("/trends-dashboard")}
+                className="bg-gradient-to-br from-amber-600 to-amber-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
+              >
+                <div className="text-3xl mb-3">📈</div>
+                <h3 className="text-xl font-bold mb-2">Tendances</h3>
+                <p className="text-white/90 text-sm">
+                  Visualisez les tendances du marché de l'emploi
+                </p>
+              </div>
             </div>
           </div>
         );
