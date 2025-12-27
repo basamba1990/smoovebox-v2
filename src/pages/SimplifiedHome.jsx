@@ -66,7 +66,7 @@ const simplifiedTabs = [
   },
   {
     id: "more",
-    name: "☰ Menu",
+    name: "☰ Spotplus",
     icon: "☰",
     priority: 6,
     description: "Autres fonctionnalités",
