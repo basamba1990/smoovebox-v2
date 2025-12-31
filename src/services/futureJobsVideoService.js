@@ -3,13 +3,20 @@ import { supabase } from '../lib/supabase';
 
 /**
  * Service de génération vidéo pour les métiers du futur
- * Version corrigée avec payload strictement aligné sur Edge Function
+ * Gère la communication avec l'Edge Function Supabase
  */
 export const futureJobsVideoService = {
   
   /**
-   * Génère une vidéo à partir d'un prompt - VERSION CORRIGÉE
-   * @param {Object} payload - Données de génération STRICTEMENT alignées
+   * Génère une vidéo à partir d'un prompt
+   * @param {Object} payload - Données de génération
+   * @param {string} payload.prompt - Texte du prompt (REQUIS)
+   * @param {string} payload.generator - Générateur: SORA, RUNWAY, PIKA (REQUIS)
+   * @param {string} payload.style - Style: futuristic, semi-realistic, etc. (REQUIS)
+   * @param {number} payload.duration - Durée en secondes (REQUIS)
+   * @param {string} payload.userId - ID utilisateur (optionnel)
+   * @param {string|number} payload.jobId - ID du métier (optionnel)
+   * @returns {Promise<Object>} Résultat de la génération
    */
   async generateJobVideo(payload) {
     const {
@@ -21,25 +28,31 @@ export const futureJobsVideoService = {
       jobId
     } = payload;
 
-    // Validation stricte
+    console.log('🚀 Service: Début génération vidéo', { generator, style, duration, jobId });
+    
+    // VALIDATION STRICTE CÔTÉ CLIENT
     if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
-      throw new Error('Prompt invalide ou vide');
+      throw new Error('Le prompt est requis et doit être une chaîne de caractères non vide');
     }
 
-    // Normalisation stricte
+    if (!generator) {
+      throw new Error('Le générateur est requis (SORA, RUNWAY, PIKA)');
+    }
+
+    // PRÉPARATION DU PAYLOAD NORMALISÉ POUR L'EDGE FUNCTION
     const normalizedPayload = {
       prompt: String(prompt).trim(),
-      generator: String(generator).toUpperCase(), // ✅ GARANTI MAJUSCULES
-      style: String(style),
-      duration: Number(duration),
+      generator: String(generator).toUpperCase(), // 🔥 CRITIQUE: Toujours en majuscules
+      style: style || 'futuristic',
+      duration: Number(duration) || 30,
       userId: userId || null,
-      jobId: jobId || null
+      jobId: jobId ? String(jobId) : null
     };
 
-    console.log('📤 Payload normalisé envoyé:', normalizedPayload);
+    console.log('📤 Payload normalisé envoyé à Edge Function:', normalizedPayload);
 
     try {
-      // Appel Edge Function
+      // APPEL EDGE FUNCTION VIA LE CLIENT SUPABASE
       const { data, error } = await supabase.functions.invoke('generate-video', {
         body: normalizedPayload,
         headers: {
@@ -50,7 +63,7 @@ export const futureJobsVideoService = {
 
       if (error) {
         console.error('❌ Erreur Edge Function:', error);
-        throw new Error(error.message || 'Erreur lors de la génération vidéo');
+        throw new Error(error.message || "Erreur lors de l'appel à la fonction de génération");
       }
 
       return {
@@ -59,9 +72,9 @@ export const futureJobsVideoService = {
         timestamp: new Date().toISOString()
       };
 
-    } catch (networkError) {
-      console.error('❌ Erreur réseau:', networkError);
-      throw new Error(`Problème de connexion: ${networkError.message}`);
+    } catch (err) {
+      console.error('❌ Erreur service génération:', err);
+      throw err;
     }
   },
 
@@ -97,7 +110,7 @@ export const futureJobsVideoService = {
   /**
    * Récupère les vidéos d'un utilisateur
    */
-  async getUserVideos(userId, limit = 5) {
+  async getUserVideos(userId, limit = 10) {
     if (!userId) return { success: false, error: "ID utilisateur requis" };
 
     try {
@@ -112,12 +125,14 @@ export const futureJobsVideoService = {
           created_at,
           prompt_id,
           job_prompts (
+            id,
             generator,
             style,
-            future_jobs ( title )
+            duration,
+            prompt_text
           )
         `)
-        .eq('metadata->>user_id', userId)
+        .eq('metadata->>user_id', userId) // ✅ Utilisation de l'opérateur ->> pour le JSONB
         .order('created_at', { ascending: false })
         .limit(limit);
 
@@ -134,28 +149,6 @@ export const futureJobsVideoService = {
         error: "Impossible de récupérer l'historique",
         videos: []
       };
-    }
-  },
-
-  /**
-   * Annule une génération en cours
-   */
-  async cancelVideoGeneration(videoId) {
-    try {
-      const { error } = await supabase
-        .from('generated_videos')
-        .update({ 
-          status: 'cancelled',
-          error_message: 'Annulé par l\'utilisateur'
-        })
-        .eq('id', videoId);
-
-      if (error) throw error;
-
-      return { success: true };
-    } catch (error) {
-      console.error('❌ Erreur annulation:', error);
-      return { success: false, error: error.message };
     }
   }
 };
