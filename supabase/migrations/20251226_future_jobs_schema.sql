@@ -1,66 +1,136 @@
--- Table des métiers du futur
-CREATE TABLE IF NOT EXISTS public.future_jobs (
-id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-title TEXT NOT NULL,
-year INTEGER NOT NULL,
-key_tasks TEXT[] NOT NULL,
-core_skills TEXT[] NOT NULL,
-emerging_tech TEXT[] NOT NULL,
-visual_elements TEXT[] NOT NULL,
-sources JSONB DEFAULT '[]'::jsonb,
-created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+-- ============================================================================
+-- Migration: Ensure videos exists and create/align agent_execution_logs
+-- Safe, idempotent, production-ready
+-- ============================================================================
+
+-- 0) Guard: ensure prerequisite tables exist
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'videos'
+  ) THEN
+    RAISE EXCEPTION 'Prerequisite missing: public.videos must exist before running this migration.';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'agent_configurations'
+  ) THEN
+    RAISE EXCEPTION 'Prerequisite missing: public.agent_configurations must exist before running this migration.';
+  END IF;
+END
+$$;
+
+-- 1) Create table if not exists (structure aligned with current project state)
+CREATE TABLE IF NOT EXISTS public.agent_execution_logs (
+  id BIGSERIAL PRIMARY KEY,
+  video_id UUID,
+  agent_config_id UUID,
+  input_data JSONB,
+  output_data JSONB,
+  performance_feedback JSONB,
+  execution_time TIMESTAMPTZ DEFAULT timezone('utc'::text, now()),
+  started_at TIMESTAMPTZ DEFAULT now(),
+  ended_at TIMESTAMPTZ,
+  status TEXT DEFAULT 'running' CHECK (status = ANY(ARRAY['running','success','error'])),
+  error_message TEXT,
+  duration_ms INTEGER
 );
 
--- Table des prompts générés par les utilisateurs
-CREATE TABLE IF NOT EXISTS public.job_prompts (
-id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-user_id UUID REFERENCES auth.users(id),
-job_id UUID REFERENCES public.future_jobs(id),
-generator TEXT NOT NULL, -- Sora, Runway, Pika
-style TEXT NOT NULL,
-duration INTEGER NOT NULL,
-prompt_text TEXT NOT NULL,
-metadata JSONB DEFAULT '{}'::jsonb,
-created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
+-- 2) Ensure columns exist (for forward-compat with older environments)
+DO $$
+BEGIN
+  -- Add columns if they don't exist
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='agent_execution_logs' AND column_name='started_at'
+  ) THEN
+    ALTER TABLE public.agent_execution_logs
+      ADD COLUMN started_at TIMESTAMPTZ DEFAULT now();
+  END IF;
 
--- Table des vidéos générées
-CREATE TABLE IF NOT EXISTS public.generated_videos (
-id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-prompt_id UUID REFERENCES public.job_prompts(id),
-video_url TEXT,
-status TEXT DEFAULT 'pending', -- pending, generating, done, error
-error_message TEXT,
-metadata JSONB DEFAULT '{}'::jsonb,
-created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='agent_execution_logs' AND column_name='ended_at'
+  ) THEN
+    ALTER TABLE public.agent_execution_logs
+      ADD COLUMN ended_at TIMESTAMPTZ;
+  END IF;
 
--- Insertion des données initiales pour les métiers du futur (basé sur futureJobsData.js)
--- Note: On pourrait automatiser ça via un script, mais voici un exemple pour l'ingénieur en énergies renouvelables
-INSERT INTO public.future_jobs (title, year, key_tasks, core_skills, emerging_tech, visual_elements, sources)
-VALUES (
-'Ingénieur en énergies renouvelables',
-2030,
-ARRAY['Optimisation de systèmes énergies renouvelables', 'programmation de solutions smart grid', 'gestion de projets verts'],
-ARRAY['Génie énergétique', 'Modélisation plante/réseaux', 'Réglementations environnementales'],
-ARRAY['Transition Énergétique', 'Smart Grids', 'Véhicules Autonomes Électriques'],
-ARRAY['Ville verte futuriste', 'smart grids solaires et éoliens', 'interfaces AR sur écrans tactiles volants', 'ambiance lumineuse et durable'],
-'[{"name": "WEF 2025", "url": "https://www.weforum.org"}]'::jsonb
-) ON CONFLICT DO NOTHING;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='agent_execution_logs' AND column_name='status'
+  ) THEN
+    ALTER TABLE public.agent_execution_logs
+      ADD COLUMN status TEXT DEFAULT 'running';
+    -- Add check constraint if missing
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+      WHERE conname = 'agent_execution_logs_status_check'
+    ) THEN
+      ALTER TABLE public.agent_execution_logs
+        ADD CONSTRAINT agent_execution_logs_status_check
+        CHECK (status = ANY(ARRAY['running','success','error']));
+    END IF;
+  END IF;
 
--- Activer RLS
-ALTER TABLE public.future_jobs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.job_prompts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.generated_videos ENABLE ROW LEVEL SECURITY;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='agent_execution_logs' AND column_name='error_message'
+  ) THEN
+    ALTER TABLE public.agent_execution_logs
+      ADD COLUMN error_message TEXT;
+  END IF;
 
--- Politiques de lecture publique pour les métiers
-CREATE POLICY "Allow public read access on future_jobs" ON public.future_jobs FOR SELECT USING (true);
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='agent_execution_logs' AND column_name='duration_ms'
+  ) THEN
+    ALTER TABLE public.agent_execution_logs
+      ADD COLUMN duration_ms INTEGER;
+  END IF;
+END
+$$;
 
--- Politiques pour les prompts (utilisateur peut voir les siens)
-CREATE POLICY "Users can view their own prompts" ON public.job_prompts FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert their own prompts" ON public.job_prompts FOR INSERT WITH CHECK (auth.uid() = user_id);
+-- 3) Ensure foreign keys exist and point to the right targets
+DO $$
+BEGIN
+  -- FK to public.videos(id)
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'agent_execution_logs_video_id_fkey'
+  ) THEN
+    ALTER TABLE public.agent_execution_logs
+      ADD CONSTRAINT agent_execution_logs_video_id_fkey
+      FOREIGN KEY (video_id)
+      REFERENCES public.videos(id)
+      ON DELETE SET NULL;
+  END IF;
 
--- Politiques pour les vidéos
-CREATE POLICY "Users can view videos of their prompts" ON public.generated_videos FOR SELECT USING (
-EXISTS (SELECT 1 FROM public.job_prompts WHERE id = prompt_id AND user_id = auth.uid())
-);
+  -- FK to public.agent_configurations(id)
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'agent_execution_logs_agent_config_id_fkey'
+  ) THEN
+    ALTER TABLE public.agent_execution_logs
+      ADD CONSTRAINT agent_execution_logs_agent_config_id_fkey
+      FOREIGN KEY (agent_config_id)
+      REFERENCES public.agent_configurations(id)
+      ON DELETE SET NULL;
+  END IF;
+END
+$$;
+
+-- 4) Indexes for performance (optional but recommended)
+-- Speeds up lookups by video or configuration
+CREATE INDEX IF NOT EXISTS idx_agent_execution_logs_video_id
+  ON public.agent_execution_logs (video_id);
+
+CREATE INDEX IF NOT EXISTS idx_agent_execution_logs_agent_config_id
+  ON public.agent_execution_logs (agent_config_id);
+
+CREATE INDEX IF NOT EXISTS idx_agent_execution_logs_status_started
+  ON public.agent_execution_logs (status, started_at DESC);
