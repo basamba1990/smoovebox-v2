@@ -18,7 +18,6 @@ type ReqBody = {
   duration: number;
   userId?: string;
   jobId?: string;
-  // ❌ SUPPRIMÉ: jobTitle, jobYear, promptText
 };
 
 console.info("✅ Edge Function generate-video démarrée");
@@ -96,7 +95,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // 7. VALIDATION DES CHAMPS REQUIS
     const { prompt, generator, style, duration, userId, jobId } = body;
     
-    // Validation stricte
     if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
       return new Response(
         JSON.stringify({
@@ -155,15 +153,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     console.log("✅ Validation réussie:", { generator, style, duration, promptLength: prompt.length });
 
-    // 8. CRÉATION ENREGISTREMENT DANS job_prompts (si userId et jobId fournis)
+    // 8. CRÉATION ENREGISTREMENT DANS job_prompts
     let promptId: string | null = null;
-    if (userId && jobId) {
+    if (userId) {
       try {
         const { data: promptData, error: promptError } = await supabase
           .from("job_prompts")
           .insert({
             user_id: userId,
-            job_id: jobId,
+            job_id: jobId || null,
             generator: generator,
             style: style,
             duration: duration,
@@ -181,21 +179,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
         if (promptError) {
           console.error("⚠️ Erreur sauvegarde prompt:", promptError);
-          // Continue sans promptId, ne bloque pas la génération
         } else {
           promptId = promptData?.id ?? null;
           console.log("✅ Prompt enregistré avec ID:", promptId);
         }
       } catch (dbError) {
         console.error("⚠️ Erreur base de données prompt:", dbError);
-        // Continue sans promptId
       }
     }
 
     // 9. CRÉATION ENREGISTREMENT VIDÉO
     let videoId: string;
+    let videoData: any = null; // ✅ FIX: Déclaré ici pour être accessible dans tout le scope
     try {
-      const { data: videoData, error: videoError } = await supabase
+      const { data, error: videoError } = await supabase
         .from("generated_videos")
         .insert({
           prompt_id: promptId,
@@ -219,6 +216,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         throw new Error(`Erreur base de données: ${videoError.message}`);
       }
 
+      videoData = data;
       videoId = videoData.id as string;
       console.log("🎬 Enregistrement vidéo créé avec ID:", videoId);
     } catch (dbError) {
@@ -246,9 +244,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
       switch (generator.toUpperCase()) {
         case "SORA":
-          // ⚠️ Sora API pas encore disponible - Fallback DALL-E
           console.log("⚠️ API Sora non disponible, utilisation DALL-E comme placeholder");
-          
           try {
             const imageResult = await openai.images.generate({
               model: "dall-e-3",
@@ -270,7 +266,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
             console.log("✅ Image DALL-E générée:", videoUrl);
           } catch (openaiError: any) {
             console.error("❌ Erreur DALL-E:", openaiError);
-            // Fallback URL d'image statique
             videoUrl = "https://storage.googleapis.com/ai-video-placeholders/future-job-concept.jpg";
             generationResult = {
               model: "fallback",
@@ -283,9 +278,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           break;
 
         case "RUNWAY":
-          // Simulation RunwayML
           console.log("🔄 Simulation API RunwayML");
-          // En production, intégrer l'API RunwayML ici
           videoUrl = `https://storage.googleapis.com/runwayml-samples/future-tech-${Date.now()}.mp4`;
           generationResult = {
             model: "gen-2",
@@ -297,9 +290,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           break;
 
         case "PIKA":
-          // Simulation Pika Labs
           console.log("⚡ Simulation API Pika Labs");
-          // En production, intégrer l'API Pika ici
           videoUrl = `https://pika-labs.s3.amazonaws.com/samples/ai-generated-${Date.now()}.mp4`;
           generationResult = {
             model: "pika-1.0",
@@ -311,7 +302,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
           break;
 
         default:
-          // Ne devrait jamais arriver grâce à la validation
           throw new Error(`Générateur non supporté: ${generator}`);
       }
 
@@ -381,7 +371,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
       // 13. GESTION ERREUR GÉNÉRATION
       console.error("❌ Erreur génération vidéo:", generationError);
 
-      // Mise à jour statut erreur dans DB
       try {
         await supabase
           .from("generated_videos")
@@ -401,7 +390,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
         console.error("⚠️ Impossible de mettre à jour l'erreur en DB:", dbUpdateError);
       }
 
-      // Réponse d'erreur
       return new Response(
         JSON.stringify({
           success: false,
@@ -420,7 +408,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
   } catch (error: any) {
-    // 14. GESTION ERREUR GLOBALE
     console.error("❌ Erreur globale edge function:", error);
     
     return new Response(
