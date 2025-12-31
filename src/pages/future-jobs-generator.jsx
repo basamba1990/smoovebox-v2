@@ -9,7 +9,7 @@ import '../styles/futureJobsGenerator.css';
 export default function FutureJobsGenerator() {
   const { user, profile } = useAuth();
   const [selectedJobId, setSelectedJobId] = useState(1);
-  const [selectedGenerator, setSelectedGenerator] = useState('Sora');
+  const [selectedGenerator, setSelectedGenerator] = useState('SORA'); // 🔥 CHANGÉ: Toujours en majuscule
   const [selectedStyle, setSelectedStyle] = useState('futuristic');
   const [selectedDuration, setSelectedDuration] = useState(30);
   const [generatedPrompt, setGeneratedPrompt] = useState(null);
@@ -82,7 +82,7 @@ export default function FutureJobsGenerator() {
     }
   };
 
-  // ✅ FONCTION PRINCIPALE CORRIGÉE
+  // ✅ FONCTION PRINCIPALE CORRIGÉE - PAYLOAD NORMALISÉ
   const handleGenerateVideo = async () => {
     if (!user) {
       toast.error('Veuillez vous connecter pour générer une vidéo');
@@ -101,10 +101,10 @@ export default function FutureJobsGenerator() {
     setGenerationTime(Date.now());
 
     try {
-      // ✅ FIX: Utiliser les bons noms de champs attendus par le service et l'Edge Function
+      // ✅ FIX: Payload strictement aligné avec l'Edge Function
       const result = await futureJobsVideoService.generateJobVideo({
-        prompt: generatedPrompt.prompt, // ✅ Changé de promptText à prompt
-        generator: selectedGenerator,
+        prompt: String(generatedPrompt.prompt).trim(), // ✅ STRING + TRIM
+        generator: selectedGenerator.toUpperCase(), // ✅ TOUJOURS MAJUSCULES
         style: selectedStyle,
         duration: Number(selectedDuration),
         userId: user.id,
@@ -175,9 +175,10 @@ export default function FutureJobsGenerator() {
     setVideoError(null);
 
     try {
+      // ✅ Même payload normalisé
       const result = await futureJobsVideoService.generateJobVideo({
-        prompt: generatedPrompt.prompt,
-        generator: selectedGenerator,
+        prompt: String(generatedPrompt.prompt).trim(),
+        generator: selectedGenerator.toUpperCase(),
         style: selectedStyle,
         duration: selectedDuration,
         userId: user.id,
@@ -300,12 +301,12 @@ export default function FutureJobsGenerator() {
                 <label className="block text-sm font-semibold mb-2">Générateur</label>
                 <select
                   value={selectedGenerator}
-                  onChange={(e) => setSelectedGenerator(e.target.value)}
+                  onChange={(e) => setSelectedGenerator(e.target.value.toUpperCase())} // ✅ MAJUSCULES
                   className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white text-sm"
                 >
-                  <option value="Sora">OpenAI Sora</option>
-                  <option value="Runway">RunwayML</option>
-                  <option value="Pika">Pika Labs</option>
+                  <option value="SORA">OpenAI Sora</option>
+                  <option value="RUNWAY">RunwayML</option>
+                  <option value="PIKA">Pika Labs</option>
                 </select>
               </div>
               <div>
@@ -497,7 +498,7 @@ export default function FutureJobsGenerator() {
                     </div>
                   </div>
                   
-                  {videoResult.metadata?.model === 'dall-e-3' && (
+                  {videoResult.metadata?.is_placeholder && (
                     <div className="p-3 bg-yellow-900/30 border border-yellow-700 rounded text-yellow-200 text-sm">
                       ⚠️ Note: Sora API n'est pas encore publique. Une image DALL-E a été générée comme placeholder.
                     </div>
