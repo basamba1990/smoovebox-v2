@@ -20,7 +20,7 @@ type ReqBody = {
   jobId?: string;
 };
 
-console.info("✅ Edge Function generate-video démarrée");
+console.info("✅ Edge Function generate-video démarrée - VERSION CORRIGÉE");
 
 Deno.serve(async (req: Request): Promise<Response> => {
   // 1. GESTION CORS PREFLIGHT (OPTIONS)
@@ -76,7 +76,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     let body: ReqBody;
     try {
       body = await req.json();
-      console.log("📥 Body reçu:", JSON.stringify(body, null, 2));
+      console.log("📥 Body brut reçu:", JSON.stringify(body, null, 2));
     } catch (e) {
       console.error("❌ Erreur parsing JSON:", e);
       return new Response(
@@ -92,14 +92,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // 7. VALIDATION DES CHAMPS REQUIS
+    // 7. VALIDATION DES CHAMPS REQUIS AVEC LOGS DE DÉBOGAGE
     const { prompt, generator, style, duration, userId, jobId } = body;
     
+    console.log("🧪 DEBUG - Type prompt:", typeof prompt);
+    console.log("🧪 DEBUG - Longueur prompt:", prompt?.length);
+    console.log("🧪 DEBUG - Contenu prompt (50 premiers caractères):", prompt?.substring(0, 50));
+    console.log("🧪 DEBUG - Generator reçu:", generator);
+    console.log("🧪 DEBUG - Generator normalisé:", generator?.toUpperCase());
+    
     if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
+      console.error("❌ Prompt invalide:", { prompt, type: typeof prompt });
       return new Response(
         JSON.stringify({
           success: false,
           error: "Le champ 'prompt' est requis et doit être une chaîne non vide",
+          received_prompt: prompt,
+          prompt_type: typeof prompt,
           code: "INVALID_PROMPT"
         }),
         {
@@ -109,11 +118,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    if (!generator || !["SORA", "RUNWAY", "PIKA"].includes(generator.toUpperCase())) {
+    const normalizedGenerator = generator?.toUpperCase();
+    if (!normalizedGenerator || !["SORA", "RUNWAY", "PIKA"].includes(normalizedGenerator)) {
+      console.error("❌ Générateur invalide:", normalizedGenerator);
       return new Response(
         JSON.stringify({
           success: false,
           error: "Générateur invalide. Choisissez entre: SORA, RUNWAY, PIKA",
+          received_generator: generator,
+          normalized_generator: normalizedGenerator,
           code: "INVALID_GENERATOR"
         }),
         {
@@ -151,7 +164,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    console.log("✅ Validation réussie:", { generator, style, duration, promptLength: prompt.length });
+    console.log("✅ Validation réussie:", { 
+      generator: normalizedGenerator, 
+      style, 
+      duration, 
+      promptLength: prompt.length,
+      hasUserId: !!userId,
+      hasJobId: !!jobId
+    });
 
     // 8. CRÉATION ENREGISTREMENT DANS job_prompts
     let promptId: string | null = null;
@@ -162,7 +182,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           .insert({
             user_id: userId,
             job_id: jobId || null,
-            generator: generator,
+            generator: normalizedGenerator,
             style: style,
             duration: duration,
             prompt_text: prompt,
@@ -190,7 +210,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     // 9. CRÉATION ENREGISTREMENT VIDÉO
     let videoId: string;
-    let videoData: any = null; // ✅ FIX: Déclaré ici pour être accessible dans tout le scope
+    let videoData: any = null;
     try {
       const { data, error: videoError } = await supabase
         .from("generated_videos")
@@ -198,12 +218,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
           prompt_id: promptId,
           status: "generating",
           metadata: {
-            generator,
+            generator: normalizedGenerator,
             style,
             duration,
             prompt_length: prompt.length,
             started_at: new Date().toISOString(),
-            model: generator === "SORA" ? "sora-1.0" : generator.toLowerCase(),
+            model: normalizedGenerator === "SORA" ? "sora-1.0" : normalizedGenerator.toLowerCase(),
             user_id: userId || null,
             job_id: jobId || null
           },
@@ -239,10 +259,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     let generationResult: any = null;
 
     try {
-      console.log(`🚀 Démarrage génération avec ${generator}...`);
+      console.log(`🚀 Démarrage génération avec ${normalizedGenerator}...`);
       const startTime = Date.now();
 
-      switch (generator.toUpperCase()) {
+      switch (normalizedGenerator) {
         case "SORA":
           console.log("⚠️ API Sora non disponible, utilisation DALL-E comme placeholder");
           try {
@@ -302,7 +322,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           break;
 
         default:
-          throw new Error(`Générateur non supporté: ${generator}`);
+          throw new Error(`Générateur non supporté: ${normalizedGenerator}`);
       }
 
       const processingTime = Date.now() - startTime;
@@ -347,7 +367,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
             generated_at: new Date().toISOString(),
             duration,
             style,
-            generator,
+            generator: normalizedGenerator,
             model: generationResult.model,
             provider: generationResult.provider,
             processing_time_ms: processingTime,
