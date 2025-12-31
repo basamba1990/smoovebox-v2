@@ -1,5 +1,5 @@
 // src/services/futureJobsVideoService.js
-import { supabase } from '../lib/supabaseClient';
+import { supabase } from '../lib/supabase';
 
 /**
  * Service de génération vidéo pour les métiers du futur
