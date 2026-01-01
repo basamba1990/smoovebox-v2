@@ -103,8 +103,8 @@ export default function FutureJobsGenerator() {
     try {
       // ✅ FIX: Utiliser les bons noms de champs attendus par le service et l'Edge Function
       const result = await futureJobsVideoService.generateJobVideo({
-        prompt: String(generatedPrompt.prompt).trim(),
-        generator: selectedGenerator.toUpperCase(), // 🔥 CRITIQUE: Normalisation en majuscules
+        prompt: generatedPrompt.prompt, // ✅ Changé de promptText à prompt
+        generator: selectedGenerator,
         style: selectedStyle,
         duration: Number(selectedDuration),
         userId: user.id,
@@ -176,10 +176,10 @@ export default function FutureJobsGenerator() {
 
     try {
       const result = await futureJobsVideoService.generateJobVideo({
-        prompt: String(generatedPrompt.prompt).trim(),
-        generator: selectedGenerator.toUpperCase(),
+        prompt: generatedPrompt.prompt,
+        generator: selectedGenerator,
         style: selectedStyle,
-        duration: Number(selectedDuration),
+        duration: selectedDuration,
         userId: user.id,
         jobId: selectedJobId
       });

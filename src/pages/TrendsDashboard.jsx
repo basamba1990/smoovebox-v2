@@ -1,6 +1,5 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { Home } from 'lucide-react';
 
 const data = [
   { name: 'AI Specialist', demand2030: 400, demand2040: 800 },
@@ -13,17 +12,6 @@ const data = [
 const TrendsDashboard = () => {
   return (
     <div className="p-8 bg-slate-900 text-white min-h-screen">
-      {/* Bouton Retour Accueil */}
-      <div className="mb-6">
-        <button 
-          onClick={() => window.location.href = '/'}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-gray-300 transition-colors"
-        >
-          <Home className="h-4 w-4" />
-          Retour à l'accueil
-        </button>
-      </div>
-
       <h1 className="text-3xl font-bold mb-8">Dashboard des Tendances Métiers (2030-2040)</h1>
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
