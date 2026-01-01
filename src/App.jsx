@@ -1,4 +1,4 @@
-// ✅ VERSION CORRIGÉE ET AMÉLIORÉE : App.jsx
+// ✅ VERSION CORRIGÉE : App.jsx 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, BrowserRouter as Router } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
@@ -7,17 +7,13 @@ import { supabase } from "./lib/supabase.js";
 import { Toaster } from "sonner";
 import { QueryClientProvider, QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useVideos } from "./hooks/useVideos.js";
-
 // Import des composants
 import AuthModal from "./AuthModal.jsx";
-import ErrorBoundaryEnhanced, {
-  SupabaseErrorFallback,
-} from "./components/ErrorBoundaryEnhanced.jsx";
+import ErrorBoundaryEnhanced, { SupabaseErrorFallback } from "./components/ErrorBoundaryEnhanced.jsx";
 import { checkSupabaseConnection } from "./lib/supabase.js";
 import SupabaseDiagnostic from "./components/SupabaseDiagnostic.jsx";
 import AppRoutes from "./routes/AppRoutes.jsx";
 import GlobalErrorBoundary from "./components/GlobalErrorBoundary.jsx"; // ✅ NOUVEAU
-
 import "./App.css";
 import "./styles/design-system.css";
 
@@ -35,7 +31,6 @@ const ServiceWorkerRegistration = () => {
         });
     }
   }, []);
-
   return null;
 };
 
@@ -44,7 +39,6 @@ const AppContentProtected = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user, signOut, profile } = useAuth();
-
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [supabaseError, setSupabaseError] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState("checking");
@@ -59,19 +53,18 @@ const AppContentProtected = () => {
     if (!videos || videos.length === 0) {
       return null;
     }
-
     return {
       totalVideos: videos.length,
       recentVideos: videos.slice(0, 5),
       videosByStatus: {
-        ready: videos.filter((v) =>
+        ready: videos.filter((v) => 
           ["ready", "uploaded", "published"].includes(v.status)
         ).length,
-        processing: videos.filter((v) =>
+        processing: videos.filter((v) => 
           ["processing", "analyzing", "generating"].includes(v.status)
         ).length,
         analyzed: videos.filter((v) => v.status === "analyzed" || v.analysis).length,
-        failed: videos.filter((v) =>
+        failed: videos.filter((v) => 
           ["failed", "error", "cancelled"].includes(v.status)
         ).length,
       },
@@ -93,7 +86,7 @@ const AppContentProtected = () => {
     const initializeApp = async () => {
       try {
         console.log("🔄 Initialisation SpotBulle...");
-
+        
         // Vérification réseau d'abord
         const networkOk = await checkNetworkConnection();
         if (!networkOk) {
@@ -125,7 +118,7 @@ const AppContentProtected = () => {
     };
 
     initializeApp();
-
+    
     // Vérifier périodiquement
     const interval = setInterval(initializeApp, 30000);
     return () => clearInterval(interval);
@@ -136,10 +129,12 @@ const AppContentProtected = () => {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
       const response = await fetch('https://api.cloudflare.com/cdn-cgi/trace', {
         signal: controller.signal,
         cache: 'no-cache'
       });
+      
       clearTimeout(timeoutId);
       return response.ok;
     } catch (error) {
@@ -165,7 +160,6 @@ const AppContentProtected = () => {
         setCameraChecked(true);
       }
     };
-
     checkCameraPermissions();
   }, []);
 
@@ -177,10 +171,9 @@ const AppContentProtected = () => {
       setConnectionStatus("connected");
       setHasNetworkError(false);
       
-      // ✅ CORRECTION : Rediriger vers la page d'enregistrement vidéo
-      // Au lieu de "/dashboard", on redirige vers "/record"
+      // Invalidate videos query to refetch after authentication
       queryClient.invalidateQueries({ queryKey: ['videos', userData.id] });
-      navigate("/record"); // ✅ CHANGEMENT ICI : Redirection vers l'enregistrement
+      navigate("/dashboard");
     },
     [queryClient, navigate]
   );
@@ -209,7 +202,7 @@ const AppContentProtected = () => {
     setConnectionStatus("checking");
     setSupabaseError(null);
     setHasNetworkError(false);
-
+    
     try {
       // Vérifier réseau d'abord
       const networkOk = await checkNetworkConnection();
@@ -243,9 +236,9 @@ const AppContentProtected = () => {
   if (hasNetworkError && connectionStatus !== "connected") {
     const errorMessage = 
       connectionStatus === "offline" 
-        ? "Pas de connexion internet. Vérifiez votre réseau." 
-        : connectionStatus === "api_error" 
-        ? "Service temporairement indisponible. Réessayez dans quelques instants." 
+        ? "Pas de connexion internet. Vérifiez votre réseau."
+        : connectionStatus === "api_error"
+        ? "Service temporairement indisponible. Réessayez dans quelques instants."
         : "Impossible de se connecter au service.";
 
     return (
@@ -254,12 +247,15 @@ const AppContentProtected = () => {
           <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-yellow-500/20 flex items-center justify-center">
             <span className="text-2xl">⚠️</span>
           </div>
+          
           <h2 className="text-2xl font-bold text-white mb-4">
             {connectionStatus === "offline" ? "Hors ligne" : "Service limité"}
           </h2>
+          
           <p className="text-gray-300 mb-6">
             {errorMessage}
           </p>
+          
           <div className="space-y-3">
             <button
               onClick={handleRetryConnection}
@@ -267,15 +263,18 @@ const AppContentProtected = () => {
             >
               Réessayer la connexion
             </button>
+            
             <button
               onClick={() => {
-                setHasNetworkError(false); // Permettre à l'utilisateur de continuer quand même
+                setHasNetworkError(false);
+                // Permettre à l'utilisateur de continuer quand même
               }}
               className="w-full bg-slate-700 hover:bg-slate-600 text-white font-semibold py-3 px-6 rounded-lg transition"
             >
               Continuer sans connexion
             </button>
           </div>
+          
           <p className="text-gray-500 text-sm mt-6">
             SpotBulle 🇫🇷🇲🇦 • Support: support@spotbulle.fr
           </p>
@@ -287,35 +286,33 @@ const AppContentProtected = () => {
   // ✅ Rendu normal de l'application
   return (
     <div className="app-container">
-      <Toaster
-        position="top-right"
-        duration={5000}
-        closeButton
-        richColors
-        theme="dark"
+      <Toaster 
+        position="top-right" 
+        duration={5000} 
+        closeButton 
+        richColors 
+        theme="dark" 
       />
-
+      
       {/* Indicateur de statut en bas à gauche */}
       {connectionStatus !== "connected" && connectionStatus !== "checking" && (
         <div className={`fixed bottom-4 left-4 z-50 px-3 py-2 rounded-full text-xs font-medium flex items-center gap-2 shadow-lg ${
-          connectionStatus === "connected" 
-            ? "bg-green-500 text-white" 
-            : connectionStatus === "offline" 
-            ? "bg-red-500 text-white" 
-            : "bg-yellow-500 text-white"
+          connectionStatus === "connected" ? "bg-green-500 text-white" :
+          connectionStatus === "offline" ? "bg-red-500 text-white" :
+          "bg-yellow-500 text-white"
         }`}>
           <span>
-            {connectionStatus === "connected" ? "🟢" : 
+            {connectionStatus === "connected" ? "🟢" :
              connectionStatus === "offline" ? "🔴" : "🟡"}
           </span>
           <span>
-            {connectionStatus === "connected" ? "Connecté" : 
+            {connectionStatus === "connected" ? "Connecté" :
              connectionStatus === "offline" ? "Hors ligne" : "Service limité"}
           </span>
         </div>
       )}
-
-      <AppRoutes
+      
+      <AppRoutes 
         user={user}
         profile={profile}
         connectionStatus={connectionStatus}
@@ -329,15 +326,15 @@ const AppContentProtected = () => {
         hasNetworkError={hasNetworkError}
         onRetryConnection={handleRetryConnection}
       />
-
+      
       {/* Modal d'authentification */}
-      <AuthModal
+      <AuthModal 
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         onAuthSuccess={handleAuthSuccess}
         connectionStatus={connectionStatus}
       />
-
+      
       {/* Service Worker */}
       <ServiceWorkerRegistration />
     </div>
@@ -346,7 +343,7 @@ const AppContentProtected = () => {
 
 // ✅ WRAPPER pour AppContentProtected avec ErrorBoundaryEnhanced
 const AppContentWithErrorBoundary = () => (
-  <ErrorBoundaryEnhanced
+  <ErrorBoundaryEnhanced 
     FallbackComponent={SupabaseErrorFallback}
     onError={(error, errorInfo) => {
       console.error("🚨 Erreur Application (ErrorBoundaryEnhanced):", error, errorInfo);
@@ -379,7 +376,7 @@ const queryClient = new QueryClient({
 // ✅ COMPOSANT RACINE PRINCIPAL
 function App() {
   console.log("🚀 Initialisation SpotBulle v2.1.0");
-
+  
   return (
     // Niveau 1: GlobalErrorBoundary pour capturer TOUTES les erreurs React (page blanche)
     <GlobalErrorBoundary>
