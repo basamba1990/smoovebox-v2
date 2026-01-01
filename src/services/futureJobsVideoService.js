@@ -6,7 +6,6 @@ import { supabase } from '../lib/supabase';
  * Gère la communication avec l'Edge Function Supabase
  */
 export const futureJobsVideoService = {
-  
   /**
    * Génère une vidéo à partir d'un prompt
    * @param {Object} data - Données de génération
@@ -95,7 +94,7 @@ export const futureJobsVideoService = {
    */
   async checkVideoStatus(videoId) {
     if (!videoId) return { success: false, error: "ID vidéo requis" };
-
+    
     try {
       const { data, error } = await supabase
         .from('generated_videos')
@@ -104,18 +103,11 @@ export const futureJobsVideoService = {
         .single();
 
       if (error) throw error;
-
-      return {
-        success: true,
-        ...data
-      };
+      
+      return { success: true, ...data };
     } catch (error) {
       console.error('❌ Erreur vérification statut:', error);
-      return {
-        success: false,
-        error: "Impossible de récupérer le statut",
-        details: error.message
-      };
+      return { success: false, error: "Impossible de récupérer le statut", details: error.message };
     }
   },
 
@@ -124,8 +116,9 @@ export const futureJobsVideoService = {
    */
   async getUserVideos(userId, limit = 10) {
     if (!userId) return { success: false, error: "ID utilisateur requis" };
-
+    
     try {
+      // ✅ CORRECTION : Utiliser metadata->>user_id pour convertir en texte
       const { data, error } = await supabase
         .from('generated_videos')
         .select(`
@@ -144,23 +137,40 @@ export const futureJobsVideoService = {
             prompt_text
           )
         `)
-        .eq('metadata->user_id', userId)
+        .eq('metadata->>user_id', userId) // ✅ CORRIGÉ ICI
         .order('created_at', { ascending: false })
         .limit(limit);
 
       if (error) throw error;
-
-      return {
-        success: true,
-        videos: data || []
-      };
+      
+      return { success: true, videos: data || [] };
     } catch (error) {
       console.error('❌ Erreur récupération vidéos:', error);
-      return {
-        success: false,
-        error: "Impossible de récupérer l'historique",
-        videos: []
-      };
+      return { success: false, error: "Impossible de récupérer l'historique", videos: [] };
+    }
+  },
+
+  /**
+   * Annule une génération en cours
+   */
+  async cancelVideoGeneration(videoId) {
+    if (!videoId) return { success: false, error: "ID vidéo requis" };
+    
+    try {
+      const { error } = await supabase
+        .from('generated_videos')
+        .update({
+          status: 'cancelled',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', videoId);
+
+      if (error) throw error;
+      
+      return { success: true, message: 'Génération annulée' };
+    } catch (error) {
+      console.error('❌ Erreur annulation:', error);
+      return { success: false, error: "Impossible d'annuler la génération", details: error.message };
     }
   }
 };
