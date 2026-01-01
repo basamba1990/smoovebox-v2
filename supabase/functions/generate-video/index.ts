@@ -1,3 +1,4 @@
+// supabase/functions/generate-video/index.ts
 import { createClient } from "npm:@supabase/supabase-js@2.45.5";
 import OpenAI from "npm:openai@4.53.2";
 
@@ -19,7 +20,7 @@ type ReqBody = {
   jobId?: string;
 };
 
-console.info("✅ Edge Function generate-video démarrée - VERSION CORRIGÉE");
+console.info("✅ Edge Function generate-video démarrée");
 
 Deno.serve(async (req: Request): Promise<Response> => {
   // 1. GESTION CORS PREFLIGHT (OPTIONS)
@@ -75,7 +76,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     let body: ReqBody;
     try {
       body = await req.json();
-      console.log("📥 Body brut reçu:", JSON.stringify(body, null, 2));
+      console.log("📥 Body reçu:", JSON.stringify(body, null, 2));
     } catch (e) {
       console.error("❌ Erreur parsing JSON:", e);
       return new Response(
@@ -91,23 +92,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // 7. VALIDATION DES CHAMPS REQUIS AVEC LOGS DE DÉBOGAGE
+    // 7. VALIDATION DES CHAMPS REQUIS
     const { prompt, generator, style, duration, userId, jobId } = body;
     
-    console.log("🧪 DEBUG - Type prompt:", typeof prompt);
-    console.log("🧪 DEBUG - Longueur prompt:", prompt?.length);
-    console.log("🧪 DEBUG - Contenu prompt (50 premiers caractères):", prompt?.substring(0, 50));
-    console.log("🧪 DEBUG - Generator reçu:", generator);
-    console.log("🧪 DEBUG - Generator normalisé:", generator?.toUpperCase());
-    
     if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
-      console.error("❌ Prompt invalide:", { prompt, type: typeof prompt });
       return new Response(
         JSON.stringify({
           success: false,
           error: "Le champ 'prompt' est requis et doit être une chaîne non vide",
-          received_prompt: prompt,
-          prompt_type: typeof prompt,
           code: "INVALID_PROMPT"
         }),
         {
@@ -117,15 +109,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    const normalizedGenerator = generator?.toUpperCase();
-    if (!normalizedGenerator || !["SORA", "RUNWAY", "PIKA"].includes(normalizedGenerator)) {
-      console.error("❌ Générateur invalide:", normalizedGenerator);
+    if (!generator || !["SORA", "RUNWAY", "PIKA"].includes(generator.toUpperCase())) {
       return new Response(
         JSON.stringify({
           success: false,
           error: "Générateur invalide. Choisissez entre: SORA, RUNWAY, PIKA",
-          received_generator: generator,
-          normalized_generator: normalizedGenerator,
           code: "INVALID_GENERATOR"
         }),
         {
@@ -135,7 +123,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    if (!style || ["semi-realistic", "futuristic", "cinematic", "documentary", "abstract"].includes(style) === false) {
+    if (!style || !["semi-realistic", "futuristic", "cinematic", "documentary", "abstract"].includes(style)) {
       return new Response(
         JSON.stringify({
           success: false,
@@ -163,14 +151,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    console.log("✅ Validation réussie:", { 
-      generator: normalizedGenerator, 
-      style, 
-      duration, 
-      promptLength: prompt.length,
-      hasUserId: !!userId,
-      hasJobId: !!jobId
-    });
+    console.log("✅ Validation réussie:", { generator, style, duration, promptLength: prompt.length });
 
     // 8. CRÉATION ENREGISTREMENT DANS job_prompts
     let promptId: string | null = null;
@@ -181,7 +162,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           .insert({
             user_id: userId,
             job_id: jobId || null,
-            generator: normalizedGenerator,
+            generator: generator,
             style: style,
             duration: duration,
             prompt_text: prompt,
@@ -209,7 +190,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     // 9. CRÉATION ENREGISTREMENT VIDÉO
     let videoId: string;
-    let videoData: any = null;
+    let videoData: any = null; // ✅ FIX: Déclaré ici pour être accessible dans tout le scope
     try {
       const { data, error: videoError } = await supabase
         .from("generated_videos")
@@ -217,12 +198,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
           prompt_id: promptId,
           status: "generating",
           metadata: {
-            generator: normalizedGenerator,
+            generator,
             style,
             duration,
             prompt_length: prompt.length,
             started_at: new Date().toISOString(),
-            model: normalizedGenerator === "SORA" ? "sora-1.0" : normalizedGenerator.toLowerCase(),
+            model: generator === "SORA" ? "sora-1.0" : generator.toLowerCase(),
             user_id: userId || null,
             job_id: jobId || null
           },
@@ -258,10 +239,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     let generationResult: any = null;
 
     try {
-      console.log(`🚀 Démarrage génération avec ${normalizedGenerator}...`);
+      console.log(`🚀 Démarrage génération avec ${generator}...`);
       const startTime = Date.now();
 
-      switch (normalizedGenerator) {
+      switch (generator.toUpperCase()) {
         case "SORA":
           console.log("⚠️ API Sora non disponible, utilisation DALL-E comme placeholder");
           try {
@@ -274,7 +255,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
               n: 1,
             });
 
-            videoUrl = imageResult.data[0].url as string;
+            videoUrl = imageResult.data[0].url;
             generationResult = {
               model: "dall-e-3",
               provider: "openai",
@@ -321,7 +302,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           break;
 
         default:
-          throw new Error(`Générateur non supporté: ${normalizedGenerator}`);
+          throw new Error(`Générateur non supporté: ${generator}`);
       }
 
       const processingTime = Date.now() - startTime;
@@ -366,7 +347,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
             generated_at: new Date().toISOString(),
             duration,
             style,
-            generator: normalizedGenerator,
+            generator,
             model: generationResult.model,
             provider: generationResult.provider,
             processing_time_ms: processingTime,
@@ -413,7 +394,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         JSON.stringify({
           success: false,
           error: "Échec de la génération vidéo",
-          details: (generationError as any).message,
+          details: generationError.message,
           status: "error",
           videoId,
           code: "GENERATION_FAILED",
