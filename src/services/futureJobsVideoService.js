@@ -9,52 +9,55 @@ export const futureJobsVideoService = {
   
   /**
    * Génère une vidéo à partir d'un prompt
-   * @param {Object} payload - Données de génération
-   * @param {string} payload.prompt - Texte du prompt (REQUIS)
-   * @param {string} payload.generator - Générateur: SORA, RUNWAY, PIKA (REQUIS)
-   * @param {string} payload.style - Style: futuristic, semi-realistic, etc. (REQUIS)
-   * @param {number} payload.duration - Durée en secondes (REQUIS)
-   * @param {string} payload.userId - ID utilisateur (optionnel)
-   * @param {string|number} payload.jobId - ID du métier (optionnel)
+   * @param {Object} data - Données de génération
+   * @param {string} data.prompt - Texte du prompt (REQUIS)
+   * @param {string} data.generator - Générateur: SORA, RUNWAY, PIKA (REQUIS)
+   * @param {string} data.style - Style: futuristic, semi-realistic, etc. (REQUIS)
+   * @param {number} data.duration - Durée en secondes (REQUIS)
+   * @param {string} data.userId - ID utilisateur (optionnel)
+   * @param {string|number} data.jobId - ID du métier (optionnel)
    * @returns {Promise<Object>} Résultat de la génération
    */
-  async generateJobVideo(payload) {
-    const {
-      prompt,
-      generator,
-      style,
-      duration,
-      userId,
-      jobId
-    } = payload;
-
-    console.log('🚀 Service: Début génération vidéo', { generator, style, duration, jobId });
+  async generateJobVideo(data) {
+    console.log('🚀 Service: Début génération vidéo', data);
     
-    // VALIDATION STRICTE CÔTÉ CLIENT
-    if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
-      throw new Error('Le prompt est requis et doit être une chaîne de caractères non vide');
+    // VALIDATION DES DONNÉES D'ENTRÉE
+    if (!data || typeof data !== 'object') {
+      return {
+        success: false,
+        error: "Données de génération invalides",
+        code: "INVALID_INPUT"
+      };
     }
 
-    if (!generator) {
-      throw new Error('Le générateur est requis (SORA, RUNWAY, PIKA)');
+    // Validation des champs requis
+    const requiredFields = ['prompt', 'generator', 'style', 'duration'];
+    const missingFields = requiredFields.filter(field => !data[field]);
+    
+    if (missingFields.length > 0) {
+      return {
+        success: false,
+        error: `Champs requis manquants: ${missingFields.join(', ')}`,
+        code: "MISSING_FIELDS"
+      };
     }
 
-    // PRÉPARATION DU PAYLOAD NORMALISÉ POUR L'EDGE FUNCTION
-    const normalizedPayload = {
-      prompt: String(prompt).trim(),
-      generator: String(generator).toUpperCase(), // 🔥 CRITIQUE: Toujours en majuscules
-      style: style || 'futuristic',
-      duration: Number(duration) || 30,
-      userId: userId || null,
-      jobId: jobId ? String(jobId) : null
+    // PRÉPARATION DU PAYLOAD STRICT POUR L'EDGE FUNCTION
+    const payload = {
+      prompt: data.prompt, // ✅ FIX: Assurer que c'est bien 'prompt'
+      generator: data.generator.toUpperCase(),
+      style: data.style,
+      duration: Number(data.duration),
+      userId: data.userId || null,
+      jobId: data.jobId ? String(data.jobId) : null
     };
 
-    console.log('📤 Payload normalisé envoyé à Edge Function:', normalizedPayload);
+    console.log('📤 Payload envoyé à Edge Function:', payload);
 
     try {
-      // APPEL EDGE FUNCTION VIA LE CLIENT SUPABASE
-      const { data, error } = await supabase.functions.invoke('generate-video', {
-        body: normalizedPayload,
+      // APPEL EDGE FUNCTION
+      const { data: result, error } = await supabase.functions.invoke('generate-video', {
+        body: payload,
         headers: {
           'Content-Type': 'application/json',
           'X-Request-Source': 'smoovebox-v2-frontend'
@@ -62,19 +65,28 @@ export const futureJobsVideoService = {
       });
 
       if (error) {
-        console.error('❌ Erreur Edge Function:', error);
-        throw new Error(error.message || "Erreur lors de l'appel à la fonction de génération");
+        console.error('❌ Erreur Supabase Functions:', error);
+        return {
+          success: false,
+          error: error.message || "Erreur lors de l'appel à la fonction de génération",
+          code: "EDGE_FUNCTION_ERROR"
+        };
       }
 
       return {
         success: true,
-        ...data,
+        ...result,
         timestamp: new Date().toISOString()
       };
 
-    } catch (err) {
-      console.error('❌ Erreur service génération:', err);
-      throw err;
+    } catch (networkError) {
+      console.error('❌ Erreur réseau:', networkError);
+      return {
+        success: false,
+        error: "Problème de connexion au serveur de génération",
+        details: networkError.message,
+        code: "NETWORK_ERROR"
+      };
     }
   },
 
@@ -132,7 +144,7 @@ export const futureJobsVideoService = {
             prompt_text
           )
         `)
-        .eq('metadata->>user_id', userId) // ✅ Utilisation de l'opérateur ->> pour le JSONB
+        .eq('metadata->user_id', userId)
         .order('created_at', { ascending: false })
         .limit(limit);
 
