@@ -173,7 +173,9 @@ const AppContentProtected = () => {
       
       // Invalidate videos query to refetch after authentication
       queryClient.invalidateQueries({ queryKey: ['videos', userData.id] });
-      navigate("/dashboard");
+      
+      // ✅ REDIRECTION CORRIGÉE : Vers la page d'enregistrement au lieu du tableau de bord
+      navigate("/record-video");
     },
     [queryClient, navigate]
   );
