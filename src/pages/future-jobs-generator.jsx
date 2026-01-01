@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, Copy, Download, Zap, Eye, Play, Loader2, CheckCircle, XCircle, RefreshCw, Home } from 'lucide-react';
+import { ChevronDown, Copy, Download, Zap, Eye, Play, Loader2, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
 import pinnPromptService from '../services/pinnPromptService';
 import { futureJobsVideoService } from '../services/futureJobsVideoService';
 import { useAuth } from '../context/AuthContext';
@@ -268,17 +268,6 @@ export default function FutureJobsGenerator() {
   return (
     <div className="future-jobs-generator min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Bouton Retour Accueil */}
-        <div className="mb-6">
-          <button 
-            onClick={() => window.location.href = '/'}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-gray-300 transition-colors"
-          >
-            <Home className="h-4 w-4" />
-            Retour à l'accueil
-          </button>
-        </div>
-
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">🎬 Générateur de Vidéos Métiers du Futur</h1>
