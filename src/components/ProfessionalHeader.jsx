@@ -38,6 +38,16 @@ const ProfessionalHeader = ({
           {/* Navigation principale */}
           <nav className="hidden md:flex items-center gap-1 lg:gap-2">
             <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => window.location.href = '/'}
+              className="flex items-center gap-2 text-gray-300 hover:text-white"
+            >
+              <Home className="h-4 w-4" />
+              Accueil
+            </Button>
+
+            <Button
               variant={currentSection === 'dashboard' ? 'default' : 'ghost'}
               size="sm"
               className={`flex items-center gap-2 ${
@@ -46,7 +56,7 @@ const ProfessionalHeader = ({
                   : 'text-gray-300 hover:text-white'
               }`}
             >
-              <Home className="h-4 w-4" />
+              <BarChart3 className="h-4 w-4" />
               Tableau de bord
             </Button>
             

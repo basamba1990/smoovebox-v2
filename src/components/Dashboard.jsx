@@ -887,6 +887,19 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
 
   return (
     <div className="container mx-auto p-4">
+      {/* Bouton Retour Accueil */}
+      <div className="mb-4">
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => window.location.href = '/'}
+          className="flex items-center gap-2 border-gray-700 text-gray-300 hover:bg-gray-800"
+        >
+          <Home className="h-4 w-4" />
+          Retour à l'accueil
+        </Button>
+      </div>
+
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Tableau de Bord Vidéos</h1>
         <div className="flex gap-2">
