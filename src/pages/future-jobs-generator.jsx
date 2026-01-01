@@ -19,8 +19,6 @@ export default function FutureJobsGenerator() {
   const [showPreview, setShowPreview] = useState(false);
   const [variants, setVariants] = useState(null);
   const [showVariants, setShowVariants] = useState(false);
-  
-  // États pour la génération vidéo
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [videoResult, setVideoResult] = useState(null);
   const [videoError, setVideoError] = useState(null);
@@ -29,18 +27,14 @@ export default function FutureJobsGenerator() {
   const [pollingInterval, setPollingInterval] = useState(null);
   const [generationTime, setGenerationTime] = useState(null);
 
-  // Charger les métiers au montage
   useEffect(() => {
     const allJobs = pinnPromptService.getAllJobs();
     setJobs(allJobs);
-    
-    // Charger l'historique des vidéos générées
     if (user) {
       loadUserVideos();
     }
   }, [user]);
 
-  // Nettoyer l'intervalle de polling à la destruction du composant
   useEffect(() => {
     return () => {
       if (pollingInterval) {
@@ -51,7 +45,6 @@ export default function FutureJobsGenerator() {
 
   const loadUserVideos = async () => {
     if (!user) return;
-    
     try {
       const result = await futureJobsVideoService.getUserVideos(user.id, 5);
       if (result.success) {
@@ -62,7 +55,6 @@ export default function FutureJobsGenerator() {
     }
   };
 
-  // Générer le prompt
   const handleGeneratePrompt = () => {
     setLoading(true);
     try {
@@ -82,13 +74,11 @@ export default function FutureJobsGenerator() {
     }
   };
 
-  // ✅ FONCTION PRINCIPALE CORRIGÉE
   const handleGenerateVideo = async () => {
     if (!user) {
       toast.error('Veuillez vous connecter pour générer une vidéo');
       return;
     }
-
     if (!generatedPrompt || !generatedPrompt.prompt) {
       toast.error('Veuillez d\'abord générer un prompt');
       return;
@@ -101,9 +91,8 @@ export default function FutureJobsGenerator() {
     setGenerationTime(Date.now());
 
     try {
-      // ✅ FIX: Utiliser les bons noms de champs attendus par le service et l'Edge Function
       const result = await futureJobsVideoService.generateJobVideo({
-        prompt: generatedPrompt.prompt, // ✅ Changé de promptText à prompt
+        prompt: generatedPrompt.prompt,
         generator: selectedGenerator,
         style: selectedStyle,
         duration: Number(selectedDuration),
@@ -115,11 +104,9 @@ export default function FutureJobsGenerator() {
         setVideoResult(result);
         setGenerationStatus('✅ Vidéo générée avec succès !');
         toast.success('Vidéo générée avec succès !');
-        
         if (result.metadata?.is_placeholder) {
           toast.info('⚠️ Note: Sora API n\'est pas encore disponible. Une image DALL-E a été générée comme placeholder.');
         }
-        
         await loadUserVideos();
       } else {
         throw new Error(result.error || 'Échec de la génération');
@@ -134,20 +121,18 @@ export default function FutureJobsGenerator() {
     }
   };
 
-  // Fonction pour vérifier le statut d'une vidéo
   const handleCheckStatus = async (videoId) => {
     try {
       const result = await futureJobsVideoService.checkVideoStatus(videoId);
       if (result.success) {
         toast.info(`Statut: ${result.status}`);
-        await loadUserVideos(); // Recharger la liste
+        await loadUserVideos();
       }
     } catch (error) {
       toast.error('Erreur vérification statut');
     }
   };
 
-  // Fonction pour annuler une génération
   const handleCancelGeneration = async (videoId) => {
     if (window.confirm('Annuler cette génération ?')) {
       const result = await futureJobsVideoService.cancelVideoGeneration(videoId);
@@ -158,13 +143,11 @@ export default function FutureJobsGenerator() {
     }
   };
 
-  // Fonction pour relancer une génération
   const handleRetryGeneration = async (videoId) => {
     if (!generatedPrompt) {
       toast.error('Veuillez d\'abord générer un prompt');
       return;
     }
-
     if (!user) {
       toast.error('Veuillez vous connecter');
       return;
@@ -202,7 +185,6 @@ export default function FutureJobsGenerator() {
     }
   };
 
-  // Copier le prompt
   const handleCopyPrompt = () => {
     if (generatedPrompt) {
       navigator.clipboard.writeText(generatedPrompt.prompt);
@@ -212,7 +194,6 @@ export default function FutureJobsGenerator() {
     }
   };
 
-  // Télécharger le prompt
   const handleDownloadPrompt = () => {
     if (generatedPrompt) {
       const markdown = pinnPromptService.exportForGenerator(generatedPrompt, 'markdown');
@@ -227,7 +208,6 @@ export default function FutureJobsGenerator() {
     }
   };
 
-  // Télécharger la vidéo
   const handleDownloadVideo = () => {
     if (videoResult?.videoUrl) {
       const link = document.createElement('a');
@@ -240,14 +220,12 @@ export default function FutureJobsGenerator() {
     }
   };
 
-  // Calcul du temps écoulé
   const getElapsedTime = () => {
     if (!generationTime) return '0s';
     const seconds = Math.floor((Date.now() - generationTime) / 1000);
     return `${seconds}s`;
   };
 
-  // Fonction pour générer des variantes
   const handleGenerateVariants = () => {
     setLoading(true);
     try {
@@ -268,7 +246,6 @@ export default function FutureJobsGenerator() {
   return (
     <div className="future-jobs-generator min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">🎬 Générateur de Vidéos Métiers du Futur</h1>
           <p className="text-gray-400">Générez des prompts et créez des vidéos IA pour les métiers du futur (2030-2040)</p>
@@ -276,7 +253,6 @@ export default function FutureJobsGenerator() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Panneau de contrôle */}
           <div className="lg:col-span-1 bg-slate-800/50 backdrop-blur border border-slate-700 rounded-lg p-6 space-y-6">
             <div>
               <label className="block text-sm font-semibold mb-3">Métier du Futur</label>
@@ -346,7 +322,6 @@ export default function FutureJobsGenerator() {
                 {loading ? <Loader2 className="animate-spin" /> : <Zap size={20} />}
                 ✨ Générer Prompt
               </button>
-              
               <button
                 onClick={handleGenerateVideo}
                 disabled={!generatedPrompt || isGeneratingVideo}
@@ -355,7 +330,6 @@ export default function FutureJobsGenerator() {
                 {isGeneratingVideo ? <Loader2 className="animate-spin" /> : <Play size={20} />}
                 🎬 Générer la vidéo
               </button>
-
               <button
                 onClick={handleGenerateVariants}
                 disabled={loading || !selectedJobId}
@@ -366,9 +340,7 @@ export default function FutureJobsGenerator() {
             </div>
           </div>
 
-          {/* Zone d'affichage */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Aperçu du métier sélectionné */}
             {selectedJob && !generatedPrompt && !isGeneratingVideo && (
               <div className="bg-slate-800/30 border border-slate-700 rounded-lg p-8 text-center">
                 <div className="w-20 h-20 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -376,25 +348,23 @@ export default function FutureJobsGenerator() {
                 </div>
                 <h2 className="text-2xl font-bold mb-2">{selectedJob.title}</h2>
                 <p className="text-gray-400 mb-6">Horizon: {selectedJob.year}</p>
-                
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
                   <div>
                     <h4 className="text-sm font-bold text-blue-400 uppercase mb-2">Tâches clés:</h4>
                     <ul className="text-sm space-y-1 text-gray-300">
-                      {selectedJob.key_tasks.map((t, i) => <li key={i}>• {t}</li>)}
+                      {selectedJob.keyTasks.split('. ').map((t, i) => <li key={i}>• {t}</li>)}
                     </ul>
                   </div>
                   <div>
                     <h4 className="text-sm font-bold text-purple-400 uppercase mb-2">Compétences:</h4>
                     <ul className="text-sm space-y-1 text-gray-300">
-                      {selectedJob.core_skills.map((s, i) => <li key={i}>• {s}</li>)}
+                      {selectedJob.coreSkills.split('. ').map((s, i) => <li key={i}>• {s}</li>)}
                     </ul>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Loader de génération vidéo */}
             {isGeneratingVideo && (
               <div className="bg-slate-800/50 backdrop-blur border border-slate-700 rounded-lg p-12 text-center">
                 <Loader2 size={60} className="animate-spin text-purple-500 mx-auto mb-6" />
@@ -406,7 +376,6 @@ export default function FutureJobsGenerator() {
               </div>
             )}
 
-            {/* Affichage du prompt généré */}
             {generatedPrompt && !isGeneratingVideo && !videoResult && (
               <div className="bg-slate-800/50 backdrop-blur border border-slate-700 rounded-lg overflow-hidden">
                 <div className="bg-slate-700/50 p-4 flex justify-between items-center border-b border-slate-600">
@@ -414,10 +383,18 @@ export default function FutureJobsGenerator() {
                     <Eye size={18} /> Prompt Généré
                   </h3>
                   <div className="flex gap-2">
-                    <button onClick={handleCopyPrompt} className="p-2 hover:bg-slate-600 rounded transition-colors" title="Copier">
+                    <button
+                      onClick={handleCopyPrompt}
+                      className="p-2 hover:bg-slate-600 rounded transition-colors"
+                      title="Copier"
+                    >
                       {copied ? <CheckCircle size={18} className="text-green-400" /> : <Copy size={18} />}
                     </button>
-                    <button onClick={handleDownloadPrompt} className="p-2 hover:bg-slate-600 rounded transition-colors" title="Télécharger">
+                    <button
+                      onClick={handleDownloadPrompt}
+                      className="p-2 hover:bg-slate-600 rounded transition-colors"
+                      title="Télécharger"
+                    >
                       <Download size={18} />
                     </button>
                   </div>
@@ -426,7 +403,6 @@ export default function FutureJobsGenerator() {
                   <pre className="whitespace-pre-wrap font-mono text-sm text-blue-100 bg-slate-900/50 p-4 rounded border border-slate-700 leading-relaxed">
                     {generatedPrompt.prompt}
                   </pre>
-                  
                   <div className="mt-6 flex flex-wrap gap-4 text-xs text-gray-400">
                     <div className="flex items-center gap-1">
                       <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
@@ -445,7 +421,6 @@ export default function FutureJobsGenerator() {
               </div>
             )}
 
-            {/* Résultat vidéo */}
             {videoResult && !isGeneratingVideo && (
               <div className="bg-slate-800/50 backdrop-blur border border-slate-700 rounded-lg p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -455,19 +430,16 @@ export default function FutureJobsGenerator() {
                       onClick={handleDownloadVideo}
                       className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-2 text-sm"
                     >
-                      <Download size={16} />
-                      Télécharger
+                      <Download size={16} /> Télécharger
                     </button>
                     <button
                       onClick={() => navigator.clipboard.writeText(videoResult.videoUrl)}
                       className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded flex items-center gap-2 text-sm"
                     >
-                      <Copy size={16} />
-                      Copier
+                      <Copy size={16} /> Copier
                     </button>
                   </div>
                 </div>
-                
                 <div className="space-y-4">
                   {videoResult.videoUrl && (
                     <div className="aspect-video bg-black rounded-lg overflow-hidden">
@@ -481,7 +453,6 @@ export default function FutureJobsGenerator() {
                       </video>
                     </div>
                   )}
-                  
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                     <div className="bg-slate-900/50 p-3 rounded">
                       <p className="text-gray-400">ID de la vidéo:</p>
@@ -496,7 +467,6 @@ export default function FutureJobsGenerator() {
                       <p className="text-white">{videoResult.metadata?.model || selectedGenerator}</p>
                     </div>
                   </div>
-                  
                   {videoResult.metadata?.model === 'dall-e-3' && (
                     <div className="p-3 bg-yellow-900/30 border border-yellow-700 rounded text-yellow-200 text-sm">
                       ⚠️ Note: Sora API n'est pas encore publique. Une image DALL-E a été générée comme placeholder.
@@ -506,7 +476,6 @@ export default function FutureJobsGenerator() {
               </div>
             )}
 
-            {/* Section erreur */}
             {videoError && (
               <div className="bg-red-900/30 backdrop-blur border border-red-700 rounded-lg p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -515,11 +484,9 @@ export default function FutureJobsGenerator() {
                     onClick={() => handleRetryGeneration(videoResult?.videoId)}
                     className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded flex items-center gap-2 text-sm"
                   >
-                    <RefreshCw size={16} />
-                    Réessayer
+                    <RefreshCw size={16} /> Réessayer
                   </button>
                 </div>
-                
                 <p className="text-red-200 mb-3">{videoError}</p>
                 <p className="text-gray-300 text-sm">
                   Vérifiez que votre Edge Function est correctement déployée et que votre clé API OpenAI est configurée.
@@ -527,7 +494,6 @@ export default function FutureJobsGenerator() {
               </div>
             )}
 
-            {/* Historique des vidéos générées */}
             {generatedVideos.length > 0 && (
               <div className="bg-slate-800/50 backdrop-blur border border-slate-700 rounded-lg p-6">
                 <h3 className="text-xl font-bold mb-4">📜 Historique des Vidéos</h3>
@@ -540,12 +506,15 @@ export default function FutureJobsGenerator() {
                             {video.job_prompts?.future_jobs?.title || 'Vidéo générée'}
                           </p>
                           <p className="text-gray-400 text-sm">
-                            {new Date(video.created_at).toLocaleDateString('fr-FR')} • 
-                            Statut: <span className={
+                            {new Date(video.created_at).toLocaleDateString('fr-FR')} • Statut:{' '}
+                            <span className={
                               video.status === 'done' ? 'text-green-400 font-semibold' :
                               video.status === 'generating' ? 'text-yellow-400 font-semibold' :
-                              video.status === 'error' ? 'text-red-400 font-semibold' : 'text-gray-400'
-                            }>{video.status}</span>
+                              video.status === 'error' ? 'text-red-400 font-semibold' :
+                              'text-gray-400'
+                            }>
+                              {video.status}
+                            </span>
                           </p>
                           {video.job_prompts?.generator && (
                             <p className="text-gray-500 text-xs mt-1">
@@ -561,8 +530,7 @@ export default function FutureJobsGenerator() {
                               rel="noopener noreferrer"
                               className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded flex items-center gap-1"
                             >
-                              <Eye size={14} />
-                              Voir
+                              <Eye size={14} /> Voir
                             </a>
                           )}
                           {video.status === 'generating' && (
@@ -591,11 +559,10 @@ export default function FutureJobsGenerator() {
           </div>
         </div>
 
-        {/* Informations sur le framework PINN-like */}
         <div className="mt-8 bg-slate-800/50 backdrop-blur border border-slate-700 rounded-lg p-6">
           <h3 className="text-lg font-bold mb-4">📚 À propos du Framework PINN-like</h3>
           <p className="text-gray-300 mb-4">
-            Ce générateur utilise un framework inspiré des <strong>Physics-Informed Neural Networks (PINN)</strong>. 
+            Ce générateur utilise un framework inspiré des <strong>Physics-Informed Neural Networks (PINN)</strong>.
             Les "physics" sont les contraintes réalistes du marché de l'emploi basées sur le rapport WEF 2025.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
