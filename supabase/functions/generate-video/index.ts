@@ -139,11 +139,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    if (!style || !["semi-realistic", "futuristic", "cinematic", "documentary", "abstract"].includes(style)) {
+    if (!style || !["semi-realistic", "futuristic", "cinematic", "documentary", "abstract", "lumi-universe"].includes(style)) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Style invalide",
+          error: "Style invalide. Styles autorisés: semi-realistic, futuristic, cinematic, documentary, abstract, lumi-universe",
           code: "INVALID_STYLE"
         }),
         {
