@@ -46,10 +46,11 @@ export const futureJobsVideoService = {
     const payload = {
       prompt: data.prompt,
       generator: data.generator.toUpperCase(),
-      style: data.style,
-      duration: Number(data.duration),
+      style: data.style || 'lumi-universe', // Ajout de la valeur par défaut
+      duration: Number(data.duration) || 30, // Ajout de la valeur par défaut
       userId: data.userId || null,
-      jobId: data.jobId ? String(data.jobId) : null
+      jobId: data.jobId ? String(data.jobId) : null // Conversion explicite en string
+
     };
 
     console.log('📤 Payload envoyé à Edge Function:', payload);
