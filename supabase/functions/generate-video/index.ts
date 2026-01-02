@@ -20,7 +20,7 @@ type ReqBody = {
   jobId?: string;
 };
 
-console.info("✅ Edge Function generate-video démarrée");
+console.info("✅ Edge Function generate-video démarrée - VERSION CORRIGÉE");
 
 Deno.serve(async (req: Request): Promise<Response> => {
   // 1. GESTION CORS PREFLIGHT (OPTIONS)
@@ -31,7 +31,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  // 2. REJET DES MÉTHODES NON AUTORISÉES
+  // 2. GESTION GET INFORMATIF (CORRECTION 1)
+  if (req.method === "GET") {
+    return new Response(
+      JSON.stringify({
+        service: "generate-video",
+        status: "online",
+        allowed_methods: ["POST"],
+        message: "Use POST to generate a video"
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      }
+    );
+  }
+
+  // 3. REJET DES MÉTHODES NON AUTORISÉES
   if (req.method !== "POST") {
     return new Response(
       JSON.stringify({
@@ -46,9 +62,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  // 3. TRY-CATCH GLOBAL
+  // 4. TRY-CATCH GLOBAL
   try {
-    // 4. VÉRIFICATION VARIABLES ENVIRONNEMENT
+    // 5. VÉRIFICATION VARIABLES ENVIRONNEMENT
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
@@ -68,11 +84,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // 5. INITIALISATION CLIENTS
+    // 6. INITIALISATION CLIENTS
     const supabase = createClient(supabaseUrl, supabaseKey);
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    // 6. VALIDATION ET PARSING DU BODY
+    // 7. VALIDATION ET PARSING DU BODY
     let body: ReqBody;
     try {
       body = await req.json();
@@ -92,9 +108,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // 7. VALIDATION DES CHAMPS REQUIS
+    // 8. VALIDATION DES CHAMPS REQUIS
     const { prompt, generator, style, duration, userId, jobId } = body;
-    
+      
     if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
       return new Response(
         JSON.stringify({
@@ -127,7 +143,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Style invalide. Choisissez entre: semi-realistic, futuristic, cinematic, documentary, abstract",
+          error: "Style invalide",
           code: "INVALID_STYLE"
         }),
         {
@@ -153,7 +169,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     console.log("✅ Validation réussie:", { generator, style, duration, promptLength: prompt.length });
 
-    // 8. CRÉATION ENREGISTREMENT DANS job_prompts
+    // 9. CRÉATION ENREGISTREMENT DANS job_prompts
     let promptId: string | null = null;
     if (userId) {
       try {
@@ -162,7 +178,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           .insert({
             user_id: userId,
             job_id: jobId || null,
-            generator: generator,
+            generator: generator.toUpperCase(),
             style: style,
             duration: duration,
             prompt_text: prompt,
@@ -188,9 +204,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    // 9. CRÉATION ENREGISTREMENT VIDÉO
+    // 10. CRÉATION ENREGISTREMENT VIDÉO
     let videoId: string;
-    let videoData: any = null; // ✅ FIX: Déclaré ici pour être accessible dans tout le scope
+    let videoData: any = null;
     try {
       const { data, error: videoError } = await supabase
         .from("generated_videos")
@@ -198,12 +214,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
           prompt_id: promptId,
           status: "generating",
           metadata: {
-            generator,
+            generator: generator.toUpperCase(),
             style,
             duration,
             prompt_length: prompt.length,
             started_at: new Date().toISOString(),
-            model: generator === "SORA" ? "sora-1.0" : generator.toLowerCase(),
+            model: generator.toUpperCase() === "SORA" ? "sora-1.0" : generator.toLowerCase(),
             user_id: userId || null,
             job_id: jobId || null
           },
@@ -234,7 +250,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // 10. GÉNÉRATION VIDÉO/IMAGE
+    // 11. GÉNÉRATION VIDÉO/IMAGE
     let videoUrl: string | null = null;
     let generationResult: any = null;
 
@@ -308,7 +324,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const processingTime = Date.now() - startTime;
       console.log(`✅ Génération terminée en ${processingTime}ms`, { videoUrl });
 
-      // 11. MISE À JOUR ENREGISTREMENT VIDÉO
+      // 12. MISE À JOUR ENREGISTREMENT VIDÉO
       try {
         const { error: updateError } = await supabase
           .from("generated_videos")
@@ -335,7 +351,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         console.error("⚠️ Erreur mise à jour DB (non critique):", updateError);
       }
 
-      // 12. RÉPONSE DE SUCCÈS
+      // 13. RÉPONSE DE SUCCÈS
       return new Response(
         JSON.stringify({
           success: true,
@@ -347,7 +363,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
             generated_at: new Date().toISOString(),
             duration,
             style,
-            generator,
+            generator: generator.toUpperCase(),
             model: generationResult.model,
             provider: generationResult.provider,
             processing_time_ms: processingTime,
@@ -368,7 +384,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
 
     } catch (generationError: any) {
-      // 13. GESTION ERREUR GÉNÉRATION
+      // 14. GESTION ERREUR GÉNÉRATION
       console.error("❌ Erreur génération vidéo:", generationError);
 
       try {
@@ -382,8 +398,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
               error: generationError.message,
               error_stack: generationError.stack?.substring(0, 1000),
               failed_at: new Date().toISOString(),
-              success: false
-            },
+            }
           })
           .eq("id", videoId);
       } catch (dbUpdateError) {
@@ -409,7 +424,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   } catch (error: any) {
     console.error("❌ Erreur globale edge function:", error);
-    
+      
     return new Response(
       JSON.stringify({
         success: false,

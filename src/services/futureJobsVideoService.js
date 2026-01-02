@@ -42,8 +42,9 @@ export const futureJobsVideoService = {
     }
 
     // PRÉPARATION DU PAYLOAD STRICT POUR L'EDGE FUNCTION
+    // ✅ CORRECTION 3 : Normaliser les générateurs en MAJUSCULES
     const payload = {
-      prompt: data.prompt, // ✅ FIX: Assurer que c'est bien 'prompt'
+      prompt: data.prompt,
       generator: data.generator.toUpperCase(),
       style: data.style,
       duration: Number(data.duration),
@@ -55,7 +56,9 @@ export const futureJobsVideoService = {
 
     try {
       // APPEL EDGE FUNCTION
+      // ✅ CORRECTION 2 : Assurer que c'est bien un POST (par défaut avec invoke)
       const { data: result, error } = await supabase.functions.invoke('generate-video', {
+        method: 'POST', // Explicite pour la sécurité
         body: payload,
         headers: {
           'Content-Type': 'application/json',
@@ -118,7 +121,7 @@ export const futureJobsVideoService = {
     if (!userId) return { success: false, error: "ID utilisateur requis" };
     
     try {
-      // ✅ CORRECTION : Utiliser metadata->>user_id pour convertir en texte
+      // ✅ CORRECTION : Utiliser metadata->>user_id pour filtrer correctement
       const { data, error } = await supabase
         .from('generated_videos')
         .select(`
@@ -134,10 +137,13 @@ export const futureJobsVideoService = {
             generator,
             style,
             duration,
-            prompt_text
+            prompt_text,
+            future_jobs (
+              title
+            )
           )
         `)
-        .eq('metadata->>user_id', userId) // ✅ CORRIGÉ ICI
+        .eq('metadata->>user_id', userId)
         .order('created_at', { ascending: false })
         .limit(limit);
 

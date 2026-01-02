@@ -9,7 +9,8 @@ import '../styles/futureJobsGenerator.css';
 export default function FutureJobsGenerator() {
   const { user, profile } = useAuth();
   const [selectedJobId, setSelectedJobId] = useState(1);
-  const [selectedGenerator, setSelectedGenerator] = useState('Sora');
+  // ✅ CORRECTION 3 : Normaliser les générateurs en MAJUSCULES
+  const [selectedGenerator, setSelectedGenerator] = useState('SORA');
   const [selectedStyle, setSelectedStyle] = useState('futuristic');
   const [selectedDuration, setSelectedDuration] = useState(30);
   const [generatedPrompt, setGeneratedPrompt] = useState(null);
@@ -279,9 +280,9 @@ export default function FutureJobsGenerator() {
                   onChange={(e) => setSelectedGenerator(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white text-sm"
                 >
-                  <option value="Sora">OpenAI Sora</option>
-                  <option value="Runway">RunwayML</option>
-                  <option value="Pika">Pika Labs</option>
+                  <option value="SORA">OpenAI Sora</option>
+                  <option value="RUNWAY">RunwayML</option>
+                  <option value="PIKA">Pika Labs</option>
                 </select>
               </div>
               <div>
@@ -315,6 +316,7 @@ export default function FutureJobsGenerator() {
 
             <div className="flex flex-col gap-3 pt-4">
               <button
+                type="button"
                 onClick={handleGeneratePrompt}
                 disabled={loading}
                 className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-bold rounded-md flex items-center justify-center gap-2 transition-all"
@@ -323,6 +325,7 @@ export default function FutureJobsGenerator() {
                 ✨ Générer Prompt
               </button>
               <button
+                type="button"
                 onClick={handleGenerateVideo}
                 disabled={!generatedPrompt || isGeneratingVideo}
                 className="w-full py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 text-white font-bold rounded-md flex items-center justify-center gap-2 transition-all"
@@ -331,6 +334,7 @@ export default function FutureJobsGenerator() {
                 🎬 Générer la vidéo
               </button>
               <button
+                type="button"
                 onClick={handleGenerateVariants}
                 disabled={loading || !selectedJobId}
                 className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-md text-sm"
