@@ -1,4 +1,3 @@
-// supabase/functions/generate-video/index.ts
 import { createClient } from "npm:@supabase/supabase-js@2.45.5";
 import OpenAI from "npm:openai@4.53.2";
 
@@ -92,7 +91,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     let body: ReqBody;
     try {
       body = await req.json();
-      console.log("📥 Body reçu:", JSON.stringify(body, null, 2));
+      console.log("📥 Body reçu brut:", JSON.stringify(body, null, 2));
     } catch (e) {
       console.error("❌ Erreur parsing JSON:", e);
       return new Response(
@@ -108,10 +107,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // 8. VALIDATION DES CHAMPS REQUIS
-    const { prompt, generator, style, duration, userId, jobId } = body;
-      
-    if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
+    // 8. NORMALISATION DES DONNÉES
+    const normalizedStyle = body.style?.toLowerCase().trim() || "";
+    const normalizedGenerator = body.generator?.toUpperCase().trim() || "";
+    const normalizedPrompt = body.prompt?.trim() || "";
+    const duration = Number(body.duration);
+    const userId = body.userId;
+    const jobId = body.jobId;
+
+    // 9. VALIDATION DES CHAMPS REQUIS
+    if (!normalizedPrompt || normalizedPrompt.length === 0) {
       return new Response(
         JSON.stringify({
           success: false,
@@ -125,7 +130,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    if (!generator || !["SORA", "RUNWAY", "PIKA"].includes(generator.toUpperCase())) {
+    if (!normalizedGenerator || !["SORA", "RUNWAY", "PIKA"].includes(normalizedGenerator)) {
       return new Response(
         JSON.stringify({
           success: false,
@@ -139,11 +144,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    if (!style || !["semi-realistic", "futuristic", "cinematic", "documentary", "abstract", "lumi-universe"].includes(style)) {
+    const validStyles = ["semi-realistic", "futuristic", "cinematic", "documentary", "abstract", "lumi-universe"];
+    if (!normalizedStyle || !validStyles.includes(normalizedStyle)) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Style invalide. Styles autorisés: semi-realistic, futuristic, cinematic, documentary, abstract, lumi-universe",
+          error: `Style invalide: ${body.style}. Styles autorisés: ${validStyles.join(", ")}`,
           code: "INVALID_STYLE"
         }),
         {
@@ -153,7 +159,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    if (!duration || typeof duration !== "number" || duration < 1 || duration > 120) {
+    if (!duration || isNaN(duration) || duration < 1 || duration > 120) {
       return new Response(
         JSON.stringify({
           success: false,
@@ -167,9 +173,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    console.log("✅ Validation réussie:", { generator, style, duration, promptLength: prompt.length });
+    // 10. LOG DE VALIDATION (CRITIQUE)
+    console.log("🚨 BODY FINAL VALIDÉ", {
+      hasPrompt: !!normalizedPrompt,
+      promptLength: normalizedPrompt.length,
+      generator: normalizedGenerator,
+      style: normalizedStyle,
+      duration,
+      userId: userId || 'null',
+      jobId: jobId || 'null'
+    });
 
-    // 9. CRÉATION ENREGISTREMENT DANS job_prompts
+    // 11. CRÉATION ENREGISTREMENT DANS job_prompts
     let promptId: string | null = null;
     if (userId) {
       try {
@@ -178,15 +193,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
           .insert({
             user_id: userId,
             job_id: jobId || null,
-            generator: generator.toUpperCase(),
-            style: style,
+            generator: normalizedGenerator,
+            style: normalizedStyle,
             duration: duration,
-            prompt_text: prompt,
+            prompt_text: normalizedPrompt,
             metadata: {
-              style,
+              style: normalizedStyle,
               duration,
               generated_at: new Date().toISOString(),
-              prompt_length: prompt.length,
+              prompt_length: normalizedPrompt.length,
               validated: true
             },
           })
@@ -204,7 +219,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    // 10. CRÉATION ENREGISTREMENT VIDÉO
+    // 12. CRÉATION ENREGISTREMENT VIDÉO
     let videoId: string;
     let videoData: any = null;
     try {
@@ -214,12 +229,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
           prompt_id: promptId,
           status: "generating",
           metadata: {
-            generator: generator.toUpperCase(),
-            style,
+            generator: normalizedGenerator,
+            style: normalizedStyle,
             duration,
-            prompt_length: prompt.length,
+            prompt_length: normalizedPrompt.length,
             started_at: new Date().toISOString(),
-            model: generator.toUpperCase() === "SORA" ? "sora-1.0" : generator.toLowerCase(),
+            model: normalizedGenerator === "SORA" ? "sora-1.0" : normalizedGenerator.toLowerCase(),
             user_id: userId || null,
             job_id: jobId || null
           },
@@ -250,21 +265,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // 11. GÉNÉRATION VIDÉO/IMAGE
+    // 13. GÉNÉRATION VIDÉO/IMAGE
     let videoUrl: string | null = null;
     let generationResult: any = null;
 
     try {
-      console.log(`🚀 Démarrage génération avec ${generator}...`);
+      console.log(`🚀 Démarrage génération avec ${normalizedGenerator}...`);
       const startTime = Date.now();
 
-      switch (generator.toUpperCase()) {
+      switch (normalizedGenerator) {
         case "SORA":
           console.log("⚠️ API Sora non disponible, utilisation DALL-E comme placeholder");
           try {
             const imageResult = await openai.images.generate({
               model: "dall-e-3",
-              prompt: `${prompt.substring(0, 900)} - Style ${style}, cinématique, haute qualité, illustration conceptuelle`,
+              prompt: `${normalizedPrompt.substring(0, 900)} - Style ${normalizedStyle}, cinématique, haute qualité, illustration conceptuelle`,
               size: "1792x1024",
               quality: "hd",
               style: "vivid",
@@ -318,13 +333,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
           break;
 
         default:
-          throw new Error(`Générateur non supporté: ${generator}`);
+          throw new Error(`Générateur non supporté: ${normalizedGenerator}`);
       }
 
       const processingTime = Date.now() - startTime;
       console.log(`✅ Génération terminée en ${processingTime}ms`, { videoUrl });
 
-      // 12. MISE À JOUR ENREGISTREMENT VIDÉO
+      // 14. MISE À JOUR ENREGISTREMENT VIDÉO
       try {
         const { error: updateError } = await supabase
           .from("generated_videos")
@@ -351,7 +366,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         console.error("⚠️ Erreur mise à jour DB (non critique):", updateError);
       }
 
-      // 13. RÉPONSE DE SUCCÈS
+      // 15. RÉPONSE DE SUCCÈS
       return new Response(
         JSON.stringify({
           success: true,
@@ -362,19 +377,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
           metadata: {
             generated_at: new Date().toISOString(),
             duration,
-            style,
-            generator: generator.toUpperCase(),
+            style: normalizedStyle,
+            generator: normalizedGenerator,
             model: generationResult.model,
             provider: generationResult.provider,
             processing_time_ms: processingTime,
             is_placeholder: generationResult.type === "image_placeholder",
             note: generationResult.note || null
           },
-          message: generationResult.type === "image_placeholder" 
-            ? "Vidéo générée avec succès (placeholder DALL-E - Sora API bientôt disponible)" 
+          message: generationResult.type === "image_placeholder"
+            ? "Vidéo générée avec succès (placeholder DALL-E - Sora API bientôt disponible)"
             : "Vidéo générée avec succès !",
-          warning: generationResult.type === "image_placeholder" 
-            ? "API Sora pas encore disponible - Image DALL-E utilisée comme placeholder" 
+          warning: generationResult.type === "image_placeholder"
+            ? "API Sora pas encore disponible - Image DALL-E utilisée comme placeholder"
             : null
         }),
         {
@@ -384,7 +399,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
 
     } catch (generationError: any) {
-      // 14. GESTION ERREUR GÉNÉRATION
+      // 16. GESTION ERREUR GÉNÉRATION
       console.error("❌ Erreur génération vidéo:", generationError);
 
       try {
@@ -424,7 +439,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   } catch (error: any) {
     console.error("❌ Erreur globale edge function:", error);
-      
+
     return new Response(
       JSON.stringify({
         success: false,
