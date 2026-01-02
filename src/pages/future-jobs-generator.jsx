@@ -9,8 +9,10 @@ import '../styles/futureJobsGenerator.css';
 export default function FutureJobsGenerator() {
   const { user, profile } = useAuth();
   const [selectedJobId, setSelectedJobId] = useState(1);
-  // ✅ CORRECTION 3 : Normaliser les générateurs en MAJUSCULES
-  const [selectedGenerator, setSelectedGenerator] = useState('SORA');
+  
+  // ✅ FIX: pinnPromptService attend 'Sora', 'Runway' ou 'Pika' (sensible à la casse dans son tableau videoGenerators)
+  // Mais notre Edge Function préfère les majuscules. On va gérer la conversion au moment de l'appel service.
+  const [selectedGenerator, setSelectedGenerator] = useState('Sora');
   const [selectedStyle, setSelectedStyle] = useState('futuristic');
   const [selectedDuration, setSelectedDuration] = useState(30);
   const [generatedPrompt, setGeneratedPrompt] = useState(null);
@@ -56,26 +58,34 @@ export default function FutureJobsGenerator() {
     }
   };
 
-  const handleGeneratePrompt = () => {
+  const handleGeneratePrompt = (e) => {
+    if (e) e.preventDefault();
+    console.log('Bouton Générer Prompt cliqué');
     setLoading(true);
     try {
+      // ✅ FIX: S'assurer que les options correspondent exactement à ce que pinnPromptService attend
       const prompt = pinnPromptService.generatePrompt(selectedJobId, {
-        generator: selectedGenerator,
+        generator: selectedGenerator, // 'Sora', 'Runway', 'Pika'
         style: selectedStyle,
-        duration: selectedDuration
+        duration: Number(selectedDuration)
       });
+      console.log('Prompt généré avec succès:', prompt);
       setGeneratedPrompt(prompt);
       setShowPreview(true);
       setVideoResult(null);
       setVideoError(null);
     } catch (error) {
+      console.error('Erreur lors de la génération du prompt:', error);
       toast.error(`Erreur: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGenerateVideo = async () => {
+  const handleGenerateVideo = async (e) => {
+    if (e) e.preventDefault();
+    console.log('Bouton Générer Vidéo cliqué');
+    
     if (!user) {
       toast.error('Veuillez vous connecter pour générer une vidéo');
       return;
@@ -94,7 +104,7 @@ export default function FutureJobsGenerator() {
     try {
       const result = await futureJobsVideoService.generateJobVideo({
         prompt: generatedPrompt.prompt,
-        generator: selectedGenerator,
+        generator: selectedGenerator.toUpperCase(), // On envoie en MAJUSCULES à l'Edge Function
         style: selectedStyle,
         duration: Number(selectedDuration),
         userId: user.id,
@@ -161,9 +171,9 @@ export default function FutureJobsGenerator() {
     try {
       const result = await futureJobsVideoService.generateJobVideo({
         prompt: generatedPrompt.prompt,
-        generator: selectedGenerator,
+        generator: selectedGenerator.toUpperCase(),
         style: selectedStyle,
-        duration: selectedDuration,
+        duration: Number(selectedDuration),
         userId: user.id,
         jobId: selectedJobId
       });
@@ -280,9 +290,9 @@ export default function FutureJobsGenerator() {
                   onChange={(e) => setSelectedGenerator(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white text-sm"
                 >
-                  <option value="SORA">OpenAI Sora</option>
-                  <option value="RUNWAY">RunwayML</option>
-                  <option value="PIKA">Pika Labs</option>
+                  <option value="Sora">OpenAI Sora</option>
+                  <option value="Runway">RunwayML</option>
+                  <option value="Pika">Pika Labs</option>
                 </select>
               </div>
               <div>
@@ -297,6 +307,7 @@ export default function FutureJobsGenerator() {
                   <option value="cinematic">Cinématique</option>
                   <option value="documentary">Documentaire</option>
                   <option value="abstract">Abstrait</option>
+                  <option value="lumi-universe">Univers de Lumi</option>
                 </select>
               </div>
             </div>
@@ -319,7 +330,7 @@ export default function FutureJobsGenerator() {
                 type="button"
                 onClick={handleGeneratePrompt}
                 disabled={loading}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-bold rounded-md flex items-center justify-center gap-2 transition-all"
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-bold rounded-md flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
                 {loading ? <Loader2 className="animate-spin" /> : <Zap size={20} />}
                 ✨ Générer Prompt
@@ -328,7 +339,7 @@ export default function FutureJobsGenerator() {
                 type="button"
                 onClick={handleGenerateVideo}
                 disabled={!generatedPrompt || isGeneratingVideo}
-                className="w-full py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 text-white font-bold rounded-md flex items-center justify-center gap-2 transition-all"
+                className="w-full py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 text-white font-bold rounded-md flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
                 {isGeneratingVideo ? <Loader2 className="animate-spin" /> : <Play size={20} />}
                 🎬 Générer la vidéo
@@ -337,7 +348,7 @@ export default function FutureJobsGenerator() {
                 type="button"
                 onClick={handleGenerateVariants}
                 disabled={loading || !selectedJobId}
-                className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-md text-sm"
+                className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-md text-sm cursor-pointer"
               >
                 Variantes de prompts
               </button>
