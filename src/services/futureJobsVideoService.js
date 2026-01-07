@@ -45,7 +45,7 @@ export const futureJobsVideoService = {
 
     // NORMALISATION STRICTE AVANT VALIDATION
     const normalizedPrompt = String(data.prompt).trim();
-    const normalizedGenerator = String(data.generator).toUpperCase().trim();
+    const normalizedGenerator = String(data.generator).toLowerCase().trim();
     const normalizedStyle = String(data.style).toLowerCase().trim();
     const duration = Number(data.duration);
 
@@ -58,8 +58,7 @@ export const futureJobsVideoService = {
       };
     }
 
-    const validGenerators = ['SORA', 'RUNWAY', 'PIKA'];
-    if (!validGenerators.includes(normalizedGenerator)) {
+ const validGenerators = [\'sora\', \'runway\', \'pika\'];  if (!validGenerators.includes(normalizedGenerator)) {
       return {
         success: false,
         error: `Générateur invalide: ${data.generator}. Choisissez entre: ${validGenerators.join(', ')}`,
