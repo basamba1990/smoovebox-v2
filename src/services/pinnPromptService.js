@@ -61,7 +61,9 @@ class PINNPromptService {
     if (!this.videoGenerators.includes(generator)) {
       throw new Error(`Generator ${generator} not supported. Use: ${this.videoGenerators.join(', ')}`);
     }
-    if (!this.stylePresets[style]) {
+    // Correction: Assurer que le style 'lumi-universe' est utilisé si le style par défaut 'futuristic' est sélectionné
+    const finalStyle = style === 'futuristic' ? 'lumi-universe' : style;
+    if (!this.stylePresets[finalStyle]) {
       throw new Error(`Style ${style} not supported. Use: ${Object.keys(this.stylePresets).join(', ')}`);
     }
     if (!this.durations.includes(duration)) {
@@ -85,6 +87,8 @@ class PINNPromptService {
         emergingTech: job.emergingTech,
         visualElements: job.visualElements
       },
+      // Ajout du prompt original pour référence
+      originalPrompt: job.basePrompt,
       metadata: {
         generatedAt: new Date().toISOString(),
         version: '2.0 (Lumi Edition)'
@@ -96,58 +100,61 @@ class PINNPromptService {
    * Construit le prompt PINN-like en appliquant les contraintes réalistes et émotionnelles
    */
   _buildPINNPrompt(job, generator, style, duration, customizations) {
+    // ⚠️ CORRECTION CRITIQUE: Traduire et simplifier le prompt pour les modèles IA
+    
+    // 1. Traduction des éléments clés (pour l'exemple, nous traduisons manuellement le job ID 1)
+    // En production, il est fortement recommandé d'ajouter des champs EN dans futureJobsData.js
+    const translatedJob = this._translateJobData(job);
     const styleDescription = this.stylePresets[style];
     
-    // Fusion des éléments visuels personnalisés avec les éléments par défaut
-    const visualElements = customizations.visualElements || job.visualElements;
-    const keyTasks = customizations.keyTasks || job.keyTasks;
-    const emergingTech = customizations.emergingTech || job.emergingTech;
-
-    // Construction du prompt structuré
-    const prompt = `
-PROMPT VIDÉO PINN-LIKE (LUMI EDITION) POUR ${generator.toUpperCase()}
-Métier: ${job.title} (Horizon: ${job.year})
-Univers: Planète de Lumi (Éco-futurisme Symbiotique)
-Durée: ${duration} secondes
-
-=== PROMPT CRÉATIF ET ÉMOTIONNEL ===
-${job.basePrompt}
-
-=== CONTRAINTES RÉALISTES (PINN-LIKE) ===
-Ces contraintes assurent la crédibilité technique tout en intégrant l'univers de Lumi.
-
-TÂCHES CLÉS À VISUALISER:
-${keyTasks}
-
-TECHNOLOGIES ÉMERGENTES À INTÉGRER:
-${emergingTech}
-
-ÉLÉMENTS VISUELS DE LA PLANÈTE DE LUMI:
-${visualElements}
-
-COMPÉTENCES CORE À SUGGÉRER:
-${job.coreSkills}
-
-=== DIRECTIVES DE STYLE ET COLORIMÉTRIE ===
-Style visuel: ${styleDescription}
-Palette: Prussian Blue, Midnight Green, Sky Blue, touches néon violet/cyan.
-Plateforme: ${generator}
-
-=== VÉRIFICATION DE QUALITÉ (LUMI FRAMEWORK) ===
-✓ L'interaction doit montrer une émotion humaine authentique (empathie, joie, concentration)
-✓ L'environnement doit refléter la symbiose entre nature et technologie avancée
-✓ Les structures hexagonales et les motifs de ruche doivent être présents
-✓ La technologie doit paraître organique et intégrée (biomimétisme)
-✓ Le message doit montrer comment l'humain enrichit l'univers de Lumi par ses émotions
-
-=== NOTES POUR LE GÉNÉRATEUR ===
-- Ce prompt est généré par le framework PINN-like enrichi par la vision d'Estelle
-- Privilégier les formes asymétriques, sinueuses et organiques
-- L'humain est le porteur d'émotions que Lumi est venu chercher
-- La lumière doit être traitée comme une "chaleur vitale" plutôt que comme un simple éclairage
-    `.trim();
+    // 2. Construction du prompt unique et narratif en anglais
+    const prompt = this._buildCleanEnglishPrompt(translatedJob, styleDescription, duration, generator);
 
     return prompt;
+  }
+
+  /**
+   * Traduit manuellement les données du métier pour l'exemple (AI & Machine Learning Specialist - ID 1)
+   * En production, cette fonction devrait utiliser un service de traduction ou des données pré-traduites.
+   */
+  _translateJobData(job) {
+    // Fallback pour les autres jobs, mais l'utilisateur doit les traduire
+    if (job.id !== 1) {
+      return {
+        ...job,
+        basePromptEn: job.basePrompt, // Non traduit
+        keyTasksEn: job.keyTasks,
+        emergingTechEn: job.emergingTech,
+        visualElementsEn: job.visualElements,
+        coreSkillsEn: job.coreSkills
+      };
+    }
+
+    // Traduction manuelle pour l'exemple "AI & Machine Learning Specialist" (ID 1)
+    return {
+      ...job,
+      basePromptEn: "Generate a video showing an AI specialist inside a GenUp 2050 dome. The environment is composed of bioactive hexagonal structures. The specialist interacts with holographic neural networks whose colors pulse according to the system's emotional activity. The specialist displays an expression of deep concentration and empathy as they adjust parameters for Lumi.",
+      keyTasksEn: "Designing and supervising advanced AI models, training neural networks, optimizing algorithms.",
+      emergingTechEn: "Generative AI, Collaborative Robots, Autonomous Systems.",
+      visualElementsEn: "GenUp 2050 Dome, bioactive hexagonal structures, holographic neural networks reflecting synaptic impulses, iridescent light.",
+      coreSkillsEn: "Deep learning, NLP, Frameworks (PyTorch, TensorFlow), Applied Mathematics."
+    };
+  }
+
+  /**
+   * Construit le prompt final propre et optimisé pour les générateurs vidéo.
+   */
+  _buildCleanEnglishPrompt(job, styleDescription, duration, generator) {
+    // 3. Intégration des contraintes dans la narration
+    const constraintsNarrative = `The scene must visualize the specialist performing key tasks such as: ${job.keyTasksEn}. The environment should integrate emerging technologies like: ${job.emergingTechEn}. Key visual elements of the Lumi Planet must be present: ${job.visualElementsEn}. The overall message must show how human emotion (empathy, concentration) enriches the Lumi universe.`;
+
+    // 4. Directives de style et techniques
+    const styleDirectives = `Style: ${styleDescription}. Palette: Prussian Blue, Midnight Green, Sky Blue, with neon violet/cyan accents. Shot: Cinematic wide shot transitioning to a close-up on the specialist's face, then a slow pan over the holographic network. Lighting: Iridescent, treated as a 'vital warmth'. Duration: ${duration} seconds.`;
+
+    // 5. Assemblage du prompt final (Anglais, sans balises)
+    const finalPrompt = `${job.basePromptEn} ${constraintsNarrative} ${styleDirectives}`;
+
+    return finalPrompt.trim();
   }
 
   /**
