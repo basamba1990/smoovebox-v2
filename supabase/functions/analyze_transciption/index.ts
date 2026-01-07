@@ -122,6 +122,20 @@ Fournis une analyse détaillée en JSON avec cette structure :
     "Conseil actionnable 2",
     "Recommandation stratégique 3"
   ],
+  "profile_information": {
+    "full_name": "Nom complet si mentionné, sinon null",
+    "preferred_name": "Prénom ou nom usuel si mentionné, sinon null",
+    "approx_age": 21,
+    "birth_place": "Ville ou pays de naissance explicitement mentionné, sinon null",
+    "current_city": "Ville actuelle si mentionnée, sinon null",
+    "languages": ["français", "anglais"],
+    "studies": "Niveau d'études ou formation si mentionné, sinon null",
+    "current_role": "Étudiant, lycéen, développeur, etc. si mentionné, sinon null",
+    "interests": ["football", "programmation"],
+    "other_explicit_details": [
+      "Tout autre détail personnel explicitement dit dans la vidéo"
+    ]
+  },
   "tone_analysis": {
     "primary_emotion": "joyeux/triste/colérique/neutre/enthousiaste/calme/énergique/stressé/confiant/serein",
     "secondary_emotions": ["émotion secondaire 1", "émotion secondaire 2"],
@@ -167,7 +181,10 @@ Fournis une analyse détaillée en JSON avec cette structure :
 Transcription à analyser :
 {text}
 
-IMPORTANT : Sois précis, constructif et fournis des insights actionnables.`,
+IMPORTANT :
+- Tu dois TOUJOURS inclure la clé \"profile_information\" dans le JSON final, même si certaines valeurs sont null.
+- Ne devine JAMAIS les informations personnelles : si le nom, l'âge, la ville, etc. ne sont pas clairement mentionnés dans le texte, mets la valeur à null.
+- Respecte strictement la structure JSON donnée (mêmes noms de clés, mêmes types).`,
 
   en: `As a communication and vocal analysis expert, perform a deep analysis of this video transcription.
 
@@ -183,6 +200,20 @@ Provide detailed analysis in JSON with this structure:
     "Actionable advice 2",
     "Strategic recommendation 3"
   ],
+  "profile_information": {
+    "full_name": "Full name if explicitly mentioned, otherwise null",
+    "preferred_name": "First name or usual name if mentioned, otherwise null",
+    "approx_age": 21,
+    "birth_place": "City or country of birth if explicitly mentioned, otherwise null",
+    "current_city": "Current city if mentioned, otherwise null",
+    "languages": ["French", "English"],
+    "studies": "Studies or education level if mentioned, otherwise null",
+    "current_role": "Student, developer, etc. if mentioned, otherwise null",
+    "interests": ["football", "programming"],
+    "other_explicit_details": [
+      "Any other explicitly stated personal details from the video"
+    ]
+  },
   "tone_analysis": {
     "primary_emotion": "joyful/sad/angry/neutral/enthusiastic/calm/energetic/stressed/confident/serene",
     "secondary_emotions": ["secondary emotion 1", "secondary emotion 2"],
@@ -228,7 +259,10 @@ Provide detailed analysis in JSON with this structure:
 Text to analyze:
 {text}
 
-IMPORTANT: Be precise, constructive and provide actionable insights.`
+IMPORTANT:
+- You MUST ALWAYS include the \"profile_information\" key in the final JSON, even if some values are null.
+- NEVER guess personal information: if name, age, city, etc. are not clearly mentioned in the text, set the value to null.
+- Strictly follow the provided JSON structure (same key names, same types).`
 };
 
 const SYSTEM_MESSAGES = (personaRole: string, analysisFocus: string) => ({
@@ -274,28 +308,15 @@ Deno.serve(async (req) => {
       );
     }
     
-    const { videoId: vidId, transcriptionText, userId, transcriptionLanguage, personaId, modelType } = requestBody;
-    videoId = vidId;
+    const { videoId: vidId, video_id, transcriptionText, userId, transcriptionLanguage, personaId, modelType } = requestBody;
+    videoId = vidId || video_id; // Support both videoId and video_id
 
     // ✅ VALIDATION RENFORCÉE
-    if (!videoId || !transcriptionText) {
+    if (!videoId) {
       return new Response(
         JSON.stringify({ 
-          error: 'Paramètres manquants: videoId et transcriptionText requis',
-          received: { videoId: !!videoId, transcriptionText: !!transcriptionText }
-        }),
-        { 
-          status: 400, 
-          headers: corsHeaders 
-        }
-      );
-    }
-
-    if (transcriptionText.trim().length < 20) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Texte de transcription trop court (minimum 20 caractères)',
-          length: transcriptionText.trim().length 
+          error: 'Paramètre manquant: videoId requis',
+          received: { videoId: !!videoId }
         }),
         { 
           status: 400, 
@@ -353,8 +374,40 @@ Deno.serve(async (req) => {
       throw new Error(`Erreur mise à jour: ${updateError.message}`);
     }
 
+    // ✅ RÉCUPÉRATION / VALIDATION TEXTE DE TRANSCRIPTION
+    let finalTranscriptionText = transcriptionText;
+    if (!finalTranscriptionText) {
+      console.log("🔍 Transcription non fournie, récupération depuis la vidéo...");
+      finalTranscriptionText = video.transcription_text;
+      if (!finalTranscriptionText && video.transcription_data) {
+        try {
+          const transcriptionData = typeof video.transcription_data === 'string'
+            ? JSON.parse(video.transcription_data)
+            : video.transcription_data;
+          finalTranscriptionText = transcriptionData?.text || transcriptionData?.full_text;
+        } catch (e) {
+          console.warn('⚠️ Erreur parsing transcription_data:', e);
+        }
+      }
+    }
+
+    if (!finalTranscriptionText || finalTranscriptionText.trim().length < 20) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Aucune transcription suffisante disponible pour cette vidéo. Veuillez d\'abord transcrire la vidéo.',
+          videoStatus: video.status,
+          hasTranscriptionText: !!video.transcription_text,
+          hasTranscriptionData: !!video.transcription_data
+        }),
+        { 
+          status: 400, 
+          headers: corsHeaders 
+        }
+      );
+    }
+
     // ✅ OPTIMISATION TEXTE
-    const cleanText = transcriptionText.trim().substring(0, 12000);
+    const cleanText = finalTranscriptionText.trim().substring(0, 12000);
     console.log(`📝 Texte à analyser: ${cleanText.length} caractères`);
 
     // ✅ CACHE
@@ -382,10 +435,9 @@ Deno.serve(async (req) => {
     const promptTemplate = ANALYSIS_PROMPTS[analysisLanguage] || ANALYSIS_PROMPTS['fr'];
     const finalPrompt = promptTemplate.replace('{text}', cleanText.substring(0, 8000));
 
-    console.log(`🤖 Appel LLM (${modelConfig.model}) pour analyse avancée.    // ✅ APPEL LLM AVEC RETRY
     const completion = await retryWithBackoff(async () => {
       return await openai.chat.completions.create({
-        model: modelConfig.model,lConfig.model,
+        model: modelConfig.model,
         messages: [
           { role: "system", content: systemMessage },
           { role: "user", content: finalPrompt }
@@ -547,8 +599,8 @@ function createAdvancedFallbackAnalysis(text: string, language = 'fr') {
   
   const fallbackData = {
     summary: isFrench
-      ? `Analyse de base: ${wordCount} mots, ${sentenceCount} phrases. Contenu analysé avec précision.`
-      : `Basic analysis: ${wordCount} words, ${sentenceCount} sentences. Content analyzed accurately.`,
+      ? "Analyse de base: " + wordCount + " mots, " + sentenceCount + " phrases. Contenu analysé avec précision."
+      : "Basic analysis: " + wordCount + " words, " + sentenceCount + " sentences. Content analyzed accurately.",
     
     key_topics: ["communication", "expression", "partage"],
     
@@ -645,6 +697,8 @@ async function saveAnalysisToDB(supabase: any, videoId: string, analysisResult: 
     status: VIDEO_STATUS.ANALYZED,
     analysis: analysisResult,
     ai_score: analysisResult.ai_score || analysisResult.performance_metrics?.overall_score || 7.5,
+    // ✅ Nouveau champ: profil structuré extrait du texte (si présent)
+    profile_information: analysisResult.profile_information || null,
     updated_at: new Date().toISOString()
   };
 

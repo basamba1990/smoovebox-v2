@@ -696,7 +696,7 @@ export default function SimplifiedHome({
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-french font-bold text-white">
-                📁 Mon Coffre-fort Vidéo
+                📁 Mon Coffre-fort Vidéo testttttt
               </h2>
               <Button
                 onClick={() => setActiveTab("record")}
