@@ -12,6 +12,8 @@ const VideoAnalysisPage = ({ user, profile, onSignOut }) => {
   const [video, setVideo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileMessage, setProfileMessage] = useState(null);
 
   useEffect(() => {
     fetchVideoData();
@@ -35,6 +37,50 @@ const VideoAnalysisPage = ({ user, profile, onSignOut }) => {
     }
   };
 
+  const handleTestProfile = async () => {
+    if (!video) return;
+
+    try {
+      setProfileLoading(true);
+      setProfileMessage(null);
+
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+      if (authError || !session?.access_token) {
+        throw new Error('Session non valide, veuillez vous reconnecter');
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-profile-information`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            videoId,
+            userId: video.user_id,
+          }),
+        }
+      );
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok || result.error) {
+        throw new Error(result.error || `Erreur ${response.status}`);
+      }
+
+      setProfileMessage('Profil mis à jour à partir de la transcription (profile_information).');
+      // Optionally refresh video data to see updated profile_information later
+      fetchVideoData();
+    } catch (err) {
+      console.error('Erreur test profil:', err);
+      setProfileMessage(err.message || 'Erreur lors de l’extraction du profil.');
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
   if (loading) return <div className="p-8 text-center">Chargement de l'analyse...</div>;
   if (error) return <div className="p-8 text-center text-red-600">{error}</div>;
 
@@ -54,18 +100,33 @@ const VideoAnalysisPage = ({ user, profile, onSignOut }) => {
                 Découvrez des insights détaillés sur votre communication
               </p>
             </div>
-            <Button
-              onClick={() => navigate('/record-video')}
-              className="btn-spotbulle"
-            >
-              🎥 Nouvelle Vidéo
-            </Button>
+            <div className="flex gap-3">
+              <Button
+                onClick={() => navigate('/record-video')}
+                className="btn-spotbulle"
+              >
+                🎥 Nouvelle Vidéo
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleTestProfile}
+                disabled={profileLoading || !video?.transcription_text}
+              >
+                {profileLoading ? 'Extraction profil...' : 'Tester profil IA'}
+              </Button>
+            </div>
           </div>
 
           {/* Contenu de l'analyse */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Colonne principale - Analyse détaillée */}
             <div className="lg:col-span-2 space-y-6">
+              {profileMessage && (
+                <div className="card-spotbulle p-4 bg-blue-50 border border-blue-200 text-sm text-blue-800">
+                  {profileMessage}
+                </div>
+              )}
+
               <VideoAnalysisResults video={video} />
               
               {/* Transcription */}
