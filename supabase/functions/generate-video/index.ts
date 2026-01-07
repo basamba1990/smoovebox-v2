@@ -1,5 +1,5 @@
-import { createClient } from "npm:@supabase/supabase-js@2.45.5";
-import OpenAI from "npm:openai@4.53.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import OpenAI from "https://esm.sh/openai@4.53.2";
 
 // Headers CORS COMPLETS
 const corsHeaders: Record<string, string> = {
@@ -30,7 +30,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  // 2. GESTION GET INFORMATIF (CORRECTION 1)
+  // 2. GESTION GET INFORMATIF
   if (req.method === "GET") {
     return new Response(
       JSON.stringify({
@@ -68,7 +68,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
 
-    // Correction: On ne bloque plus si OPENAI_API_KEY est absente, on passera en mode simulation/fallback
     if (!supabaseUrl || !supabaseKey) {
       console.error("❌ Variables d'environnement critiques manquantes (Supabase)");
       return new Response(
@@ -86,7 +85,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     // 6. INITIALISATION CLIENTS
     const supabase = createClient(supabaseUrl, supabaseKey);
-    // Initialisation conditionnelle d'OpenAI
     const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
 
     // 7. VALIDATION ET PARSING DU BODY
@@ -132,11 +130,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    if (!normalizedGenerator || !["sora", "runway", "pika"].includes(normalizedGenerator)) {
+    const validGenerators = ["sora", "runway", "pika"];
+    if (!normalizedGenerator || !validGenerators.includes(normalizedGenerator)) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Générateur invalide. Choisissez entre: sora, runway, pika",
+          error: `Générateur invalide: ${body.generator}. Choisissez entre: ${validGenerators.join(", ")}`,
           code: "INVALID_GENERATOR"
         }),
         {
@@ -175,7 +174,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // 10. LOG DE VALIDATION (CRITIQUE)
+    // 10. LOG DE VALIDATION
     console.log("🚨 BODY FINAL VALIDÉ", {
       hasPrompt: !!normalizedPrompt,
       promptLength: normalizedPrompt.length,
@@ -186,58 +185,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
       jobId: jobId || 'null'
     });
 
-    // 11. CRÉATION ENREGISTREMENT DANS job_prompts
-    let promptId: string | null = null;
-    if (userId) {
-      try {
-        const { data: promptData, error: promptError } = await supabase
-          .from("job_prompts")
-          .insert({
-            user_id: userId,
-            job_id: jobId || null,
-            generator: normalizedGenerator,
-            style: normalizedStyle,
-            duration: duration,
-            prompt_text: normalizedPrompt,
-            metadata: {
-              style: normalizedStyle,
-              duration,
-              generated_at: new Date().toISOString(),
-              prompt_length: normalizedPrompt.length,
-              validated: true
-            },
-          })
-          .select("id")
-          .single();
-
-        if (promptError) {
-          console.error("⚠️ Erreur sauvegarde prompt:", promptError);
-        } else {
-          promptId = promptData?.id ?? null;
-          console.log("✅ Prompt enregistré avec ID:", promptId);
-        }
-      } catch (dbError) {
-        console.error("⚠️ Erreur base de données prompt:", dbError);
-      }
-    }
-
-    // 12. CRÉATION ENREGISTREMENT VIDÉO
+    // 11. CRÉATION ENREGISTREMENT VIDÉO (Utilisation de la table 'videos' existante)
     let videoId: string;
     let videoData: any = null;
     try {
       const { data, error: videoError } = await supabase
-        .from("generated_videos")
+        .from("videos")
         .insert({
-          prompt_id: promptId,
+          user_id: userId || null,
           status: "generating",
           metadata: {
             generator: normalizedGenerator,
             style: normalizedStyle,
             duration,
-            prompt_length: normalizedPrompt.length,
+            prompt_text: normalizedPrompt,
             started_at: new Date().toISOString(),
             model: normalizedGenerator === "sora" ? "sora-1.0" : normalizedGenerator,
-            user_id: userId || null,
             job_id: jobId || null
           },
         })
@@ -257,8 +220,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Impossible de créer l'enregistrement vidéo",
-          code: "DB_ERROR"
+          error: "Impossible de créer l'enregistrement vidéo. Vérifiez que la table 'videos' existe.",
+          code: "DB_ERROR",
+          details: dbError.message
         }),
         {
           status: 500,
@@ -267,7 +231,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // 13. GÉNÉRATION VIDÉO/IMAGE
+    // 12. GÉNÉRATION VIDÉO/IMAGE
     let videoUrl: string | null = null;
     let generationResult: any = null;
 
@@ -277,7 +241,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
       switch (normalizedGenerator) {
         case "sora":
-          console.log("⚠️ API Sora non disponible, tentative DALL-E ou Fallback");
           if (openai) {
             try {
               const imageResult = await openai.images.generate({
@@ -297,25 +260,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
                 type: "image_placeholder",
                 note: "Sora API pas encore disponible - Placeholder DALL-E"
               };
-              console.log("✅ Image DALL-E générée:", videoUrl);
             } catch (openaiError: any) {
               console.error("❌ Erreur DALL-E:", openaiError);
               videoUrl = "https://storage.googleapis.com/ai-video-placeholders/future-job-concept.jpg";
               generationResult = {
                 model: "fallback",
                 provider: "placeholder",
-                created: Date.now(),
                 type: "static_image",
                 note: "Fallback d'urgence - erreur OpenAI"
               };
             }
           } else {
-            console.warn("⚠️ Pas de clé OpenAI - Utilisation du placeholder statique");
             videoUrl = "https://storage.googleapis.com/ai-video-placeholders/future-job-concept.jpg";
             generationResult = {
               model: "fallback",
               provider: "placeholder",
-              created: Date.now(),
               type: "static_image",
               note: "Mode développement - Pas de clé OpenAI"
             };
@@ -323,23 +282,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
           break;
 
         case "runway":
-          console.log("🔄 Simulation API RunwayML");
-          videoUrl = `https://storage.googleapis.com/runwayml-samples/future-tech-${Date.now()}.mp4`;
-          generationResult = {
-            model: "gen-2",
-            provider: "runwayml",
-            duration: duration,
-            status: "completed",
-            simulated: true
-          };
-          break;
-
         case "pika":
-          console.log("⚡ Simulation API Pika Labs");
-          videoUrl = `https://pika-labs.s3.amazonaws.com/samples/ai-generated-${Date.now()}.mp4`;
+          // Simulation pour Runway/Pika
+          videoUrl = `https://storage.googleapis.com/ai-video-samples/${normalizedGenerator}-sample.mp4`;
           generationResult = {
-            model: "pika-1.0",
-            provider: "pika",
+            model: normalizedGenerator === "runway" ? "gen-2" : "pika-1.0",
+            provider: normalizedGenerator,
             duration: duration,
             status: "completed",
             simulated: true
@@ -351,60 +299,39 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }
 
       const processingTime = Date.now() - startTime;
-      console.log(`✅ Génération terminée en ${processingTime}ms`, { videoUrl });
 
-      // 14. MISE À JOUR ENREGISTREMENT VIDÉO
-      try {
-        const { error: updateError } = await supabase
-          .from("generated_videos")
-          .update({
-            video_url: videoUrl,
-            status: "done",
-            metadata: {
-              ...videoData.metadata,
-              completed_at: new Date().toISOString(),
-              generation_result: generationResult,
-              final_url: videoUrl,
-              processing_time_ms: processingTime,
-              success: true
-            },
-          })
-          .eq("id", videoId);
+      // 13. MISE À JOUR ENREGISTREMENT VIDÉO
+      await supabase
+        .from("videos")
+        .update({
+          video_url: videoUrl,
+          status: "done",
+          metadata: {
+            ...videoData.metadata,
+            completed_at: new Date().toISOString(),
+            generation_result: generationResult,
+            processing_time_ms: processingTime,
+            success: true
+          },
+        })
+        .eq("id", videoId);
 
-        if (updateError) {
-          console.error("⚠️ Erreur mise à jour vidéo (non critique):", updateError);
-        } else {
-          console.log("✅ Enregistrement vidéo mis à jour");
-        }
-      } catch (updateError) {
-        console.error("⚠️ Erreur mise à jour DB (non critique):", updateError);
-      }
-
-      // 15. RÉPONSE DE SUCCÈS
+      // 14. RÉPONSE DE SUCCÈS
       return new Response(
         JSON.stringify({
           success: true,
           videoUrl,
           status: "done",
           videoId,
-          promptId,
           metadata: {
             generated_at: new Date().toISOString(),
             duration,
             style: normalizedStyle,
             generator: normalizedGenerator,
-            model: generationResult.model,
-            provider: generationResult.provider,
             processing_time_ms: processingTime,
-            is_placeholder: generationResult.type === "image_placeholder",
-            note: generationResult.note || null
+            is_placeholder: generationResult.type === "image_placeholder"
           },
-          message: generationResult.type === "image_placeholder"
-            ? "Vidéo générée avec succès (placeholder DALL-E - Sora API bientôt disponible)"
-            : "Vidéo générée avec succès !",
-          warning: generationResult.type === "image_placeholder"
-            ? "API Sora pas encore disponible - Image DALL-E utilisée comme placeholder"
-            : null
+          message: "Génération terminée avec succès !"
         }),
         {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -413,36 +340,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
 
     } catch (generationError: any) {
-      // 16. GESTION ERREUR GÉNÉRATION
       console.error("❌ Erreur génération vidéo:", generationError);
-
-      try {
-        await supabase
-          .from("generated_videos")
-          .update({
-            status: "error",
-            error_message: generationError.message?.substring(0, 500) || "Erreur inconnue",
-            metadata: {
-              ...videoData.metadata,
-              error: generationError.message,
-              error_stack: generationError.stack?.substring(0, 1000),
-              failed_at: new Date().toISOString(),
-            }
-          })
-          .eq("id", videoId);
-      } catch (dbUpdateError) {
-        console.error("⚠️ Impossible de mettre à jour l'erreur en DB:", dbUpdateError);
-      }
+      await supabase
+        .from("videos")
+        .update({
+          status: "error",
+          metadata: {
+            ...videoData.metadata,
+            error: generationError.message,
+            failed_at: new Date().toISOString(),
+          }
+        })
+        .eq("id", videoId);
 
       return new Response(
         JSON.stringify({
           success: false,
           error: "Échec de la génération vidéo",
           details: generationError.message,
-          status: "error",
-          videoId,
-          code: "GENERATION_FAILED",
-          message: "La génération a échoué. Veuillez réessayer."
+          code: "GENERATION_FAILED"
         }),
         {
           status: 500,
@@ -453,16 +369,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   } catch (error: any) {
     console.error("❌ Erreur globale edge function:", error);
-
     return new Response(
       JSON.stringify({
         success: false,
         error: "Erreur interne du serveur",
         details: error.message,
-        status: "critical_error",
-        timestamp: new Date().toISOString(),
-        code: "INTERNAL_SERVER_ERROR",
-        message: "Une erreur technique est survenue. Notre équipe a été notifiée."
+        code: "INTERNAL_SERVER_ERROR"
       }),
       {
         status: 500,
