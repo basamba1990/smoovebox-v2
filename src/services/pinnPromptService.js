@@ -12,7 +12,7 @@ import { futureJobsData } from '../data/futureJobsData.js';
 
 class PINNPromptService {
   constructor() {
-    this.videoGenerators = ['Sora', 'Runway', 'Pika'];
+    this.videoGenerators = ['sora', 'runway', 'pika'];
     this.stylePresets = {
       'semi-realistic': 'semi-réaliste, haute définition, lumière naturelle',
       'futuristic': 'futuriste, néon, hologrammes, lumière froide',
@@ -51,14 +51,14 @@ class PINNPromptService {
     }
 
     const {
-      generator = 'Sora',
+      generator = 'sora',
       style = 'lumi-universe', // Style par défaut mis à jour vers l'univers de Lumi
       duration = 30,
       customizations = {}
     } = options;
 
     // Validation
-    if (!this.videoGenerators.includes(generator)) {
+    if (!this.videoGenerators.includes(generator.toLowerCase())) {
       throw new Error(`Generator ${generator} not supported. Use: ${this.videoGenerators.join(', ')}`);
     }
     // Correction: Assurer que le style 'lumi-universe' est utilisé si le style par défaut 'futuristic' est sélectionné

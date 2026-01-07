@@ -111,7 +111,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     // 8. NORMALISATION DES DONNÉES
     const normalizedStyle = body.style?.toLowerCase().trim() || "";
-    const normalizedGenerator = body.generator?.toUpperCase().trim() || "";
+    const normalizedGenerator = body.generator?.toLowerCase().trim() || "";
     const normalizedPrompt = body.prompt?.trim() || "";
     const duration = Number(body.duration);
     const userId = body.userId;
@@ -132,11 +132,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    if (!normalizedGenerator || !["SORA", "RUNWAY", "PIKA"].includes(normalizedGenerator)) {
+    if (!normalizedGenerator || !["sora", "runway", "pika"].includes(normalizedGenerator)) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Générateur invalide. Choisissez entre: SORA, RUNWAY, PIKA",
+          error: "Générateur invalide. Choisissez entre: sora, runway, pika",
           code: "INVALID_GENERATOR"
         }),
         {
@@ -236,7 +236,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
             duration,
             prompt_length: normalizedPrompt.length,
             started_at: new Date().toISOString(),
-            model: normalizedGenerator === "SORA" ? "sora-1.0" : normalizedGenerator.toLowerCase(),
+            model: normalizedGenerator === "sora" ? "sora-1.0" : normalizedGenerator,
             user_id: userId || null,
             job_id: jobId || null
           },
@@ -276,7 +276,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const startTime = Date.now();
 
       switch (normalizedGenerator) {
-        case "SORA":
+        case "sora":
           console.log("⚠️ API Sora non disponible, tentative DALL-E ou Fallback");
           if (openai) {
             try {
@@ -322,7 +322,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           }
           break;
 
-        case "RUNWAY":
+        case "runway":
           console.log("🔄 Simulation API RunwayML");
           videoUrl = `https://storage.googleapis.com/runwayml-samples/future-tech-${Date.now()}.mp4`;
           generationResult = {
@@ -334,7 +334,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           };
           break;
 
-        case "PIKA":
+        case "pika":
           console.log("⚡ Simulation API Pika Labs");
           videoUrl = `https://pika-labs.s3.amazonaws.com/samples/ai-generated-${Date.now()}.mp4`;
           generationResult = {
