@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase, invokeEdgeFunctionWithRetry } from '../lib/supabase';
 
 /**
  * Service de génération vidéo pour les métiers du futur
@@ -58,8 +58,7 @@ export const futureJobsVideoService = {
       };
     }
 
-    const validGenerators = ['sora', 'runway', 'pika'];
-    if (!validGenerators.includes(normalizedGenerator)) {
+ const validGenerators = [\'sora\', \'runway\', \'pika\'];  if (!validGenerators.includes(normalizedGenerator)) {
       return {
         success: false,
         error: `Générateur invalide: ${data.generator}. Choisissez entre: ${validGenerators.join(', ')}`,
@@ -97,13 +96,10 @@ export const futureJobsVideoService = {
     console.log('📤 Payload validé envoyé à Edge Function:', payload);
 
     try {
-      // APPEL EDGE FUNCTION SANS 'method' CAR AUTOMATIQUE
-      const { data: result, error } = await supabase.functions.invoke('generate-video', {
-        body: payload,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Request-Source': 'smoovebox-v2-frontend'
-        }
+      // APPEL EDGE FUNCTION AVEC SYSTÈME DE RETRY ET HTTPS FALLBACK
+      const { data: result, error } = await invokeEdgeFunctionWithRetry('generate-video', payload, {
+        timeout: 60000, // Augmentation du timeout pour la génération vidéo
+        useHttpsFallback: true
       });
 
       if (error) {
