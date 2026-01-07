@@ -58,7 +58,8 @@ export const futureJobsVideoService = {
       };
     }
 
- const validGenerators = [\'sora\', \'runway\', \'pika\'];  if (!validGenerators.includes(normalizedGenerator)) {
+ const validGenerators = ['sora', 'runway', 'pika'];
+    if (!validGenerators.includes(normalizedGenerator)) {
       return {
         success: false,
         error: `Générateur invalide: ${data.generator}. Choisissez entre: ${validGenerators.join(', ')}`,
