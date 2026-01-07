@@ -68,12 +68,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
 
-    if (!supabaseUrl || !supabaseKey || !openaiApiKey) {
-      console.error("❌ Variables d'environnement manquantes");
+    // Correction: On ne bloque plus si OPENAI_API_KEY est absente, on passera en mode simulation/fallback
+    if (!supabaseUrl || !supabaseKey) {
+      console.error("❌ Variables d'environnement critiques manquantes (Supabase)");
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Configuration serveur incomplète",
+          error: "Configuration serveur incomplète (Supabase URL/Key manquante)",
           code: "MISSING_ENV"
         }),
         {
@@ -85,7 +86,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     // 6. INITIALISATION CLIENTS
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const openai = new OpenAI({ apiKey: openaiApiKey });
+    // Initialisation conditionnelle d'OpenAI
+    const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
 
     // 7. VALIDATION ET PARSING DU BODY
     let body: ReqBody;
@@ -275,35 +277,47 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
       switch (normalizedGenerator) {
         case "SORA":
-          console.log("⚠️ API Sora non disponible, utilisation DALL-E comme placeholder");
-          try {
-            const imageResult = await openai.images.generate({
-              model: "dall-e-3",
-              prompt: `${normalizedPrompt.substring(0, 900)} - Style ${normalizedStyle}, cinématique, haute qualité, illustration conceptuelle`,
-              size: "1792x1024",
-              quality: "hd",
-              style: "vivid",
-              n: 1,
-            });
+          console.log("⚠️ API Sora non disponible, tentative DALL-E ou Fallback");
+          if (openai) {
+            try {
+              const imageResult = await openai.images.generate({
+                model: "dall-e-3",
+                prompt: `${normalizedPrompt.substring(0, 900)} - Style ${normalizedStyle}, cinématique, haute qualité, illustration conceptuelle`,
+                size: "1792x1024",
+                quality: "hd",
+                style: "vivid",
+                n: 1,
+              });
 
-            videoUrl = imageResult.data[0].url;
-            generationResult = {
-              model: "dall-e-3",
-              provider: "openai",
-              created: Date.now(),
-              type: "image_placeholder",
-              note: "Sora API pas encore disponible - Placeholder DALL-E"
-            };
-            console.log("✅ Image DALL-E générée:", videoUrl);
-          } catch (openaiError: any) {
-            console.error("❌ Erreur DALL-E:", openaiError);
+              videoUrl = imageResult.data[0].url;
+              generationResult = {
+                model: "dall-e-3",
+                provider: "openai",
+                created: Date.now(),
+                type: "image_placeholder",
+                note: "Sora API pas encore disponible - Placeholder DALL-E"
+              };
+              console.log("✅ Image DALL-E générée:", videoUrl);
+            } catch (openaiError: any) {
+              console.error("❌ Erreur DALL-E:", openaiError);
+              videoUrl = "https://storage.googleapis.com/ai-video-placeholders/future-job-concept.jpg";
+              generationResult = {
+                model: "fallback",
+                provider: "placeholder",
+                created: Date.now(),
+                type: "static_image",
+                note: "Fallback d'urgence - erreur OpenAI"
+              };
+            }
+          } else {
+            console.warn("⚠️ Pas de clé OpenAI - Utilisation du placeholder statique");
             videoUrl = "https://storage.googleapis.com/ai-video-placeholders/future-job-concept.jpg";
             generationResult = {
               model: "fallback",
               provider: "placeholder",
               created: Date.now(),
               type: "static_image",
-              note: "Fallback d'urgence - erreur OpenAI"
+              note: "Mode développement - Pas de clé OpenAI"
             };
           }
           break;

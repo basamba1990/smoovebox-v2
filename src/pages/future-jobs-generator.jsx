@@ -513,7 +513,7 @@ export default function FutureJobsGenerator() {
             {generatedPrompt && !isGeneratingVideo && !videoResult && (
               <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border border-slate-700">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-2xl font-bold">Prompt Généré</h3>
+                  <h3 className="text-2xl font-bold">Prompt Généré et Optimisé</h3>
                   <div className="flex gap-2">
                     <button
                       onClick={handleCopyPrompt}
@@ -532,24 +532,25 @@ export default function FutureJobsGenerator() {
                   </div>
                 </div>
 
+                <h4 className="text-lg font-semibold text-blue-300 mb-2">Prompt Final (Anglais - Optimisé pour Sora/Runway)</h4>
                 <div className="bg-slate-900/70 p-4 rounded-lg border border-slate-600 mb-4">
                   <p className="text-slate-200 whitespace-pre-wrap">{generatedPrompt.prompt}</p>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div className="bg-slate-900/50 p-3 rounded border border-slate-700">
-                    <p className="text-slate-400">Générateur:</p>
-                    <p className="font-semibold">{selectedGenerator}</p>
-                  </div>
-                  <div className="bg-slate-900/50 p-3 rounded border border-slate-700">
-                    <p className="text-slate-400">Style:</p>
-                    <p className="font-semibold">{selectedStyle}</p>
-                  </div>
-                  <div className="bg-slate-900/50 p-3 rounded border border-slate-700">
-                    <p className="text-slate-400">Durée:</p>
-                    <p className="font-semibold">{selectedDuration}s</p>
-                  </div>
+                <h4 className="text-lg font-semibold text-purple-300 mb-2">Prompt Original (Français - Pour Référence)</h4>
+                <div className="bg-slate-900/70 p-4 rounded-lg border border-slate-600 mb-4">
+                  <p className="text-slate-400 whitespace-pre-wrap">{generatedPrompt.originalPrompt}</p>
                 </div>
+
+                <h4 className="text-lg font-semibold text-green-300 mb-2">Contraintes Appliquées (PINN-like)</h4>
+                <ul className="list-disc list-inside text-sm text-slate-300 space-y-1">
+                  <li>**Métier**: {generatedPrompt.jobTitle} (Horizon: {generatedPrompt.year})</li>
+                  <li>**Générateur**: {generatedPrompt.generator} | **Style**: {generatedPrompt.style} | **Durée**: {generatedPrompt.duration} secondes</li>
+                  <li>**Tâches Clés**: {generatedPrompt.constraints.keyTasks}</li>
+                  <li>**Technologies Émergentes**: {generatedPrompt.constraints.emergingTech}</li>
+                  <li>**Éléments Visuels de Lumi**: {generatedPrompt.constraints.visualElements}</li>
+                  <li>**Compétences Core**: {generatedPrompt.constraints.coreSkills}</li>
+                </ul>
               </div>
             )}
 
