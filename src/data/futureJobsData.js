@@ -1,3 +1,4 @@
+// src/data/futureJobsData.js
 export const futureJobsData = [
   {
     id: 1,
@@ -98,7 +99,7 @@ export const futureJobsData = [
     basePromptEn: "A doctor in a Lumi habitable capsule, using microbiome scanners to treat a patient. Petal-shaped interface displaying vital and emotional constants."
   },
   {
-    id: 8,
+    id: 2,
     title: "Technicien en réalité augmentée",
     year: 2030,
     keyTasks: "Configurer et maintenir des systèmes AR/VR, créer des overlays numériques pour l'assistance au travail.",
@@ -106,7 +107,7 @@ export const futureJobsData = [
     coreSkills: "Développement AR/VR, Modélisation 3D, Maintenance logicielle et matérielle.",
     emergingTech: "Développement AR/VR, Modélisation 3D, Maintenance logicielle et matérielle.",
     emergingTechEn: "AR/VR Development, 3D Modeling, Software and Hardware Maintenance.",
-    visualElements: "Interfaces flottantes et intuitives, portails d'énergie liquide, lunettes AR au design organique.",
+    visualElements: "Interfaces flottantes et intuitives, portails d'energy liquide, lunettes AR au design organique.",
     visualElementsEn: "Floating intuitive interfaces, liquid energy portals, organic design AR glasses.",
     basePrompt: "Un technicien ouvrant un portail d'énergie liquide pour tester une nouvelle interface AR. Il guide un utilisateur avec patience et enthousiasme, transformant une tâche technique en une expérience magique et émotionnelle. Style : futurisme néon, couleurs vibrantes.",
     basePromptEn: "A technician opening a liquid energy portal to test a new AR interface. Guiding a user with patience and enthusiasm."

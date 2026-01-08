@@ -1,4 +1,6 @@
-import { futureJobsData } from './futureJobsData_updated.js';
+// src/services/pinnPromptService.js
+// IMPORTATION CORRIGÉE : Utilise le nom de fichier standard du projet
+import { futureJobsData } from '../data/futureJobsData.js';
 
 class PINNPromptService {
   constructor() {
@@ -15,6 +17,7 @@ class PINNPromptService {
   }
 
   getJobById(jobId) {
+    // Conversion en string pour assurer la comparaison
     return futureJobsData.find(job => String(job.id) === String(jobId));
   }
 
@@ -28,7 +31,6 @@ class PINNPromptService {
 
     const styleDescription = this.stylePresets[style] || this.stylePresets['LUMI-UNIVERSE'];
     
-    // Utilisation directe des champs EN du nouveau schéma
     const prompt = this._buildCleanEnglishPrompt(job, styleDescription, duration, generator);
 
     return {
@@ -40,7 +42,7 @@ class PINNPromptService {
       prompt,
       metadata: {
         generatedAt: new Date().toISOString(),
-        version: '2.1 (Full Translation Fixed)'
+        version: '2.2 (Build Fix)'
       }
     };
   }
