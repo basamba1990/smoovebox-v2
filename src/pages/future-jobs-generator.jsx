@@ -27,8 +27,6 @@ export default function FutureJobsGenerator() {
   const [pollingInterval, setPollingInterval] = useState(null);
   const [generationTime, setGenerationTime] = useState(null);
   const [validationErrors, setValidationErrors] = useState({});
-  const [connectionStatus, setConnectionStatus] = useState('checking');
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     const allJobs = pinnPromptService.getAllJobs();
@@ -36,7 +34,6 @@ export default function FutureJobsGenerator() {
     if (user) {
       loadUserVideos();
     }
-    checkSimpleConnection();
   }, [user]);
 
   useEffect(() => {
@@ -46,41 +43,6 @@ export default function FutureJobsGenerator() {
       }
     };
   }, [pollingInterval]);
-
-  const checkSimpleConnection = async () => {
-    try {
-      setConnectionStatus('checking');
-      
-      // Vérification simple et rapide
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout de connexion')), 3000)
-      );
-      
-      const connectionPromise = (async () => {
-        // Vérifier si user est connecté (preuve que Supabase fonctionne)
-        if (user) {
-          return { connected: true, authenticated: true };
-        }
-        
-        // Sinon, faire un simple ping
-        await fetch('https://nyxtckjfaajhacboxojd.supabase.co', { 
-          method: 'HEAD',
-          mode: 'no-cors'
-        });
-        return { connected: true, authenticated: false };
-      })();
-      
-      await Promise.race([connectionPromise, timeoutPromise]);
-      
-      setConnectionStatus('connected');
-    } catch (error) {
-      console.warn('⚠️ Connexion limitée:', error.message);
-      setConnectionStatus('degraded');
-      
-      // Ne pas bloquer l'utilisateur pour une erreur de connexion
-      toast.warning('⚠️ Connexion limitée au serveur', { duration: 3000 });
-    }
-  };
 
   const loadUserVideos = async () => {
     if (!user) return;
@@ -96,17 +58,9 @@ export default function FutureJobsGenerator() {
 
   const handleGeneratePrompt = (e) => {
     if (e) e.preventDefault();
-    
-    if (loading) {
-      toast('Génération de prompt déjà en cours...');
-      return;
-    }
-    
     console.log('Bouton Générer Prompt cliqué');
     setLoading(true);
-    setIsSubmitting(true);
     setValidationErrors({});
-    
     try {
       const prompt = pinnPromptService.generatePrompt(selectedJobId, {
         generator: selectedGenerator,
@@ -121,197 +75,102 @@ export default function FutureJobsGenerator() {
         throw error;
       }
       
-      console.log('✅ Prompt généré avec succès:', { 
-        job: prompt.jobTitle,
-        length: prompt.prompt.length 
-      });
-      
+      console.log('Prompt généré avec succès:', prompt);
       setGeneratedPrompt(prompt);
       setShowPreview(true);
       setVideoResult(null);
       setVideoError(null);
       setValidationErrors({});
-      
-      toast.success('Prompt généré avec succès !');
-      
     } catch (error) {
-      console.error('❌ Erreur lors de la génération du prompt:', error);
+      console.error('Erreur lors de la génération du prompt:', error);
       toast.error(`Erreur: ${error.message || 'Erreur inconnue'}`);
       setValidationErrors({
-        prompt: error.message || 'Échec de la génération du prompt'
+        prompt: error.message || 'Échec de génération du prompt'
       });
     } finally {
       setLoading(false);
-      setIsSubmitting(false);
     }
   };
 
   const handleGenerateVideo = async (e) => {
     if (e) e.preventDefault();
-    
-    // EMPÊCHER LE DOUBLE-CLICK
-    if (isGeneratingVideo || isSubmitting) {
-      toast('Génération déjà en cours...');
-      return;
-    }
+    console.log('Bouton Générer Vidéo cliqué');
 
-    // VALIDATION EN 3 ÉTAPES
+    // VALIDATION STRICTE AVANT ENVOI
     if (!user) {
-      toast.error('🔒 Veuillez vous connecter pour générer une vidéo');
+      toast.error('Veuillez vous connecter pour générer une vidéo');
       return;
     }
 
-    if (!generatedPrompt || typeof generatedPrompt !== 'object') {
-      toast.error('📝 Veuillez d\'abord générer un prompt valide');
+    if (!generatedPrompt || !generatedPrompt.prompt) {
+      toast.error('Veuillez d\'abord générer un prompt valide');
       return;
     }
 
-    const promptText = generatedPrompt.prompt;
-    if (typeof promptText !== 'string' || promptText.trim().length < 10) {
-      toast.error('❌ Le prompt est trop court ou invalide');
+    // VALIDATION DU PROMPT
+    if (typeof generatedPrompt.prompt !== 'string' || generatedPrompt.prompt.trim().length === 0) {
+      toast.error('Le prompt généré est invalide. Veuillez régénérer un prompt.');
       return;
     }
-
-    // NORMALISATION STRICTE
-    const payload = {
-      prompt: promptText.trim(),
-      generator: selectedGenerator.toLowerCase(), // CONVERSION MINUSCULE
-      style: selectedStyle.toLowerCase().trim(),
-      duration: Number(selectedDuration),
-      userId: user.id,
-      jobId: selectedJobId,
-      access: 'public',
-      bucket: 'videos'
-    };
-
-    console.group('🚀 Lancement génération vidéo');
-    console.log('👤 User:', user.id);
-    console.log('🎯 Job ID:', selectedJobId);
-    console.log('⚙️ Config:', {
-      generator: payload.generator,
-      style: payload.style,
-      duration: payload.duration
-    });
-    console.groupEnd();
 
     setIsGeneratingVideo(true);
-    setIsSubmitting(true);
-    setGenerationStatus('🚀 Initialisation de la génération...');
+    setGenerationStatus('🚀 Démarrage de la génération vidéo...');
     setVideoError(null);
     setVideoResult(null);
     setGenerationTime(Date.now());
     setValidationErrors({});
 
     try {
+      // PRÉPARATION PAYLOAD AVEC NORMALISATION (Correction: toLowerCase())
+      const payload = {
+        prompt: generatedPrompt.prompt.trim(),
+        generator: selectedGenerator.toLowerCase().trim(), // Correction Casse
+        style: selectedStyle.toLowerCase().trim(),
+        duration: Number(selectedDuration),
+        userId: user.id,
+        jobId: selectedJobId
+      };
+
+      console.log('📤 Envoi payload normalisé:', payload);
+
       const result = await futureJobsVideoService.generateJobVideo(payload);
-      
+
       if (result.success) {
         setVideoResult(result);
-        setGenerationStatus('✅ Génération terminée avec succès !');
-        toast.success('🎬 Vidéo générée avec succès !');
-        
+        setGenerationStatus('✅ Vidéo générée avec succès !');
+        toast.success('Vidéo générée avec succès !');
         if (result.metadata?.is_placeholder) {
-          toast.info('ℹ️ Sora API non disponible - Placeholder généré', { duration: 5000 });
+          toast.info('⚠️ Note: Sora API n\'est pas encore disponible. Une image DALL-E a été générée comme placeholder.');
         }
-        
         await loadUserVideos();
       } else {
-        // Propagate the error with code and details
         const error = new Error(result.error || 'Échec de la génération');
         error.code = result.code;
         error.details = result.details;
-        error.status = result.status;
         throw error;
       }
-      
     } catch (error) {
-      console.error('💥 Erreur dans handleGenerateVideo:', error);
-      
-      const errorMap = {
-        'UNAUTHENTICATED': {
-          message: '🔐 Session expirée. Veuillez vous reconnecter.',
-          action: () => {
-            window.location.reload();
-          },
-          severity: 'high'
-        },
-        'INVALID_GENERATOR': {
-          message: `⚙️ Générateur "${selectedGenerator}" invalide. Passage à Sora par défaut.`,
-          action: () => {
-            setSelectedGenerator('Sora');
-            toast.success('Générateur changé pour Sora');
-          },
-          severity: 'medium'
-        },
-        'INVALID_STYLE': {
-          message: '🎨 Style visuel non reconnu. Passage au style futuriste.',
-          action: () => {
-            setSelectedStyle('futuristic');
-            toast.success('Style changé pour futuriste');
-          },
-          severity: 'medium'
-        },
-        'INVALID_PROMPT': {
-          message: '📝 Prompt invalide. Veuillez générer un nouveau prompt.',
-          action: () => {
-            setGeneratedPrompt(null);
-            setShowPreview(false);
-          },
-          severity: 'high'
-        },
-        'NETWORK_ERROR': {
-          message: '🌐 Problème de connexion. Vérifiez votre internet.',
-          action: () => checkSimpleConnection(),
-          severity: 'high'
-        },
-        'DB_INSERT_ERROR': {
-          message: '💾 Erreur base de données. Veuillez réessayer.',
-          action: null,
-          severity: 'critical'
-        },
-        'EDGE_FUNCTION_ERROR': {
-          message: '⚡ Erreur serveur de génération. Veuillez réessayer.',
-          action: null,
-          severity: 'high'
-        }
-      };
-      
-      const errorInfo = errorMap[error.code] || {
-        message: `❌ Erreur: ${error.message || 'Erreur technique inconnue'}`,
-        action: null,
-        severity: 'unknown'
-      };
-      
+      console.error('❌ Erreur génération vidéo:', error);
       setVideoError({
-        message: errorInfo.message,
+        message: error.message,
         code: error.code,
         details: error.details,
-        actionable: !!errorInfo.action,
-        severity: errorInfo.severity
+        status: error.status
       });
+      setGenerationStatus('❌ Erreur lors de la génération');
       
-      setGenerationStatus('❌ Échec de la génération');
+      // MESSAGES D'ERREUR UTILISATEUR
+      const userMessage = error.code === 'INVALID_STYLE' 
+        ? 'Style visuel non reconnu. Veuillez choisir parmi les options disponibles.'
+        : error.code === 'INVALID_PROMPT'
+        ? 'Le prompt est invalide ou vide. Veuillez régénérer un prompt.'
+        : error.code === 'NETWORK_ERROR'
+        ? 'Problème de connexion. Vérifiez votre connexion internet.'
+        : `Erreur: ${error.message}`;
       
-      // Toast personnalisé selon la sévérité
-      if (errorInfo.severity === 'critical') {
-        toast.error(errorInfo.message, { 
-          duration: 8000,
-          icon: '🚨'
-        });
-      } else if (errorInfo.severity === 'high') {
-        toast.error(errorInfo.message, { duration: 6000 });
-      } else {
-        toast.error(errorInfo.message, { duration: 4000 });
-      }
-      
-      // Action automatique après délai
-      if (errorInfo.action) {
-        setTimeout(errorInfo.action, 2500);
-      }
-      
+      toast.error(userMessage);
     } finally {
       setIsGeneratingVideo(false);
-      setIsSubmitting(false);
     }
   };
 
@@ -319,48 +178,43 @@ export default function FutureJobsGenerator() {
     try {
       const result = await futureJobsVideoService.checkVideoStatus(videoId);
       if (result.success) {
-        toast.info(`📊 Statut: ${result.status}`);
+        toast.info(`Statut: ${result.status}`);
         await loadUserVideos();
       }
     } catch (error) {
-      toast.error('❌ Erreur vérification statut');
+      toast.error('Erreur vérification statut');
     }
   };
 
   const handleCancelGeneration = async (videoId) => {
-    if (window.confirm('Êtes-vous sûr de vouloir annuler cette génération ?')) {
-      try {
-        const result = await futureJobsVideoService.cancelVideoGeneration(videoId);
-        if (result.success) {
-          toast.success('⏹️ Génération annulée');
-          await loadUserVideos();
-        }
-      } catch (error) {
-        toast.error('❌ Erreur lors de l\'annulation');
+    if (window.confirm('Annuler cette génération ?')) {
+      const result = await futureJobsVideoService.cancelVideoGeneration(videoId);
+      if (result.success) {
+        toast.success('Génération annulée');
+        await loadUserVideos();
       }
     }
   };
 
   const handleRetryGeneration = async (videoId) => {
     if (!generatedPrompt) {
-      toast.error('📝 Veuillez d\'abord générer un prompt');
+      toast.error('Veuillez d\'abord générer un prompt');
       return;
     }
     if (!user) {
-      toast.error('🔒 Veuillez vous connecter');
+      toast.error('Veuillez vous connecter');
       return;
     }
 
     setIsGeneratingVideo(true);
-    setIsSubmitting(true);
     setGenerationStatus('🔄 Relance de la génération...');
     setVideoError(null);
 
     try {
       const result = await futureJobsVideoService.generateJobVideo({
         prompt: generatedPrompt.prompt,
-        generator: selectedGenerator.toLowerCase(),
-        style: selectedStyle.toLowerCase(),
+        generator: selectedGenerator.toLowerCase().trim(), // Correction Casse
+        style: selectedStyle.toLowerCase().trim(),
         duration: Number(selectedDuration),
         userId: user.id,
         jobId: selectedJobId
@@ -369,22 +223,18 @@ export default function FutureJobsGenerator() {
       if (result.success) {
         setVideoResult(result);
         setGenerationStatus('✅ Vidéo regénérée avec succès !');
-        toast.success('🔄 Vidéo regénérée !');
+        toast.success('Vidéo regénérée !');
         await loadUserVideos();
       } else {
         throw new Error(result.error || 'Échec de la regénération');
       }
     } catch (error) {
       console.error('❌ Erreur regénération:', error);
-      setVideoError({
-        message: error.message,
-        code: error.code
-      });
+      setVideoError(error.message);
       setGenerationStatus('❌ Erreur lors de la regénération');
-      toast.error(`❌ Erreur: ${error.message}`);
+      toast.error(`Erreur: ${error.message}`);
     } finally {
       setIsGeneratingVideo(false);
-      setIsSubmitting(false);
     }
   };
 
@@ -393,7 +243,7 @@ export default function FutureJobsGenerator() {
       navigator.clipboard.writeText(generatedPrompt.prompt);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-      toast.success('📋 Prompt copié dans le presse-papiers !');
+      toast.success('Prompt copié dans le presse-papiers !');
     }
   };
 
@@ -407,7 +257,7 @@ export default function FutureJobsGenerator() {
       document.body.appendChild(element);
       element.click();
       document.body.removeChild(element);
-      toast.success('💾 Prompt téléchargé !');
+      toast.success('Prompt téléchargé !');
     }
   };
 
@@ -419,7 +269,7 @@ export default function FutureJobsGenerator() {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      toast.success('💾 Vidéo téléchargée !');
+      toast.success('Vidéo téléchargée !');
     }
   };
 
@@ -430,8 +280,6 @@ export default function FutureJobsGenerator() {
   };
 
   const handleGenerateVariants = () => {
-    if (loading) return;
-    
     setLoading(true);
     try {
       const variantsData = pinnPromptService.generatePromptVariants(selectedJobId, 3, {
@@ -439,9 +287,8 @@ export default function FutureJobsGenerator() {
       });
       setVariants(variantsData);
       setShowVariants(true);
-      toast.success('🔄 Variantes générées !');
     } catch (error) {
-      toast.error(`❌ Erreur: ${error.message}`);
+      toast.error(`Erreur: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -450,257 +297,138 @@ export default function FutureJobsGenerator() {
   const selectedJob = jobs.find(j => j.id === selectedJobId);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-950 text-white p-4 md:p-6">
+    <div className="future-jobs-container min-h-screen bg-slate-950 text-white p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
-        
-        {/* Header avec indicateur de connexion */}
-        <header className="mb-8 text-center relative">
-          <div className="absolute top-0 right-0">
-            <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs ${
-              connectionStatus === 'connected' ? 'bg-green-900/30 text-green-400' :
-              connectionStatus === 'checking' ? 'bg-yellow-900/30 text-yellow-400' :
-              connectionStatus === 'degraded' ? 'bg-orange-900/30 text-orange-400' :
-              'bg-red-900/30 text-red-400'
-            }`}>
-              <div className={`w-2 h-2 rounded-full mr-2 ${
-                connectionStatus === 'connected' ? 'bg-green-500 animate-pulse' :
-                connectionStatus === 'checking' ? 'bg-yellow-500' :
-                connectionStatus === 'degraded' ? 'bg-orange-500' :
-                'bg-red-500'
-              }`}></div>
-              {connectionStatus === 'connected' ? 'Connecté' :
-               connectionStatus === 'checking' ? 'Connexion...' :
-               connectionStatus === 'degraded' ? 'Limité' : 'Hors ligne'}
-            </div>
-          </div>
-          
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-            🎬 Générateur de Vidéos Métiers du Futur
+        <header className="mb-12 text-center">
+          <h1 className="text-4xl md:text-6xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500">
+            Générateur de Métiers du Futur
           </h1>
-          <p className="text-slate-300 max-w-3xl mx-auto">
-            Générez des prompts et créez des vidéos IA pour les métiers du futur (2030-2040)
-          </p>
-          <p className="text-sm text-slate-400 mt-2">
-            Framework PINN-like: Contraintes réalistes + Créativité visuelle
+          <p className="text-xl text-slate-400 max-w-3xl mx-auto">
+            Framework PINN-like pour la génération de prompts vidéo optimisés basés sur les données du WEF 2025.
           </p>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* Left Panel - Controls */}
-          <div className="lg:col-span-1 bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border border-slate-700">
-            <h2 className="text-xl font-semibold mb-6 text-blue-300">📋 Configuration</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Configuration Panel */}
+          <div className="lg:col-span-4 space-y-6">
+            <div className="bg-slate-900/50 backdrop-blur-md rounded-2xl p-6 border border-slate-800 shadow-xl">
+              <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+                <Zap className="text-yellow-400" /> Configuration
+              </h2>
 
-            {/* Job Selection */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Métier du Futur
-              </label>
-              <select
-                value={selectedJobId}
-                onChange={(e) => {
-                  setSelectedJobId(Number(e.target.value));
-                  setGeneratedPrompt(null);
-                  setVideoResult(null);
-                  setShowPreview(false);
-                }}
-                className="w-full bg-slate-900 border border-slate-600 rounded-md p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none transition cursor-pointer"
-              >
-                {jobs.map(job => (
-                  <option key={job.id} value={job.id}>
-                    {job.title} ({job.year})
-                  </option>
-                ))}
-              </select>
-            </div>
+              <form onSubmit={handleGeneratePrompt} className="space-y-5">
+                <div>
+                  <label className="block text-sm font-medium text-slate-400 mb-2">Métier du Futur</label>
+                  <div className="relative">
+                    <select
+                      value={selectedJobId}
+                      onChange={(e) => setSelectedJobId(Number(e.target.value))}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 appearance-none focus:ring-2 focus:ring-blue-500 outline-none transition"
+                    >
+                      {jobs.map((job) => (
+                        <option key={job.id} value={job.id}>
+                          {job.title}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                  </div>
+                </div>
 
-            {/* Generator & Style */}
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Générateur
-                </label>
-                <select
-                  value={selectedGenerator}
-                  onChange={(e) => setSelectedGenerator(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-600 rounded-md p-3 text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
-                >
-                  <option value="Sora">OpenAI Sora</option>
-                  <option value="Runway">RunwayML</option>
-                  <option value="Pika">Pika Labs</option>
-                </select>
-              </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-400 mb-2">Générateur Vidéo</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {['Sora', 'Runway', 'Pika'].map((gen) => (
+                      <button
+                        key={gen}
+                        type="button"
+                        onClick={() => setSelectedGenerator(gen)}
+                        className={`py-2 rounded-lg text-sm font-semibold transition ${
+                          selectedGenerator === gen
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20'
+                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                        }`}
+                      >
+                        {gen}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Style Visuel
-                </label>
-                <select
-                  value={selectedStyle}
-                  onChange={(e) => setSelectedStyle(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-600 rounded-md p-3 text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
-                >
-                  <option value="semi-realistic">Semi-réaliste</option>
-                  <option value="futuristic">Futuriste</option>
-                  <option value="cinematic">Cinématique</option>
-                  <option value="documentary">Documentaire</option>
-                  <option value="abstract">Abstrait</option>
-                  <option value="lumi-universe">Univers de Lumi</option>
-                </select>
-              </div>
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-400 mb-2">Style Visuel</label>
+                  <select
+                    value={selectedStyle}
+                    onChange={(e) => setSelectedStyle(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition"
+                  >
+                    <option value="futuristic">Futuriste / High-Tech</option>
+                    <option value="semi-realistic">Semi-Réaliste</option>
+                    <option value="cinematic">Cinématique</option>
+                    <option value="documentary">Documentaire</option>
+                    <option value="abstract">Abstrait / Conceptuel</option>
+                    <option value="lumi-universe">Lumi Universe (Signature)</option>
+                  </select>
+                </div>
 
-            {/* Duration Slider */}
-            <div className="mb-8">
-              <div className="flex justify-between items-center mb-2">
-                <label className="text-sm font-medium text-slate-300">
-                  Durée (secondes): {selectedDuration}s
-                </label>
-                <span className="text-xs text-slate-400">15-60s</span>
-              </div>
-              <input
-                type="range"
-                min="15"
-                max="60"
-                step="5"
-                value={selectedDuration}
-                onChange={(e) => setSelectedDuration(Number(e.target.value))}
-                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-              />
-              <div className="flex justify-between text-xs text-slate-400 mt-1">
-                <span>15s</span>
-                <span>30s</span>
-                <span>45s</span>
-                <span>60s</span>
-              </div>
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-400 mb-2">Durée (secondes): {selectedDuration}s</label>
+                  <input
+                    type="range"
+                    min="5"
+                    max="60"
+                    step="5"
+                    value={selectedDuration}
+                    onChange={(e) => setSelectedDuration(e.target.value)}
+                    className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  />
+                </div>
 
-            {/* Action Buttons */}
-            <div className="space-y-4">
-              <button
-                type="button"
-                onClick={handleGeneratePrompt}
-                disabled={loading || isSubmitting}
-                className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-slate-700 disabled:to-slate-800 text-white font-bold rounded-md flex items-center justify-center gap-2 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {loading ? <Loader2 className="animate-spin" size={20} /> : <Zap size={20} />}
-                ✨ Générer Prompt
-              </button>
-
-              <button
-                type="button"
-                onClick={handleGenerateVideo}
-                disabled={!generatedPrompt || isGeneratingVideo || isSubmitting || connectionStatus === 'checking'}
-                className={`w-full py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white font-bold rounded-md flex items-center justify-center gap-2 transition-all ${
-                  !generatedPrompt || isGeneratingVideo || isSubmitting || connectionStatus === 'checking'
-                    ? 'opacity-50 cursor-not-allowed'
-                    : 'hover:from-purple-700 hover:to-purple-800 cursor-pointer'
-                }`}
-              >
-                {isGeneratingVideo ? <Loader2 className="animate-spin" size={20} /> : <Play size={20} />}
-                🎬 Générer la vidéo
-              </button>
-
-              <button
-                type="button"
-                onClick={handleGenerateVariants}
-                disabled={loading || !selectedJobId || isSubmitting}
-                className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-md text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition"
-              >
-                🔄 Variantes de prompts
-              </button>
-            </div>
-
-            {/* Validation Errors Display */}
-            {Object.keys(validationErrors).length > 0 && (
-              <div className="mt-6 p-3 bg-red-900/30 border border-red-700 rounded-md">
-                <h3 className="text-red-300 font-semibold mb-2">⚠️ Erreurs de validation:</h3>
-                <ul className="text-sm text-red-200">
-                  {Object.entries(validationErrors).map(([key, error]) => (
-                    <li key={key} className="flex items-start gap-2">
-                      <span className="text-red-400">•</span>
-                      <span>{error}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Connexion Status */}
-            {connectionStatus === 'degraded' && (
-              <div className="mt-6 p-3 bg-orange-900/30 border border-orange-700 rounded-md">
-                <h3 className="text-orange-300 font-semibold mb-2">⚠️ Connexion limitée</h3>
-                <p className="text-sm text-orange-200 mb-3">
-                  La connexion au serveur est limitée, mais la génération devrait fonctionner.
-                </p>
                 <button
-                  onClick={checkSimpleConnection}
-                  className="w-full py-2 bg-orange-700 hover:bg-orange-600 text-white rounded text-sm transition"
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold py-4 rounded-xl shadow-lg transition transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50 disabled:transform-none"
                 >
-                  🔄 Réessayer la connexion
+                  {loading ? <Loader2 className="animate-spin" /> : <Zap size={20} />}
+                  Générer le Prompt PINN
                 </button>
+              </form>
+            </div>
+
+            {generatedPrompt && (
+              <div className="bg-slate-900/50 backdrop-blur-md rounded-2xl p-6 border border-slate-800 shadow-xl">
+                <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                  <Play className="text-green-400" /> Actions Vidéo
+                </h3>
+                <button
+                  onClick={handleGenerateVideo}
+                  disabled={isGeneratingVideo}
+                  className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isGeneratingVideo ? <Loader2 className="animate-spin" /> : <Play size={20} />}
+                  Lancer la Génération Vidéo
+                </button>
+                <p className="text-xs text-slate-500 mt-3 text-center">
+                  L'appel à l'Edge Function Supabase peut prendre jusqu'à 60s.
+                </p>
               </div>
             )}
           </div>
 
-          {/* Main Content - Results */}
-          <div className="lg:col-span-2 space-y-6">
-            
-            {/* Job Preview */}
-            {selectedJob && !generatedPrompt && !isGeneratingVideo && (
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border border-slate-700">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-blue-900/30 rounded-lg">
-                    <Eye size={24} className="text-blue-400" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold">{selectedJob.title}</h2>
-                    <p className="text-slate-300">Horizon: {selectedJob.year}</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <h3 className="text-lg font-semibold mb-3 text-blue-300">Tâches clés:</h3>
-                    <ul className="space-y-2">
-                      {selectedJob.keyTasks.split('. ').map((t, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="text-blue-400 mt-1">•</span>
-                          <span className="text-slate-300">{t}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div>
-                    <h3 className="text-lg font-semibold mb-3 text-blue-300">Compétences:</h3>
-                    <ul className="space-y-2">
-                      {selectedJob.coreSkills.split('. ').map((s, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="text-blue-400 mt-1">•</span>
-                          <span className="text-slate-300">{s}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Generation Status */}
+          {/* Display Panel */}
+          <div className="lg:col-span-8 space-y-6">
+            {/* Loading State */}
             {isGeneratingVideo && (
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border border-slate-700">
-                <h3 className="text-xl font-semibold mb-4 text-purple-300">{generationStatus}</h3>
+              <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-12 border border-slate-700 flex flex-col items-center justify-center text-center">
+                <Loader2 size={48} className="text-blue-500 animate-spin mb-4" />
+                <h3 className="text-2xl font-bold mb-2">{generationStatus}</h3>
                 <p className="text-slate-300 mb-4">Temps écoulé: {getElapsedTime()}</p>
-                <div className="w-full bg-slate-700 rounded-full h-2.5 mb-4">
+                <div className="w-full bg-slate-700 rounded-full h-2.5">
                   <div
                     className="bg-gradient-to-r from-purple-500 to-pink-500 h-2.5 rounded-full animate-pulse"
                     style={{ width: '70%' }}
                   ></div>
                 </div>
-                <p className="text-sm text-slate-400">
-                  ⏱️ La génération peut prendre jusqu'à 60 secondes...
-                </p>
               </div>
             )}
 
@@ -708,19 +436,18 @@ export default function FutureJobsGenerator() {
             {generatedPrompt && !isGeneratingVideo && !videoResult && (
               <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border border-slate-700">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-2xl font-bold">📝 Prompt Généré et Optimisé</h3>
+                  <h3 className="text-2xl font-bold">Prompt Généré et Optimisé</h3>
                   <div className="flex gap-2">
                     <button
                       onClick={handleCopyPrompt}
-                      disabled={copied}
-                      className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-2 transition disabled:opacity-50 cursor-pointer"
+                      className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-2 transition"
                     >
                       {copied ? <CheckCircle size={16} /> : <Copy size={16} />}
                       {copied ? 'Copié !' : 'Copier'}
                     </button>
                     <button
                       onClick={handleDownloadPrompt}
-                      className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded flex items-center gap-2 transition cursor-pointer"
+                      className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded flex items-center gap-2 transition"
                     >
                       <Download size={16} />
                       Télécharger
@@ -730,7 +457,7 @@ export default function FutureJobsGenerator() {
 
                 <h4 className="text-lg font-semibold text-blue-300 mb-2">Prompt Final (Anglais - Optimisé pour Sora/Runway)</h4>
                 <div className="bg-slate-900/70 p-4 rounded-lg border border-slate-600 mb-4">
-                  <p className="text-slate-200 whitespace-pre-wrap font-mono text-sm">{generatedPrompt.prompt}</p>
+                  <p className="text-slate-200 whitespace-pre-wrap">{generatedPrompt.prompt}</p>
                 </div>
 
                 <h4 className="text-lg font-semibold text-purple-300 mb-2">Prompt Original (Français - Pour Référence)</h4>
@@ -740,12 +467,12 @@ export default function FutureJobsGenerator() {
 
                 <h4 className="text-lg font-semibold text-green-300 mb-2">Contraintes Appliquées (PINN-like)</h4>
                 <ul className="list-disc list-inside text-sm text-slate-300 space-y-1">
-                  <li><strong>Métier</strong>: {generatedPrompt.jobTitle} (Horizon: {generatedPrompt.year})</li>
-                  <li><strong>Générateur</strong>: {generatedPrompt.generator} | <strong>Style</strong>: {generatedPrompt.style} | <strong>Durée</strong>: {generatedPrompt.duration} secondes</li>
-                  <li><strong>Tâches Clés</strong>: {generatedPrompt.constraints.keyTasks}</li>
-                  <li><strong>Technologies Émergentes</strong>: {generatedPrompt.constraints.emergingTech}</li>
-                  <li><strong>Éléments Visuels de Lumi</strong>: {generatedPrompt.constraints.visualElements}</li>
-                  <li><strong>Compétences Core</strong>: {generatedPrompt.constraints.coreSkills}</li>
+                  <li>**Métier**: {generatedPrompt.jobTitle} (Horizon: {generatedPrompt.year})</li>
+                  <li>**Générateur**: {generatedPrompt.generator} | **Style**: {generatedPrompt.style} | **Durée**: {generatedPrompt.duration} secondes</li>
+                  <li>**Tâches Clés**: {generatedPrompt.constraints.keyTasks}</li>
+                  <li>**Technologies Émergentes**: {generatedPrompt.constraints.emergingTech}</li>
+                  <li>**Éléments Visuels de Lumi**: {generatedPrompt.constraints.visualElements}</li>
+                  <li>**Compétences Core**: {generatedPrompt.constraints.coreSkills}</li>
                 </ul>
               </div>
             )}
@@ -758,17 +485,14 @@ export default function FutureJobsGenerator() {
                   <div className="flex gap-2">
                     <button
                       onClick={handleDownloadVideo}
-                      className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded flex items-center gap-2 text-sm cursor-pointer"
+                      className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded flex items-center gap-2 text-sm"
                     >
                       <Download size={16} />
                       Télécharger
                     </button>
                     <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(videoResult.videoUrl);
-                        toast.success('URL copiée !');
-                      }}
-                      className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded flex items-center gap-2 text-sm cursor-pointer"
+                      onClick={() => navigator.clipboard.writeText(videoResult.videoUrl)}
+                      className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded flex items-center gap-2 text-sm"
                     >
                       <Copy size={16} />
                       Copier URL
@@ -810,7 +534,7 @@ export default function FutureJobsGenerator() {
                   </div>
                 </div>
 
-                {videoResult.metadata?.is_placeholder && (
+                {videoResult.metadata?.model === 'dall-e-3' && (
                   <div className="p-3 bg-yellow-900/30 border border-yellow-700 rounded-md">
                     <p className="text-yellow-300">
                       ⚠️ Note: Sora API n'est pas encore publique. Une image DALL-E a été générée comme placeholder.
@@ -824,57 +548,29 @@ export default function FutureJobsGenerator() {
             {videoError && (
               <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border border-red-700/50">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className={`text-2xl font-bold ${
-                    videoError.severity === 'critical' ? 'text-red-500' :
-                    videoError.severity === 'high' ? 'text-red-400' :
-                    'text-orange-400'
-                  }`}>
-                    {videoError.severity === 'critical' ? '🚨 Erreur Critique' :
-                     videoError.severity === 'high' ? '❌ Erreur de Génération' :
-                     '⚠️ Avertissement'}
-                  </h3>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleRetryGeneration(videoResult?.videoId)}
-                      className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded flex items-center gap-2 text-sm cursor-pointer"
-                    >
-                      <RefreshCw size={16} />
-                      Réessayer
-                    </button>
-                    {videoError.actionable && (
-                      <button
-                        onClick={() => {
-                          if (videoError.code === 'INVALID_GENERATOR') setSelectedGenerator('Sora');
-                          if (videoError.code === 'INVALID_STYLE') setSelectedStyle('futuristic');
-                          if (videoError.code === 'INVALID_PROMPT') {
-                            setGeneratedPrompt(null);
-                            setShowPreview(false);
-                          }
-                          setVideoError(null);
-                        }}
-                        className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-2 text-sm cursor-pointer"
-                      >
-                        🔄 Corriger automatiquement
-                      </button>
-                    )}
-                  </div>
+                  <h3 className="text-2xl font-bold text-red-400">❌ Erreur de Génération</h3>
+                  <button
+                    onClick={() => handleRetryGeneration(videoResult?.videoId)}
+                    className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded flex items-center gap-2 text-sm"
+                  >
+                    <RefreshCw size={16} />
+                    Réessayer
+                  </button>
                 </div>
 
                 <div className="bg-red-900/20 p-4 rounded-lg border border-red-800 mb-4">
-                  <p className="text-red-200 mb-2">{videoError.message}</p>
-                  {videoError.details && (
-                    <pre className="text-red-300 whitespace-pre-wrap text-xs mt-2">
-                      Détails: {typeof videoError.details === 'string' ? videoError.details : JSON.stringify(videoError.details, null, 2)}
-                    </pre>
-                  )}
+                  <pre className="text-red-200 whitespace-pre-wrap text-sm">
+                    {typeof videoError === 'string'
+                      ? videoError
+                      : JSON.stringify(videoError, null, 2)}
+                  </pre>
                 </div>
 
                 <div className="p-3 bg-slate-900/50 rounded border border-slate-700">
                   <p className="text-slate-300 text-sm">
-                    <span className="font-semibold">Code d'erreur:</span> {videoError.code || 'UNKNOWN'}
-                    {videoError.severity === 'critical' && (
-                      <span className="ml-2 text-red-400">(Nécessite une intervention technique)</span>
-                    )}
+                    <span className="font-semibold">Conseil de dépannage:</span> Vérifiez que votre Edge Function est
+                    correctement déployée et que votre clé API OpenAI est configurée. Code d'erreur:{' '}
+                    {videoError.code || 'UNKNOWN'}
                   </p>
                 </div>
               </div>
@@ -884,14 +580,14 @@ export default function FutureJobsGenerator() {
             {generatedVideos.length > 0 && (
               <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border border-slate-700">
                 <h3 className="text-xl font-semibold mb-4">📜 Historique des Vidéos</h3>
-                <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+                <div className="space-y-3">
                   {generatedVideos.map((video, index) => (
                     <div
                       key={video.id}
                       className="bg-slate-900/50 p-4 rounded-lg border border-slate-700 hover:border-slate-600 transition"
                     >
                       <div className="flex justify-between items-start">
-                        <div className="flex-1">
+                        <div>
                           <h4 className="font-semibold">
                             {video.job_prompts?.future_jobs?.title || 'Vidéo générée'}
                           </h4>
@@ -899,9 +595,9 @@ export default function FutureJobsGenerator() {
                             {new Date(video.created_at).toLocaleDateString('fr-FR')} • Statut:{' '}
                             <span
                               className={
-                                video.status === 'done'
+                                video.status === 'done' || video.status === 'ready'
                                   ? 'text-green-400 font-semibold'
-                                  : video.status === 'generating'
+                                  : video.status === 'generating' || video.status === 'pending'
                                   ? 'text-yellow-400 font-semibold'
                                   : video.status === 'error'
                                   ? 'text-red-400 font-semibold'
@@ -911,37 +607,37 @@ export default function FutureJobsGenerator() {
                               {video.status}
                             </span>
                           </p>
-                          {video.job_prompts?.generator && (
+                          {video.metadata?.generator && (
                             <p className="text-sm text-slate-500 mt-1">
-                              Générateur: {video.job_prompts.generator} • Style: {video.job_prompts.style}
+                              Générateur: {video.metadata.generator} • Style: {video.metadata.style}
                             </p>
                           )}
                         </div>
-                        <div className="flex gap-2 ml-4">
-                          {video.video_url && (
+                        <div className="flex gap-2">
+                          {(video.video_url || video.public_url || video.url) && (
                             <a
-                              href={video.video_url}
+                              href={video.url || video.public_url || video.video_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition cursor-pointer"
+                              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded"
                             >
-                              👁️ Voir
+                              Voir
                             </a>
                           )}
-                          {video.status === 'generating' && (
+                          {(video.status === 'generating' || video.status === 'pending') && (
                             <button
                               onClick={() => handleCancelGeneration(video.id)}
-                              className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition cursor-pointer"
+                              className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded"
                             >
-                              ⏹️ Annuler
+                              Annuler
                             </button>
                           )}
                           {video.status === 'error' && (
                             <button
                               onClick={() => handleCheckStatus(video.id)}
-                              className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white text-sm rounded transition cursor-pointer"
+                              className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white text-sm rounded"
                             >
-                              🔄 Vérifier
+                              Vérifier
                             </button>
                           )}
                         </div>
@@ -979,37 +675,6 @@ export default function FutureJobsGenerator() {
               <p className="text-sm text-slate-300">
                 Compatible avec Sora, Runway et Pika. Exportable en plusieurs formats.
               </p>
-            </div>
-          </div>
-          
-          {/* Dépannage rapide */}
-          <div className="mt-6 pt-4 border-t border-slate-700">
-            <h4 className="text-sm font-semibold text-slate-400 mb-2">🛠️ Dépannage rapide</h4>
-            <div className="flex flex-wrap gap-2">
-              <button 
-                onClick={checkSimpleConnection}
-                className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-xs rounded transition"
-              >
-                🔄 Tester la connexion
-              </button>
-              <button 
-                onClick={() => window.location.reload()}
-                className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-xs rounded transition"
-              >
-                🔁 Recharger la page
-              </button>
-              <button 
-                onClick={() => {
-                  setGeneratedPrompt(null);
-                  setVideoResult(null);
-                  setVideoError(null);
-                  setShowPreview(false);
-                  toast.success('État réinitialisé');
-                }}
-                className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-xs rounded transition"
-              >
-                🗑️ Réinitialiser
-              </button>
             </div>
           </div>
         </div>
