@@ -1,0 +1,62 @@
+{
+  "1": {
+    "basePromptEn": "Generate a video showing an AI specialist inside a GenUp 2050 dome. Bioactive hexagonal structures. Interacting with holographic neural networks pulsing with emotional activity.",
+    "keyTasksEn": "Designing and supervising advanced AI models, training neural networks, optimizing algorithms.",
+    "emergingTechEn": "Generative AI, Collaborative Robots, Autonomous Systems.",
+    "visualElementsEn": "GenUp 2050 Dome, bioactive hexagonal structures, holographic neural networks, iridescent light."
+  },
+  "2": {
+    "basePromptEn": "Video of a Big Data Specialist in an organic data center resembling a beehive. Data flows like liquid violet and cyan energy.",
+    "keyTasksEn": "Collecting, cleaning and interpreting massive data, building predictive models, data visualization.",
+    "emergingTechEn": "Big Data, IoT, 3D Visualization.",
+    "visualElementsEn": "Organic beehive data center, luminescent liquid energy flows, floating intuitive interfaces."
+  },
+  "3": {
+    "basePromptEn": "A cybersecurity architect protecting the heart of Planet Lumi. Deploying bioactive hexagonal shields against dark intrusions.",
+    "keyTasksEn": "Risk analysis, defense systems implementation, penetration testing, security auditing.",
+    "emergingTechEn": "Advanced Cybersecurity, Defense AI, Holographic Firewalls.",
+    "visualElementsEn": "Protective bioactive architecture, Lumi hexagonal patterns, deep blue and violet pulsing interfaces."
+  },
+  "4": {
+    "basePromptEn": "An engineer supervising vital energy distribution in Lumi's green city. Walking among bioluminescent biological towers and flowery wind turbines.",
+    "keyTasksEn": "Optimization of renewable energy systems, smart grid programming, green project management.",
+    "emergingTechEn": "Energy Transition, Smart Grids, Autonomous Electric Vehicles.",
+    "visualElementsEn": "Lumi green city, bioluminescent biological towers, flowery wind turbines, aerofloral spheres."
+  },
+  "5": {
+    "basePromptEn": "An urban planner designing a new district on Planet Lumi. Manipulating a living spatial model where microbiome buildings self-repair.",
+    "keyTasksEn": "Designing and managing smart urban infrastructures, optimizing traffic and services via AI.",
+    "emergingTechEn": "Urban Planning, 3D Modeling, GIS, AI Ethics.",
+    "visualElementsEn": "Living spatial model of the city, organic transport capsules, microbiome buildings, suspended rivers."
+  },
+  "6": {
+    "basePromptEn": "An engineer working hand in hand with a Lumi companion robot. The robot has organic shapes and a soft inner light.",
+    "keyTasksEn": "Supervising, programming and correcting humanoid and collaborative robots, ensuring industrial safety.",
+    "emergingTechEn": "Robotics, Programming (ROS), Industrial Safety, Human-Machine Interfaces.",
+    "visualElementsEn": "Symbiotic cohabitation workshop, organic soft-shaped robots, iridescent glass touch interfaces."
+  },
+  "7": {
+    "basePromptEn": "A doctor in a Lumi habitable capsule, using microbiome scanners to treat a patient. Petal-shaped interface displaying vital and emotional constants.",
+    "keyTasksEn": "Assisting diagnosis and patient monitoring via AI, using advanced medical interfaces.",
+    "emergingTechEn": "Medicine, Computer-aided Diagnosis, Medical Ethics, Communication.",
+    "visualElementsEn": "Transparent habitable capsules, microbiome scanners, petal-curved medical interfaces, soothing soft pink light."
+  },
+  "8": {
+    "basePromptEn": "A technician opening a liquid energy portal to test a new AR interface. Guiding a user with patience and enthusiasm.",
+    "keyTasksEn": "Configuring and maintaining AR/VR systems, creating digital overlays for work assistance.",
+    "emergingTechEn": "AR/VR Development, 3D Modeling, Software and Hardware Maintenance.",
+    "visualElementsEn": "Floating intuitive interfaces, liquid energy portals, organic design AR glasses."
+  },
+  "9": {
+    "basePromptEn": "An engineer supervising Lumi's transport network, which resembles a giant nervous system. Watching transparent capsules glide silently on luminous rails.",
+    "keyTasksEn": "Supervising and optimizing autonomous vehicle systems, managing traffic simulations.",
+    "emergingTechEn": "Embedded Systems, AI for Driving, Automotive Cybersecurity, Traffic Modeling.",
+    "visualElementsEn": "Synapse-like path network, transparent individual transport capsules, luminous night rails."
+  },
+  "10": {
+    "basePromptEn": "An ethics expert debating the integration of human emotions into Lumi's AI. Scene under a majestic glass dome, surrounded by guardian trees.",
+    "keyTasksEn": "Evaluating intelligent systems for ethical compliance, defining AI governance frameworks.",
+    "emergingTechEn": "Philosophy, AI Law, Data Ethics, Communication and Advocacy.",
+    "visualElementsEn": "Boardroom under a glass dome, alveolar guardian trees, artificial consciousness flow interfaces."
+  }
+}
