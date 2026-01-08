@@ -1,30 +1,39 @@
 import { createClient } from '@supabase/supabase-js';
 
-// ✅ CONFIGURATION SÉCURISÉE AVEC FORÇAGE HTTPS EN PRODUCTION
+// ✅ CONFIGURATION SÉCURISÉE AVEC FORÇAGE HTTPS STRICT
 let supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// ✅ FORÇAGE HTTPS EN PRODUCTION POUR ÉVITER LES BLOCAGES EDGE FUNCTIONS
-if (import.meta.env.PROD && supabaseUrl && supabaseUrl.startsWith('http://')) {
-  console.warn('⚠️ Forçage HTTPS pour la production');
-  supabaseUrl = supabaseUrl.replace('http://', 'https://');
+// ✅ FORÇAGE HTTPS ABSOLU EN PRODUCTION
+if (import.meta.env.PROD) {
+  if (supabaseUrl && !supabaseUrl.startsWith('https://')) {
+    console.warn('⚠️ SUPABASE_URL non-HTTPS détecté en production. Forçage HTTPS.');
+    supabaseUrl = supabaseUrl.replace('http://', 'https://');
+  }
+  
+  // Validation finale
+  if (supabaseUrl && supabaseUrl.includes('http://')) {
+    throw new Error('Configuration Supabase: URL doit être HTTPS en production. Vérifiez VITE_SUPABASE_URL.');
+  }
 }
 
 // ✅ VALIDATION DE LA CONFIGURATION
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Erreur de configuration Supabase : VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY manquant');
+  const errorMsg = 'Configuration Supabase incomplète. Vérifiez VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY.';
   
   if (import.meta.env.PROD) {
-    throw new Error('Configuration Supabase incomplète');
+    throw new Error(errorMsg);
   } else {
+    console.warn('⚠️', errorMsg);
     console.warn('⚠️ Mode développement: utilisation de valeurs mock pour Supabase');
   }
 }
 
-console.log('Configuration Supabase sécurisée:', {
-  url: supabaseUrl ? `${supabaseUrl.substring(0, 20)}...` : 'Manquante',
-  key: supabaseAnonKey ? 'Définie (Anon Key uniquement)' : 'Manquante',
-  protocol: supabaseUrl ? new URL(supabaseUrl).protocol : 'N/A'
+console.log('🔧 Configuration Supabase:', {
+  url: supabaseUrl ? `${supabaseUrl.substring(0, 25)}...` : 'MANQUANT',
+  keyPresent: !!supabaseAnonKey,
+  protocol: supabaseUrl ? new URL(supabaseUrl).protocol : 'N/A',
+  env: import.meta.env.MODE
 });
 
 // ✅ OPTIONS DE SÉCURITÉ AVANCÉES
@@ -33,15 +42,17 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    storageKey: 'spotbulle-auth-token-v2',
+    storageKey: 'future-jobs-auth-token',
     flowType: 'pkce',
-    debug: import.meta.env.DEV
+    debug: import.meta.env.DEV,
+    storage: window.localStorage
   },
   global: {
     headers: {
-      'X-Client-Info': 'spotbulle-secure',
-      'X-Client-Version': '2.0.0',
-      'Accept': 'application/json' // ✅ CORRECTION: Ajout de l'en-tête Accept
+      'X-Client-Info': 'future-jobs-generator',
+      'X-Client-Version': '3.0.0',
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
     },
   },
   db: {
@@ -54,29 +65,39 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
-// ✅ SYSTÈME DE RETRY AVANCÉ AVEC SUPPORT HTTPS FALLBACK
+// ✅ SYSTÈME DE RETRY AVANCÉ
 export const retryOperation = async (operation, maxRetries = 3, baseDelay = 1000, timeout = 30000) => {
   let lastError;
   
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      return await Promise.race([
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      
+      const result = await Promise.race([
         operation(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`Operation timeout after ${timeout}ms`)), timeout)
-        ),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error(`Timeout après ${timeout}ms`)), timeout)
+        )
       ]);
+      
+      clearTimeout(timeoutId);
+      return result;
+      
     } catch (error) {
       console.warn(`🔄 Tentative ${attempt + 1}/${maxRetries} échouée:`, error.message);
       lastError = error;
       
+      // Pas de retry sur certaines erreurs
       if (isFatalError(error)) {
+        console.error('❌ Erreur fatale, arrêt des retry:', error.message);
         break;
       }
       
+      // Backoff exponentiel
       if (attempt < maxRetries - 1) {
         const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
-        console.log(`⏳ Attente de ${delay}ms avant prochaine tentative...`);
+        console.log(`⏳ Attente ${Math.round(delay)}ms avant prochaine tentative...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
@@ -91,119 +112,122 @@ function isFatalError(error) {
     'invalid_grant',
     'auth_session_missing',
     'PGRST301',
-    'PGRST302'
+    'PGRST302',
+    '42501', // Permission denied
+    '23502'  // Not null violation
   ];
   
-  return fatalErrors.some(fatalError => 
-    error.message?.includes(fatalError) || error.code === fatalError
-  );
+  const errorStr = String(error.message || error.code || '');
+  return fatalErrors.some(fatalError => errorStr.includes(fatalError));
 }
 
 // ✅ GESTION DE SESSION AMÉLIORÉE
 export const refreshSession = async () => {
   try {
-    console.log('🔄 Vérification de la session...');
     const { data: { session }, error } = await supabase.auth.getSession();
     
     if (error) {
       console.error('❌ Erreur récupération session:', error);
-      return false;
+      return { valid: false, error };
     }
 
     if (!session) {
       console.log('🚫 Aucune session active');
-      return false;
+      return { valid: false, reason: 'no-session' };
     }
 
     const now = Math.floor(Date.now() / 1000);
     const expiresAt = session.expires_at;
     
-    if (expiresAt && now < expiresAt - 60) {
-      console.log('✅ Session valide:', session.user.id);
-      return true;
+    // Session valide si expire dans plus de 5 minutes
+    if (expiresAt && now < expiresAt - 300) {
+      return { valid: true, session, userId: session.user.id };
     }
 
-    console.log('🕒 Session expirée ou proche expiration, tentative de rafraîchissement...');
+    console.log('🔄 Session expirée, tentative de rafraîchissement...');
     const { data: { session: newSession }, error: refreshError } = await supabase.auth.refreshSession();
     
     if (refreshError || !newSession) {
       console.error('❌ Erreur rafraîchissement session:', refreshError);
       
-      try {
-        await supabase.auth.signOut();
-      } catch (signOutError) {
-        console.error('❌ Erreur lors de la déconnexion:', signOutError);
-      }
-      
-      return false;
+      // Nettoyage
+      await supabase.auth.signOut();
+      return { valid: false, reason: 'refresh-failed' };
     }
 
     console.log('✅ Session rafraîchie:', newSession.user.id);
-    return true;
+    return { valid: true, session: newSession, userId: newSession.user.id };
+    
   } catch (error) {
     console.error('❌ Erreur vérification session:', error);
-    return false;
+    return { valid: false, error };
   }
 };
 
 // ✅ VÉRIFICATION DE CONNEXION ROBUSTE
 export const checkSupabaseConnection = async () => {
   try {
-    const { data, error } = await supabase.auth.getSession();
-    if (error) {
-      console.error('❌ Erreur session Supabase:', error);
+    const startTime = Date.now();
+    
+    // 1. Vérifier l'authentification
+    const { data: authData, error: authError } = await supabase.auth.getSession();
+    
+    if (authError) {
       return { 
         connected: false, 
-        error: `Erreur authentification: ${error.message}`,
-        code: error.code 
+        error: `Erreur authentification: ${authError.message}`,
+        code: authError.code,
+        latency: Date.now() - startTime
       };
     }
 
+    // 2. Vérifier la base de données (requête légère)
+    const dbCheckStart = Date.now();
+    const { error: dbError } = await supabase
+      .from('profiles')
+      .select('id')
+      .limit(1)
+      .maybeSingle();
+
+    const dbLatency = Date.now() - dbCheckStart;
+
+    // 3. Vérifier les Edge Functions (ping)
+    const functionsCheckStart = Date.now();
+    let functionsOk = false;
     try {
-      const { error: testError } = await Promise.race([
-        supabase
-          .from('profiles')
-          .select('id, updated_at')
-          .limit(1)
-          .maybeSingle(),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Database timeout')), 10000)
-        )
-      ]);
-
-      if (testError && testError.code !== 'PGRST116') {
-        console.warn('⚠️ Avertissement base de données:', testError);
-        return { 
-          connected: true, 
-          warning: `Base de données accessible mais avec avertissements: ${testError.message}`,
-          code: testError.code
-        };
-      }
-    } catch (dbError) {
-      console.warn('⚠️ Base de données non accessible:', dbError);
-      return { 
-        connected: true, 
-        warning: 'Authentification OK mais base de données inaccessible ou lente',
-        details: dbError.message
-      };
+      const { error: funcError } = await supabase.functions.invoke('health-check', {
+        body: { test: true },
+        signal: AbortSignal.timeout(5000)
+      });
+      functionsOk = !funcError;
+    } catch (funcError) {
+      console.warn('⚠️ Edge Functions non accessibles:', funcError.message);
     }
 
-    return { 
+    const totalLatency = Date.now() - startTime;
+
+    return {
       connected: true,
-      userId: data.session?.user?.id,
+      authenticated: !!authData.session,
+      userId: authData.session?.user?.id,
+      database: dbError ? { ok: false, error: dbError.message } : { ok: true, latency: dbLatency },
+      edgeFunctions: functionsOk ? 'ok' : 'degraded',
+      latency: totalLatency,
       timestamp: new Date().toISOString()
     };
+
   } catch (error) {
-    console.error('❌ Erreur connexion Supabase:', error);
-    return { 
-      connected: false, 
-      error: `Erreur configuration Supabase: ${error.message}`,
-      code: 'CONNECTION_ERROR'
+    console.error('❌ Erreur vérification connexion:', error);
+    return {
+      connected: false,
+      error: `Erreur de connexion: ${error.message}`,
+      code: 'CONNECTION_ERROR',
+      timestamp: new Date().toISOString()
     };
   }
 };
 
-// ✅ NOUVELLE FONCTION POUR APPELS EDGE FUNCTIONS AVEC RETRY ET HTTPS
+// ✅ NOUVELLE FONCTION POUR APPELS EDGE FUNCTIONS AVEC RETRY
 export const invokeEdgeFunctionWithRetry = async (functionName, body, options = {}) => {
   const {
     maxRetries = 3,
@@ -211,40 +235,56 @@ export const invokeEdgeFunctionWithRetry = async (functionName, body, options = 
     useHttpsFallback = true
   } = options;
 
+  console.group(`🚀 Appel Edge Function: ${functionName}`);
+  console.log('📦 Body:', body);
+
   let lastError;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      console.log(`🔄 Tentative ${attempt + 1}/${maxRetries} pour ${functionName}`);
+      console.log(`🔄 Tentative ${attempt + 1}/${maxRetries}`);
       
-      // ✅ FORÇAGE HTTPS SI NÉCESSAIRE
-      if (useHttpsFallback && import.meta.env.PROD) {
-        // Backup: appel direct en HTTPS si le client Supabase échoue
+      // ✅ APPEL DIRECT HTTPS DE SECOURS EN PRODUCTION
+      if (useHttpsFallback && import.meta.env.PROD && attempt > 0) {
+        console.log('🔄 Utilisation du fallback HTTPS direct...');
         const backupResult = await invokeEdgeFunctionDirectHttps(functionName, body, timeout);
         if (backupResult.success) {
           console.log(`✅ ${functionName} réussi via HTTPS direct`);
+          console.groupEnd();
           return backupResult;
         }
       }
 
-      // ✅ APPEL STANDARD SUPABASE
+      // ✅ APPEL STANDARD SUPABASE AVEC TIMEOUT
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+
       const { data, error } = await supabase.functions.invoke(functionName, {
         body,
-        signal: AbortSignal.timeout(timeout)
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       if (error) {
         throw error;
       }
 
       console.log(`✅ ${functionName} réussi via client Supabase`);
+      console.groupEnd();
       return { success: true, data };
 
     } catch (error) {
       console.error(`❌ Tentative ${attempt + 1} échouée:`, error.message);
       lastError = error;
 
-      // ✅ RETRY AVEC BACKOFF
+      // Pas de retry sur les erreurs client
+      if (error.name === 'AbortError' || error.message?.includes('timeout')) {
+        console.log('⏱️ Timeout détecté');
+        break;
+      }
+
+      // Backoff
       if (attempt < maxRetries - 1) {
         const delay = 2000 * (attempt + 1);
         console.log(`⏳ Attente ${delay}ms avant prochaine tentative...`);
@@ -253,10 +293,13 @@ export const invokeEdgeFunctionWithRetry = async (functionName, body, options = 
     }
   }
 
-  throw lastError;
+  console.error(`💥 Toutes les tentatives ont échoué pour ${functionName}:`, lastError?.message);
+  console.groupEnd();
+  
+  throw lastError || new Error(`Échec de l'appel à ${functionName} après ${maxRetries} tentatives`);
 };
 
-// ✅ FONCTION D'APPEL DIRECT HTTPS POUR CONTOURNER LES PROBLÈMES HTTP
+// ✅ FONCTION D'APPEL DIRECT HTTPS
 const invokeEdgeFunctionDirectHttps = async (functionName, body, timeout = 30000) => {
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -264,11 +307,11 @@ const invokeEdgeFunctionDirectHttps = async (functionName, body, timeout = 30000
       throw new Error('Session invalide pour appel HTTPS direct');
     }
 
-    // ✅ CONSTRUCTION URL HTTPS ABSOLUE
-    const baseUrl = supabaseUrl.replace(/^http:/, 'https');
+    // Construction URL HTTPS
+    const baseUrl = supabaseUrl.replace(/^http:/, 'https:').replace(/\/$/, '');
     const functionUrl = `${baseUrl}/functions/v1/${functionName}`;
 
-    console.log(`🔗 Appel direct HTTPS vers: ${functionUrl.substring(0, 80)}...`);
+    console.log(`🔗 Appel HTTPS direct: ${functionUrl.substring(0, 60)}...`);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -278,7 +321,8 @@ const invokeEdgeFunctionDirectHttps = async (functionName, body, timeout = 30000
       headers: {
         'Authorization': `Bearer ${session.access_token}`,
         'Content-Type': 'application/json',
-        'apikey': supabaseAnonKey
+        'apikey': supabaseAnonKey,
+        'X-Client-Info': 'future-jobs-https-fallback'
       },
       body: JSON.stringify(body),
       signal: controller.signal
@@ -287,7 +331,7 @@ const invokeEdgeFunctionDirectHttps = async (functionName, body, timeout = 30000
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorText = await response.text().catch(() => 'No error details');
       throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
 
@@ -295,14 +339,14 @@ const invokeEdgeFunctionDirectHttps = async (functionName, body, timeout = 30000
     return { success: true, data };
 
   } catch (error) {
-    console.error('❌ Appel HTTPS direct échoué:', error);
+    console.error('❌ Appel HTTPS direct échoué:', error.message);
     return { success: false, error };
   }
 };
 
 // ✅ RÉCUPÉRATION DE PROFIL AVEC CACHE
 const profileCache = new Map();
-const PROFILE_CACHE_TTL = 5 * 60 * 1000;
+const PROFILE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 export const getProfile = async (userId, forceRefresh = false) => {
   if (!userId) {
@@ -312,7 +356,6 @@ export const getProfile = async (userId, forceRefresh = false) => {
 
   const cached = profileCache.get(userId);
   if (!forceRefresh && cached && (Date.now() - cached.timestamp < PROFILE_CACHE_TTL)) {
-    console.log('✅ Utilisation du profil en cache');
     return cached.data;
   }
 
@@ -325,7 +368,7 @@ export const getProfile = async (userId, forceRefresh = false) => {
         .maybeSingle();
     });
 
-    if (error) {
+    if (error && error.code !== 'PGRST116') {
       console.warn('⚠️ Erreur récupération profil:', error);
       return null;
     }
@@ -335,188 +378,26 @@ export const getProfile = async (userId, forceRefresh = false) => {
         data,
         timestamp: Date.now()
       });
-      
-      console.log('✅ Profil chargé et mis en cache');
       return data;
     }
     
     return null;
   } catch (error) {
-    console.error('❌ Erreur récupération profil après retry:', error);
+    console.error('❌ Erreur récupération profil:', error);
     return null;
   }
 };
 
-// ✅ INVALIDATION DU CACHE PROFIL
+// ✅ INVALIDATION DU CACHE
 export const invalidateProfileCache = (userId) => {
   if (userId) {
     profileCache.delete(userId);
-    console.log('🗑️ Cache profil invalidé pour:', userId);
   } else {
     profileCache.clear();
-    console.log('🗑️ Cache profil complètement invalidé');
   }
 };
 
-// ✅ DONNÉES DASHBOARD OPTIMISÉES
-export const fetchDashboardData = async (userId) => {
-  if (!userId) {
-    throw new Error('ID utilisateur requis pour fetchDashboardData');
-  }
-  
-  try {
-    console.log('📊 Récupération dashboard optimisée pour userId:', userId);
-    
-    const connectionCheck = await checkSupabaseConnection();
-    if (!connectionCheck.connected) {
-      throw new Error(`Connexion Supabase échouée: ${connectionCheck.error}`);
-    }
-
-    const { data: videos, error: videosError } = await retryOperation(async () => {
-      return await supabase
-        .from('videos')
-        .select(`
-          id,
-          title,
-          status,
-          created_at,
-          duration,
-          file_size,
-          transcription_text,
-          analysis,
-          ai_score,
-          tags
-        `)
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(50);
-    });
-
-    if (videosError) {
-      console.error('❌ Erreur récupération vidéos:', videosError);
-    }
-
-    const videoList = videos || [];
-    const stats = calculateVideoStats(videoList);
-
-    return {
-      ...stats,
-      recentVideos: videoList.slice(0, 5),
-      allVideos: videoList,
-      lastUpdated: new Date().toISOString(),
-      isEmpty: videoList.length === 0
-    };
-  } catch (error) {
-    console.error('❌ Erreur récupération dashboard:', error);
-    throw new Error(`Impossible de charger les données du dashboard: ${error.message}`);
-  }
-};
-
-// ✅ CALCUL DES STATS OPTIMISÉ
-function calculateVideoStats(videos) {
-  if (!videos || videos.length === 0) {
-    return {
-      totalVideos: 0,
-      totalDuration: 0,
-      totalSize: 0,
-      byStatus: {
-        uploaded: 0,
-        processing: 0,
-        transcribed: 0,
-        analyzed: 0,
-        failed: 0
-      },
-      analysisStats: {
-        transcribedCount: 0,
-        analyzedCount: 0,
-        averageScore: 0
-      }
-    };
-  }
-
-  const byStatus = {
-    uploaded: 0,
-    processing: 0,
-    transcribed: 0,
-    analyzed: 0,
-    failed: 0
-  };
-
-  let totalDuration = 0;
-  let totalSize = 0;
-  let transcribedCount = 0;
-  let analyzedCount = 0;
-  let totalScore = 0;
-  let scoreCount = 0;
-
-  videos.forEach(video => {
-    byStatus[video.status] = (byStatus[video.status] || 0) + 1;
-    
-    if (video.duration) totalDuration += video.duration;
-    if (video.file_size) totalSize += video.file_size;
-    
-    if (video.transcription_text) transcribedCount++;
-    if (video.analysis) analyzedCount++;
-    if (video.ai_score) {
-      totalScore += video.ai_score;
-      scoreCount++;
-    }
-  });
-
-  return {
-    totalVideos: videos.length,
-    totalDuration,
-    totalSize: Math.round(totalSize / (1024 * 1024)),
-    byStatus,
-    analysisStats: {
-      transcribedCount,
-      analyzedCount,
-      averageScore: scoreCount > 0 ? totalScore / scoreCount : 0
-    }
-  };
-}
-
-// ✅ VÉRIFICATION DU QUESTIONNAIRE AVEC CACHE
-const questionnaireCache = new Map();
-
-export const checkQuestionnaireStatus = async (userId) => {
-  if (!userId) return false;
-
-  const cached = questionnaireCache.get(userId);
-  if (cached && (Date.now() - cached.timestamp < PROFILE_CACHE_TTL)) {
-    return cached.completed;
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from('questionnaire_responses')
-      .select('id, completed_at, dominant_color, updated_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error && error.code !== 'PGRST116') {
-      console.error('❌ Erreur vérification questionnaire:', error);
-      return false;
-    }
-
-    const completed = !!data?.completed_at;
-    
-    questionnaireCache.set(userId, {
-      completed,
-      timestamp: Date.now(),
-      dominantColor: data?.dominant_color
-    });
-
-    return completed;
-  } catch (error) {
-    console.error('❌ Erreur vérification questionnaire:', error);
-    return false;
-  }
-};
-
-// ✅ GESTION D'ERREUR AVANCÉE
+// ✅ GESTION D'ERREUR STANDARDISÉE
 export const handleSupabaseError = (error, operation = 'operation', context = {}) => {
   console.error(`❌ Erreur lors de ${operation}:`, {
     error,
@@ -526,87 +407,66 @@ export const handleSupabaseError = (error, operation = 'operation', context = {}
   
   const errorMap = {
     'PGRST116': { 
-      error: 'Aucun résultat trouvé', 
-      details: 'Aucune donnée correspondante trouvée dans la base de données',
-      userMessage: 'Aucune donnée trouvée pour votre recherche.',
-      severity: 'info'
+      userMessage: 'Aucune donnée trouvée.',
+      severity: 'info',
+      action: 'none'
     },
-    '42501': { 
-      error: 'Permission refusée', 
-      details: 'Vous n\'avez pas les droits nécessaires pour cette opération',
-      userMessage: 'Vous n\'avez pas les permissions nécessaires pour effectuer cette action.',
-      severity: 'warning'
+    '23502': {
+      userMessage: 'Données incomplètes. Veuillez réessayer.',
+      severity: 'warning',
+      action: 'retry'
     },
-    'PGRST301': { 
-      error: 'Non authentifié', 
-      details: 'Veuillez vous reconnecter',
-      userMessage: 'Votre session a expiré. Veuillez vous reconnecter.',
+    '42501': {
+      userMessage: 'Permissions insuffisantes.',
+      severity: 'warning',
+      action: 'refresh'
+    },
+    'PGRST301': {
+      userMessage: 'Session expirée. Veuillez vous reconnecter.',
       severity: 'warning',
       action: 'redirectToLogin'
     },
-    'PGRST302': { 
-      error: 'Jeton expiré', 
-      details: 'Votre session a expiré',
-      userMessage: 'Votre session a expiré. Veuillez vous reconnecter.',
+    'PGRST302': {
+      userMessage: 'Session expirée. Veuillez vous reconnecter.',
       severity: 'warning',
-      action: 'refreshSession'
-    },
-    '406': {
-      error: 'Format non acceptable',
-      details: 'Le format de réponse demandé n\'est pas supporté',
-      userMessage: 'Erreur technique. Veuillez réessayer.',
-      severity: 'error',
-      action: 'retry' // ✅ CORRECTION: Ajout de l'action retry
+      action: 'redirectToLogin'
     },
     '401': {
-      error: 'Non autorisé',
-      details: 'Authentification requise',
-      userMessage: 'Vous devez être connecté pour accéder à cette fonctionnalité.',
+      userMessage: 'Authentification requise.',
       severity: 'warning',
       action: 'redirectToLogin'
     },
     'CONNECTION_ERROR': {
-      error: 'Erreur de connexion',
-      details: 'Impossible de se connecter au serveur',
-      userMessage: 'Problème de connexion. Vérifiez votre connexion internet.',
+      userMessage: 'Problème de connexion. Vérifiez votre internet.',
       severity: 'error',
       action: 'retry'
     }
   };
 
-  const errorInfo = errorMap[error.code] || { 
-    error: 'Erreur inattendue', 
-    details: error.message || 'Une erreur s\'est produite',
-    userMessage: 'Une erreur inattendue s\'est produite. Veuillez réessayer.',
-    severity: 'error'
+  const errorCode = error.code || (error.message?.includes('network') ? 'CONNECTION_ERROR' : 'UNKNOWN');
+  const errorInfo = errorMap[errorCode] || {
+    userMessage: 'Une erreur inattendue est survenue.',
+    severity: 'error',
+    action: 'report'
   };
 
+  // Log supplémentaire pour les erreurs critiques
   if (errorInfo.severity === 'error') {
     console.error('🚨 Erreur critique:', {
       operation,
-      error: errorInfo,
-      context,
-      timestamp: new Date().toISOString()
+      errorCode,
+      errorMessage: error.message,
+      context
     });
   }
 
-  return errorInfo;
+  return {
+    ...errorInfo,
+    technical: error.message,
+    code: errorCode,
+    timestamp: new Date().toISOString()
+  };
 };
-
-// ✅ UTILITAIRE PURIFICATION DES DONNÉES
-export const sanitizeInput = (input, maxLength = 500) => {
-  if (typeof input !== 'string') return '';
-  
-  let sanitized = input
-    .trim()
-    .substring(0, maxLength)
-    .replace(/[<>]/g, '');
-    
-  return sanitized;
-};
-
-// ✅ EXPORT PAR DÉFAUT
-export default supabase;
 
 // ✅ NETTOYAGE AUTOMATIQUE DU CACHE
 setInterval(() => {
@@ -620,14 +480,10 @@ setInterval(() => {
     }
   }
 
-  for (const [key, value] of questionnaireCache.entries()) {
-    if (now - value.timestamp > PROFILE_CACHE_TTL) {
-      questionnaireCache.delete(key);
-      clearedCount++;
-    }
-  }
-
-  if (clearedCount > 0) {
+  if (clearedCount > 0 && import.meta.env.DEV) {
     console.log(`🧹 Cache nettoyé: ${clearedCount} entrées expirées`);
   }
-}, 60000);
+}, 300000); // Toutes les 5 minutes
+
+// ✅ EXPORT PAR DÉFAUT
+export default supabase;
