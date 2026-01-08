@@ -2,21 +2,25 @@ import { supabase } from '../lib/supabase';
 
 /**
  * Service de génération vidéo pour les métiers du futur
- * Gestion robuste de la communication avec l'Edge Function Supabase
+ * Gère la communication avec l'Edge Function Supabase
  */
 export const futureJobsVideoService = {
   /**
    * Génère une vidéo à partir d'un prompt
    * @param {Object} data - Données de génération
+   * @param {string} data.prompt - Texte du prompt (REQUIS)
+   * @param {string} data.generator - Générateur: SORA, RUNWAY, PIKA (REQUIS)
+   * @param {string} data.style - Style: futuristic, semi-realistic, etc. (REQUIS)
+   * @param {number} data.duration - Durée en secondes (REQUIS)
+   * @param {string} data.userId - ID utilisateur (optionnel)
+   * @param {string|number} data.jobId - ID du métier (optionnel)
    * @returns {Promise} Résultat de la génération
    */
   async generateJobVideo(data) {
-    console.group('🚀 SERVICE: Début génération vidéo');
-    console.log('📦 Payload brut reçu:', data);
+    console.log('🚀 Service: Début génération vidéo', data);
 
     // VALIDATION STRICTE DES DONNÉES D'ENTRÉE
     if (!data || typeof data !== 'object') {
-      console.error('❌ Données invalides:', data);
       return {
         success: false,
         error: "Données de génération invalides",
@@ -54,11 +58,10 @@ export const futureJobsVideoService = {
       };
     }
 
-    const validGenerators = ['sora', 'runway', 'pika'];
-    if (!validGenerators.includes(normalizedGenerator)) {
+ const validGenerators = [\'sora\', \'runway\', \'pika\'];  if (!validGenerators.includes(normalizedGenerator)) {
       return {
         success: false,
-        error: `Générateur invalide: ${data.generator}. Choisissez entre: ${validGenerators.join(', ').toUpperCase()}`,
+        error: `Générateur invalide: ${data.generator}. Choisissez entre: ${validGenerators.join(', ')}`,
         code: "INVALID_GENERATOR"
       };
     }
@@ -83,27 +86,22 @@ export const futureJobsVideoService = {
     // PRÉPARATION DU PAYLOAD STRICT POUR L'EDGE FUNCTION
     const payload = {
       prompt: normalizedPrompt,
-      generator: normalizedGenerator, // minuscules pour l'Edge Function
+      generator: normalizedGenerator,
       style: normalizedStyle,
       duration: duration,
       userId: data.userId || null,
       jobId: data.jobId ? String(data.jobId) : null
     };
 
-    console.log('📤 Payload validé envoyé à Edge Function:', {
-      ...payload,
-      promptPreview: normalizedPrompt.substring(0, 100) + (normalizedPrompt.length > 100 ? '...' : '')
-    });
-    console.groupEnd();
+    console.log('📤 Payload validé envoyé à Edge Function:', payload);
 
     try {
-      // APPEL EDGE FUNCTION AVEC TIMEOUT ET RETRY INTÉGRÉ
+      // APPEL EDGE FUNCTION SANS 'method' CAR AUTOMATIQUE
       const { data: result, error } = await supabase.functions.invoke('generate-video', {
         body: payload,
         headers: {
           'Content-Type': 'application/json',
-          'X-Request-Source': 'future-jobs-generator-v2',
-          'X-Client-Id': data.userId || 'anonymous'
+          'X-Request-Source': 'smoovebox-v2-frontend'
         }
       });
 
@@ -113,8 +111,7 @@ export const futureJobsVideoService = {
           success: false,
           error: error.message || "Erreur lors de l'appel à la fonction de génération",
           code: "EDGE_FUNCTION_ERROR",
-          details: error,
-          status: 500
+          details: error
         };
       }
 
@@ -124,14 +121,6 @@ export const futureJobsVideoService = {
           success: false,
           error: "Réponse vide de l'Edge Function",
           code: "EMPTY_RESPONSE"
-        };
-      }
-
-      // Si l'Edge Function retourne une erreur structurée
-      if (result.success === false) {
-        return {
-          success: false,
-          ...result
         };
       }
 
@@ -147,8 +136,7 @@ export const futureJobsVideoService = {
         success: false,
         error: "Problème de connexion au serveur de génération",
         details: networkError.message,
-        code: "NETWORK_ERROR",
-        status: 0
+        code: "NETWORK_ERROR"
       };
     }
   },
