@@ -36,12 +36,16 @@ export async function checkVideoProfileInformation(userId) {
       
       if (profileInfo && typeof profileInfo === 'object') {
         // Try different possible age field names
-        const age = profileInfo.age || 
-                   profileInfo.age_years || 
-                   profileInfo.ageNumber ||
-                   profileInfo.age_number;
+        const ageValue = profileInfo.age || 
+                        profileInfo.age_years || 
+                        profileInfo.ageNumber ||
+                        profileInfo.age_number ||
+                        profileInfo.approx_age;
         
-        if (age && typeof age === 'number' && age > 0) {
+        // Convert to number if it's a string
+        const age = typeof ageValue === 'string' ? parseInt(ageValue, 10) : ageValue;
+        
+        if (age && typeof age === 'number' && !isNaN(age) && age > 0) {
           // Determine age range
           let ageRange = null;
           if (age >= 16 && age <= 20) ageRange = '16-20';
