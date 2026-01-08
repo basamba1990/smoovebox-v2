@@ -6,18 +6,26 @@ import { supabase } from '../lib/supabase.js';
 /**
  * Start a new Lumi session
  * @param {string} type - Session type: 'onboarding', 'orientation', or 'premium'
+ * @param {string} ageRange - Age range: '16-20', '21-30', '31-45', '46+'
  * @returns {Promise<{success: boolean, session_id?: string, first_question?: object, error?: string}>}
  */
-export async function startLumiSession(type = 'onboarding') {
+export async function startLumiSession(type = 'onboarding', ageRange = null) {
   try {
+    console.log('[SERVICE] startLumiSession called');
+    console.log('[SERVICE] Parameters - type:', type, 'ageRange:', ageRange, 'ageRange type:', typeof ageRange);
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
+      console.log('[SERVICE] No session, returning error');
       return { success: false, error: 'Not authenticated' };
     }
 
+    const requestBody = { type, age_range: ageRange };
+    console.log('[SERVICE] Invoking lumi-start-session with body:', JSON.stringify(requestBody));
     const { data, error } = await supabase.functions.invoke('lumi-start-session', {
-      body: { type },
+      body: requestBody,
     });
+    
+    console.log('[SERVICE] Response received - data:', JSON.stringify(data), 'error:', error);
 
     if (error) {
       console.error('[LumiService] Error starting session:', error);
