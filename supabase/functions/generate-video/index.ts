@@ -1,7 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import OpenAI from "npm:openai@4.56.0";
 
-// CORS minimal et strict
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS, GET",
@@ -9,7 +8,6 @@ const corsHeaders: Record<string, string> = {
   "Access-Control-Max-Age": "86400",
 };
 
-// Types d'entrée
 interface ReqBody {
   prompt: string;
   generator: "sora" | "runway" | "pika";
@@ -21,7 +19,7 @@ interface ReqBody {
     | "abstract"
     | "lumi-universe";
   duration: number;
-  userId?: string; // sera ignoré si le JWT contient un sub
+  userId?: string;
   jobId?: string;
   access?: "public" | "signed";
   bucket?: string;
@@ -79,31 +77,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
     const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
 
-    if (!supabaseUrl || !serviceKey) {
-      console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !serviceKey || !anonKey) {
+      console.error("Missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or SUPABASE_ANON_KEY");
       return new Response(
-        JSON.stringify({ success: false, error: "Config Supabase manquante", code: "MISSING_ENV" }),
+        JSON.stringify({ success: false, error: "Configuration Supabase manquante", code: "MISSING_ENV" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // 1) Créer un client avec le service key pour Storage et contournement RLS si nécessaire
     const admin = createClient(supabaseUrl, serviceKey);
 
-    // 2) Créer un client "user-scoped" si Authorization est présent, afin de lire le sub/user_id
-    const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
-    const jwt = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
-    const userClient = jwt ? createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: `Bearer ${jwt}` } },
-    }) : null;
-
-    // Récupérer l'utilisateur à partir du JWT (prioritaire) sinon fallback au body.userId
     let authUserId: string | null = null;
-    if (userClient) {
-      const { data: userData } = await userClient.auth.getUser();
-      authUserId = userData?.user?.id ?? null;
+    const authHeader = req.headers.get("Authorization");
+    if (authHeader) {
+        const userClient = createClient(supabaseUrl, anonKey, {
+            global: { headers: { Authorization: authHeader } },
+        });
+        const { data: { user } } = await userClient.auth.getUser();
+        authUserId = user?.id ?? null;
     }
 
     let body: ReqBody;
@@ -116,15 +110,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    const normalizedPrompt = (body.prompt ?? "").trim();
-    const normalizedGenerator = (body.generator ?? "").toLowerCase().trim() as ReqBody["generator"];
-    const normalizedStyle = (body.style ?? "").toLowerCase().trim() as ReqBody["style"];
-    const duration = Number(body.duration);
-
-    // user_id final: JWT > body.userId (si JWT absent)
     const finalUserId = authUserId || body.userId || null;
 
-    // Hard fail si la colonne est NOT NULL et qu'on n'a pas d'user
     if (!finalUserId) {
       return new Response(
         JSON.stringify({
@@ -136,7 +123,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    const access = body.access === "public" ? "public" : "signed"; // défaut: signed
+    const normalizedPrompt = (body.prompt ?? "").trim();
+    const normalizedGenerator = (body.generator ?? "").toLowerCase().trim() as ReqBody["generator"];
+    const normalizedStyle = (body.style ?? "").toLowerCase().trim() as ReqBody["style"];
+    const duration = Number(body.duration);
+    const access = body.access === "public" ? "public" : "signed";
     const bucket = typeof body.bucket === "string" && body.bucket.trim() ? body.bucket.trim() : DEFAULT_BUCKET;
 
     if (!normalizedPrompt) {
@@ -172,13 +163,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // Préparer l'identité et les chemins
     const videoId = crypto.randomUUID();
-    const extension = normalizedGenerator === "sora" ? ".jpg" : ".mp4"; // placeholder image pour sora
+    const extension = normalizedGenerator === "sora" ? ".jpg" : ".mp4";
     const storage_path = `videos/${finalUserId}/${videoId}${extension}`;
     const title = normalizedPrompt.slice(0, 80) || "Untitled";
 
-    // INSERT strict avec user_id non nul
     const { data: inserted, error: insertErr } = await admin
       .from("videos")
       .insert({
@@ -215,7 +204,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // Génération simulée selon provider
     const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
     let sourceUrl: string | null = null;
     let generationResult: any = null;
@@ -232,7 +220,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
             style: "vivid" as any,
             n: 1,
           });
-          // @ts-ignore - SDK types
           sourceUrl = imageResult.data?.[0]?.url ?? null;
           generationResult = {
             model: "dall-e-3",
@@ -263,7 +250,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const processingTime = Date.now() - start;
 
-    // Télécharger la source et uploader dans Storage
     let finalPublicUrl: string | null = null;
     let finalSignedUrl: string | null = null;
 
@@ -273,9 +259,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const fileBytes = new Uint8Array(await res.arrayBuffer());
       const contentType = inferContentType(storage_path);
 
-      // S'assurer que le bucket existe (idempotent)
       try {
-        // no-op if exists; fails silently for users without storage admin perms
         await admin.storage.createBucket(bucket, { public: access === "public" });
       } catch (_) {
         // ignore if already exists
