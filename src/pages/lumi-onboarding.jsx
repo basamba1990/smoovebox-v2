@@ -141,7 +141,7 @@ export default function LumiOnboarding() {
             ← Retour à l'accueil
           </Button>
           <h1 className="text-4xl font-bold mb-2">
-            Découvre qui tu es avec Lumi
+            Découvre qui tu es
           </h1>
           <p className="text-slate-400">
             Réponds à quelques questions pour découvrir ta couleur dominante et
@@ -321,21 +321,131 @@ export default function LumiOnboarding() {
                  )}
 
                  {/* Traits */}
-                 {computedProfile.traits && computedProfile.traits.length > 0 && (
-                   <div>
-                     <h4 className="text-lg font-semibold text-white mb-3">
-                       Tes Traits
-                     </h4>
-                     <div className="flex flex-wrap gap-2">
-                       {computedProfile.traits.map((trait, index) => (
-                         <span
-                           key={index}
-                           className="px-3 py-1 bg-indigo-500/20 text-indigo-300 rounded-full text-sm border border-indigo-500/30"
-                         >
-                           {trait}
-                         </span>
-                       ))}
+                 {computedProfile.traits && typeof computedProfile.traits === 'object' && !Array.isArray(computedProfile.traits) && (
+                   <div className="space-y-6">
+                     {/* Combined Description */}
+                     {computedProfile.traits.combined_description && (
+                       <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+                         <h3 className="text-lg font-semibold text-white mb-2">
+                           Votre profil DISC
+                         </h3>
+                         <p className="text-slate-200 leading-relaxed">
+                           {computedProfile.traits.combined_description}
+                         </p>
+                       </div>
+                     )}
+
+                     {/* Profile Type */}
+                     {computedProfile.traits.profile_type && (
+                       <div className="text-center">
+                         <p className="text-sm text-slate-400 mb-1">Type de profil</p>
+                         <p className="text-xl font-bold text-white">
+                           {computedProfile.traits.profile_type}
+                         </p>
+                       </div>
+                     )}
+
+                     {/* Dominant and Secondary Profiles */}
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       {/* Dominant Profile */}
+                       {computedProfile.traits.dominant && (
+                         <div className="p-4 bg-gradient-to-br from-yellow-500/10 to-yellow-600/5 rounded-lg border border-yellow-500/30 space-y-3">
+                           <div className="flex items-center justify-between">
+                             <h4 className="text-sm font-semibold text-yellow-200">Profil Dominant</h4>
+                             <span className="text-xs text-yellow-300/70">
+                               {computedProfile.traits.dominant.intensity} ({computedProfile.traits.dominant.percentage}%)
+                             </span>
+                           </div>
+                           <p className="text-lg font-bold text-white">
+                             {computedProfile.traits.dominant.name}
+                           </p>
+                           <p className="text-sm text-slate-300">
+                             {computedProfile.traits.dominant.description}
+                           </p>
+                           {computedProfile.traits.dominant.traits && computedProfile.traits.dominant.traits.length > 0 && (
+                             <div className="flex flex-wrap gap-2 mt-2">
+                               {computedProfile.traits.dominant.traits.map((trait, idx) => (
+                                 <span
+                                   key={idx}
+                                   className="px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-200 text-xs border border-yellow-500/40"
+                                 >
+                                   {trait}
+                                 </span>
+                               ))}
+                             </div>
+                           )}
+                           {computedProfile.traits.dominant.characteristics && computedProfile.traits.dominant.characteristics.length > 0 && (
+                             <div className="mt-3 space-y-1">
+                               <p className="text-xs text-slate-400">Caractéristiques :</p>
+                               {computedProfile.traits.dominant.characteristics.map((char, idx) => (
+                                 <div key={idx} className="flex items-start gap-2 text-xs text-slate-300">
+                                   <span className="text-yellow-400 mt-0.5">•</span>
+                                   <span>{char}</span>
+                                 </div>
+                               ))}
+                             </div>
+                           )}
+                         </div>
+                       )}
+
+                       {/* Secondary Profile */}
+                       {computedProfile.traits.secondary && (
+                         <div className="p-4 bg-gradient-to-br from-green-500/10 to-green-600/5 rounded-lg border border-green-500/30 space-y-3">
+                           <div className="flex items-center justify-between">
+                             <h4 className="text-sm font-semibold text-green-200">Profil Secondaire</h4>
+                             <span className="text-xs text-green-300/70">
+                               {computedProfile.traits.secondary.intensity} ({computedProfile.traits.secondary.percentage}%)
+                             </span>
+                           </div>
+                           <p className="text-lg font-bold text-white">
+                             {computedProfile.traits.secondary.name}
+                           </p>
+                           <p className="text-sm text-slate-300">
+                             {computedProfile.traits.secondary.description}
+                           </p>
+                           {computedProfile.traits.secondary.traits && computedProfile.traits.secondary.traits.length > 0 && (
+                             <div className="flex flex-wrap gap-2 mt-2">
+                               {computedProfile.traits.secondary.traits.map((trait, idx) => (
+                                 <span
+                                   key={idx}
+                                   className="px-3 py-1 rounded-full bg-green-500/20 text-green-200 text-xs border border-green-500/40"
+                                 >
+                                   {trait}
+                                 </span>
+                               ))}
+                             </div>
+                           )}
+                           {computedProfile.traits.secondary.characteristics && computedProfile.traits.secondary.characteristics.length > 0 && (
+                             <div className="mt-3 space-y-1">
+                               <p className="text-xs text-slate-400">Caractéristiques :</p>
+                               {computedProfile.traits.secondary.characteristics.map((char, idx) => (
+                                 <div key={idx} className="flex items-start gap-2 text-xs text-slate-300">
+                                   <span className="text-green-400 mt-0.5">•</span>
+                                   <span>{char}</span>
+                                 </div>
+                               ))}
+                             </div>
+                           )}
+                         </div>
+                       )}
                      </div>
+
+                     {/* All Characteristics */}
+                     {computedProfile.traits.characteristics && computedProfile.traits.characteristics.length > 0 && (
+                       <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+                         <h4 className="text-sm font-semibold text-white mb-3">
+                           Vos caractéristiques principales
+                         </h4>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                           {computedProfile.traits.characteristics.map((char, idx) => (
+                             <div key={idx} className="flex items-start gap-2 text-sm text-slate-300">
+                               <span className="text-indigo-400 mt-0.5">✓</span>
+                               <span>{char}</span>
+                             </div>
+                           ))}
+                         </div>
+                       </div>
+                     )}
                    </div>
                  )}
                </div>

@@ -34,6 +34,54 @@ const DISC_TO_COLOR: Record<string, string> = {
   'C': 'bleu',
 };
 
+// Color descriptions based on DISC profiles
+const COLOR_DESCRIPTIONS: Record<string, any> = {
+  'rouge': {
+    name: 'Leader passionné',
+    description: 'Décideur rapide, orienté action et résultats',
+    traits: ['Leadership', 'Courage', 'Détermination'],
+    characteristics: [
+      'Prend des décisions rapidement',
+      'Aime les défis et la compétition',
+      'Direct et orienté résultats',
+      'Naturellement confiant'
+    ]
+  },
+  'jaune': {
+    name: 'Créatif enthousiaste',
+    description: 'Innovant, optimiste et plein d\'idées',
+    traits: ['Créativité', 'Innovation', 'Enthousiasme'],
+    characteristics: [
+      'Plein d\'idées nouvelles',
+      'Enthousiaste et énergique',
+      'Aime l\'innovation et le changement',
+      'Excellent pour motiver les autres'
+    ]
+  },
+  'vert': {
+    name: 'Équipier empathique',
+    description: 'Coopératif, à l\'écoute et solidaire',
+    traits: ['Empathie', 'Coopération', 'Soutien'],
+    characteristics: [
+      'Excellent communicateur',
+      'Soutient les autres naturellement',
+      'Crée l\'harmonie dans le groupe',
+      'À l\'écoute des besoins'
+    ]
+  },
+  'bleu': {
+    name: 'Stratège rigoureux',
+    description: 'Analytique, organisé et soucieux des détails',
+    traits: ['Rigueur', 'Discipline', 'Précision'],
+    characteristics: [
+      'Aime les détails et la précision',
+      'Réfléchit avant d\'agir',
+      'Organisé et méthodique',
+      'Fiable et consciencieux'
+    ]
+  }
+};
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -232,14 +280,71 @@ Deno.serve(async (req) => {
 
     console.log('[lumi-compute-profile] Dominant:', dominantColor, 'Secondary:', secondaryColor);
 
-    // Create profile object
+    // Calculate total score and percentages
+    const totalScore = Object.values(discScores).reduce((sum, score) => sum + score, 0);
+    const percentages = {
+      D: totalScore > 0 ? Math.round((discScores.D / totalScore) * 100) : 0,
+      I: totalScore > 0 ? Math.round((discScores.I / totalScore) * 100) : 0,
+      S: totalScore > 0 ? Math.round((discScores.S / totalScore) * 100) : 0,
+      C: totalScore > 0 ? Math.round((discScores.C / totalScore) * 100) : 0,
+    };
+
+    // Get color descriptions
+    const dominantProfile = COLOR_DESCRIPTIONS[dominantColor] || COLOR_DESCRIPTIONS['rouge'];
+    const secondaryProfile = COLOR_DESCRIPTIONS[secondaryColor] || COLOR_DESCRIPTIONS['jaune'];
+
+    // Determine intensity levels
+    const dominantIntensity = percentages[dominantDisc] >= 50 ? 'très élevée' :
+                               percentages[dominantDisc] >= 35 ? 'élevée' :
+                               percentages[dominantDisc] >= 25 ? 'modérée' : 'faible';
+    
+    const secondaryIntensity = percentages[secondaryDisc] >= 35 ? 'élevée' :
+                                percentages[secondaryDisc] >= 25 ? 'modérée' : 'faible';
+
+    // Generate combined description
+    const combinedDescription = `Vous êtes principalement un ${dominantProfile.name} (${dominantColor}) avec une ${secondaryIntensity} tendance ${secondaryProfile.name.toLowerCase()} (${secondaryColor}). ` +
+      `${dominantProfile.description}. ${secondaryProfile.description}. ` +
+      `Votre profil est ${dominantIntensity}ment orienté ${dominantColor} (${percentages[dominantDisc]}%), ` +
+      `avec une tendance ${secondaryColor} (${percentages[secondaryDisc]}%).`;
+
+    // Create profile object with detailed traits
     const profile = {
       user_id: user.id,
       session_id: sessionId,
       dominant_color: dominantColor,
       secondary_color: secondaryColor,
       disc_scores: discScores,
-      traits: null, // Can be populated later with AI or predefined traits
+      traits: {
+        dominant: {
+          name: dominantProfile.name,
+          description: dominantProfile.description,
+          traits: dominantProfile.traits,
+          characteristics: dominantProfile.characteristics,
+          score: discScores[dominantDisc],
+          percentage: percentages[dominantDisc],
+          intensity: dominantIntensity
+        },
+        secondary: {
+          name: secondaryProfile.name,
+          description: secondaryProfile.description,
+          traits: secondaryProfile.traits,
+          characteristics: secondaryProfile.characteristics,
+          score: discScores[secondaryDisc],
+          percentage: percentages[secondaryDisc],
+          intensity: secondaryIntensity
+        },
+        combined_description: combinedDescription,
+        profile_type: `${dominantProfile.name} - ${secondaryProfile.name}`,
+        intensity: {
+          dominant: `${dominantIntensity} (${percentages[dominantDisc]}%)`,
+          secondary: `${secondaryIntensity} (${percentages[secondaryDisc]}%)`,
+          profile_type: `${dominantColor.charAt(0).toUpperCase() + dominantColor.slice(1)}-${secondaryColor.charAt(0).toUpperCase() + secondaryColor.slice(1)} (${dominantDisc}-${secondaryDisc})`
+        },
+        characteristics: [
+          ...dominantProfile.characteristics,
+          ...secondaryProfile.characteristics.filter(c => !dominantProfile.characteristics.includes(c))
+        ]
+      },
       computed_at: new Date().toISOString(),
     };
 
