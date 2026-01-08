@@ -36,7 +36,7 @@ export default function FutureJobsGenerator() {
     if (user) {
       loadUserVideos();
     }
-    checkConnection();
+    checkSimpleConnection();
   }, [user]);
 
   useEffect(() => {
@@ -47,15 +47,38 @@ export default function FutureJobsGenerator() {
     };
   }, [pollingInterval]);
 
-  const checkConnection = async () => {
+  const checkSimpleConnection = async () => {
     try {
       setConnectionStatus('checking');
-      // Simuler une vérification de connexion
-      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Vérification simple et rapide
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout de connexion')), 3000)
+      );
+      
+      const connectionPromise = (async () => {
+        // Vérifier si user est connecté (preuve que Supabase fonctionne)
+        if (user) {
+          return { connected: true, authenticated: true };
+        }
+        
+        // Sinon, faire un simple ping
+        await fetch('https://nyxtckjfaajhacboxojd.supabase.co', { 
+          method: 'HEAD',
+          mode: 'no-cors'
+        });
+        return { connected: true, authenticated: false };
+      })();
+      
+      await Promise.race([connectionPromise, timeoutPromise]);
+      
       setConnectionStatus('connected');
     } catch (error) {
-      setConnectionStatus('error');
-      toast.error('Erreur de connexion au serveur');
+      console.warn('⚠️ Connexion limitée:', error.message);
+      setConnectionStatus('degraded');
+      
+      // Ne pas bloquer l'utilisateur pour une erreur de connexion
+      toast.warning('⚠️ Connexion limitée au serveur', { duration: 3000 });
     }
   };
 
@@ -149,12 +172,6 @@ export default function FutureJobsGenerator() {
       return;
     }
 
-    // VÉRIFICATION DE LA CONNEXION
-    if (connectionStatus === 'error') {
-      toast.error('⚠️ Problème de connexion au serveur. Vérifiez votre internet.');
-      return;
-    }
-
     // NORMALISATION STRICTE
     const payload = {
       prompt: promptText.trim(),
@@ -244,7 +261,7 @@ export default function FutureJobsGenerator() {
         },
         'NETWORK_ERROR': {
           message: '🌐 Problème de connexion. Vérifiez votre internet.',
-          action: () => checkConnection(),
+          action: () => checkSimpleConnection(),
           severity: 'high'
         },
         'DB_INSERT_ERROR': {
@@ -442,15 +459,18 @@ export default function FutureJobsGenerator() {
             <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs ${
               connectionStatus === 'connected' ? 'bg-green-900/30 text-green-400' :
               connectionStatus === 'checking' ? 'bg-yellow-900/30 text-yellow-400' :
+              connectionStatus === 'degraded' ? 'bg-orange-900/30 text-orange-400' :
               'bg-red-900/30 text-red-400'
             }`}>
               <div className={`w-2 h-2 rounded-full mr-2 ${
                 connectionStatus === 'connected' ? 'bg-green-500 animate-pulse' :
                 connectionStatus === 'checking' ? 'bg-yellow-500' :
+                connectionStatus === 'degraded' ? 'bg-orange-500' :
                 'bg-red-500'
               }`}></div>
               {connectionStatus === 'connected' ? 'Connecté' :
-               connectionStatus === 'checking' ? 'Connexion...' : 'Hors ligne'}
+               connectionStatus === 'checking' ? 'Connexion...' :
+               connectionStatus === 'degraded' ? 'Limité' : 'Hors ligne'}
             </div>
           </div>
           
@@ -570,9 +590,9 @@ export default function FutureJobsGenerator() {
               <button
                 type="button"
                 onClick={handleGenerateVideo}
-                disabled={!generatedPrompt || isGeneratingVideo || isSubmitting || connectionStatus === 'error'}
+                disabled={!generatedPrompt || isGeneratingVideo || isSubmitting || connectionStatus === 'checking'}
                 className={`w-full py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white font-bold rounded-md flex items-center justify-center gap-2 transition-all ${
-                  !generatedPrompt || isGeneratingVideo || isSubmitting || connectionStatus === 'error'
+                  !generatedPrompt || isGeneratingVideo || isSubmitting || connectionStatus === 'checking'
                     ? 'opacity-50 cursor-not-allowed'
                     : 'hover:from-purple-700 hover:to-purple-800 cursor-pointer'
                 }`}
@@ -607,15 +627,15 @@ export default function FutureJobsGenerator() {
             )}
 
             {/* Connexion Status */}
-            {connectionStatus === 'error' && (
-              <div className="mt-6 p-3 bg-red-900/30 border border-red-700 rounded-md">
-                <h3 className="text-red-300 font-semibold mb-2">⚠️ Problème de connexion</h3>
-                <p className="text-sm text-red-200 mb-3">
-                  Impossible de se connecter au serveur. Vérifiez votre connexion internet.
+            {connectionStatus === 'degraded' && (
+              <div className="mt-6 p-3 bg-orange-900/30 border border-orange-700 rounded-md">
+                <h3 className="text-orange-300 font-semibold mb-2">⚠️ Connexion limitée</h3>
+                <p className="text-sm text-orange-200 mb-3">
+                  La connexion au serveur est limitée, mais la génération devrait fonctionner.
                 </p>
                 <button
-                  onClick={checkConnection}
-                  className="w-full py-2 bg-red-700 hover:bg-red-600 text-white rounded text-sm transition"
+                  onClick={checkSimpleConnection}
+                  className="w-full py-2 bg-orange-700 hover:bg-orange-600 text-white rounded text-sm transition"
                 >
                   🔄 Réessayer la connexion
                 </button>
@@ -967,7 +987,7 @@ export default function FutureJobsGenerator() {
             <h4 className="text-sm font-semibold text-slate-400 mb-2">🛠️ Dépannage rapide</h4>
             <div className="flex flex-wrap gap-2">
               <button 
-                onClick={checkConnection}
+                onClick={checkSimpleConnection}
                 className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-xs rounded transition"
               >
                 🔄 Tester la connexion
