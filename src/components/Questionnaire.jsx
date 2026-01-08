@@ -158,7 +158,6 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
   useEffect(() => {
     const checkConnection = async () => {
       if (!user) {
-        console.log('❌ Utilisateur non connecté, questionnaire en attente');
         return;
       }
       
@@ -175,7 +174,6 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
           return;
         }
         
-        console.log('✅ Connexion questionnaire validée');
         setConnectionChecked(true);
         loadExistingResponses();
       } catch (error) {
@@ -194,7 +192,6 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
     if (!user) return;
     
     try {
-      console.log('📥 Chargement des réponses existantes pour:', user.id);
       
       const { data, error } = await supabase
         .from('questionnaire_responses')
@@ -206,7 +203,6 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
 
       if (error) {
         if (error.code === '406' || error.message?.includes('406')) {
-          console.log('ℹ️ Aucune réponse existante trouvée (erreur 406 normale)');
           return;
         }
         console.error('❌ Erreur chargement réponses:', error);
@@ -215,7 +211,6 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
       }
 
       if (data) {
-        console.log('✅ Réponses existantes chargées:', data.id);
         setAnswers({
           colorQuiz: data.color_quiz || Array(8).fill(''),
           favoriteActivities: data.preferred_activities || [],
@@ -229,7 +224,6 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
         });
         
         if (data.completed_at) {
-          console.log('📝 Questionnaire déjà complété, passage à l\'étape 4');
           setCurrentStep(4);
         }
       }
@@ -301,7 +295,6 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
     setLoading(true);
     
     try {
-      console.log('💾 Sauvegarde du questionnaire pour:', user.id);
       
       const dominantColor = calculateDominantColor();
       
@@ -321,7 +314,6 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
         updated_at: new Date().toISOString()
       };
 
-      console.log('📤 Données à sauvegarder:', questionnaireData);
 
       // CORRECTION : Utilisation de upsert au lieu de insert/update séparés
       const { data, error } = await supabase
@@ -368,7 +360,6 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
 
       // Afficher le résultat du profil
       const profile = colorProfiles[dominantColor];
-      console.log('🎉 Questionnaire sauvegardé avec profil:', profile.name);
       toast.success(`Profil ${profile.name} identifié !`);
       
       // Passer à l'étape des résultats

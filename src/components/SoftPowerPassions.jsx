@@ -194,11 +194,6 @@ export default function SoftPowerPassions() {
       // 4. Appel à l'Edge Function (CORRIGÉ)
       const EDGE_FUNCTION_URL = 'https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/generate-hybrid-career-recommendations'
       
-      console.log('Envoi des données:', {
-        selectedPassions,
-        softPromptId: softPromptData?.id || null,
-        configId: configData?.id || null
-      })
 
       // Construire les headers
       const headers = {
@@ -250,7 +245,6 @@ export default function SoftPowerPassions() {
       }
 
       const recommendationsData = await response.json()
-      console.log('Réponse reçue:', recommendationsData)
 
       // 5. Traiter les recommandations
       processRecommendations(recommendationsData, softPromptData, configData)
@@ -265,7 +259,6 @@ export default function SoftPowerPassions() {
       // Fallback aux carrières prédéfinies
       if (retryCount < 1) {
         setRetryCount(prev => prev + 1)
-        console.log('Utilisation du fallback aux carrières prédéfinies')
         const filteredCareers = HYBRID_CAREERS.filter((career) =>
           career.passions.some((p) => selectedPassions.includes(p))
         )

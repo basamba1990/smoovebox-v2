@@ -24,7 +24,7 @@ const ServiceWorkerRegistration = () => {
       navigator.serviceWorker
         .register("/sw.js")
         .then((registration) => {
-          console.log("✅ Service Worker enregistré:", registration);
+          console.log();
         })
         .catch((error) => {
           console.log("❌ Erreur Service Worker:", error);
@@ -85,7 +85,6 @@ const AppContentProtected = () => {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        console.log("🔄 Initialisation SpotBulle...");
         
         // Vérification réseau d'abord
         const networkOk = await checkNetworkConnection();
@@ -102,7 +101,6 @@ const AppContentProtected = () => {
           setConnectionStatus("connected");
           setSupabaseError(null);
           setHasNetworkError(false);
-          console.log("✅ Connexion Supabase établie");
         } else {
           setConnectionStatus("api_error");
           setSupabaseError(result.error);
@@ -152,7 +150,6 @@ const AppContentProtected = () => {
           const videoDevices = devices.filter(
             (device) => device.kind === "videoinput"
           );
-          console.log(`📹 ${videoDevices.length} caméra(s) détectée(s)`);
           setCameraChecked(true);
         }
       } catch (err) {
@@ -166,7 +163,6 @@ const AppContentProtected = () => {
   // ✅ Gestionnaires d'événements
   const handleAuthSuccess = useCallback(
     (userData) => {
-      console.log("✅ Utilisateur authentifié:", userData.id);
       setIsAuthModalOpen(false);
       setConnectionStatus("connected");
       setHasNetworkError(false);
@@ -180,7 +176,6 @@ const AppContentProtected = () => {
 
   const handleSignOut = useCallback(async () => {
     try {
-      console.log("🚪 Déconnexion utilisateur...");
       await signOut();
       navigate("/");
       // Invalider le cache des vidéos
@@ -191,7 +186,6 @@ const AppContentProtected = () => {
   }, [signOut, navigate, queryClient]);
 
   const handleVideoUploaded = useCallback(() => {
-    console.log("🎥 Vidéo uploadée - rechargement données");
     // Invalidate videos query to refetch
     if (user) {
       queryClient.invalidateQueries({ queryKey: ['videos', user.id] });
@@ -375,7 +369,6 @@ const queryClient = new QueryClient({
 
 // ✅ COMPOSANT RACINE PRINCIPAL
 function App() {
-  console.log("🚀 Initialisation SpotBulle v2.1.0");
   
   return (
     // Niveau 1: GlobalErrorBoundary pour capturer TOUTES les erreurs React (page blanche)

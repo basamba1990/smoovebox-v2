@@ -98,7 +98,6 @@ export function CityAutocomplete({
         // Fallback to a simple timezone estimation based on coordinates
         const estimatedTimezone = estimateTimezoneFromCoordinates(lat, lon)
         if (estimatedTimezone) {
-          console.log('[CityAutocomplete] Estimated timezone:', estimatedTimezone)
           onTimezoneChange(estimatedTimezone)
           return
         }
@@ -111,7 +110,6 @@ export function CityAutocomplete({
       
       if (geoResponse.ok) {
         const data = await geoResponse.json()
-        console.log('[CityAutocomplete] BigDataCloud API response:', data)
         
         // Check all possible timezone fields
         let timezone = data.timezone?.name || 
@@ -122,13 +120,11 @@ export function CityAutocomplete({
                       null
         
         if (timezone) {
-          console.log('[CityAutocomplete] Detected timezone:', timezone)
           onTimezoneChange(timezone)
         } else {
           // Fallback to estimation
           const estimatedTimezone = estimateTimezoneFromCoordinates(lat, lon)
           if (estimatedTimezone) {
-            console.log('[CityAutocomplete] Using estimated timezone:', estimatedTimezone)
             onTimezoneChange(estimatedTimezone)
           } else {
             console.warn('[CityAutocomplete] No timezone found in API response and estimation failed')
@@ -141,7 +137,6 @@ export function CityAutocomplete({
       try {
         const estimatedTimezone = estimateTimezoneFromCoordinates(lat, lon)
         if (estimatedTimezone) {
-          console.log('[CityAutocomplete] Using estimated timezone after error:', estimatedTimezone)
           onTimezoneChange(estimatedTimezone)
         }
       } catch (estErr) {

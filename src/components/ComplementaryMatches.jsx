@@ -16,7 +16,6 @@ const ComplementaryMatches = ({ user, profile }) => {
     
     setLoading(true);
     try {
-      console.log('🔍 Recherche de matches complémentaires...');
       
       const { data, error } = await supabase.functions.invoke('find-complementary-matches', {
         body: { user_id: currentUser.id, limit: 8 }
@@ -24,7 +23,6 @@ const ComplementaryMatches = ({ user, profile }) => {
 
       if (error) throw error;
 
-      console.log('✅ Matches trouvés:', data.matches.length);
       setMatches(data.matches || []);
       
       if (data.matches.length === 0) {
