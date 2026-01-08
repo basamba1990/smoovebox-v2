@@ -1,25 +1,9 @@
 import { supabase, invokeEdgeFunctionWithRetry } from '../lib/supabase';
 
-/**
- * Service de génération vidéo pour les métiers du futur
- * Gère la communication avec l'Edge Function Supabase
- */
 export const futureJobsVideoService = {
-  /**
-   * Génère une vidéo à partir d'un prompt
-   * @param {Object} data - Données de génération
-   * @param {string} data.prompt - Texte du prompt (REQUIS)
-   * @param {string} data.generator - Générateur: SORA, RUNWAY, PIKA (REQUIS)
-   * @param {string} data.style - Style: futuristic, cinematic, etc. (REQUIS)
-   * @param {number} data.duration - Durée en secondes (REQUIS)
-   * @param {string} data.userId - ID utilisateur (REQUIS)
-   * @param {string|number} data.jobId - ID du métier (optionnel)
-   * @returns {Promise} Résultat de la génération
-   */
   async generateJobVideo(data) {
     console.log('🚀 Service: Début génération vidéo', data);
 
-    // VALIDATION STRICTE DES DONNÉES D'ENTRÉE
     if (!data || typeof data !== 'object') {
       return {
         success: false,
@@ -28,13 +12,11 @@ export const futureJobsVideoService = {
       };
     }
 
-    // NORMALISATION STRICTE AVANT VALIDATION (Correction Casse pour Edge Function)
     const normalizedPrompt = String(data.prompt || '').trim();
     const normalizedGenerator = String(data.generator || '').toLowerCase().trim();
     const normalizedStyle = String(data.style || '').toLowerCase().trim();
     const duration = Number(data.duration);
 
-    // VALIDATION INDIVIDUELLE RENFORCÉE
     const validGenerators = ['sora', 'runway', 'pika'];
     if (!validGenerators.includes(normalizedGenerator)) {
       return {
@@ -44,7 +26,6 @@ export const futureJobsVideoService = {
       };
     }
 
-    // PRÉPARATION DU PAYLOAD STRICT POUR L'EDGE FUNCTION
     const payload = {
       prompt: normalizedPrompt,
       generator: normalizedGenerator,
@@ -57,7 +38,6 @@ export const futureJobsVideoService = {
     console.log('📤 Payload validé envoyé à Edge Function:', payload);
 
     try {
-      // APPEL EDGE FUNCTION AVEC SYSTÈME DE RETRY ET HTTPS FALLBACK
       const { data: result, error } = await invokeEdgeFunctionWithRetry('generate-video', payload, {
         timeout: 60000,
         useHttpsFallback: true
@@ -90,10 +70,6 @@ export const futureJobsVideoService = {
     }
   },
 
-  /**
-   * Vérifie le statut d'une vidéo
-   * CORRECTION : Utilise la table 'videos' au lieu de 'generated_videos'
-   */
   async checkVideoStatus(videoId) {
     if (!videoId) return { success: false, error: "ID vidéo requis" };
 
@@ -118,10 +94,6 @@ export const futureJobsVideoService = {
     }
   },
 
-  /**
-   * Récupère les vidéos d'un utilisateur
-   * CORRECTION : Utilise la table 'videos' et la colonne 'user_id' directe
-   */
   async getUserVideos(userId, limit = 10) {
     if (!userId) return { success: false, error: "ID utilisateur requis" };
 
@@ -135,7 +107,8 @@ export const futureJobsVideoService = {
           public_url,
           url,
           metadata,
-          created_at
+          created_at,
+          title
         `)
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
@@ -155,10 +128,6 @@ export const futureJobsVideoService = {
     }
   },
 
-  /**
-   * Annule une génération en cours
-   * CORRECTION : Utilise la table 'videos'
-   */
   async cancelVideoGeneration(videoId) {
     if (!videoId) return { success: false, error: "ID vidéo requis" };
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, Copy, Download, Zap, Eye, Play, Loader2, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { ChevronDown, Copy, Download, Zap, Play, Loader2, CheckCircle, RefreshCw } from 'lucide-react';
 import pinnPromptService from '../services/pinnPromptService';
 import { futureJobsVideoService } from '../services/futureJobsVideoService';
 import { useAuth } from '../context/AuthContext';
@@ -7,7 +7,7 @@ import { toast } from 'react-hot-toast';
 import '../styles/futureJobsGenerator.css';
 
 export default function FutureJobsGenerator() {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const [selectedJobId, setSelectedJobId] = useState(1);
   const [selectedGenerator, setSelectedGenerator] = useState('Sora');
   const [selectedStyle, setSelectedStyle] = useState('futuristic');
@@ -17,14 +17,11 @@ export default function FutureJobsGenerator() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  const [variants, setVariants] = useState(null);
-  const [showVariants, setShowVariants] = useState(false);
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [videoResult, setVideoResult] = useState(null);
   const [videoError, setVideoError] = useState(null);
   const [generationStatus, setGenerationStatus] = useState('');
   const [generatedVideos, setGeneratedVideos] = useState([]);
-  const [pollingInterval, setPollingInterval] = useState(null);
   const [generationTime, setGenerationTime] = useState(null);
   const [validationErrors, setValidationErrors] = useState({});
 
@@ -36,29 +33,23 @@ export default function FutureJobsGenerator() {
     }
   }, [user]);
 
-  useEffect(() => {
-    return () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-      }
-    };
-  }, [pollingInterval]);
-
   const loadUserVideos = async () => {
     if (!user) return;
     try {
       const result = await futureJobsVideoService.getUserVideos(user.id, 5);
       if (result.success) {
         setGeneratedVideos(result.videos);
+      } else {
+        console.error('Erreur chargement vidéos:', result.error);
+        toast.error("Impossible de charger l'historique des vidéos.");
       }
     } catch (error) {
-      console.error('Erreur chargement vidéos:', error);
+      console.error('Erreur critique chargement vidéos:', error);
     }
   };
 
   const handleGeneratePrompt = (e) => {
     if (e) e.preventDefault();
-    console.log('Bouton Générer Prompt cliqué');
     setLoading(true);
     setValidationErrors({});
     try {
@@ -68,14 +59,12 @@ export default function FutureJobsGenerator() {
         duration: Number(selectedDuration)
       });
       
-      // VALIDATION CRITIQUE DU PROMPT RETOURNÉ
       if (!prompt || !prompt.prompt || typeof prompt.prompt !== 'string' || prompt.prompt.trim().length === 0) {
         const error = new Error('Le service de prompt a retourné un prompt invalide');
         error.code = 'INVALID_PROMPT_RESPONSE';
         throw error;
       }
       
-      console.log('Prompt généré avec succès:', prompt);
       setGeneratedPrompt(prompt);
       setShowPreview(true);
       setVideoResult(null);
@@ -94,22 +83,14 @@ export default function FutureJobsGenerator() {
 
   const handleGenerateVideo = async (e) => {
     if (e) e.preventDefault();
-    console.log('Bouton Générer Vidéo cliqué');
 
-    // VALIDATION STRICTE AVANT ENVOI
     if (!user) {
       toast.error('Veuillez vous connecter pour générer une vidéo');
       return;
     }
 
-    if (!generatedPrompt || !generatedPrompt.prompt) {
+    if (!generatedPrompt || !generatedPrompt.prompt || generatedPrompt.prompt.trim().length === 0) {
       toast.error('Veuillez d\'abord générer un prompt valide');
-      return;
-    }
-
-    // VALIDATION DU PROMPT
-    if (typeof generatedPrompt.prompt !== 'string' || generatedPrompt.prompt.trim().length === 0) {
-      toast.error('Le prompt généré est invalide. Veuillez régénérer un prompt.');
       return;
     }
 
@@ -121,14 +102,13 @@ export default function FutureJobsGenerator() {
     setValidationErrors({});
 
     try {
-      // PRÉPARATION PAYLOAD AVEC NORMALISATION (Correction: toLowerCase())
       const payload = {
         prompt: generatedPrompt.prompt.trim(),
-        generator: selectedGenerator.toLowerCase().trim(), // Correction Casse
+        generator: selectedGenerator.toLowerCase().trim(),
         style: selectedStyle.toLowerCase().trim(),
         duration: Number(selectedDuration),
         userId: user.id,
-        jobId: selectedJobId
+        jobId: String(selectedJobId)
       };
 
       console.log('📤 Envoi payload normalisé:', payload);
@@ -140,7 +120,7 @@ export default function FutureJobsGenerator() {
         setGenerationStatus('✅ Vidéo générée avec succès !');
         toast.success('Vidéo générée avec succès !');
         if (result.metadata?.is_placeholder) {
-          toast.info('⚠️ Note: Sora API n\'est pas encore disponible. Une image DALL-E a été générée comme placeholder.');
+          toast.info('Note: Sora API indisponible. Une image DALL-E a été générée.', { duration: 5000 });
         }
         await loadUserVideos();
       } else {
@@ -159,15 +139,7 @@ export default function FutureJobsGenerator() {
       });
       setGenerationStatus('❌ Erreur lors de la génération');
       
-      // MESSAGES D'ERREUR UTILISATEUR
-      const userMessage = error.code === 'INVALID_STYLE' 
-        ? 'Style visuel non reconnu. Veuillez choisir parmi les options disponibles.'
-        : error.code === 'INVALID_PROMPT'
-        ? 'Le prompt est invalide ou vide. Veuillez régénérer un prompt.'
-        : error.code === 'NETWORK_ERROR'
-        ? 'Problème de connexion. Vérifiez votre connexion internet.'
-        : `Erreur: ${error.message}`;
-      
+      const userMessage = `Erreur: ${error.message || 'Une erreur inconnue est survenue'}`;
       toast.error(userMessage);
     } finally {
       setIsGeneratingVideo(false);
@@ -196,46 +168,8 @@ export default function FutureJobsGenerator() {
     }
   };
 
-  const handleRetryGeneration = async (videoId) => {
-    if (!generatedPrompt) {
-      toast.error('Veuillez d\'abord générer un prompt');
-      return;
-    }
-    if (!user) {
-      toast.error('Veuillez vous connecter');
-      return;
-    }
-
-    setIsGeneratingVideo(true);
-    setGenerationStatus('🔄 Relance de la génération...');
-    setVideoError(null);
-
-    try {
-      const result = await futureJobsVideoService.generateJobVideo({
-        prompt: generatedPrompt.prompt,
-        generator: selectedGenerator.toLowerCase().trim(), // Correction Casse
-        style: selectedStyle.toLowerCase().trim(),
-        duration: Number(selectedDuration),
-        userId: user.id,
-        jobId: selectedJobId
-      });
-
-      if (result.success) {
-        setVideoResult(result);
-        setGenerationStatus('✅ Vidéo regénérée avec succès !');
-        toast.success('Vidéo regénérée !');
-        await loadUserVideos();
-      } else {
-        throw new Error(result.error || 'Échec de la regénération');
-      }
-    } catch (error) {
-      console.error('❌ Erreur regénération:', error);
-      setVideoError(error.message);
-      setGenerationStatus('❌ Erreur lors de la regénération');
-      toast.error(`Erreur: ${error.message}`);
-    } finally {
-      setIsGeneratingVideo(false);
-    }
+  const handleRetryGeneration = async () => {
+    await handleGenerateVideo();
   };
 
   const handleCopyPrompt = () => {
@@ -262,14 +196,16 @@ export default function FutureJobsGenerator() {
   };
 
   const handleDownloadVideo = () => {
-    if (videoResult?.videoUrl) {
+    const url = videoResult?.publicUrl || videoResult?.signedUrl;
+    if (url) {
       const link = document.createElement('a');
-      link.href = videoResult.videoUrl;
+      link.href = url;
+      link.target = '_blank';
       link.download = `${generatedPrompt?.jobTitle?.replace(/\s+/g, '-') || 'video'}-${Date.now()}.mp4`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      toast.success('Vidéo téléchargée !');
+      toast.success('Téléchargement de la vidéo initié !');
     }
   };
 
@@ -278,23 +214,6 @@ export default function FutureJobsGenerator() {
     const seconds = Math.floor((Date.now() - generationTime) / 1000);
     return `${seconds}s`;
   };
-
-  const handleGenerateVariants = () => {
-    setLoading(true);
-    try {
-      const variantsData = pinnPromptService.generatePromptVariants(selectedJobId, 3, {
-        generator: selectedGenerator
-      });
-      setVariants(variantsData);
-      setShowVariants(true);
-    } catch (error) {
-      toast.error(`Erreur: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const selectedJob = jobs.find(j => j.id === selectedJobId);
 
   return (
     <div className="future-jobs-container min-h-screen bg-slate-950 text-white p-4 md:p-8">
@@ -309,7 +228,6 @@ export default function FutureJobsGenerator() {
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Configuration Panel */}
           <div className="lg:col-span-4 space-y-6">
             <div className="bg-slate-900/50 backdrop-blur-md rounded-2xl p-6 border border-slate-800 shadow-xl">
               <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
@@ -403,282 +321,4 @@ export default function FutureJobsGenerator() {
                 <button
                   onClick={handleGenerateVideo}
                   disabled={isGeneratingVideo}
-                  className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isGeneratingVideo ? <Loader2 className="animate-spin" /> : <Play size={20} />}
-                  Lancer la Génération Vidéo
-                </button>
-                <p className="text-xs text-slate-500 mt-3 text-center">
-                  L'appel à l'Edge Function Supabase peut prendre jusqu'à 60s.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Display Panel */}
-          <div className="lg:col-span-8 space-y-6">
-            {/* Loading State */}
-            {isGeneratingVideo && (
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-12 border border-slate-700 flex flex-col items-center justify-center text-center">
-                <Loader2 size={48} className="text-blue-500 animate-spin mb-4" />
-                <h3 className="text-2xl font-bold mb-2">{generationStatus}</h3>
-                <p className="text-slate-300 mb-4">Temps écoulé: {getElapsedTime()}</p>
-                <div className="w-full bg-slate-700 rounded-full h-2.5">
-                  <div
-                    className="bg-gradient-to-r from-purple-500 to-pink-500 h-2.5 rounded-full animate-pulse"
-                    style={{ width: '70%' }}
-                  ></div>
-                </div>
-              </div>
-            )}
-
-            {/* Generated Prompt */}
-            {generatedPrompt && !isGeneratingVideo && !videoResult && (
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border border-slate-700">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-2xl font-bold">Prompt Généré et Optimisé</h3>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleCopyPrompt}
-                      className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-2 transition"
-                    >
-                      {copied ? <CheckCircle size={16} /> : <Copy size={16} />}
-                      {copied ? 'Copié !' : 'Copier'}
-                    </button>
-                    <button
-                      onClick={handleDownloadPrompt}
-                      className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded flex items-center gap-2 transition"
-                    >
-                      <Download size={16} />
-                      Télécharger
-                    </button>
-                  </div>
-                </div>
-
-                <h4 className="text-lg font-semibold text-blue-300 mb-2">Prompt Final (Anglais - Optimisé pour Sora/Runway)</h4>
-                <div className="bg-slate-900/70 p-4 rounded-lg border border-slate-600 mb-4">
-                  <p className="text-slate-200 whitespace-pre-wrap">{generatedPrompt.prompt}</p>
-                </div>
-
-                <h4 className="text-lg font-semibold text-purple-300 mb-2">Prompt Original (Français - Pour Référence)</h4>
-                <div className="bg-slate-900/70 p-4 rounded-lg border border-slate-600 mb-4">
-                  <p className="text-slate-400 whitespace-pre-wrap">{generatedPrompt.originalPrompt}</p>
-                </div>
-
-                <h4 className="text-lg font-semibold text-green-300 mb-2">Contraintes Appliquées (PINN-like)</h4>
-                <ul className="list-disc list-inside text-sm text-slate-300 space-y-1">
-                  <li>**Métier**: {generatedPrompt.jobTitle} (Horizon: {generatedPrompt.year})</li>
-                  <li>**Générateur**: {generatedPrompt.generator} | **Style**: {generatedPrompt.style} | **Durée**: {generatedPrompt.duration} secondes</li>
-                  <li>**Tâches Clés**: {generatedPrompt.constraints.keyTasks}</li>
-                  <li>**Technologies Émergentes**: {generatedPrompt.constraints.emergingTech}</li>
-                  <li>**Éléments Visuels de Lumi**: {generatedPrompt.constraints.visualElements}</li>
-                  <li>**Compétences Core**: {generatedPrompt.constraints.coreSkills}</li>
-                </ul>
-              </div>
-            )}
-
-            {/* Video Result */}
-            {videoResult && !isGeneratingVideo && (
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border border-slate-700">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-2xl font-bold text-green-400">✅ Vidéo Générée avec Succès !</h3>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleDownloadVideo}
-                      className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded flex items-center gap-2 text-sm"
-                    >
-                      <Download size={16} />
-                      Télécharger
-                    </button>
-                    <button
-                      onClick={() => navigator.clipboard.writeText(videoResult.videoUrl)}
-                      className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded flex items-center gap-2 text-sm"
-                    >
-                      <Copy size={16} />
-                      Copier URL
-                    </button>
-                  </div>
-                </div>
-
-                {videoResult.videoUrl && (
-                  <div className="mb-6">
-                    <div className="aspect-video bg-slate-900 rounded-lg overflow-hidden">
-                      <video
-                        controls
-                        className="w-full h-full"
-                        src={videoResult.videoUrl}
-                        poster="https://storage.googleapis.com/ai-video-placeholders/video-preview.jpg"
-                      >
-                        Votre navigateur ne supporte pas la lecture de vidéos.
-                      </video>
-                    </div>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-                  <div className="bg-slate-900/50 p-3 rounded border border-slate-700">
-                    <p className="text-slate-400">ID de la vidéo:</p>
-                    <p className="font-mono text-slate-200">{videoResult.videoId || 'N/A'}</p>
-                  </div>
-                  <div className="bg-slate-900/50 p-3 rounded border border-slate-700">
-                    <p className="text-slate-400">Statut:</p>
-                    <p className="font-semibold text-green-400">{videoResult.status || 'done'}</p>
-                  </div>
-                  <div className="bg-slate-900/50 p-3 rounded border border-slate-700">
-                    <p className="text-slate-400">Modèle:</p>
-                    <p className="font-semibold">{videoResult.metadata?.model || selectedGenerator}</p>
-                  </div>
-                  <div className="bg-slate-900/50 p-3 rounded border border-slate-700">
-                    <p className="text-slate-400">Temps de génération:</p>
-                    <p className="font-semibold">{videoResult.metadata?.processing_time_ms || 'N/A'}ms</p>
-                  </div>
-                </div>
-
-                {videoResult.metadata?.model === 'dall-e-3' && (
-                  <div className="p-3 bg-yellow-900/30 border border-yellow-700 rounded-md">
-                    <p className="text-yellow-300">
-                      ⚠️ Note: Sora API n'est pas encore publique. Une image DALL-E a été générée comme placeholder.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Video Error */}
-            {videoError && (
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border border-red-700/50">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-2xl font-bold text-red-400">❌ Erreur de Génération</h3>
-                  <button
-                    onClick={() => handleRetryGeneration(videoResult?.videoId)}
-                    className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded flex items-center gap-2 text-sm"
-                  >
-                    <RefreshCw size={16} />
-                    Réessayer
-                  </button>
-                </div>
-
-                <div className="bg-red-900/20 p-4 rounded-lg border border-red-800 mb-4">
-                  <pre className="text-red-200 whitespace-pre-wrap text-sm">
-                    {typeof videoError === 'string'
-                      ? videoError
-                      : JSON.stringify(videoError, null, 2)}
-                  </pre>
-                </div>
-
-                <div className="p-3 bg-slate-900/50 rounded border border-slate-700">
-                  <p className="text-slate-300 text-sm">
-                    <span className="font-semibold">Conseil de dépannage:</span> Vérifiez que votre Edge Function est
-                    correctement déployée et que votre clé API OpenAI est configurée. Code d'erreur:{' '}
-                    {videoError.code || 'UNKNOWN'}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Video History */}
-            {generatedVideos.length > 0 && (
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border border-slate-700">
-                <h3 className="text-xl font-semibold mb-4">📜 Historique des Vidéos</h3>
-                <div className="space-y-3">
-                  {generatedVideos.map((video, index) => (
-                    <div
-                      key={video.id}
-                      className="bg-slate-900/50 p-4 rounded-lg border border-slate-700 hover:border-slate-600 transition"
-                    >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h4 className="font-semibold">
-                            {video.job_prompts?.future_jobs?.title || 'Vidéo générée'}
-                          </h4>
-                          <p className="text-sm text-slate-400">
-                            {new Date(video.created_at).toLocaleDateString('fr-FR')} • Statut:{' '}
-                            <span
-                              className={
-                                video.status === 'done' || video.status === 'ready'
-                                  ? 'text-green-400 font-semibold'
-                                  : video.status === 'generating' || video.status === 'pending'
-                                  ? 'text-yellow-400 font-semibold'
-                                  : video.status === 'error'
-                                  ? 'text-red-400 font-semibold'
-                                  : 'text-gray-400'
-                              }
-                            >
-                              {video.status}
-                            </span>
-                          </p>
-                          {video.metadata?.generator && (
-                            <p className="text-sm text-slate-500 mt-1">
-                              Générateur: {video.metadata.generator} • Style: {video.metadata.style}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          {(video.video_url || video.public_url || video.url) && (
-                            <a
-                              href={video.url || video.public_url || video.video_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded"
-                            >
-                              Voir
-                            </a>
-                          )}
-                          {(video.status === 'generating' || video.status === 'pending') && (
-                            <button
-                              onClick={() => handleCancelGeneration(video.id)}
-                              className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded"
-                            >
-                              Annuler
-                            </button>
-                          )}
-                          {video.status === 'error' && (
-                            <button
-                              onClick={() => handleCheckStatus(video.id)}
-                              className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white text-sm rounded"
-                            >
-                              Vérifier
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Footer Info */}
-        <div className="mt-8 bg-slate-800/30 backdrop-blur-sm rounded-xl p-5 border border-slate-700">
-          <h3 className="text-lg font-semibold mb-3 text-blue-300">📚 À propos du Framework PINN-like</h3>
-          <p className="text-slate-300 mb-4">
-            Ce générateur utilise un framework inspiré des <strong>Physics-Informed Neural Networks (PINN)</strong>.
-            Les "physics" sont les contraintes réalistes du marché de l'emploi basées sur le rapport WEF 2025.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-slate-900/50 p-4 rounded border border-slate-700">
-              <div className="text-blue-400 font-bold mb-2">🎯 Contraintes Réalistes</div>
-              <p className="text-sm text-slate-300">
-                Basées sur les données du WEF: tâches clés, compétences, technologies émergentes.
-              </p>
-            </div>
-            <div className="bg-slate-900/50 p-4 rounded border border-slate-700">
-              <div className="text-blue-400 font-bold mb-2">🎨 Créativité Guidée</div>
-              <p className="text-sm text-slate-300">
-                Les prompts respectent les contraintes tout en permettant une expression créative riche.
-              </p>
-            </div>
-            <div className="bg-slate-900/50 p-4 rounded border border-slate-700">
-              <div className="text-blue-400 font-bold mb-2">🚀 Prêt pour la Production</div>
-              <p className="text-sm text-slate-300">
-                Compatible avec Sora, Runway et Pika. Exportable en plusieurs formats.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+                  className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl shadow-lg
