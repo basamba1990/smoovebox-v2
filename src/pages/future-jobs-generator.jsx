@@ -121,10 +121,10 @@ export default function FutureJobsGenerator() {
     setValidationErrors({});
 
     try {
-      // PRÉPARATION PAYLOAD AVEC NORMALISATION (Correction: toLowerCase())
+      // PRÉPARATION PAYLOAD AVEC NORMALISATION
       const payload = {
         prompt: generatedPrompt.prompt.trim(),
-        generator: selectedGenerator.toLowerCase().trim(), // Correction Casse
+        generator: selectedGenerator.toUpperCase(),
         style: selectedStyle.toLowerCase().trim(),
         duration: Number(selectedDuration),
         userId: user.id,
@@ -213,8 +213,8 @@ export default function FutureJobsGenerator() {
     try {
       const result = await futureJobsVideoService.generateJobVideo({
         prompt: generatedPrompt.prompt,
-        generator: selectedGenerator.toLowerCase().trim(), // Correction Casse
-        style: selectedStyle.toLowerCase().trim(),
+        generator: selectedGenerator.toUpperCase(),
+        style: selectedStyle.toLowerCase(),
         duration: Number(selectedDuration),
         userId: user.id,
         jobId: selectedJobId
@@ -297,131 +297,208 @@ export default function FutureJobsGenerator() {
   const selectedJob = jobs.find(j => j.id === selectedJobId);
 
   return (
-    <div className="future-jobs-container min-h-screen bg-slate-950 text-white p-4 md:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-950 text-white p-4 md:p-6">
       <div className="max-w-6xl mx-auto">
-        <header className="mb-12 text-center">
-          <h1 className="text-4xl md:text-6xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500">
-            Générateur de Métiers du Futur
+        {/* Header */}
+        <header className="mb-8 text-center">
+          <h1 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+            🎬 Générateur de Vidéos Métiers du Futur
           </h1>
-          <p className="text-xl text-slate-400 max-w-3xl mx-auto">
-            Framework PINN-like pour la génération de prompts vidéo optimisés basés sur les données du WEF 2025.
+          <p className="text-slate-300 max-w-3xl mx-auto">
+            Générez des prompts et créez des vidéos IA pour les métiers du futur (2030-2040)
+          </p>
+          <p className="text-sm text-slate-400 mt-2">
+            Framework PINN-like: Contraintes réalistes + Créativité visuelle
           </p>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Configuration Panel */}
-          <div className="lg:col-span-4 space-y-6">
-            <div className="bg-slate-900/50 backdrop-blur-md rounded-2xl p-6 border border-slate-800 shadow-xl">
-              <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-                <Zap className="text-yellow-400" /> Configuration
-              </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Panel - Controls */}
+          <div className="lg:col-span-1 bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border border-slate-700">
+            <h2 className="text-xl font-semibold mb-6 text-blue-300">📋 Configuration</h2>
 
-              <form onSubmit={handleGeneratePrompt} className="space-y-5">
-                <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-2">Métier du Futur</label>
-                  <div className="relative">
-                    <select
-                      value={selectedJobId}
-                      onChange={(e) => setSelectedJobId(Number(e.target.value))}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 appearance-none focus:ring-2 focus:ring-blue-500 outline-none transition"
-                    >
-                      {jobs.map((job) => (
-                        <option key={job.id} value={job.id}>
-                          {job.title}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-2">Générateur Vidéo</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {['Sora', 'Runway', 'Pika'].map((gen) => (
-                      <button
-                        key={gen}
-                        type="button"
-                        onClick={() => setSelectedGenerator(gen)}
-                        className={`py-2 rounded-lg text-sm font-semibold transition ${
-                          selectedGenerator === gen
-                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20'
-                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                        }`}
-                      >
-                        {gen}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-2">Style Visuel</label>
-                  <select
-                    value={selectedStyle}
-                    onChange={(e) => setSelectedStyle(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition"
-                  >
-                    <option value="futuristic">Futuriste / High-Tech</option>
-                    <option value="semi-realistic">Semi-Réaliste</option>
-                    <option value="cinematic">Cinématique</option>
-                    <option value="documentary">Documentaire</option>
-                    <option value="abstract">Abstrait / Conceptuel</option>
-                    <option value="lumi-universe">Lumi Universe (Signature)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-2">Durée (secondes): {selectedDuration}s</label>
-                  <input
-                    type="range"
-                    min="5"
-                    max="60"
-                    step="5"
-                    value={selectedDuration}
-                    onChange={(e) => setSelectedDuration(e.target.value)}
-                    className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold py-4 rounded-xl shadow-lg transition transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50 disabled:transform-none"
-                >
-                  {loading ? <Loader2 className="animate-spin" /> : <Zap size={20} />}
-                  Générer le Prompt PINN
-                </button>
-              </form>
+            {/* Job Selection */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Métier du Futur
+              </label>
+              <select
+                value={selectedJobId}
+                onChange={(e) => {
+                  setSelectedJobId(Number(e.target.value));
+                  setGeneratedPrompt(null);
+                  setVideoResult(null);
+                }}
+                className="w-full bg-slate-900 border border-slate-600 rounded-md p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none transition"
+              >
+                {jobs.map(job => (
+                  <option key={job.id} value={job.id}>
+                    {job.title} ({job.year})
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {generatedPrompt && (
-              <div className="bg-slate-900/50 backdrop-blur-md rounded-2xl p-6 border border-slate-800 shadow-xl">
-                <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                  <Play className="text-green-400" /> Actions Vidéo
-                </h3>
-                <button
-                  onClick={handleGenerateVideo}
-                  disabled={isGeneratingVideo}
-                  className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 disabled:opacity-50"
+            {/* Generator & Style */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Générateur
+                </label>
+                <select
+                  value={selectedGenerator}
+                  onChange={(e) => setSelectedGenerator(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-600 rounded-md p-3 text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 >
-                  {isGeneratingVideo ? <Loader2 className="animate-spin" /> : <Play size={20} />}
-                  Lancer la Génération Vidéo
-                </button>
-                <p className="text-xs text-slate-500 mt-3 text-center">
-                  L'appel à l'Edge Function Supabase peut prendre jusqu'à 60s.
-                </p>
+                  <option value="Sora">OpenAI Sora</option>
+                  <option value="Runway">RunwayML</option>
+                  <option value="Pika">Pika Labs</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Style Visuel
+                </label>
+                <select
+                  value={selectedStyle}
+                  onChange={(e) => setSelectedStyle(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-600 rounded-md p-3 text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                  <option value="semi-realistic">Semi-réaliste</option>
+                  <option value="futuristic">Futuriste</option>
+                  <option value="cinematic">Cinématique</option>
+                  <option value="documentary">Documentaire</option>
+                  <option value="abstract">Abstrait</option>
+                  <option value="lumi-universe">Univers de Lumi</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Duration Slider */}
+            <div className="mb-8">
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-sm font-medium text-slate-300">
+                  Durée (secondes): {selectedDuration}s
+                </label>
+                <span className="text-xs text-slate-400">15-60s</span>
+              </div>
+              <input
+                type="range"
+                min="15"
+                max="60"
+                step="5"
+                value={selectedDuration}
+                onChange={(e) => setSelectedDuration(Number(e.target.value))}
+                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+              />
+              <div className="flex justify-between text-xs text-slate-400 mt-1">
+                <span>15s</span>
+                <span>30s</span>
+                <span>45s</span>
+                <span>60s</span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-4">
+              <button
+                type="button"
+                onClick={handleGeneratePrompt}
+                disabled={loading}
+                className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-slate-700 disabled:to-slate-800 text-white font-bold rounded-md flex items-center justify-center gap-2 transition-all cursor-pointer disabled:cursor-not-allowed"
+              >
+                {loading ? <Loader2 className="animate-spin" size={20} /> : <Zap size={20} />}
+                ✨ Générer Prompt
+              </button>
+
+              <button
+                type="button"
+                onClick={handleGenerateVideo}
+                disabled={!generatedPrompt || isGeneratingVideo}
+                className={`w-full py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white font-bold rounded-md flex items-center justify-center gap-2 transition-all ${
+                  !generatedPrompt || isGeneratingVideo
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'hover:from-purple-700 hover:to-purple-800 cursor-pointer'
+                }`}
+              >
+                {isGeneratingVideo ? <Loader2 className="animate-spin" size={20} /> : <Play size={20} />}
+                🎬 Générer la vidéo
+              </button>
+
+              <button
+                type="button"
+                onClick={handleGenerateVariants}
+                disabled={loading || !selectedJobId}
+                className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-md text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Variantes de prompts
+              </button>
+            </div>
+
+            {/* Validation Errors Display */}
+            {Object.keys(validationErrors).length > 0 && (
+              <div className="mt-6 p-3 bg-red-900/30 border border-red-700 rounded-md">
+                <h3 className="text-red-300 font-semibold mb-2">⚠️ Erreurs de validation:</h3>
+                <ul className="text-sm text-red-200">
+                  {Object.entries(validationErrors).map(([key, error]) => (
+                    <li key={key} className="flex items-start gap-2">
+                      <span className="text-red-400">•</span>
+                      <span>{error}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>
 
-          {/* Display Panel */}
-          <div className="lg:col-span-8 space-y-6">
-            {/* Loading State */}
+          {/* Main Content - Results */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Job Preview */}
+            {selectedJob && !generatedPrompt && !isGeneratingVideo && (
+              <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border border-slate-700">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-blue-900/30 rounded-lg">
+                    <Eye size={24} className="text-blue-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold">{selectedJob.title}</h2>
+                    <p className="text-slate-300">Horizon: {selectedJob.year}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <h3 className="text-lg font-semibold mb-3 text-blue-300">Tâches clés:</h3>
+                    <ul className="space-y-2">
+                      {selectedJob.keyTasks.split('. ').map((t, i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="text-blue-400 mt-1">•</span>
+                          <span className="text-slate-300">{t}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h3 className="text-lg font-semibold mb-3 text-blue-300">Compétences:</h3>
+                    <ul className="space-y-2">
+                      {selectedJob.coreSkills.split('. ').map((s, i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="text-blue-400 mt-1">•</span>
+                          <span className="text-slate-300">{s}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Generation Status */}
             {isGeneratingVideo && (
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-12 border border-slate-700 flex flex-col items-center justify-center text-center">
-                <Loader2 size={48} className="text-blue-500 animate-spin mb-4" />
-                <h3 className="text-2xl font-bold mb-2">{generationStatus}</h3>
+              <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border border-slate-700">
+                <h3 className="text-xl font-semibold mb-4 text-purple-300">{generationStatus}</h3>
                 <p className="text-slate-300 mb-4">Temps écoulé: {getElapsedTime()}</p>
                 <div className="w-full bg-slate-700 rounded-full h-2.5">
                   <div
@@ -595,9 +672,9 @@ export default function FutureJobsGenerator() {
                             {new Date(video.created_at).toLocaleDateString('fr-FR')} • Statut:{' '}
                             <span
                               className={
-                                video.status === 'done' || video.status === 'ready'
+                                video.status === 'done'
                                   ? 'text-green-400 font-semibold'
-                                  : video.status === 'generating' || video.status === 'pending'
+                                  : video.status === 'generating'
                                   ? 'text-yellow-400 font-semibold'
                                   : video.status === 'error'
                                   ? 'text-red-400 font-semibold'
@@ -607,16 +684,16 @@ export default function FutureJobsGenerator() {
                               {video.status}
                             </span>
                           </p>
-                          {video.metadata?.generator && (
+                          {video.job_prompts?.generator && (
                             <p className="text-sm text-slate-500 mt-1">
-                              Générateur: {video.metadata.generator} • Style: {video.metadata.style}
+                              Générateur: {video.job_prompts.generator} • Style: {video.job_prompts.style}
                             </p>
                           )}
                         </div>
                         <div className="flex gap-2">
-                          {(video.video_url || video.public_url || video.url) && (
+                          {video.video_url && (
                             <a
-                              href={video.url || video.public_url || video.video_url}
+                              href={video.video_url}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded"
@@ -624,7 +701,7 @@ export default function FutureJobsGenerator() {
                               Voir
                             </a>
                           )}
-                          {(video.status === 'generating' || video.status === 'pending') && (
+                          {video.status === 'generating' && (
                             <button
                               onClick={() => handleCancelGeneration(video.id)}
                               className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded"
