@@ -1,166 +1,253 @@
-// Fichier de données structurées pour le framework PINN-like (Physics-Informed Neural Network-like)
-// Enrichi avec l'univers de la Planète de Lumi et les émotions 
+// Service PINN-like (Physics-Informed Neural Network-like)
+// Génère des prompts vidéo en appliquant des contraintes réalistes du marché de l'emploi (WEF)
+// et l'univers narratif de la Planète de Lumi (émotions, éco-futurisme).
 
-export const futureJobsData = [
-  {
-    id: 1,
-    title: "AI & Machine Learning Specialist",
-    year: 2035,
-    keyTasks: "Concevoir et superviser des modèles d’IA avancés, entraîner des réseaux neuronaux, optimiser des algorithmes.",
-    coreSkills: "Deep learning, NLP, Frameworks (PyTorch, TensorFlow), Mathématiques appliquées.",
-    emergingTech: "IA Générative, Robots Collaboratifs, Systèmes Autonomes.",
-    visualElements: "Dôme GenUp 2050, structures hexagonales bioactives, réseaux neuronaux holographiques reflétant des impulsions synaptiques, lumière irisée.",
-    basePrompt: "Génère une vidéo montrant un spécialiste en IA au sein d'un dôme GenUp 2050. L'environnement est composé de structures hexagonales bioactives. Il interagit avec des réseaux neuronaux holographiques dont les couleurs pulsent selon l'activité émotionnelle du système. Le spécialiste affiche une expression de profonde concentration et d'empathie alors qu'il ajuste les paramètres pour Lumi. Style : éco-futuriste, lumière irisée."
-  },
-  {
-    id: 2,
-    title: "Big Data Specialist",
-    year: 2030,
-    keyTasks: "Collecte, nettoyage et interprétation de données massives, construction de modèles prédictifs, visualisation des données.",
-    coreSkills: "Python/R, SQL, Machine learning, Statistiques et méthodes analytiques.",
-    emergingTech: "Big Data, IoT, Visualisation 3D.",
-    visualElements: "Centre de data organique inspiré des ruches, flux de données luminescents comme de l'énergie liquide, interfaces flottantes intuitives.",
-    basePrompt: "Vidéo d'un Big Data Specialist dans un centre de données organique rappelant une ruche. Les données circulent comme de l'énergie liquide violette et cyan. L'expert manipule des flux de données avec des gestes fluides, montrant une satisfaction visible alors qu'il découvre des schémas émotionnels cachés dans la data. Ambiance : éco-futurisme lumineux."
-  },
-  {
-    id: 3,
-    title: "Cybersecurity Architect",
-    year: 2030,
-    keyTasks: "Analyse des risques, mise en place de systèmes de défense, test d’intrusion et audit de sécurité.",
-    coreSkills: "Pentesting, Cryptographie, Sécurité réseau, Gestion des menaces complexes.",
-    emergingTech: "Cybersécurité Avancée, IA de défense, Pare-feux holographiques.",
-    visualElements: "Architecture bioactive protectrice, pare-feux en motifs hexagonaux de Lumi, interfaces de défense pulsant en bleu nuit et violet.",
-    basePrompt: "Un architecte en cybersécurité protégeant le cœur de la planète de Lumi. Il déploie des boucliers hexagonaux bioactifs contre des intrusions sombres. On voit la détermination sur son visage et le soulagement émotionnel lorsque la menace est neutralisée. Style : futurisme néon, contrastes profonds."
-  },
-  {
-    id: 4,
-    title: "Ingénieur en énergies renouvelables",
-    year: 2030,
-    keyTasks: "Optimisation de systèmes énergies renouvelables, programmation de solutions smart grid, gestion de projets verts.",
-    coreSkills: "Génie énergétique, Modélisation plante/réseaux, Réglementations environnementales.",
-    emergingTech: "Transition Énergétique, Smart Grids, Véhicules Autonomes Électriques.",
-    visualElements: "Ville verte de Lumi, tours biologiques bioluminescentes, éoliennes fleuries, jardins suspendus en sphères aéroflorales.",
-    basePrompt: "Un ingénieur supervisant la distribution d'énergie vitale dans la ville verte de Lumi. Il marche parmi des tours biologiques bioluminescentes et des éoliennes fleuries. Il sourit en voyant des enfants jouer près des sphères aéroflorales, illustrant la symbiose parfaite entre technologie et bonheur humain."
-  },
-  {
-    id: 5,
-    title: "Urbaniste IA (Smart Cities)",
-    year: 2035,
-    keyTasks: "Concevoir et gérer des infrastructures urbaines intelligentes, optimiser la circulation et les services via l'IA.",
-    coreSkills: "Urbanisme, Modélisation 3D, Systèmes d'Information Géographique (SIG), Éthique de l'IA.",
-    visualElements: "Maquette spatiale vivante de la cité, capsules de transport en trajectoires organiques, bâtiments de microbiome, rivières suspendues.",
-    basePrompt: "Un urbaniste concevant un nouveau quartier sur la planète de Lumi. Il manipule une maquette spatiale vivante où les bâtiments de microbiome s'auto-réparent. Il observe avec fierté l'harmonie des capsules de transport circulant comme des synapses. Style : éco-futurisme, lumière naturelle."
-  },
-  {
-    id: 6,
-    title: "Robot Collaboration Engineer",
-    year: 2030,
-    keyTasks: "Superviser, programmer et corriger des robots humanoïdes et collaboratifs, assurer la sécurité industrielle.",
-    coreSkills: "Robotique, Programmation (ROS), Sécurité industrielle, Interfaces homme-machine.",
-    visualElements: "Atelier de cohabitation symbiotique, robots aux formes organiques et douces, interfaces tactiles en verre irisé.",
-    basePrompt: "Un ingénieur travaillant main dans la main avec un robot compagnon de Lumi. Le robot a des formes organiques et une lumière intérieure douce. L'ingénieur lui apprend à reconnaître une émotion humaine, créant un moment de connexion touchant. Style : éco-futurisme, ambiance chaleureuse."
-  },
-  {
-    id: 7,
-    title: "Médecin augmenté par IA",
-    year: 2035,
-    keyTasks: "Assister le diagnostic et le suivi des patients via l'IA, utiliser des interfaces médicales avancées.",
-    coreSkills: "Médecine, Diagnostic assisté par ordinateur, Éthique médicale, Communication.",
-    visualElements: "Capsules habitables transparentes, scanners de microbiome, interfaces médicales en pétales incurvés, lumière apaisante rose tendre.",
-    basePrompt: "Un médecin dans une capsule habitable de Lumi, utilisant des scanners de microbiome pour soigner un patient. L'interface en forme de pétales affiche des constantes vitales et émotionnelles. Le médecin tient la main du patient, montrant que l'empathie reste au cœur du soin. Style : éco-futurisme lumineux."
-  },
-  {
-    id: 8,
-    title: "Technicien en réalité augmentée",
-    year: 2030,
-    keyTasks: "Configurer et maintenir des systèmes AR/VR, créer des overlays numériques pour l'assistance au travail.",
-    coreSkills: "Développement AR/VR, Modélisation 3D, Maintenance logicielle et matérielle.",
-    visualElements: "Interfaces flottantes et intuitives, portails d'énergie liquide, lunettes AR au design organique.",
-    basePrompt: "Un technicien ouvrant un portail d'énergie liquide pour tester une nouvelle interface AR. Il guide un utilisateur avec patience et enthousiasme, transformant une tâche technique en une expérience magique et émotionnelle. Style : futurisme néon, couleurs vibrantes."
-  },
-  {
-    id: 9,
-    title: "Ingénieur en mobilité autonome",
-    year: 2030,
-    keyTasks: "Superviser et optimiser les systèmes de véhicules autonomes, gérer les simulations de trafic.",
-    coreSkills: "Systèmes embarqués, IA pour la conduite, Cybersécurité automobile, Modélisation de trafic.",
-    visualElements: "Réseau de chemins comme des synapses, capsules de transport individuelles transparentes, rails nocturnes aux éclats lumineux.",
-    basePrompt: "Un ingénieur supervisant le réseau de transport de Lumi, qui ressemble à un système nerveux géant. Il regarde les capsules transparentes glisser silencieusement sur des rails lumineux, s'assurant que chaque voyageur se sente en sécurité et serein."
-  },
-  {
-    id: 10,
-    title: "Spécialiste en éthique de l’IA",
-    year: 2035,
-    keyTasks: "Évaluer les systèmes intelligentes pour la conformité éthique, définir les cadres de gouvernance de l'IA.",
-    coreSkills: "Philosophie, Droit de l'IA, Éthique des données, Communication et plaidoyer.",
-    visualElements: "Salle de conseil sous un dôme de verre, arbres gardiens alvéolaires en arrière-plan, interfaces affichant des flux de conscience artificielle.",
-    basePrompt: "Un expert en éthique débattant de l'intégration des émotions humaines dans l'IA de Lumi. La scène se passe sous un dôme de verre majestueux, entouré d'arbres gardiens. Son expression est pensive, cherchant l'équilibre parfait entre logique et sentiment."
+import { futureJobsData } from '../data/futureJobsData.js';
+
+/**
+ * Service de génération de prompts vidéo inspiré des PINN
+ * Les "physics" sont les contraintes réalistes du marché de l'emploi
+ * Intègre désormais la dimension émotionnelle et l'univers de Lumi.
+ */
+
+class PINNPromptService {
+  constructor() {
+    this.videoGenerators = ['sora', 'runway', 'pika'];
+    this.stylePresets = {
+      'semi-realistic': 'semi-réaliste, haute définition, lumière naturelle',
+      'futuristic': 'futuriste, néon, hologrammes, lumière froide',
+      'cinematic': 'cinématique, cinéma 4K, couleurs saturées',
+      'documentary': 'documentaire, réaliste, lumière naturelle',
+      'abstract': 'abstrait, symbolique, effets visuels avancés',
+      'lumi-universe': 'éco-futurisme, Planète de Lumi, couleurs Prussian Blue, Midnight Green et Sky Blue, lumière irisée, structures hexagonales, ambiance organique et technologique'
+    };
+    this.durations = [15, 20, 25, 30, 45, 60];
   }
-];
 
-const pinnPromptService = {
-  getAllJobs: () => {
+  /**
+   * Récupère un métier futur par son ID
+   */
+  getJobById(jobId) {
+    return futureJobsData.find(job => job.id === jobId);
+  }
+
+  /**
+   * Récupère tous les métiers futurs
+   */
+  getAllJobs() {
     return futureJobsData;
-  },
+  }
 
-  getJobById: (id) => {
-    return futureJobsData.find(job => job.id === Number(id));
-  },
-
-  generatePrompt: (jobId, options = {}) => {
-    const job = futureJobsData.find(j => j.id === Number(jobId));
-    if (!job) return null;
-
-    const { generator = 'Sora', style = 'futuristic', duration = 30 } = options;
-    
-    let prompt = job.basePrompt;
-    
-    // Ajustements basés sur le style
-    if (style === 'cinematic') {
-      prompt = `Cinematic 4K, highly detailed, professional lighting: ${prompt}`;
-    } else if (style === 'anime') {
-      prompt = `Studio Ghibli style, hand-drawn aesthetic, vibrant colors: ${prompt}`;
+  /**
+   * Génère un prompt vidéo avec contraintes PINN-like et émotionnelles
+   * @param {number} jobId - ID du métier
+   * @param {object} options - Options de génération (generator, style, duration, customizations)
+   * @returns {object} - Prompt structuré avec contraintes
+   */
+  generatePrompt(jobId, options = {}) {
+    const job = this.getJobById(jobId);
+    if (!job) {
+      throw new Error(`Job with ID ${jobId} not found`);
     }
 
+    const {
+      generator = 'sora',
+      style = 'lumi-universe', // Style par défaut mis à jour vers l'univers de Lumi
+      duration = 30,
+      customizations = {}
+    } = options;
+
+    // Validation
+    if (!this.videoGenerators.includes(generator.toLowerCase())) {
+      throw new Error(`Generator ${generator} not supported. Use: ${this.videoGenerators.join(', ')}`);
+    }
+    // Correction: Assurer que le style 'lumi-universe' est utilisé si le style par défaut 'futuristic' est sélectionné
+    const finalStyle = style === 'futuristic' ? 'lumi-universe' : style;
+    if (!this.stylePresets[finalStyle]) {
+      throw new Error(`Style ${style} not supported. Use: ${Object.keys(this.stylePresets).join(', ')}`);
+    }
+    if (!this.durations.includes(duration)) {
+      throw new Error(`Duration ${duration} not supported. Use: ${this.durations.join(', ')}`);
+    }
+
+    // Construction du prompt avec contraintes PINN-like et émotionnelles
+    const prompt = this._buildPINNPrompt(job, generator, style, duration, customizations);
+
     return {
-      jobId: job.id,
+      jobId,
       jobTitle: job.title,
       year: job.year,
-      prompt: prompt,
-      originalPrompt: job.basePrompt,
       generator,
       style,
       duration,
+      prompt,
       constraints: {
         keyTasks: job.keyTasks,
         coreSkills: job.coreSkills,
-        emergingTech: job.emergingTech || "N/A",
+        emergingTech: job.emergingTech,
         visualElements: job.visualElements
+      },
+      // Ajout du prompt original pour référence
+      originalPrompt: job.basePrompt,
+      metadata: {
+        generatedAt: new Date().toISOString(),
+        version: '2.0 (Lumi Edition)'
       }
     };
-  },
-
-  generatePromptVariants: (jobId, count = 3, options = {}) => {
-    const base = pinnPromptService.generatePrompt(jobId, options);
-    if (!base) return [];
-    
-    const variants = [];
-    for (let i = 0; i < count; i++) {
-      variants.push({
-        ...base,
-        id: i + 1,
-        prompt: `${base.prompt} (Variant ${i + 1}: focus on ${i === 0 ? 'lighting' : i === 1 ? 'texture' : 'atmosphere'})`
-      });
-    }
-    return variants;
-  },
-
-  exportForGenerator: (promptData, format = 'markdown') => {
-    if (format === 'markdown') {
-      return `# Prompt for ${promptData.jobTitle}\n\n**Generator:** ${promptData.generator}\n**Style:** ${promptData.style}\n**Duration:** ${promptData.duration}s\n\n## Prompt\n${promptData.prompt}`;
-    }
-    return promptData.prompt;
   }
-};
 
-export default pinnPromptService;
+  /**
+   * Construit le prompt PINN-like en appliquant les contraintes réalistes et émotionnelles
+   */
+  _buildPINNPrompt(job, generator, style, duration, customizations) {
+    // ⚠️ CORRECTION CRITIQUE: Traduire et simplifier le prompt pour les modèles IA
+    
+    // 1. Traduction des éléments clés (pour l'exemple, nous traduisons manuellement le job ID 1)
+    // En production, il est fortement recommandé d'ajouter des champs EN dans futureJobsData.js
+    const translatedJob = this._translateJobData(job);
+    const styleDescription = this.stylePresets[style];
+    
+    // 2. Construction du prompt unique et narratif en anglais
+    const prompt = this._buildCleanEnglishPrompt(translatedJob, styleDescription, duration, generator);
+
+    return prompt;
+  }
+
+  /**
+   * Traduit manuellement les données du métier pour l'exemple (AI & Machine Learning Specialist - ID 1)
+   * En production, cette fonction devrait utiliser un service de traduction ou des données pré-traduites.
+   */
+  _translateJobData(job) {
+    // Fallback pour les autres jobs, mais l'utilisateur doit les traduire
+    if (job.id !== 1) {
+      return {
+        ...job,
+        basePromptEn: job.basePrompt, // Non traduit
+        keyTasksEn: job.keyTasks,
+        emergingTechEn: job.emergingTech,
+        visualElementsEn: job.visualElements,
+        coreSkillsEn: job.coreSkills
+      };
+    }
+
+    // Traduction manuelle pour l'exemple "AI & Machine Learning Specialist" (ID 1)
+    return {
+      ...job,
+      basePromptEn: "Generate a video showing an AI specialist inside a GenUp 2050 dome. The environment is composed of bioactive hexagonal structures. The specialist interacts with holographic neural networks whose colors pulse according to the system's emotional activity. The specialist displays an expression of deep concentration and empathy as they adjust parameters for Lumi.",
+      keyTasksEn: "Designing and supervising advanced AI models, training neural networks, optimizing algorithms.",
+      emergingTechEn: "Generative AI, Collaborative Robots, Autonomous Systems.",
+      visualElementsEn: "GenUp 2050 Dome, bioactive hexagonal structures, holographic neural networks reflecting synaptic impulses, iridescent light.",
+      coreSkillsEn: "Deep learning, NLP, Frameworks (PyTorch, TensorFlow), Applied Mathematics."
+    };
+  }
+
+  /**
+   * Construit le prompt final propre et optimisé pour les générateurs vidéo.
+   */
+  _buildCleanEnglishPrompt(job, styleDescription, duration, generator) {
+    // 3. Intégration des contraintes dans la narration
+    const constraintsNarrative = `The scene must visualize the specialist performing key tasks such as: ${job.keyTasksEn}. The environment should integrate emerging technologies like: ${job.emergingTechEn}. Key visual elements of the Lumi Planet must be present: ${job.visualElementsEn}. The overall message must show how human emotion (empathy, concentration) enriches the Lumi universe.`;
+
+    // 4. Directives de style et techniques
+    const styleDirectives = `Style: ${styleDescription}. Palette: Prussian Blue, Midnight Green, Sky Blue, with neon violet/cyan accents. Shot: Cinematic wide shot transitioning to a close-up on the specialist's face, then a slow pan over the holographic network. Lighting: Iridescent, treated as a 'vital warmth'. Duration: ${duration} seconds.`;
+
+    // 5. Assemblage du prompt final (Anglais, sans balises)
+    const finalPrompt = `${job.basePromptEn} ${constraintsNarrative} ${styleDirectives}`;
+
+    return finalPrompt.trim();
+  }
+
+  /**
+   * Génère des prompts en batch pour plusieurs métiers
+   */
+  generateBatchPrompts(jobIds, options = {}) {
+    return jobIds.map(jobId => {
+      try {
+        return this.generatePrompt(jobId, options);
+      } catch (error) {
+        return {
+          jobId,
+          error: error.message
+        };
+      }
+    });
+  }
+
+  /**
+   * Génère des variantes d'un même prompt
+   */
+  generatePromptVariants(jobId, variantCount = 3, baseOptions = {}) {
+    const job = this.getJobById(jobId);
+    if (!job) {
+      throw new Error(`Job with ID ${jobId} not found`);
+    }
+
+    const styles = Object.keys(this.stylePresets);
+    const variants = [];
+
+    for (let i = 0; i < variantCount; i++) {
+      const style = styles[i % styles.length];
+      const duration = this.durations[i % this.durations.length];
+      
+      const variant = this.generatePrompt(jobId, {
+        ...baseOptions,
+        style,
+        duration
+      });
+
+      variants.push(variant);
+    }
+
+    return {
+      jobId,
+      jobTitle: job.title,
+      variantCount,
+      variants
+    };
+  }
+
+  /**
+   * Exporte un prompt au format compatible avec Sora/Runway/Pika
+   */
+  exportForGenerator(promptData, format = 'text') {
+    if (format === 'text') {
+      return promptData.prompt;
+    } else if (format === 'json') {
+      return JSON.stringify(promptData, null, 2);
+    } else if (format === 'markdown') {
+      return this._formatAsMarkdown(promptData);
+    } else {
+      throw new Error(`Format ${format} not supported. Use: text, json, markdown`);
+    }
+  }
+
+  /**
+   * Formate le prompt en Markdown
+   */
+  _formatAsMarkdown(promptData) {
+    const { jobTitle, year, generator, style, duration, prompt, constraints } = promptData;
+
+    return `
+# ${jobTitle} (${year}) - Planète de Lumi
+    
+## Informations de Génération
+- **Générateur**: ${generator}
+- **Style**: ${style}
+- **Durée**: ${duration}s
+
+## Prompt Final (Copier-coller dans le générateur)
+\`\`\`text
+${prompt}
+\`\`\`
+
+## Contraintes Appliquées
+- **Tâches**: ${constraints.keyTasks}
+- **Compétences**: ${constraints.coreSkills}
+- **Technologies**: ${constraints.emergingTech}
+- **Éléments visuels**: ${constraints.visualElements}
+    `.trim();
+  }
+}
+
+// Export singleton
+export default new PINNPromptService();
