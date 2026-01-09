@@ -42,7 +42,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     const body: ReqBody = await req.json();
-    
+
     // VALIDATION SIMPLE
     if (!body.prompt?.trim()) {
       return new Response(
@@ -68,7 +68,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const access = body.access === "public" ? "public" : "signed";
 
     // CLIENT SERVICE (bypass RLS)
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      auth: { persistSession: false },
+      global: { headers: { "X-Client-Info": "edge-generate-video" } }
+    });
 
     const videoId = crypto.randomUUID();
     const extension = generator === "sora" ? ".jpg" : ".mp4";
@@ -103,7 +106,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           success: false,
           error: "Erreur base de données",
           details: insertError.message,
-          hint: "Vérifiez que la table videos existe avec user_id comme colonne requise"
+          hint: "Vérifiez que la table videos existe avec user_id comme colonne requise et défaut supprimé à auth.uid()"
         }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -127,6 +130,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
             quality: "standard",
             n: 1,
           });
+          // @ts-ignore - SDK types allow b64/url; we accept url here
           sourceUrl = response.data[0]?.url || "https://storage.googleapis.com/ai-video-placeholders/future-job-concept.jpg";
           isPlaceholder = true;
         } catch (error) {
@@ -147,9 +151,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     let finalUrl = sourceUrl;
     try {
       const response = await fetch(sourceUrl);
+      if (!response.ok) throw new Error(`fetch ${sourceUrl} -> ${response.status}`);
       const blob = await response.blob();
       const buffer = await blob.arrayBuffer();
-      
+
       const { error: uploadError } = await supabase.storage
         .from(bucket)
         .upload(storagePath, buffer, {
@@ -162,11 +167,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
           const { data } = supabase.storage.from(bucket).getPublicUrl(storagePath);
           finalUrl = data.publicUrl;
         } else {
-          const { data } = await supabase.storage
+          const { data, error: signErr } = await supabase.storage
             .from(bucket)
             .createSignedUrl(storagePath, 3600);
-          finalUrl = data.signedUrl;
+          if (!signErr) finalUrl = data.signedUrl;
         }
+      } else {
+        console.warn("⚠️ Upload storage échoué:", uploadError);
       }
     } catch (storageError) {
       console.warn("⚠️ Storage échoué, on garde l'URL source:", storageError);
