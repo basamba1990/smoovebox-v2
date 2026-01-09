@@ -143,7 +143,7 @@ Deno.serve(async (req) => {
     // Verify session belongs to user
     const { data: session, error: sessionError } = await supabaseClient
       .from('lumi_sessions')
-      .select('*')
+      .select('*, age_range')
       .eq('id', sessionId)
       .eq('user_id', user.id)
       .single();
@@ -155,6 +155,8 @@ Deno.serve(async (req) => {
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log('[lumi-compute-profile] Session found, age_range:', session.age_range);
 
     // Get all answers for this session with question details
     const { data: answers, error: answersError } = await supabaseClient
@@ -311,6 +313,7 @@ Deno.serve(async (req) => {
     const profile = {
       user_id: user.id,
       session_id: sessionId,
+      age_range: session.age_range || null, // Include age_range from session
       dominant_color: dominantColor,
       secondary_color: secondaryColor,
       disc_scores: discScores,

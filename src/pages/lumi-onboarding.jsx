@@ -11,7 +11,8 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/card.jsx";
-import { startLumiSession, submitAnswer, computeProfile, getMyLumiProfile } from "../services/lumiService.js";
+import { startLumiSession, submitAnswer, computeProfile, getMyLumiProfile, getSessionAgeRange } from "../services/lumiService.js";
+import HobbyFlow from "../components/HobbyFlow.jsx";
 import { checkVideoProfileInformation } from "../services/videoService.js";
 import { useUser } from "@supabase/auth-helpers-react";
 import { toast } from "sonner";
@@ -52,53 +53,49 @@ export default function LumiOnboarding() {
 
   // Check if user already has a profile and get age from videos (only once on mount)
   useEffect(() => {
-    console.log('[STEP 1] useEffect triggered - user:', user?.id, 'hasCheckedVideoAge:', hasCheckedVideoAge.current, 'ageRange:', ageRange);
     
     if (!user?.id) {
-      console.log('[STEP 2] No user ID, returning');
       return;
     }
     
     if (hasCheckedVideoAge.current) {
-      console.log('[STEP 3] Already checked video age, returning');
       return;
     }
     
     // Check if ageRange is already set BEFORE doing anything async
     if (ageRange) {
-      console.log('[STEP 4] Age range already set to:', ageRange, '- skipping all checks');
       return;
     }
     
-    console.log('[STEP 5] Starting async check for profile and age');
-    
     const checkExistingProfileAndAge = async () => {
-      console.log('[STEP 6] Inside async function, setting hasCheckedVideoAge to true');
       hasCheckedVideoAge.current = true;
       setCheckingProfile(true);
       setCheckingAge(true);
       
       // Check for existing profile
-      console.log('[STEP 7] Checking for existing profile...');
       const result = await getMyLumiProfile();
       if (result.success && result.profile) {
-        console.log('[STEP 8] Found existing profile, setting computedProfile');
         setComputedProfile(result.profile);
+        
+        // Try to get ageRange from the session that created this profile
+        if (result.profile.session_id) {
+          const ageRangeResult = await getSessionAgeRange(result.profile.session_id);
+          if (ageRangeResult.success && ageRangeResult.age_range) {
+            setAgeRange(ageRangeResult.age_range);
+          }
+        }
+        
         setCheckingProfile(false);
         setCheckingAge(false);
         return;
       }
       
       // Only check videos if ageRange is still not set
-      console.log('[STEP 9] No existing profile, checking videos for age...');
       try {
         const result = await checkVideoProfileInformation(user.id);
-        console.log('[STEP 10] Video check result:', result);
         if (result.hasProfileInfo && result.ageRange) {
-          console.log('[STEP 11] Found age from video:', result.ageRange, '- setting ageRange state');
           setAgeRange(result.ageRange);
         } else {
-          console.log('[STEP 12] No age found in videos, showing age selection');
           setShowAgeSelection(true);
         }
       } catch (err) {
@@ -108,7 +105,6 @@ export default function LumiOnboarding() {
       
       setCheckingAge(false);
       setCheckingProfile(false);
-      console.log('[STEP 14] Finished async check');
     };
     
     checkExistingProfileAndAge();
@@ -167,12 +163,8 @@ export default function LumiOnboarding() {
                     key={range.value}
                     onClick={() => {
                       const selectedValue = range.value;
-                      console.log('[USER ACTION] User clicked age range button:', selectedValue);
-                      console.log('[USER ACTION] Current ageRange state before set:', ageRange);
                       setAgeRange(selectedValue);
-                      console.log('[USER ACTION] Called setAgeRange with:', selectedValue);
                       setShowAgeSelection(false);
-                      console.log('[USER ACTION] Set showAgeSelection to false');
                     }}
                     className="w-full p-4 text-left rounded-lg border-2 border-slate-700 bg-slate-800 text-slate-300 hover:border-indigo-500 hover:bg-indigo-500/20 transition-all"
                   >
@@ -209,21 +201,15 @@ export default function LumiOnboarding() {
                 <div className="pt-4">
                   <Button
                     onClick={async () => {
-                      console.log('[START SESSION] Button clicked - current ageRange state:', ageRange);
                       if (!ageRange) {
-                        console.log('[START SESSION] No ageRange, showing error');
                         toast.error("Veuillez sélectionner une tranche d'âge");
                         return;
                       }
-                      console.log('[START SESSION] Calling startLumiSession with ageRange:', ageRange);
                       setLoading(true);
                       const result = await startLumiSession("onboarding", ageRange);
-                      console.log('[START SESSION] Session started, result:', result);
-                      console.log('[START SESSION] Result session_id:', result.session_id);
                       setLoading(false);
 
                       if (result.success) {
-                        console.log("Session result:", result.session_id);
                         if (!result.session_id) {
                           console.error("No session_id in result:", result);
                           toast.error("Session ID manquant dans la réponse");
@@ -231,7 +217,6 @@ export default function LumiOnboarding() {
                         }
                         setSessionId(result.session_id);
                         setCurrentQuestion(result.first_question);
-                        console.log("Session ID set:", result.session_id);
                         toast.success("Session démarrée !");
                       } else {
                         toast.error(
@@ -453,6 +438,9 @@ export default function LumiOnboarding() {
            </Card>
          )}
 
+         {/* Hobby Flow Component */}
+         <HobbyFlow computedProfile={computedProfile} ageRange={ageRange} />
+
          {/* Question Display */}
          {currentQuestion && !computingProfile && !computedProfile && (
           <Card className="bg-slate-900/60 border-slate-800">
@@ -624,14 +612,7 @@ export default function LumiOnboarding() {
                         // For single answers (open_text, scale), use answer_value
                         answerValue = currentAnswer;
                       }
-                      
-                      console.log("Submitting answer:", {
-                        sessionId,
-                        questionId: currentQuestion.id,
-                        answerValue,
-                        answerJson,
-                      });
-                      
+                     
                       const result = await submitAnswer(
                         sessionId,
                         currentQuestion.id,
@@ -649,6 +630,10 @@ export default function LumiOnboarding() {
 
                           if (profileResult.success) {
                             setComputedProfile(profileResult.profile);
+                            // Update ageRange from session if it was returned
+                            if (profileResult.age_range && !ageRange) {
+                              setAgeRange(profileResult.age_range);
+                            }
                             toast.success("Profil calculé avec succès !");
                           } else {
                             toast.error(profileResult.error || "Erreur lors du calcul du profil");
