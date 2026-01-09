@@ -83,7 +83,6 @@ const VideoPicker = ({ onChange, selectedVideo }) => {
         value={selectedVideo || ''}
         onChange={(e) => {
           const videoId = e.target.value;
-          console.log('Vidéo sélectionnée:', videoId);
           onChange(videoId);
         }}
         className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"

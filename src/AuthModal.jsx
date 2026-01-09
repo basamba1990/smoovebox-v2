@@ -56,13 +56,9 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
     try {
       let result;
       if (isLogin) {
-        console.log("Tentative de connexion avec:", email);
         result = await signIn(email, password);
-        console.log("Résultat de connexion:", result);
       } else {
-        console.log("Tentative d'inscription avec:", email);
         result = await signUp(email, password, firstName, lastName);
-        console.log("Résultat d'inscription:", result);
 
         // Vérifier si un email de confirmation est nécessaire
         if (result?.user?.identities?.length === 0) {
@@ -76,7 +72,6 @@ const AuthModal = ({ isOpen, onClose, onAuthSuccess }) => {
 
       // Si l'authentification réussit
       if (result && result.user) {
-        console.log("Authentification réussie, fermeture du modal");
         await new Promise((resolve) => setTimeout(resolve, 1500));
         onAuthSuccess(result.user);
         onClose();

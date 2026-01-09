@@ -46,7 +46,6 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
 
   const loadProfile = async () => {
     try {
-      console.log('📥 Chargement du profil pour:', currentUser?.id);
 
       const { data, error } = await supabase
         .from('profiles')
@@ -56,7 +55,6 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
 
       if (error) {
         if (error.code === 'PGRST116') {
-          console.log('ℹ️ Aucun profil existant, création d\'un nouveau');
           return;
         }
         console.error('❌ Erreur chargement profil:', error);
@@ -65,7 +63,6 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
       }
 
       if (data) {
-        console.log('✅ Profil chargé:', data);
         setFormData({
           sex: data.sex || '',
           is_major: data.is_major,
@@ -153,7 +150,6 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
         updated_at: new Date().toISOString()
       };
 
-      console.log('💾 Sauvegarde du profil:', profileData);
 
       // ✅ CORRECTION : Utilisation de upsert avec gestion de conflit
       const { error } = await supabase
@@ -174,7 +170,6 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
         }
       }
 
-      console.log('✅ Profil sauvegardé avec succès');
       toast.success('✅ Profil sauvegardé avec succès !');
 
       // ✅ Callback pour informer le parent

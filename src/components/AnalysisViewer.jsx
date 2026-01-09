@@ -122,7 +122,6 @@ const AnalysisViewer = ({ video }) => {
       }
       
       const result = await response.json();
-      console.log("Réponse de l'analyse:", result);
       
       // Configurer un polling pour suivre l'avancement
       const checkInterval = setInterval(async () => {

@@ -148,11 +148,7 @@ export default function PitchRecording() {
         // 2. Appel à l'Edge Function (CORRIGÉ)
         const EDGE_FUNCTION_URL = 'https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/analyze-pitch-recording'
         
-        console.log('Envoi du pitch à l\'Edge Function:', {
-          duration,
-          audioSize: audioBlob.size,
-          audioType: audioBlob.type
-        })
+        
 
         // Récupérer le token d'authentification
         const authToken = await getAuthToken()
@@ -212,7 +208,6 @@ export default function PitchRecording() {
         }
 
         const data = await response.json()
-        console.log('Réponse reçue:', data)
 
         // 3. Traiter les résultats
         processResults(data)

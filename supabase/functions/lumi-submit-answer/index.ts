@@ -220,6 +220,19 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Prepare answer data - handle multiple answers
+    let answerValue = requestData.answer_value?.toString() || null;
+    let answerJson = requestData.answer_json || null;
+    
+    // If answer_json contains an array of answers, ensure it's properly structured
+    if (answerJson && typeof answerJson === 'object' && answerJson.answers && Array.isArray(answerJson.answers)) {
+      // Multiple answers are already in the correct format
+      // Also update answer_value to be a comma-separated string for compatibility
+      if (!answerValue && answerJson.answers.length > 0) {
+        answerValue = answerJson.answers.join(', ');
+      }
+    }
+
     // Save or update answer (upsert to handle re-answering)
     const { data: answer, error: answerError } = await supabaseClient
       .from('lumi_answers')
@@ -227,8 +240,8 @@ Deno.serve(async (req) => {
         session_id: requestData.session_id,
         user_id: user.id,
         question_id: requestData.question_id,
-        answer_value: requestData.answer_value?.toString() || null,
-        answer_json: requestData.answer_json || null
+        answer_value: answerValue,
+        answer_json: answerJson
       }, {
         onConflict: 'session_id,question_id'
       })
@@ -258,6 +271,15 @@ Deno.serve(async (req) => {
 
     // 3. Si pas de question dynamique, chercher la prochaine question statique (logique originale)
     if (!nextQuestion) {
+        // Get session to retrieve age_range
+        const { data: session, error: sessionError } = await supabaseClient
+          .from('lumi_sessions')
+          .select('age_range')
+          .eq('id', requestData.session_id)
+          .single();
+
+        const sessionAgeRange = session?.age_range || null;
+
         // Get current question to determine next question
         const { data: currentQuestion, error: currentQuestionError } = await supabaseClient
           .from('lumi_questions')
@@ -270,15 +292,28 @@ Deno.serve(async (req) => {
         }
 
         if (currentQuestion) {
-          // Try to get next question in same block
-          const { data: nextInBlock } = await supabaseClient
+          // Try to get next question in same block and same age_range
+          let nextQuestionQuery = supabaseClient
             .from('lumi_questions')
             .select('*')
             .eq('block', currentQuestion.block)
             .gt('order_index', currentQuestion.order_index)
             .order('order_index', { ascending: true })
-            .limit(1)
-            .single();
+            .limit(1);
+
+          // Filter by age_range if session has one
+          if (sessionAgeRange) {
+            nextQuestionQuery = nextQuestionQuery.eq('age_range', sessionAgeRange);
+          } else {
+            // If no age_range in session, get questions without age_range
+            nextQuestionQuery = nextQuestionQuery.is('age_range', null);
+          }
+
+          const { data: nextInBlock, error: nextError } = await nextQuestionQuery.single();
+
+          if (nextError && nextError.code !== 'PGRST116') {
+            console.error('[lumi-submit-answer] Error fetching next question:', nextError);
+          }
 
           if (nextInBlock) {
             nextQuestion = nextInBlock;

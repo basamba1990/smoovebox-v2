@@ -217,14 +217,15 @@ export const invokeEdgeFunctionWithRetry = async (functionName, body, options = 
     try {
       console.log(`🔄 Tentative ${attempt + 1}/${maxRetries} pour ${functionName}`);
       
-      // ✅ FORÇAGE HTTPS SI NÉCESSAIRE
-      if (useHttpsFallback && import.meta.env.PROD) {
+      // ✅ FORÇAGE HTTPS SI NÉCESSAIRE (try HTTPS fallback first if enabled)
+      if (useHttpsFallback) {
         // Backup: appel direct en HTTPS si le client Supabase échoue
         const backupResult = await invokeEdgeFunctionDirectHttps(functionName, body, timeout);
         if (backupResult.success) {
           console.log(`✅ ${functionName} réussi via HTTPS direct`);
           return backupResult;
         }
+        // If HTTPS fallback fails, continue to standard Supabase client
       }
 
       // ✅ APPEL STANDARD SUPABASE
@@ -253,7 +254,12 @@ export const invokeEdgeFunctionWithRetry = async (functionName, body, options = 
     }
   }
 
-  throw lastError;
+  // Return error object instead of throwing
+  return { 
+    success: false, 
+    error: lastError?.message || lastError || 'Unknown error',
+    originalError: lastError
+  };
 };
 
 // ✅ FONCTION D'APPEL DIRECT HTTPS POUR CONTOURNER LES PROBLÈMES HTTP

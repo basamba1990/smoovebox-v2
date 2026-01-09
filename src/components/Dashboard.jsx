@@ -218,7 +218,6 @@ const Dashboard = ({ refreshKey = 0, onVideoUploaded, userProfile }) => {
 
   // ✅ Rechargement amélioré - invalidate cache when refreshKey changes
   useEffect(() => {
-    console.log('🔄 Dashboard: refreshKey changé, rechargement des vidéos...', refreshKey);
     if (user) {
       queryClient.invalidateQueries({ queryKey: ['videos', user.id] });
     }

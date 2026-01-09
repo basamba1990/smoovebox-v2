@@ -1,4 +1,4 @@
-// src/context/AuthContext.jsx
+// src/contexts/AuthContext.jsx
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { supabase, refreshSession } from '../lib/supabase.js';
 
@@ -22,7 +22,6 @@ export const AuthProvider = ({ children }) => {
   // Fonction pour créer un profil utilisateur
   const createUserProfile = async (userId, userData) => {
     try {
-      
       const profileData = {
         id: userId,
         username: userData.email?.split('@')[0] || `user_${userId.slice(0, 8)}`,
@@ -38,7 +37,6 @@ export const AuthProvider = ({ children }) => {
 
       if (profileError) {
         console.error('Erreur création profil:', profileError);
-        // Ne pas jeter d'erreur si le profil existe déjà
         if (profileError.code !== '23505') {
           throw profileError;
         }
@@ -56,18 +54,16 @@ export const AuthProvider = ({ children }) => {
     if (!userId) return null;
 
     try {
-      // Essayer de récupérer le profil existant
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .maybeSingle(); // Utiliser maybeSingle() pour éviter les 406
+        .maybeSingle();
 
       if (profileError && profileError.code !== 'PGRST116') {
         console.error('Erreur récupération profil:', profileError);
       }
 
-      // Si le profil n'existe pas et qu'on a des données utilisateur, le créer
       if (!profile && userData) {
         return await createUserProfile(userId, userData);
       }
@@ -111,32 +107,24 @@ export const AuthProvider = ({ children }) => {
 
     const initializeAuth = async () => {
       try {
-        // Always check getSession() first - it reads directly from storage
-        // This is more reliable than refreshSession() which might fail
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (!mounted) return;
 
-          if (session?.user) {
-          console.log('[Auth] Session found in storage:', session.user.id);
-            setUser(session.user);
-            const userProfile = await fetchUserProfile(session.user.id, session.user);
-            setProfile(userProfile);
+        if (session?.user) {
+          setUser(session.user);
+          const userProfile = await fetchUserProfile(session.user.id, session.user);
+          setProfile(userProfile);
           
-          // Try to refresh in background (non-blocking)
           refreshSession().catch(err => {
             console.warn('[Auth] Background session refresh failed:', err);
-            // Don't clear the session if refresh fails - user is still logged in
           });
         } else {
-          console.log('[Auth] No session found in storage');
-          // Try refresh as last resort
           const hasValidSession = await refreshSession();
           
           if (hasValidSession) {
             const { data: { session: refreshedSession } } = await supabase.auth.getSession();
             if (refreshedSession?.user) {
-              console.log('[Auth] Session restored after refresh:', refreshedSession.user.id);
               setUser(refreshedSession.user);
               const userProfile = await fetchUserProfile(refreshedSession.user.id, refreshedSession.user);
               setProfile(userProfile);
@@ -158,18 +146,14 @@ export const AuthProvider = ({ children }) => {
 
     initializeAuth();
 
-    // Écouter les changements d'authentification
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return;
 
-        // Don't interfere during initialization (except for SIGNED_OUT)
         if (isInitializing && event !== 'SIGNED_OUT') {
-          console.log('[Auth] onAuthStateChange ignored during initialization:', event);
           return;
         }
 
-        console.log('[Auth] onAuthStateChange:', event, session?.user?.id);
 
         if (session?.user) {
           setUser(session.user);
@@ -181,9 +165,8 @@ export const AuthProvider = ({ children }) => {
           setProfile(null);
         }
         
-        // Only set loading to false if not initializing
         if (!isInitializing) {
-        setLoading(false);
+          setLoading(false);
         }
       }
     );
@@ -217,14 +200,11 @@ export const AuthProvider = ({ children }) => {
       if (error) throw error;
 
       if (data.user) {
-        // Créer le profil utilisateur
         await createUserProfile(data.user.id, {
           email: data.user.email,
           user_metadata: data.user.user_metadata
         });
         
-        // Immediately set user state to avoid race condition with onAuthStateChange
-        console.log('[Auth] signUp: Setting user state immediately:', data.user.id);
         setUser(data.user);
         const userProfile = await fetchUserProfile(data.user.id, data.user);
         setProfile(userProfile);
@@ -253,7 +233,6 @@ export const AuthProvider = ({ children }) => {
 
       if (error) throw error;
 
-      // Immediately set user state to avoid race condition with onAuthStateChange
       if (data.user) {
         console.log('[Auth] signIn: Setting user state immediately:', data.user.id);
         setUser(data.user);
@@ -303,9 +282,7 @@ export const AuthProvider = ({ children }) => {
     signOut,
     updateUserProfile,
     refreshSession: () => refreshSession(),
-  }), [
-    user, profile, loading, error, connectionStatus
-  ]);
+  }), [user, profile, loading, error, connectionStatus]);
 
   return (
     <AuthContext.Provider value={value}>
