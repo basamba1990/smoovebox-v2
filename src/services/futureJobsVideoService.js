@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase, invokeEdgeFunctionWithRetry } from '../lib/supabase';
 
 /**
  * Service de génération vidéo pour les métiers du futur
@@ -7,84 +7,28 @@ import { supabase } from '../lib/supabase';
 export const futureJobsVideoService = {
   /**
    * Génère une vidéo à partir d'un prompt
-   * @param {Object} data - Données de génération
-   * @param {string} data.prompt - Texte du prompt (REQUIS)
-   * @param {string} data.generator - Générateur: SORA, RUNWAY, PIKA (REQUIS)
-   * @param {string} data.style - Style: futuristic, semi-realistic, etc. (REQUIS)
-   * @param {number} data.duration - Durée en secondes (REQUIS)
-   * @param {string} data.userId - ID utilisateur (optionnel)
-   * @param {string|number} data.jobId - ID du métier (optionnel)
-   * @returns {Promise} Résultat de la génération
    */
   async generateJobVideo(data) {
     console.log('🚀 Service: Début génération vidéo', data);
 
-    // VALIDATION STRICTE DES DONNÉES D'ENTRÉE
     if (!data || typeof data !== 'object') {
-      return {
-        success: false,
-        error: "Données de génération invalides",
-        code: "INVALID_INPUT"
-      };
+      return { success: false, error: "Données invalides", code: "INVALID_INPUT" };
     }
 
-    // Validation des champs requis
-    const requiredFields = ['prompt', 'generator', 'style', 'duration'];
-    const missingFields = requiredFields.filter(field => {
-      const value = data[field];
-      return value === undefined || value === null || value === '';
-    });
-
-    if (missingFields.length > 0) {
-      return {
-        success: false,
-        error: `Champs requis manquants: ${missingFields.join(', ')}`,
-        code: "MISSING_FIELDS"
-      };
-    }
-
-    // NORMALISATION STRICTE AVANT VALIDATION
-    const normalizedPrompt = String(data.prompt).trim();
-    const normalizedGenerator = String(data.generator).toLowerCase().trim();
-    const normalizedStyle = String(data.style).toLowerCase().trim();
+    const normalizedPrompt = String(data.prompt || '').trim();
+    const normalizedGenerator = String(data.generator || '').toLowerCase().trim();
+    const normalizedStyle = String(data.style || '').toLowerCase().trim();
     const duration = Number(data.duration);
-
-    // VALIDATION INDIVIDUELLE RENFORCÉE
-    if (!normalizedPrompt || normalizedPrompt.length === 0) {
-      return {
-        success: false,
-        error: "Le prompt est requis et doit être une chaîne non vide",
-        code: "INVALID_PROMPT"
-      };
-    }
 
     const validGenerators = ['sora', 'runway', 'pika'];
     if (!validGenerators.includes(normalizedGenerator)) {
       return {
         success: false,
-        error: `Générateur invalide: ${data.generator}. Choisissez entre: ${validGenerators.join(', ')}`,
+        error: `Générateur invalide: ${data.generator}`,
         code: "INVALID_GENERATOR"
       };
     }
 
-    const validStyles = ["semi-realistic", "futuristic", "cinematic", "documentary", "abstract", "lumi-universe"];
-    if (!validStyles.includes(normalizedStyle)) {
-      return {
-        success: false,
-        error: `Style invalide: ${data.style}. Styles autorisés: ${validStyles.join(', ')}`,
-        code: "INVALID_STYLE"
-      };
-    }
-
-    if (isNaN(duration) || duration < 1 || duration > 120) {
-      return {
-        success: false,
-        error: "Durée invalide. Doit être un nombre entre 1 et 120 secondes",
-        code: "INVALID_DURATION"
-      };
-    }
-
-    // PRÉPARATION DU PAYLOAD STRICT POUR L'EDGE FUNCTION
     const payload = {
       prompt: normalizedPrompt,
       generator: normalizedGenerator,
@@ -94,51 +38,23 @@ export const futureJobsVideoService = {
       jobId: data.jobId ? String(data.jobId) : null
     };
 
-    console.log('📤 Payload validé envoyé à Edge Function:', payload);
-
     try {
-      // APPEL EDGE FUNCTION SANS 'method' CAR AUTOMATIQUE
-      const { data: result, error } = await supabase.functions.invoke('generate-video', {
-        body: payload,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Request-Source': 'smoovebox-v2-frontend'
-        }
+      const { data: result, error } = await invokeEdgeFunctionWithRetry('generate-video', payload, {
+        timeout: 60000,
+        useHttpsFallback: true
       });
 
       if (error) {
-        console.error('❌ Erreur Supabase Functions:', error);
         return {
           success: false,
-          error: error.message || "Erreur lors de l'appel à la fonction de génération",
-          code: "EDGE_FUNCTION_ERROR",
-          details: error
+          error: error.message || "Erreur Edge Function",
+          code: "EDGE_FUNCTION_ERROR"
         };
       }
 
-      // Validation de la réponse de l'Edge Function
-      if (!result) {
-        return {
-          success: false,
-          error: "Réponse vide de l'Edge Function",
-          code: "EMPTY_RESPONSE"
-        };
-      }
-
-      return {
-        success: true,
-        ...result,
-        timestamp: new Date().toISOString()
-      };
-
+      return { success: true, ...result };
     } catch (networkError) {
-      console.error('❌ Erreur réseau:', networkError);
-      return {
-        success: false,
-        error: "Problème de connexion au serveur de génération",
-        details: networkError.message,
-        code: "NETWORK_ERROR"
-      };
+      return { success: false, error: "Erreur réseau", code: "NETWORK_ERROR" };
     }
   },
 
@@ -150,62 +66,41 @@ export const futureJobsVideoService = {
 
     try {
       const { data, error } = await supabase
-        .from('generated_videos')
-        .select('id, status, video_url, error_message, metadata, created_at')
+        .from('videos')
+        .select('id, status, video_url, public_url, url, metadata, created_at')
         .eq('id', videoId)
         .single();
 
       if (error) throw error;
-
       return { success: true, ...data };
     } catch (error) {
-      console.error('❌ Erreur vérification statut:', error);
-      return {
-        success: false,
-        error: "Impossible de récupérer le statut",
-        details: error.message,
-        code: "STATUS_CHECK_FAILED"
-      };
+      return { success: false, error: "Erreur statut", code: "STATUS_CHECK_FAILED" };
     }
   },
 
   /**
    * Récupère les vidéos d'un utilisateur
+   * CORRECTION : Suppression des jointures job_prompts/future_jobs qui causaient l'erreur 400
    */
   async getUserVideos(userId, limit = 10) {
     if (!userId) return { success: false, error: "ID utilisateur requis" };
 
     try {
+      // On sélectionne uniquement les colonnes de la table 'videos'
       const { data, error } = await supabase
-        .from('generated_videos')
-        .select(`
-          id,
-          status,
-          video_url,
-          error_message,
-          metadata,
-          created_at,
-          prompt_id,
-          job_prompts (
-            id,
-            generator,
-            style,
-            duration,
-            prompt_text,
-            future_jobs (
-              title
-            )
-          )
-        `)
-        .eq('metadata->>user_id', userId)
+        .from('videos')
+        .select('id, status, video_url, public_url, url, metadata, created_at, title')
+        .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(limit);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erreur SQL getUserVideos:', error);
+        throw error;
+      }
 
       return { success: true, videos: data || [] };
     } catch (error) {
-      console.error('❌ Erreur récupération vidéos:', error);
       return {
         success: false,
         error: "Impossible de récupérer l'historique",
@@ -216,31 +111,21 @@ export const futureJobsVideoService = {
   },
 
   /**
-   * Annule une génération en cours
+   * Annule une génération
    */
   async cancelVideoGeneration(videoId) {
     if (!videoId) return { success: false, error: "ID vidéo requis" };
 
     try {
       const { error } = await supabase
-        .from('generated_videos')
-        .update({
-          status: 'cancelled',
-          updated_at: new Date().toISOString()
-        })
+        .from('videos')
+        .update({ status: 'cancelled' })
         .eq('id', videoId);
 
       if (error) throw error;
-
       return { success: true, message: 'Génération annulée' };
     } catch (error) {
-      console.error('❌ Erreur annulation:', error);
-      return {
-        success: false,
-        error: "Impossible d'annuler la génération",
-        details: error.message,
-        code: "CANCEL_FAILED"
-      };
+      return { success: false, error: "Erreur annulation", code: "CANCEL_FAILED" };
     }
   }
 };
