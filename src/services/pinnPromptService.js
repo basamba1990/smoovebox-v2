@@ -91,9 +91,68 @@ export const futureJobsData = [
     id: 10,
     title: "Spécialiste en éthique de l’IA",
     year: 2035,
-    keyTasks: "Évaluer les systèmes intelligents pour la conformité éthique, définir les cadres de gouvernance de l'IA.",
+    keyTasks: "Évaluer les systèmes intelligentes pour la conformité éthique, définir les cadres de gouvernance de l'IA.",
     coreSkills: "Philosophie, Droit de l'IA, Éthique des données, Communication et plaidoyer.",
     visualElements: "Salle de conseil sous un dôme de verre, arbres gardiens alvéolaires en arrière-plan, interfaces affichant des flux de conscience artificielle.",
     basePrompt: "Un expert en éthique débattant de l'intégration des émotions humaines dans l'IA de Lumi. La scène se passe sous un dôme de verre majestueux, entouré d'arbres gardiens. Son expression est pensive, cherchant l'équilibre parfait entre logique et sentiment."
   }
 ];
+
+const pinnPromptService = {
+  getAllJobs: () => {
+    return futureJobsData;
+  },
+
+  getJobById: (id) => {
+    return futureJobsData.find(job => job.id === Number(id));
+  },
+
+  generatePrompt: (jobId, options = {}) => {
+    const job = futureJobsData.find(j => j.id === Number(jobId));
+    if (!job) return null;
+
+    const { generator = 'Sora', style = 'futuristic', duration = 30 } = options;
+    
+    let prompt = job.basePrompt;
+    
+    // Ajustements basés sur le style
+    if (style === 'cinematic') {
+      prompt = `Cinematic 4K, highly detailed, professional lighting: ${prompt}`;
+    } else if (style === 'anime') {
+      prompt = `Studio Ghibli style, hand-drawn aesthetic, vibrant colors: ${prompt}`;
+    }
+
+    return {
+      jobId: job.id,
+      jobTitle: job.title,
+      prompt: prompt,
+      generator,
+      style,
+      duration
+    };
+  },
+
+  generatePromptVariants: (jobId, count = 3, options = {}) => {
+    const base = pinnPromptService.generatePrompt(jobId, options);
+    if (!base) return [];
+    
+    const variants = [];
+    for (let i = 0; i < count; i++) {
+      variants.push({
+        ...base,
+        id: i + 1,
+        prompt: `${base.prompt} (Variant ${i + 1}: focus on ${i === 0 ? 'lighting' : i === 1 ? 'texture' : 'atmosphere'})`
+      });
+    }
+    return variants;
+  },
+
+  exportForGenerator: (promptData, format = 'markdown') => {
+    if (format === 'markdown') {
+      return `# Prompt for ${promptData.jobTitle}\n\n**Generator:** ${promptData.generator}\n**Style:** ${promptData.style}\n**Duration:** ${promptData.duration}s\n\n## Prompt\n${promptData.prompt}`;
+    }
+    return promptData.prompt;
+  }
+};
+
+export default pinnPromptService;
