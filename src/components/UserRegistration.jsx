@@ -20,7 +20,6 @@ const UserRegistration = () => {
 
   const onSubmitSignUp = async (data) => {
     try {
-      console.log('UserRegistration: Tentative d\'inscription:', data.email);
       await signUp(data.email, data.password, data.firstName, data.lastName);
       toast.success('Inscription réussie ! Veuillez vérifier votre email.');
       setEmail(data.email);
@@ -50,14 +49,12 @@ const UserRegistration = () => {
 
   const onSubmitDetails = async (data) => {
     if (!user) {
-      console.log('UserRegistration: Utilisateur non connecté');
       toast.error('Veuillez vous connecter d\'abord.');
       navigate('/'); // Rediriger vers la page d'accueil
       return;
     }
 
     try {
-      console.log('UserRegistration: Mise à jour profil pour user:', user.id);
       await updateUserProfile({
         sex: data.sex,
         is_major: true,

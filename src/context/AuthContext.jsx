@@ -112,7 +112,6 @@ export const AuthProvider = ({ children }) => {
         if (!mounted) return;
 
         if (session?.user) {
-          console.log('[Auth] Session found in storage:', session.user.id);
           setUser(session.user);
           const userProfile = await fetchUserProfile(session.user.id, session.user);
           setProfile(userProfile);
@@ -121,13 +120,11 @@ export const AuthProvider = ({ children }) => {
             console.warn('[Auth] Background session refresh failed:', err);
           });
         } else {
-          console.log('[Auth] No session found in storage');
           const hasValidSession = await refreshSession();
           
           if (hasValidSession) {
             const { data: { session: refreshedSession } } = await supabase.auth.getSession();
             if (refreshedSession?.user) {
-              console.log('[Auth] Session restored after refresh:', refreshedSession.user.id);
               setUser(refreshedSession.user);
               const userProfile = await fetchUserProfile(refreshedSession.user.id, refreshedSession.user);
               setProfile(userProfile);
@@ -154,11 +151,9 @@ export const AuthProvider = ({ children }) => {
         if (!mounted) return;
 
         if (isInitializing && event !== 'SIGNED_OUT') {
-          console.log('[Auth] onAuthStateChange ignored during initialization:', event);
           return;
         }
 
-        console.log('[Auth] onAuthStateChange:', event, session?.user?.id);
 
         if (session?.user) {
           setUser(session.user);
@@ -210,7 +205,6 @@ export const AuthProvider = ({ children }) => {
           user_metadata: data.user.user_metadata
         });
         
-        console.log('[Auth] signUp: Setting user state immediately:', data.user.id);
         setUser(data.user);
         const userProfile = await fetchUserProfile(data.user.id, data.user);
         setProfile(userProfile);

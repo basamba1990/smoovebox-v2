@@ -575,21 +575,102 @@ export default function LumiUnifiedProfile() {
                       </div>
                     )}
 
-                    {lumiProfile.traits && lumiProfile.traits.length > 0 && (
-                      <div>
-                        <p className="text-xs text-slate-400 mb-2">
-                          Traits
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {lumiProfile.traits.map((trait, idx) => (
-                            <span
-                              key={idx}
-                              className="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-200 text-xs border border-indigo-500/40"
-                            >
-                              {trait}
-                            </span>
-                          ))}
-                        </div>
+                    {lumiProfile.traits && typeof lumiProfile.traits === 'object' && !Array.isArray(lumiProfile.traits) && (
+                      <div className="space-y-4">
+                        {/* Combined Description */}
+                        {lumiProfile.traits.combined_description && (
+                          <div className="p-3 bg-slate-800 rounded-lg border border-slate-700">
+                            <p className="text-xs text-slate-400 mb-1">Description de votre profil</p>
+                            <p className="text-sm text-slate-200 leading-relaxed">
+                              {lumiProfile.traits.combined_description}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Profile Type */}
+                        {lumiProfile.traits.profile_type && (
+                          <div>
+                            <p className="text-xs text-slate-400 mb-2">Type de profil</p>
+                            <p className="text-sm font-semibold text-white">
+                              {lumiProfile.traits.profile_type}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Dominant Profile */}
+                        {lumiProfile.traits.dominant && (
+                          <div className="p-3 bg-slate-800 rounded-lg border border-slate-700 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs text-slate-400">Profil dominant</p>
+                              <span className="text-xs text-slate-500">
+                                {lumiProfile.traits.dominant.intensity} ({lumiProfile.traits.dominant.percentage}%)
+                              </span>
+                            </div>
+                            <p className="text-sm font-semibold text-white">
+                              {lumiProfile.traits.dominant.name}
+                            </p>
+                            <p className="text-xs text-slate-300">
+                              {lumiProfile.traits.dominant.description}
+                            </p>
+                            {lumiProfile.traits.dominant.traits && lumiProfile.traits.dominant.traits.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {lumiProfile.traits.dominant.traits.map((trait, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-200 text-[10px] border border-yellow-500/40"
+                                  >
+                                    {trait}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Secondary Profile */}
+                        {lumiProfile.traits.secondary && (
+                          <div className="p-3 bg-slate-800 rounded-lg border border-slate-700 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs text-slate-400">Profil secondaire</p>
+                              <span className="text-xs text-slate-500">
+                                {lumiProfile.traits.secondary.intensity} ({lumiProfile.traits.secondary.percentage}%)
+                              </span>
+                            </div>
+                            <p className="text-sm font-semibold text-white">
+                              {lumiProfile.traits.secondary.name}
+                            </p>
+                            <p className="text-xs text-slate-300">
+                              {lumiProfile.traits.secondary.description}
+                            </p>
+                            {lumiProfile.traits.secondary.traits && lumiProfile.traits.secondary.traits.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {lumiProfile.traits.secondary.traits.map((trait, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="px-2 py-0.5 rounded-full bg-green-500/20 text-green-200 text-[10px] border border-green-500/40"
+                                  >
+                                    {trait}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Characteristics */}
+                        {lumiProfile.traits.characteristics && lumiProfile.traits.characteristics.length > 0 && (
+                          <div>
+                            <p className="text-xs text-slate-400 mb-2">Caractéristiques principales</p>
+                            <div className="space-y-1">
+                              {lumiProfile.traits.characteristics.map((char, idx) => (
+                                <div key={idx} className="flex items-start gap-2 text-xs text-slate-300">
+                                  <span className="text-green-400 mt-0.5">✓</span>
+                                  <span>{char}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

@@ -18,7 +18,6 @@ export const RequireAuth = ({ children, fallbackPath = "/login" }) => {
 
   useEffect(() => {
     if (!loading && !user) {
-      console.log("🔐 Redirection vers login - utilisateur non authentifié");
       navigate(fallbackPath, { replace: true });
     }
   }, [user, loading, navigate, fallbackPath]);

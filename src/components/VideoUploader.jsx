@@ -35,7 +35,6 @@ const VideoUploader = ({ onUploadComplete }) => {
       if (statsError) throw statsError;
 
       // Mettre à jour un contexte global ou local (ex: via callback ou store)
-      console.log('Rafraîchissement des stats utilisateur:', stats);
       // Ex: dispatch({ type: 'UPDATE_STATS', payload: { totalVideos: stats[0].count } });
       
     } catch (err) {
@@ -79,7 +78,6 @@ const VideoUploader = ({ onUploadComplete }) => {
   };
 
   const uploadFile = async (file, path) => {
-    console.log('📤 Upload du fichier:', path);
     
     const { data, error } = await supabase.storage
       .from('videos')
@@ -90,7 +88,6 @@ const VideoUploader = ({ onUploadComplete }) => {
           if (progressEvent.totalBytes) {
             const percent = Math.round((progressEvent.loaded / progressEvent.totalBytes) * 100);
             setProgress(percent);
-            console.log(`Progression: ${percent}%`);
           }
         },
       });
@@ -100,7 +97,6 @@ const VideoUploader = ({ onUploadComplete }) => {
       throw error;
     }
 
-    console.log('✅ Upload réussi:', data);
     return data;
   };
 
@@ -129,14 +125,12 @@ const VideoUploader = ({ onUploadComplete }) => {
       const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `videos/${fileName}`;
 
-      console.log('🚀 Début de l\'upload...');
       const uploadData = await uploadFile(file, filePath);
 
       setUploadPhase('processing');
       setProgress(100);
 
       // Étape 2: Enregistrement en base de données
-      console.log('💾 Enregistrement en base...');
       const { data: videoData, error: dbError } = await supabase
         .from('videos')
         .insert([
@@ -161,7 +155,6 @@ const VideoUploader = ({ onUploadComplete }) => {
         throw dbError;
       }
 
-      console.log('✅ Vidéo enregistrée:', videoData);
 
       // Correction : Déclencher la transcription (assumant une edge function 'transcribe-video' existe)
       // Si elle n'existe pas, implémentez-la pour passer de 'processing' à 'transcribed'
