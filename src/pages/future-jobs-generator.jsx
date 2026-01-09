@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ChevronDown, Copy, Download, Zap, Eye, Play, Loader2, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { ChevronDown, Copy, Download, Zap, Eye, Play, Loader2, CheckCircle, XCircle, RefreshCw, LogIn } from 'lucide-react';
 import pinnPromptService from '../services/pinnPromptService';
 import { futureJobsVideoService } from '../services/futureJobsVideoService';
 import { useAuth } from '../context/AuthContext';
@@ -7,9 +7,9 @@ import { toast } from 'react-hot-toast';
 import '../styles/futureJobsGenerator.css';
 
 export default function FutureJobsGenerator() {
-  const { user, profile } = useAuth();
+  const { user, profile, openAuthModal } = useAuth();
   const [selectedJobId, setSelectedJobId] = useState(1);
-  const [selectedGenerator, setSelectedGenerator] = useState('Sora');
+  const [selectedGenerator, setSelectedGenerator] = useState('sora'); // CORRECTION: minuscules
   const [selectedStyle, setSelectedStyle] = useState('futuristic');
   const [selectedDuration, setSelectedDuration] = useState(30);
   const [generatedPrompt, setGeneratedPrompt] = useState(null);
@@ -27,6 +27,16 @@ export default function FutureJobsGenerator() {
   const [pollingInterval, setPollingInterval] = useState(null);
   const [generationTime, setGenerationTime] = useState(null);
   const [validationErrors, setValidationErrors] = useState({});
+  const [isButtonDisabled, setIsButtonDisabled] = useState(false);
+
+  // CORRECTION: Normalisation immédiate de la casse
+  const handleGeneratorSelect = useCallback((generator) => {
+    setSelectedGenerator(generator.toLowerCase());
+  }, []);
+
+  const handleStyleSelect = useCallback((style) => {
+    setSelectedStyle(style.toLowerCase());
+  }, []);
 
   useEffect(() => {
     const allJobs = pinnPromptService.getAllJobs();
@@ -47,20 +57,30 @@ export default function FutureJobsGenerator() {
   const loadUserVideos = async () => {
     if (!user) return;
     try {
-      const result = await futureJobsVideoService.getUserVideos(user.id, 5);
+      const result = await futureJobsVideoService.getUserVideos(user.id, 10);
       if (result.success) {
-        setGeneratedVideos(result.videos);
+        setGeneratedVideos(result.videos || []);
+      } else if (result.code === 'RLS_ERROR') {
+        toast.error('Erreur de permissions. Actualisez la page.');
       }
     } catch (error) {
       console.error('Erreur chargement vidéos:', error);
+      toast.error('Impossible de charger l\'historique');
     }
   };
 
   const handleGeneratePrompt = (e) => {
     if (e) e.preventDefault();
+    if (loading || isButtonDisabled) return;
+    
     console.log('Bouton Générer Prompt cliqué');
     setLoading(true);
+    setIsButtonDisabled(true);
     setValidationErrors({});
+    
+    // Réactivation après 2 secondes pour prévenir le double-click
+    setTimeout(() => setIsButtonDisabled(false), 2000);
+    
     try {
       const prompt = pinnPromptService.generatePrompt(selectedJobId, {
         generator: selectedGenerator,
@@ -80,6 +100,7 @@ export default function FutureJobsGenerator() {
       setVideoResult(null);
       setVideoError(null);
       setValidationErrors({});
+      toast.success('Prompt généré avec succès !');
     } catch (error) {
       console.error('Erreur lors de la génération du prompt:', error);
       toast.error(`Erreur: ${error.message || 'Erreur inconnue'}`);
@@ -93,10 +114,14 @@ export default function FutureJobsGenerator() {
 
   const handleGenerateVideo = async (e) => {
     if (e) e.preventDefault();
+    if (isGeneratingVideo || isButtonDisabled) return;
+    
     console.log('Bouton Générer Vidéo cliqué');
 
+    // Vérification authentification
     if (!user) {
       toast.error('Veuillez vous connecter pour générer une vidéo');
+      openAuthModal?.();
       return;
     }
 
@@ -106,6 +131,7 @@ export default function FutureJobsGenerator() {
     }
 
     setIsGeneratingVideo(true);
+    setIsButtonDisabled(true);
     setGenerationStatus('🚀 Démarrage de la génération vidéo...');
     setVideoError(null);
     setVideoResult(null);
@@ -115,14 +141,14 @@ export default function FutureJobsGenerator() {
     try {
       const payload = {
         prompt: generatedPrompt.prompt.trim(),
-        generator: selectedGenerator.toLowerCase().trim(), // Correction Casse
+        generator: selectedGenerator.toLowerCase().trim(),
         style: selectedStyle.toLowerCase().trim(),
         duration: Number(selectedDuration),
-        userId: user.id,
+        // CORRECTION: On ne passe plus userId, le JWT sera utilisé
         jobId: selectedJobId
       };
 
-      console.log('📤 Envoi payload normalisé:', payload);
+      console.log('📤 Envoi payload normalisé à Edge Function:', payload);
 
       const result = await futureJobsVideoService.generateJobVideo(payload);
 
@@ -130,11 +156,20 @@ export default function FutureJobsGenerator() {
         setVideoResult(result);
         setGenerationStatus('✅ Vidéo générée avec succès !');
         toast.success('Vidéo générée avec succès !');
+        
         if (result.metadata?.is_placeholder) {
           toast.info('⚠️ Note: Sora API n\'est pas encore disponible. Une image DALL-E a été générée comme placeholder.');
         }
-        await loadUserVideos();
+        
+        // Rechargement de l'historique après succès
+        setTimeout(() => loadUserVideos(), 1000);
       } else {
+        // Gestion spécifique des erreurs d'authentification
+        if (result.code === 'AUTH_REQUIRED' || result.requiresReauth) {
+          toast.error('Session expirée. Veuillez vous reconnecter.');
+          openAuthModal?.();
+        }
+        
         const error = new Error(result.error || 'Échec de la génération');
         error.code = result.code;
         error.details = result.details;
@@ -149,9 +184,17 @@ export default function FutureJobsGenerator() {
         status: error.status
       });
       setGenerationStatus('❌ Erreur lors de la génération');
-      toast.error(`Erreur: ${error.message}`);
+      
+      // Message d'erreur spécifique
+      if (error.code === 'AUTH_REQUIRED') {
+        toast.error('Session expirée. Veuillez vous reconnecter.');
+      } else {
+        toast.error(`Erreur: ${error.message}`);
+      }
     } finally {
       setIsGeneratingVideo(false);
+      // Réactivation après 3 secondes
+      setTimeout(() => setIsButtonDisabled(false), 3000);
     }
   };
 
@@ -184,6 +227,7 @@ export default function FutureJobsGenerator() {
     }
     if (!user) {
       toast.error('Veuillez vous connecter');
+      openAuthModal?.();
       return;
     }
 
@@ -194,10 +238,9 @@ export default function FutureJobsGenerator() {
     try {
       const result = await futureJobsVideoService.generateJobVideo({
         prompt: generatedPrompt.prompt,
-        generator: selectedGenerator.toLowerCase().trim(), // Correction Casse
+        generator: selectedGenerator.toLowerCase().trim(),
         style: selectedStyle.toLowerCase().trim(),
         duration: Number(selectedDuration),
-        userId: user.id,
         jobId: selectedJobId
       });
 
@@ -242,17 +285,18 @@ export default function FutureJobsGenerator() {
     }
   };
 
-  const handleDownloadVideo = () => {
-    const url = videoResult?.url || videoResult?.publicUrl || videoResult?.videoUrl;
-    if (url) {
-      const link = document.createElement('a');
-      link.href = url;
-      link.target = '_blank';
-      link.download = `video-${Date.now()}.mp4`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      toast.success('Téléchargement lancé !');
+  const handleDownloadVideo = async () => {
+    if (!videoResult) return;
+    
+    try {
+      const result = await futureJobsVideoService.downloadVideo(videoResult);
+      if (result.success) {
+        toast.success(`Téléchargement de ${result.fileName} lancé !`);
+      } else {
+        toast.error('Erreur lors du téléchargement');
+      }
+    } catch (error) {
+      toast.error('Erreur lors du téléchargement');
     }
   };
 
@@ -263,7 +307,13 @@ export default function FutureJobsGenerator() {
   };
 
   const handleGenerateVariants = () => {
+    if (loading || isButtonDisabled) return;
+    
     setLoading(true);
+    setIsButtonDisabled(true);
+    
+    setTimeout(() => setIsButtonDisabled(false), 2000);
+    
     try {
       const variantsData = pinnPromptService.generatePromptVariants(selectedJobId, 3, {
         generator: selectedGenerator
@@ -289,6 +339,19 @@ export default function FutureJobsGenerator() {
           <p className="text-xl text-slate-400 max-w-3xl mx-auto">
             Framework PINN-like pour la génération de prompts vidéo optimisés basés sur les données du WEF 2025.
           </p>
+          
+          {!user && (
+            <div className="mt-6 p-4 bg-slate-900/50 rounded-xl border border-slate-700 max-w-md mx-auto">
+              <p className="text-slate-300 mb-3">🔐 Connectez-vous pour générer des vidéos</p>
+              <button
+                onClick={() => openAuthModal?.()}
+                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg font-semibold flex items-center gap-2 mx-auto hover:from-blue-500 hover:to-purple-500 transition"
+              >
+                <LogIn size={20} />
+                Se connecter
+              </button>
+            </div>
+          )}
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -319,30 +382,36 @@ export default function FutureJobsGenerator() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-2">Générateur Vidéo</label>
+                  <label className="block text-sm font-medium text-slate-400 mb-2">
+                    Générateur Vidéo
+                    <span className="text-xs text-slate-500 ml-2">(tout en minuscules)</span>
+                  </label>
                   <div className="grid grid-cols-3 gap-2">
-                    {['Sora', 'Runway', 'Pika'].map((gen) => (
+                    {['sora', 'runway', 'pika'].map((gen) => (
                       <button
                         key={gen}
                         type="button"
-                        onClick={() => setSelectedGenerator(gen)}
+                        onClick={() => handleGeneratorSelect(gen)}
                         className={`py-2 rounded-lg text-sm font-semibold transition ${
                           selectedGenerator === gen
                             ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20'
                             : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                         }`}
                       >
-                        {gen}
+                        {gen.charAt(0).toUpperCase() + gen.slice(1)}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-400 mb-2">Style Visuel</label>
+                  <label className="block text-sm font-medium text-slate-400 mb-2">
+                    Style Visuel
+                    <span className="text-xs text-slate-500 ml-2">(tout en minuscules)</span>
+                  </label>
                   <select
                     value={selectedStyle}
-                    onChange={(e) => setSelectedStyle(e.target.value)}
+                    onChange={(e) => handleStyleSelect(e.target.value)}
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none transition"
                   >
                     <option value="futuristic">Futuriste / High-Tech</option>
@@ -369,8 +438,8 @@ export default function FutureJobsGenerator() {
 
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold py-4 rounded-xl shadow-lg transition transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50 disabled:transform-none"
+                  disabled={loading || isButtonDisabled}
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold py-4 rounded-xl shadow-lg transition transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50 disabled:transform-none disabled:cursor-not-allowed"
                 >
                   {loading ? <Loader2 className="animate-spin" /> : <Zap size={20} />}
                   Générer le Prompt PINN
@@ -385,33 +454,27 @@ export default function FutureJobsGenerator() {
                 </h3>
                 <button
                   onClick={handleGenerateVideo}
-                  disabled={isGeneratingVideo}
-                  className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 disabled:opacity-50"
+                  disabled={isGeneratingVideo || isButtonDisabled || !user}
+                  className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isGeneratingVideo ? <Loader2 className="animate-spin" /> : <Play size={20} />}
-                  Lancer la Génération Vidéo
+                  {!user ? 'Connectez-vous pour générer' : 'Lancer la Génération Vidéo'}
                 </button>
+                
+                {isGeneratingVideo && (
+                  <div className="mt-4 text-center">
+                    <p className="text-sm text-slate-400">⏳ Temps écoulé: {getElapsedTime()}</p>
+                    <div className="w-full bg-slate-800 rounded-full h-2 mt-2">
+                      <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full animate-pulse"></div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           {/* Display Panel */}
           <div className="lg:col-span-8 space-y-6">
-            {/* Loading State */}
-            {isGeneratingVideo && (
-              <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-12 border border-slate-700 flex flex-col items-center justify-center text-center">
-                <Loader2 size={48} className="text-blue-500 animate-spin mb-4" />
-                <h3 className="text-2xl font-bold mb-2">{generationStatus}</h3>
-                <p className="text-slate-300 mb-4">Temps écoulé: {getElapsedTime()}</p>
-                <div className="w-full bg-slate-700 rounded-full h-2.5">
-                  <div
-                    className="bg-gradient-to-r from-purple-500 to-pink-500 h-2.5 rounded-full animate-pulse"
-                    style={{ width: '70%' }}
-                  ></div>
-                </div>
-              </div>
-            )}
-
             {/* Generated Prompt */}
             {generatedPrompt && !isGeneratingVideo && !videoResult && (
               <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border border-slate-700">
@@ -420,7 +483,8 @@ export default function FutureJobsGenerator() {
                   <div className="flex gap-2">
                     <button
                       onClick={handleCopyPrompt}
-                      className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-2 transition"
+                      disabled={copied}
+                      className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-2 transition disabled:opacity-50"
                     >
                       {copied ? <CheckCircle size={16} /> : <Copy size={16} />}
                       {copied ? 'Copié !' : 'Copier'}
@@ -470,16 +534,29 @@ export default function FutureJobsGenerator() {
                       <Download size={16} />
                       Télécharger
                     </button>
+                    {videoResult.metadata?.is_placeholder && (
+                      <span className="px-3 py-2 bg-yellow-600/20 text-yellow-400 rounded text-sm flex items-center">
+                        Placeholder DALL-E
+                      </span>
+                    )}
                   </div>
                 </div>
 
                 <div className="aspect-video bg-slate-900 rounded-lg overflow-hidden mb-6">
-                  <video
-                    controls
-                    className="w-full h-full"
-                    src={videoResult.url || videoResult.publicUrl || videoResult.videoUrl}
-                    poster="https://storage.googleapis.com/ai-video-placeholders/video-preview.jpg"
-                  />
+                  {videoResult.metadata?.is_placeholder ? (
+                    <img
+                      src={videoResult.url || videoResult.publicUrl || videoResult.videoUrl}
+                      alt="Placeholder DALL-E"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <video
+                      controls
+                      className="w-full h-full"
+                      src={videoResult.url || videoResult.publicUrl || videoResult.videoUrl}
+                      poster="https://storage.googleapis.com/ai-video-placeholders/video-preview.jpg"
+                    />
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 text-sm">
@@ -500,46 +577,82 @@ export default function FutureJobsGenerator() {
               <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border border-red-700/50">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-2xl font-bold text-red-400">❌ Erreur de Génération</h3>
-                  <button
-                    onClick={handleRetryGeneration}
-                    className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded flex items-center gap-2 text-sm"
-                  >
-                    <RefreshCw size={16} />
-                    Réessayer
-                  </button>
+                  <div className="flex gap-2">
+                    {videoError.code === 'AUTH_REQUIRED' ? (
+                      <button
+                        onClick={() => openAuthModal?.()}
+                        className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-2 text-sm"
+                      >
+                        <LogIn size={16} />
+                        Se reconnecter
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleRetryGeneration(videoResult?.videoId)}
+                        className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded flex items-center gap-2 text-sm"
+                      >
+                        <RefreshCw size={16} />
+                        Réessayer
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="bg-red-900/20 p-4 rounded-lg border border-red-800">
                   <pre className="text-red-200 whitespace-pre-wrap text-sm">
-                    {typeof videoError === 'string' ? videoError : JSON.stringify(videoError, null, 2)}
+                    {typeof videoError === 'string' 
+                      ? videoError 
+                      : JSON.stringify({
+                          message: videoError.message,
+                          code: videoError.code,
+                          details: videoError.details
+                        }, null, 2)}
                   </pre>
                 </div>
               </div>
             )}
 
-            {/* Video History - RESTAURÉ ET CORRIGÉ */}
-            {generatedVideos.length > 0 && (
+            {/* Video History */}
+            {user && generatedVideos.length > 0 && (
               <div className="bg-slate-800/50 backdrop-blur-sm rounded-xl p-5 border border-slate-700">
-                <h3 className="text-xl font-semibold mb-4">📜 Historique des Vidéos</h3>
-                <div className="space-y-3">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xl font-semibold">📜 Historique des Vidéos</h3>
+                  <button
+                    onClick={loadUserVideos}
+                    className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded flex items-center gap-2"
+                  >
+                    <RefreshCw size={14} />
+                    Actualiser
+                  </button>
+                </div>
+                <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
                   {generatedVideos.map((video) => (
                     <div
                       key={video.id}
                       className="bg-slate-900/50 p-4 rounded-lg border border-slate-700 hover:border-slate-600 transition"
                     >
                       <div className="flex justify-between items-start">
-                        <div>
+                        <div className="flex-1">
                           <h4 className="font-semibold">
-                            {video.title || video.metadata?.jobTitle || 'Vidéo Métier'}
+                            {video.title || video.metadata?.jobTitle || `Vidéo ${video.id.substring(0, 8)}`}
                           </h4>
                           <p className="text-sm text-slate-400">
-                            {new Date(video.created_at).toLocaleDateString('fr-FR')} • Statut:{' '}
+                            {new Date(video.created_at).toLocaleDateString('fr-FR', { 
+                              day: '2-digit', 
+                              month: '2-digit', 
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })} • 
+                            Statut: {' '}
                             <span
                               className={
                                 video.status === 'ready' || video.status === 'done'
                                   ? 'text-green-400 font-semibold'
-                                  : video.status === 'error'
+                                  : video.status === 'error' || video.status === 'failed'
                                   ? 'text-red-400 font-semibold'
-                                  : 'text-yellow-400 font-semibold'
+                                  : video.status === 'generating'
+                                  ? 'text-yellow-400 font-semibold animate-pulse'
+                                  : 'text-slate-400 font-semibold'
                               }
                             >
                               {video.status}
@@ -547,27 +660,30 @@ export default function FutureJobsGenerator() {
                           </p>
                           {video.metadata?.generator && (
                             <p className="text-sm text-slate-500 mt-1">
-                              Générateur: {video.metadata.generator} • Style: {video.metadata.style}
+                              Générateur: {video.metadata.generator} • 
+                              Style: {video.metadata.style} • 
+                              Durée: {video.metadata.duration || 'N/A'}s
                             </p>
                           )}
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 ml-4">
                           {(video.url || video.public_url || video.video_url) && (
                             <a
                               href={video.url || video.public_url || video.video_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded"
+                              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded flex items-center gap-1"
                             >
+                              <Eye size={14} />
                               Voir
                             </a>
                           )}
-                          {video.status === 'error' && (
+                          {video.status === 'generating' && (
                             <button
-                              onClick={() => handleCheckStatus(video.id)}
-                              className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white text-sm rounded"
+                              onClick={() => handleCancelGeneration(video.id)}
+                              className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded"
                             >
-                              Vérifier
+                              Annuler
                             </button>
                           )}
                         </div>
@@ -595,15 +711,15 @@ export default function FutureJobsGenerator() {
               </p>
             </div>
             <div className="bg-slate-900/50 p-4 rounded border border-slate-700">
-              <div className="text-blue-400 font-bold mb-2">🎨 Créativité Guidée</div>
+              <div className="text-blue-400 font-bold mb-2">🔐 Authentification JWT</div>
               <p className="text-sm text-slate-300">
-                Les prompts respectent les contraintes tout en permettant une expression créative riche.
+                Utilisation sécurisée du token JWT pour lier automatiquement les vidéos à l'utilisateur.
               </p>
             </div>
             <div className="bg-slate-900/50 p-4 rounded border border-slate-700">
-              <div className="text-blue-400 font-bold mb-2">🚀 Prêt pour la Production</div>
+              <div className="text-blue-400 font-bold mb-2">🚀 Compatible Edge Functions</div>
               <p className="text-sm text-slate-300">
-                Compatible avec Sora, Runway et Pika. Exportable en plusieurs formats.
+                Optimisé pour l'Edge Function corrigée avec gestion des casse et RLS.
               </p>
             </div>
           </div>
