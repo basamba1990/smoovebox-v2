@@ -47,8 +47,8 @@ export const futureJobsVideoService = {
     // PRÉPARATION DU PAYLOAD STRICT POUR L'EDGE FUNCTION
     const payload = {
       prompt: normalizedPrompt,
-      generator: normalizedGenerator,
-      style: normalizedStyle,
+      generator: normalizedGenerator.toLowerCase(),
+      style: normalizedStyle.toLowerCase(),
       duration: duration,
       userId: data.userId || null,
       jobId: data.jobId ? String(data.jobId) : null
