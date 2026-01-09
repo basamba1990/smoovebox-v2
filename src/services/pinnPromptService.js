@@ -125,10 +125,18 @@ const pinnPromptService = {
     return {
       jobId: job.id,
       jobTitle: job.title,
+      year: job.year,
       prompt: prompt,
+      originalPrompt: job.basePrompt,
       generator,
       style,
-      duration
+      duration,
+      constraints: {
+        keyTasks: job.keyTasks,
+        coreSkills: job.coreSkills,
+        emergingTech: job.emergingTech || "N/A",
+        visualElements: job.visualElements
+      }
     };
   },
 
