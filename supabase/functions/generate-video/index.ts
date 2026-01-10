@@ -10,7 +10,13 @@ const corsHeaders = {
 type ReqBody = {
   prompt: string;
   generator: "sora" | "runway" | "pika";
-  style: "semi-realistic" | "futuristic" | "cinematic" | "documentary" | "abstract" | "lumi-universe";
+  style:
+    | "semi-realistic"
+    | "futuristic"
+    | "cinematic"
+    | "documentary"
+    | "abstract"
+    | "lumi-universe";
   duration: number;
   userId: string; // REQUIS - Le frontend DOIT l'envoyer
   jobId?: string;
@@ -21,6 +27,7 @@ type ReqBody = {
 console.info("✅ generate-video démarrée (version simplifiée avec userId requis)");
 
 Deno.serve(async (req: Request): Promise<Response> => {
+  // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -70,7 +77,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // CLIENT SERVICE (bypass RLS)
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
       auth: { persistSession: false },
-      global: { headers: { "X-Client-Info": "edge-generate-video" } }
+      global: { headers: { "X-Client-Info": "edge-generate-video" } },
     });
 
     const videoId = crypto.randomUUID();
@@ -93,8 +100,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
           style: style,
           duration: duration,
           created_at: new Date().toISOString(),
-          user_id: userId // Double sécurité
-        }
+          user_id: userId, // Double sécurité
+        },
       })
       .select()
       .single();
@@ -106,7 +113,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
           success: false,
           error: "Erreur base de données",
           details: insertError.message,
-          hint: "Vérifiez que la table videos existe avec user_id comme colonne requise et défaut supprimé à auth.uid()"
+          hint:
+            "Vérifiez que la table videos existe avec user_id comme colonne requise et défaut supprimé à auth.uid()",
         }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -131,7 +139,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
             n: 1,
           });
           // @ts-ignore - SDK types allow b64/url; we accept url here
-          sourceUrl = response.data[0]?.url || "https://storage.googleapis.com/ai-video-placeholders/future-job-concept.jpg";
+          sourceUrl = (response as any).data?.[0]?.url ||
+            "https://storage.googleapis.com/ai-video-placeholders/future-job-concept.jpg";
           isPlaceholder = true;
         } catch (error) {
           console.warn("⚠️ DALL-E échoué, fallback:", error);
@@ -159,7 +168,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .from(bucket)
         .upload(storagePath, buffer, {
           contentType: generator === "sora" ? "image/jpeg" : "video/mp4",
-          upsert: true
+          upsert: true,
         });
 
       if (!uploadError) {
@@ -191,12 +200,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
           ...videoRecord.metadata,
           completed_at: new Date().toISOString(),
           is_placeholder: isPlaceholder,
-          final_url: finalUrl
-        }
+          final_url: finalUrl,
+        },
       })
       .eq("id", videoId);
 
-    // RÉPONSE DE SUCCÈS
     return new Response(
       JSON.stringify({
         success: true,
@@ -204,11 +212,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
         status: "ready",
         url: finalUrl,
         isPlaceholder: isPlaceholder,
-        message: "Vidéo générée avec succès"
+        message: "Vidéo générée avec succès",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-
   } catch (error: any) {
     console.error("❌ ERREUR GLOBALE:", error);
     return new Response(
@@ -216,7 +223,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         success: false,
         error: "Erreur interne",
         details: error.message,
-        code: "INTERNAL_ERROR"
+        code: "INTERNAL_ERROR",
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
