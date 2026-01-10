@@ -1,3 +1,4 @@
+// verify_jwt enabled by default via Deno.serve auth check in code
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import OpenAI from "npm:openai@4.56.0";
 
@@ -20,7 +21,6 @@ type ReqBody = {
 console.info("🚀 generate-video: Démarrage (Version Finale Sans Erreur)");
 
 Deno.serve(async (req: Request): Promise<Response> => {
-  // 1. Gestion du CORS (Indispensable pour le Frontend)
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -34,7 +34,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       throw new Error("Variables d'environnement Supabase manquantes");
     }
 
-    // 2. Extraction du JWT pour identifier l'utilisateur
+    // Exiger un JWT côté Edge Function
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(
@@ -43,7 +43,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // Client pour vérifier l'utilisateur
     const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
@@ -59,7 +58,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const userId = user.id;
     const body: ReqBody = await req.json();
 
-    // 3. Validation et Normalisation
     if (!body.prompt?.trim()) {
       return new Response(
         JSON.stringify({ success: false, error: "Prompt manquant", code: "INVALID_PROMPT" }),
@@ -74,11 +72,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const bucket = body.bucket?.trim() || "videos";
     const access = body.access === "public" ? "public" : "signed";
 
-    // 4. Client Admin pour contourner les restrictions RLS lors de l'insertion
-    // IMPORTANT: On utilise le SERVICE_ROLE_KEY ici
-    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-      auth: { persistSession: false }
-    });
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
 
     const videoId = crypto.randomUUID();
     const extension = generator === "sora" ? ".jpg" : ".mp4";
@@ -86,13 +80,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     console.log(`📝 Création vidéo: ID=${videoId}, User=${userId}`);
 
-    // 5. Insertion en base de données
-    // On force l'insertion avec l'ID utilisateur extrait du JWT
     const { data: videoRecord, error: insertError } = await supabaseAdmin
       .from("videos")
       .insert({
         id: videoId,
-        user_id: userId, // ✅ Utilisation de l'ID authentifié
+        user_id: userId,
         status: "generating",
         storage_path: storagePath,
         metadata: {
@@ -110,17 +102,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (insertError) {
       console.error("❌ Erreur DB (Insert):", insertError);
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: "Erreur base de données", 
-          details: insertError.message,
-          code: insertError.code 
-        }),
+        JSON.stringify({ success: false, error: "Erreur base de données", details: insertError.message, code: insertError.code }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // 6. Génération (Simulation ou API réelle)
     let sourceUrl = `https://storage.googleapis.com/ai-video-samples/${generator}-sample.mp4`;
     let isPlaceholder = false;
 
@@ -132,15 +118,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
           prompt: `${prompt.substring(0, 800)} - Style ${style}`,
           size: "1024x1024",
         });
+        // deno-lint-ignore no-explicit-any
         sourceUrl = (response as any).data?.[0]?.url || sourceUrl;
         isPlaceholder = true;
-      } catch (e) {
+      } catch (_) {
         console.warn("⚠️ Fallback DALL-E échoué");
         isPlaceholder = true;
       }
     }
 
-    // 7. Upload vers Storage
     let finalUrl = sourceUrl;
     try {
       const fetchRes = await fetch(sourceUrl);
@@ -162,11 +148,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
           }
         }
       }
-    } catch (e) {
+    } catch (_) {
       console.warn("⚠️ Erreur Storage, utilisation URL source");
     }
 
-    // 8. Mise à jour finale du statut
     await supabaseAdmin
       .from("videos")
       .update({
@@ -183,20 +168,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .eq("id", videoId);
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        videoId,
-        status: "ready",
-        url: finalUrl,
-        isPlaceholder,
-      }),
+      JSON.stringify({ success: true, videoId, status: "ready", url: finalUrl, isPlaceholder }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-
-  } catch (error: any) {
-    console.error("❌ Erreur Critique:", error.message);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("❌ Erreur Critique:", message);
     return new Response(
-      JSON.stringify({ success: false, error: "Erreur interne", details: error.message }),
+      JSON.stringify({ success: false, error: "Erreur interne", details: message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
