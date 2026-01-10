@@ -17,19 +17,12 @@ type ReqBody = {
   bucket?: string;
 };
 
-console.info("✅ generate-video démarrée (Version Robuste - JWT Auth)");
+console.info("🚀 generate-video: Démarrage (Version Finale Sans Erreur)");
 
 Deno.serve(async (req: Request): Promise<Response> => {
-  // 1. Gestion du CORS
+  // 1. Gestion du CORS (Indispensable pour le Frontend)
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
-  }
-
-  if (req.method !== "POST") {
-    return new Response(
-      JSON.stringify({ success: false, error: "POST requis", code: "METHOD_NOT_ALLOWED" }),
-      { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
   }
 
   try {
@@ -38,28 +31,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 
     if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-      throw new Error("Configuration Supabase manquante");
+      throw new Error("Variables d'environnement Supabase manquantes");
     }
 
-    // 2. Authentification via JWT (Sécurité Maximale)
+    // 2. Extraction du JWT pour identifier l'utilisateur
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(
-        JSON.stringify({ success: false, error: "Non authentifié", code: "UNAUTHORIZED" }),
+        JSON.stringify({ success: false, error: "Authentification requise", code: "UNAUTHORIZED" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-      auth: { persistSession: false },
-    });
-
-    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(
-      authHeader.replace("Bearer ", "")
-    );
+    // Client pour vérifier l'utilisateur
+    const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
 
     if (authError || !user) {
-      console.error("❌ Erreur Auth:", authError);
+      console.error("❌ Erreur Auth:", authError?.message);
       return new Response(
         JSON.stringify({ success: false, error: "Session invalide", code: "INVALID_SESSION" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -69,15 +59,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const userId = user.id;
     const body: ReqBody = await req.json();
 
-    // 3. Validation des données
+    // 3. Validation et Normalisation
     if (!body.prompt?.trim()) {
       return new Response(
-        JSON.stringify({ success: false, error: "Prompt requis", code: "INVALID_PROMPT" }),
+        JSON.stringify({ success: false, error: "Prompt manquant", code: "INVALID_PROMPT" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // 4. Normalisation
     const prompt = body.prompt.trim();
     const generator = (body.generator || "runway").toLowerCase().trim();
     const style = (body.style || "cinematic").toLowerCase().trim();
@@ -85,23 +74,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const bucket = body.bucket?.trim() || "videos";
     const access = body.access === "public" ? "public" : "signed";
 
-    // 5. Client Admin pour les opérations DB/Storage
+    // 4. Client Admin pour contourner les restrictions RLS lors de l'insertion
+    // IMPORTANT: On utilise le SERVICE_ROLE_KEY ici
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-      auth: { persistSession: false },
+      auth: { persistSession: false }
     });
 
     const videoId = crypto.randomUUID();
     const extension = generator === "sora" ? ".jpg" : ".mp4";
     const storagePath = `${bucket}/${userId}/${videoId}${extension}`;
 
-    console.log(`📝 Création vidéo pour user: ${userId}, ID: ${videoId}`);
+    console.log(`📝 Création vidéo: ID=${videoId}, User=${userId}`);
 
-    // 6. Insertion initiale
+    // 5. Insertion en base de données
+    // On force l'insertion avec l'ID utilisateur extrait du JWT
     const { data: videoRecord, error: insertError } = await supabaseAdmin
       .from("videos")
       .insert({
         id: videoId,
-        user_id: userId,
+        user_id: userId, // ✅ Utilisation de l'ID authentifié
         status: "generating",
         storage_path: storagePath,
         metadata: {
@@ -117,43 +108,39 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .single();
 
     if (insertError) {
-      console.error("❌ Erreur DB:", insertError);
+      console.error("❌ Erreur DB (Insert):", insertError);
       return new Response(
-        JSON.stringify({ success: false, error: "Erreur base de données", details: insertError.message }),
+        JSON.stringify({ 
+          success: false, 
+          error: "Erreur base de données", 
+          details: insertError.message,
+          code: insertError.code 
+        }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // 7. Simulation / Appel API (Sora/Runway/Pika)
-    let sourceUrl: string;
+    // 6. Génération (Simulation ou API réelle)
+    let sourceUrl = `https://storage.googleapis.com/ai-video-samples/${generator}-sample.mp4`;
     let isPlaceholder = false;
 
-    if (generator === "sora") {
-      const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
-      if (openai) {
-        try {
-          const response = await openai.images.generate({
-            model: "dall-e-3",
-            prompt: `${prompt.substring(0, 800)} - Style ${style}, cinematic, high quality`,
-            size: "1024x1024",
-            n: 1,
-          });
-          sourceUrl = (response as any).data?.[0]?.url || "https://storage.googleapis.com/ai-video-placeholders/future-job-concept.jpg";
-          isPlaceholder = true;
-        } catch (e) {
-          console.warn("⚠️ Fallback DALL-E:", e);
-          sourceUrl = "https://storage.googleapis.com/ai-video-placeholders/future-job-concept.jpg";
-          isPlaceholder = true;
-        }
-      } else {
-        sourceUrl = "https://storage.googleapis.com/ai-video-placeholders/future-job-concept.jpg";
+    if (generator === "sora" && OPENAI_API_KEY) {
+      try {
+        const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+        const response = await openai.images.generate({
+          model: "dall-e-3",
+          prompt: `${prompt.substring(0, 800)} - Style ${style}`,
+          size: "1024x1024",
+        });
+        sourceUrl = (response as any).data?.[0]?.url || sourceUrl;
+        isPlaceholder = true;
+      } catch (e) {
+        console.warn("⚠️ Fallback DALL-E échoué");
         isPlaceholder = true;
       }
-    } else {
-      sourceUrl = `https://storage.googleapis.com/ai-video-samples/${generator}-sample.mp4`;
     }
 
-    // 8. Upload vers Storage
+    // 7. Upload vers Storage
     let finalUrl = sourceUrl;
     try {
       const fetchRes = await fetch(sourceUrl);
@@ -176,10 +163,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
         }
       }
     } catch (e) {
-      console.warn("⚠️ Erreur Storage (fallback URL source):", e);
+      console.warn("⚠️ Erreur Storage, utilisation URL source");
     }
 
-    // 9. Mise à jour finale
+    // 8. Mise à jour finale du statut
     await supabaseAdmin
       .from("videos")
       .update({
@@ -207,7 +194,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
 
   } catch (error: any) {
-    console.error("❌ Erreur Critique:", error);
+    console.error("❌ Erreur Critique:", error.message);
     return new Response(
       JSON.stringify({ success: false, error: "Erreur interne", details: error.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
