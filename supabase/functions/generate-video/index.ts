@@ -1,4 +1,3 @@
-// verify_jwt enabled by default via Deno.serve auth check in code
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import OpenAI from "npm:openai@4.56.0";
 
@@ -18,7 +17,7 @@ type ReqBody = {
   bucket?: string;
 };
 
-console.info("🚀 generate-video: Démarrage (Version Finale Sans Erreur)");
+console.info("🚀 generate-video: Démarrage (Version Finale Corrigée)");
 
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
@@ -34,7 +33,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
       throw new Error("Variables d'environnement Supabase manquantes");
     }
 
-    // Exiger un JWT côté Edge Function
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(
@@ -43,12 +41,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     const token = authHeader.replace("Bearer ", "");
+    const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
 
     if (authError || !user) {
-      console.error("❌ Erreur Auth:", authError?.message);
       return new Response(
         JSON.stringify({ success: false, error: "Session invalide", code: "INVALID_SESSION" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -72,15 +69,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const bucket = body.bucket?.trim() || "videos";
     const access = body.access === "public" ? "public" : "signed";
 
-    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
+    // Utilisation du client avec le token utilisateur pour respecter le RLS lors de l'insertion
+    const supabaseUserClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      global: { headers: { Authorization: `Bearer ${token}` } }
+    });
 
     const videoId = crypto.randomUUID();
     const extension = generator === "sora" ? ".jpg" : ".mp4";
     const storagePath = `${bucket}/${userId}/${videoId}${extension}`;
 
-    console.log(`📝 Création vidéo: ID=${videoId}, User=${userId}`);
-
-    const { data: videoRecord, error: insertError } = await supabaseAdmin
+    const { data: videoRecord, error: insertError } = await supabaseUserClient
       .from("videos")
       .insert({
         id: videoId,
@@ -107,6 +105,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
     let sourceUrl = `https://storage.googleapis.com/ai-video-samples/${generator}-sample.mp4`;
     let isPlaceholder = false;
 
@@ -118,11 +117,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
           prompt: `${prompt.substring(0, 800)} - Style ${style}`,
           size: "1024x1024",
         });
-        // deno-lint-ignore no-explicit-any
         sourceUrl = (response as any).data?.[0]?.url || sourceUrl;
         isPlaceholder = true;
       } catch (_) {
-        console.warn("⚠️ Fallback DALL-E échoué");
         isPlaceholder = true;
       }
     }
@@ -149,7 +146,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         }
       }
     } catch (_) {
-      console.warn("⚠️ Erreur Storage, utilisation URL source");
+      console.warn("⚠️ Erreur Storage");
     }
 
     await supabaseAdmin
@@ -173,7 +170,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error("❌ Erreur Critique:", message);
     return new Response(
       JSON.stringify({ success: false, error: "Erreur interne", details: message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
