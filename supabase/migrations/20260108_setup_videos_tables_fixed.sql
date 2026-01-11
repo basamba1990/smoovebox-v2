@@ -1,87 +1,118 @@
 -- ============================================================================
--- SCRIPT DE VÉRIFICATION ET CONFIGURATION : TABLE "videos" (CORRIGÉ)
--- Ce script vérifie l'existence de la table, des colonnes et configure le RLS.
--- À exécuter dans l'éditeur SQL de Supabase.
+-- MASTER MIGRATION FINAL FIX - SpotBulle (version corrigée)
+-- Aligne les contraintes sans casser les données existantes
 -- ============================================================================
 
-DO $$ 
+-- 1) EXTENSIONS (idempotent)
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- 2) TABLE: public.videos
+-- Ne pas recréer la table: elle existe avec un schéma étendu.
+-- Corriger uniquement la contrainte de statut pour couvrir toutes les valeurs déjà présentes.
+
+DO $$
+DECLARE
+  rec record;
 BEGIN
-    -- 1. Vérifier si la table 'videos' existe, sinon la créer
-    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'videos') THEN
-        CREATE TABLE public.videos (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-            title TEXT,
-            video_url TEXT,
-            public_url TEXT,
-            url TEXT,
-            storage_path TEXT,
-            status TEXT DEFAULT 'pending',
-            metadata JSONB DEFAULT '{}'::jsonb,
-            created_at TIMESTAMPTZ DEFAULT now(),
-            updated_at TIMESTAMPTZ DEFAULT now()
-        );
-        RAISE NOTICE 'Table public.videos créée.';
-    ELSE
-        RAISE NOTICE 'Table public.videos existe déjà.';
-    END IF;
+  -- Supprimer toutes les contraintes CHECK portant sur la colonne status
+  FOR rec IN
+    SELECT c.conname
+    FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    WHERE n.nspname = 'public'
+      AND t.relname = 'videos'
+      AND c.contype = 'c'
+      AND pg_get_constraintdef(c.oid) ILIKE '%status%'
+  LOOP
+    EXECUTE format('ALTER TABLE public.videos DROP CONSTRAINT IF EXISTS %I;', rec.conname);
+  END LOOP;
 
-    -- 2. Vérifier et ajouter la colonne 'user_id' si manquante
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'videos' AND column_name = 'user_id') THEN
-        ALTER TABLE public.videos ADD COLUMN user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
-        RAISE NOTICE 'Colonne user_id ajoutée à la table videos.';
-    END IF;
+  -- Ajouter une contrainte compatible avec les valeurs existantes
+  -- Valeurs observées dans la table:
+  -- 'uploaded','processing','transcribing','transcribed','analyzing','analyzed','published','failed','draft','ready'
+  -- On inclut aussi 'pending','generating' pour l'avenir.
+  EXECUTE $sql$
+    ALTER TABLE public.videos
+    ADD CONSTRAINT videos_status_check
+    CHECK (
+      status = ANY (ARRAY[
+        'uploaded','processing','transcribing','transcribed','analyzing','analyzed',
+        'published','failed','draft','ready',
+        'pending','generating'
+      ])
+    );
+  $sql$;
 
-    -- 3. Vérifier et ajouter les colonnes d'URL si manquantes
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'videos' AND column_name = 'public_url') THEN
-        ALTER TABLE public.videos ADD COLUMN public_url TEXT;
-    END IF;
-    
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'videos' AND column_name = 'url') THEN
-        ALTER TABLE public.videos ADD COLUMN url TEXT;
-    END IF;
-
+  -- Ne pas forcer user_id NOT NULL ici: données existantes potentiellement nulles.
 END $$;
 
--- 4. Activer le Row Level Security (RLS)
+-- 3) TABLE: agent_configurations (existe déjà: ne pas la recréer)
+DO $$
+BEGIN
+  -- Rien à faire si la table existe (elle existe avec colonnes compatibles).
+  NULL;
+END $$;
+
+-- 4) TABLE: agent_execution_logs (existe déjà: ne pas la recréer)
+DO $$
+BEGIN
+  -- Rien à faire: structure déjà en place.
+  NULL;
+END $$;
+
+-- 5) TABLE: llm_soft_prompts (existe déjà: colonnes alignées)
+DO $$
+BEGIN
+  -- Rien à faire: structure déjà en place.
+  NULL;
+END $$;
+
+-- 6) RLS CONFIGURATION
+-- Activer RLS si non activé (idempotent)
 ALTER TABLE public.videos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.agent_configurations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.agent_execution_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.llm_soft_prompts ENABLE ROW LEVEL SECURITY;
 
--- 5. Nettoyage des politiques existantes
-DROP POLICY IF EXISTS "Les utilisateurs peuvent voir leurs propres vidéos" ON public.videos;
-DROP POLICY IF EXISTS "Les utilisateurs peuvent insérer leurs propres vidéos" ON public.videos;
-DROP POLICY IF EXISTS "Les utilisateurs peuvent mettre à jour leurs propres vidéos" ON public.videos;
-DROP POLICY IF EXISTS "Service Role peut tout faire" ON public.videos;
+-- Politiques pour videos (adapter aux conventions existantes: user_id est la FK vers auth.users)
+DO $$
+BEGIN
+  DROP POLICY IF EXISTS "Les utilisateurs peuvent voir leurs propres vidéos" ON public.videos;
+  DROP POLICY IF EXISTS "Les utilisateurs peuvent insérer leurs propres vidéos" ON public.videos;
+  DROP POLICY IF EXISTS "Service Role peut tout faire" ON public.videos;
 
--- 6. Création des politiques de sécurité (RLS)
+  CREATE POLICY "Les utilisateurs peuvent voir leurs propres vidéos"
+  ON public.videos FOR SELECT TO authenticated
+  USING ((SELECT auth.uid()) = user_id);
 
--- Lecture : Un utilisateur ne voit que ses vidéos
-CREATE POLICY "Les utilisateurs peuvent voir leurs propres vidéos" 
-ON public.videos 
-FOR SELECT 
-TO authenticated 
-USING (auth.uid() = user_id);
+  CREATE POLICY "Les utilisateurs peuvent insérer leurs propres vidéos"
+  ON public.videos FOR INSERT TO authenticated
+  WITH CHECK ((SELECT auth.uid()) = user_id);
 
--- Insertion : Un utilisateur peut insérer pour son propre ID
-CREATE POLICY "Les utilisateurs peuvent insérer leurs propres vidéos" 
-ON public.videos 
-FOR INSERT 
-TO authenticated 
-WITH CHECK (auth.uid() = user_id);
+  CREATE POLICY "Service Role peut tout faire"
+  ON public.videos FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+END $$;
 
--- Mise à jour : Un utilisateur peut modifier ses propres vidéos
-CREATE POLICY "Les utilisateurs peuvent mettre à jour leurs propres vidéos" 
-ON public.videos 
-FOR UPDATE 
-TO authenticated 
-USING (auth.uid() = user_id);
+-- Politiques pour agent_execution_logs
+DO $$
+BEGIN
+  DROP POLICY IF EXISTS "allow_read_authenticated_agent_execution_logs" ON public.agent_execution_logs;
+  DROP POLICY IF EXISTS "allow_write_service_agent_execution_logs_insert" ON public.agent_execution_logs;
 
--- Service Role : Accès complet pour les Edge Functions
-CREATE POLICY "Service Role peut tout faire" 
-ON public.videos 
-FOR ALL 
-TO service_role 
-USING (true) 
-WITH CHECK (true);
+  CREATE POLICY "allow_read_authenticated_agent_execution_logs"
+  ON public.agent_execution_logs FOR SELECT TO authenticated
+  USING (true);
 
--- Note : Les commentaires SQL standard (--) sont autorisés ici, 
--- mais pas les commandes RAISE NOTICE qui doivent rester dans un bloc DO.
+  CREATE POLICY "allow_write_service_agent_execution_logs_insert"
+  ON public.agent_execution_logs FOR INSERT TO service_role
+  WITH CHECK (true);
+END $$;
+
+-- 7) INDEXES (idempotents)
+CREATE INDEX IF NOT EXISTS idx_videos_user_id ON public.videos(user_id);
+CREATE INDEX IF NOT EXISTS idx_agent_execution_logs_video_id ON public.agent_execution_logs(video_id);
+CREATE INDEX IF NOT EXISTS idx_agent_execution_logs_agent_config_id ON public.agent_execution_logs(agent_config_id);
