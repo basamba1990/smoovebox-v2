@@ -169,7 +169,7 @@ const AppContentProtected = () => {
       
       // Invalidate videos query to refetch after authentication
       queryClient.invalidateQueries({ queryKey: ['videos', userData.id] });
-      navigate("/dashboard");
+      navigate("/");
     },
     [queryClient, navigate]
   );
