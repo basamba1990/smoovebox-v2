@@ -25,6 +25,62 @@ const AGE_RANGES = [
   { value: "46+", label: "46 ans et plus" },
 ];
 
+// DISC Color to Element and Spirit Animal mapping
+const DISC_ELEMENTS = {
+  'rouge': {
+    element: 'Fire',
+    elementFr: 'Feu',
+    icon: '🔥',
+    animal: 'Lion',
+    animalFr: 'Lion',
+    animalEmoji: '🦁',
+    description: 'You are Fire: direct, driven, and action-oriented. You move fast, take decisions, and push things forward.',
+    descriptionFr: 'Tu es Feu : direct, déterminé et orienté action. Tu agis vite, prends des décisions et fais avancer les choses.',
+    colorClass: 'from-red-500/20 to-red-600/10',
+    borderClass: 'border-red-500/30',
+    textClass: 'text-red-200'
+  },
+  'jaune': {
+    element: 'Air',
+    elementFr: 'Air',
+    icon: '🌬️',
+    animal: 'Parrot',
+    animalFr: 'Perroquet',
+    animalEmoji: '🦜',
+    description: 'You are Air: creative, communicative, and full of ideas. You bring innovation, connect people, and keep the energy high.',
+    descriptionFr: 'Tu es Air : créatif, communicatif et plein d\'idées. Tu apportes l\'innovation, connectes les gens et maintiens l\'énergie.',
+    colorClass: 'from-yellow-500/20 to-yellow-600/10',
+    borderClass: 'border-yellow-500/30',
+    textClass: 'text-yellow-200'
+  },
+  'vert': {
+    element: 'Earth',
+    elementFr: 'Terre',
+    icon: '🌱',
+    animal: 'Deer',
+    animalFr: 'Cerf',
+    animalEmoji: '🦌',
+    description: 'You are Earth: stable, supportive, and harmonious. You bring calm, loyalty, and team spirit.',
+    descriptionFr: 'Tu es Terre : stable, solidaire et harmonieux. Tu apportes le calme, la loyauté et l\'esprit d\'équipe.',
+    colorClass: 'from-green-500/20 to-green-600/10',
+    borderClass: 'border-green-500/30',
+    textClass: 'text-green-200'
+  },
+  'bleu': {
+    element: 'Water',
+    elementFr: 'Eau',
+    icon: '💧',
+    animal: 'Owl',
+    animalFr: 'Hibou',
+    animalEmoji: '🦉',
+    description: 'You are Water: analytical, deep, and precise. You think before acting, go deep, and bring structure.',
+    descriptionFr: 'Tu es Eau : analytique, profond et précis. Tu réfléchis avant d\'agir, vas en profondeur et apportes la structure.',
+    colorClass: 'from-blue-500/20 to-blue-600/10',
+    borderClass: 'border-blue-500/30',
+    textClass: 'text-blue-200'
+  }
+};
+
 // Function to determine age range from age number
 function getAgeRangeFromAge(age) {
   if (age >= 16 && age <= 20) return "16-20";
@@ -259,7 +315,7 @@ export default function LumiOnboarding() {
            <Card className="bg-slate-900/60 border-slate-800">
              <CardHeader>
                <CardTitle className="text-2xl text-white">
-                 Ton Profil Lumi
+                 Ton Profil
                </CardTitle>
                <CardDescription className="text-slate-400">
                  Découvre qui tu es vraiment
@@ -267,20 +323,53 @@ export default function LumiOnboarding() {
              </CardHeader>
              <CardContent>
                <div className="space-y-6">
-                 {/* Dominant and Secondary Colors */}
-                 <div className="grid grid-cols-2 gap-4">
-                   <div className="p-4 bg-slate-800 rounded-lg border border-slate-700">
-                     <p className="text-sm text-slate-400 mb-2">Couleur Dominante</p>
-                     <p className="text-2xl font-bold text-white capitalize">
-                       {computedProfile.dominant_color || "Non déterminé"}
-                     </p>
-                   </div>
-                   <div className="p-4 bg-slate-800 rounded-lg border border-slate-700">
-                     <p className="text-sm text-slate-400 mb-2">Couleur Secondaire</p>
-                     <p className="text-2xl font-bold text-white capitalize">
-                       {computedProfile.secondary_color || "Non déterminé"}
-                     </p>
-                   </div>
+                 {/* Dominant and Secondary Colors with Elements */}
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   {/* Dominant Color with Element */}
+                   {computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color] && (
+                     <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.dominant_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.dominant_color].borderClass}`}>
+                       <div className="flex items-center gap-3 mb-2">
+                         <span className="text-3xl">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
+                         <div>
+                           <p className="text-sm text-slate-400">Couleur Dominante</p>
+                           <p className="text-xl font-bold text-white capitalize">
+                             {computedProfile.dominant_color}
+                           </p>
+                         </div>
+                       </div>
+                       <div className="mt-3 pt-3 border-t border-slate-700/50">
+                         <p className={`text-sm font-semibold ${DISC_ELEMENTS[computedProfile.dominant_color].textClass} mb-1`}>
+                           {DISC_ELEMENTS[computedProfile.dominant_color].icon} {DISC_ELEMENTS[computedProfile.dominant_color].elementFr} • {DISC_ELEMENTS[computedProfile.dominant_color].animalFr}
+                         </p>
+                         <p className="text-xs text-slate-300">
+                           {DISC_ELEMENTS[computedProfile.dominant_color].descriptionFr}
+                         </p>
+                       </div>
+                     </div>
+                   )}
+                   
+                   {/* Secondary Color with Element */}
+                   {computedProfile.secondary_color && DISC_ELEMENTS[computedProfile.secondary_color] && (
+                     <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.secondary_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.secondary_color].borderClass}`}>
+                       <div className="flex items-center gap-3 mb-2">
+                         <span className="text-3xl">{DISC_ELEMENTS[computedProfile.secondary_color].icon}</span>
+                         <div>
+                           <p className="text-sm text-slate-400">Couleur Secondaire</p>
+                           <p className="text-xl font-bold text-white capitalize">
+                             {computedProfile.secondary_color}
+                           </p>
+                         </div>
+                       </div>
+                       <div className="mt-3 pt-3 border-t border-slate-700/50">
+                         <p className={`text-sm font-semibold ${DISC_ELEMENTS[computedProfile.secondary_color].textClass} mb-1`}>
+                           {DISC_ELEMENTS[computedProfile.secondary_color].icon} {DISC_ELEMENTS[computedProfile.secondary_color].elementFr} • {DISC_ELEMENTS[computedProfile.secondary_color].animalFr}
+                         </p>
+                         <p className="text-xs text-slate-300">
+                           {DISC_ELEMENTS[computedProfile.secondary_color].descriptionFr}
+                         </p>
+                       </div>
+                     </div>
+                   )}
                  </div>
 
                  {/* DISC Scores */}
@@ -308,12 +397,20 @@ export default function LumiOnboarding() {
                  {/* Traits */}
                  {computedProfile.traits && typeof computedProfile.traits === 'object' && !Array.isArray(computedProfile.traits) && (
                    <div className="space-y-6">
-                     {/* Combined Description */}
-                     {computedProfile.traits.combined_description && (
-                       <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
-                         <h3 className="text-lg font-semibold text-white mb-2">
-                           Votre profil DISC
-                         </h3>
+                     {/* Combined Description with Element */}
+                     {computedProfile.traits.combined_description && computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color] && (
+                       <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.dominant_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.dominant_color].borderClass}`}>
+                         <div className="flex items-center gap-3 mb-3">
+                           <span className="text-4xl">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
+                           <div>
+                             <h3 className="text-lg font-semibold text-white">
+                               Ton Énergie Principale : {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
+                             </h3>
+                             <p className={`text-sm ${DISC_ELEMENTS[computedProfile.dominant_color].textClass}`}>
+                               Esprit {DISC_ELEMENTS[computedProfile.dominant_color].animalFr}
+                             </p>
+                           </div>
+                         </div>
                          <p className="text-slate-200 leading-relaxed">
                            {computedProfile.traits.combined_description}
                          </p>
@@ -333,16 +430,24 @@ export default function LumiOnboarding() {
                      {/* Dominant and Secondary Profiles */}
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                        {/* Dominant Profile */}
-                       {computedProfile.traits.dominant && (
-                         <div className="p-4 bg-gradient-to-br from-yellow-500/10 to-yellow-600/5 rounded-lg border border-yellow-500/30 space-y-3">
+                       {computedProfile.traits.dominant && computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color] && (
+                         <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.dominant_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.dominant_color].borderClass} space-y-3`}>
                            <div className="flex items-center justify-between">
-                             <h4 className="text-sm font-semibold text-yellow-200">Profil Dominant</h4>
-                             <span className="text-xs text-yellow-300/70">
+                             <div className="flex items-center gap-2">
+                               <span className="text-2xl">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
+                               <h4 className={`text-sm font-semibold ${DISC_ELEMENTS[computedProfile.dominant_color].textClass}`}>
+                                 Profil Dominant • {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
+                               </h4>
+                             </div>
+                             <span className={`text-xs ${DISC_ELEMENTS[computedProfile.dominant_color].textClass}/70`}>
                                {computedProfile.traits.dominant.intensity} ({computedProfile.traits.dominant.percentage}%)
                              </span>
                            </div>
                            <p className="text-lg font-bold text-white">
                              {computedProfile.traits.dominant.name}
+                           </p>
+                           <p className={`text-xs font-medium ${DISC_ELEMENTS[computedProfile.dominant_color].textClass} mb-2`}>
+                             {DISC_ELEMENTS[computedProfile.dominant_color].animalEmoji} Esprit {DISC_ELEMENTS[computedProfile.dominant_color].animalFr}
                            </p>
                            <p className="text-sm text-slate-300">
                              {computedProfile.traits.dominant.description}
@@ -374,16 +479,24 @@ export default function LumiOnboarding() {
                        )}
 
                        {/* Secondary Profile */}
-                       {computedProfile.traits.secondary && (
-                         <div className="p-4 bg-gradient-to-br from-green-500/10 to-green-600/5 rounded-lg border border-green-500/30 space-y-3">
+                       {computedProfile.traits.secondary && computedProfile.secondary_color && DISC_ELEMENTS[computedProfile.secondary_color] && (
+                         <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.secondary_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.secondary_color].borderClass} space-y-3`}>
                            <div className="flex items-center justify-between">
-                             <h4 className="text-sm font-semibold text-green-200">Profil Secondaire</h4>
-                             <span className="text-xs text-green-300/70">
+                             <div className="flex items-center gap-2">
+                               <span className="text-2xl">{DISC_ELEMENTS[computedProfile.secondary_color].icon}</span>
+                               <h4 className={`text-sm font-semibold ${DISC_ELEMENTS[computedProfile.secondary_color].textClass}`}>
+                                 Profil Secondaire • {DISC_ELEMENTS[computedProfile.secondary_color].elementFr}
+                               </h4>
+                             </div>
+                             <span className={`text-xs ${DISC_ELEMENTS[computedProfile.secondary_color].textClass}/70`}>
                                {computedProfile.traits.secondary.intensity} ({computedProfile.traits.secondary.percentage}%)
                              </span>
                            </div>
                            <p className="text-lg font-bold text-white">
                              {computedProfile.traits.secondary.name}
+                           </p>
+                           <p className={`text-xs font-medium ${DISC_ELEMENTS[computedProfile.secondary_color].textClass} mb-2`}>
+                             {DISC_ELEMENTS[computedProfile.secondary_color].animalEmoji} Esprit {DISC_ELEMENTS[computedProfile.secondary_color].animalFr}
                            </p>
                            <p className="text-sm text-slate-300">
                              {computedProfile.traits.secondary.description}
