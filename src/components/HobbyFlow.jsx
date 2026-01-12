@@ -20,6 +20,14 @@ const HOBBIES = [
   { name: "Basketball", emoji: "🏀", color: "orange" },
 ];
 
+// DISC Color to Element mapping (same as in lumi-onboarding.jsx)
+const DISC_ELEMENTS = {
+  'rouge': { elementFr: 'Feu', icon: '🔥', animalFr: 'Lion', animalEmoji: '🦁' },
+  'jaune': { elementFr: 'Air', icon: '🌬️', animalFr: 'Perroquet', animalEmoji: '🦜' },
+  'vert': { elementFr: 'Terre', icon: '🌱', animalFr: 'Cerf', animalEmoji: '🦌' },
+  'bleu': { elementFr: 'Eau', icon: '💧', animalFr: 'Hibou', animalEmoji: '🦉' }
+};
+
 export default function HobbyFlow({ computedProfile, ageRange }) {
   const [showHobbySelection, setShowHobbySelection] = useState(false);
   const [selectedHobby, setSelectedHobby] = useState(null);
@@ -320,13 +328,28 @@ export default function HobbyFlow({ computedProfile, ageRange }) {
       )}
 
       {/* Hobby Results */}
-      {hobbyProfile && (
+      {hobbyProfile && computedProfile && (
         <Card className="bg-slate-900/60 border-slate-800 mt-6">
           <CardHeader>
-            <CardTitle className="text-2xl text-white">
-              {selectedHobby && HOBBIES.find(h => h.name === selectedHobby)?.emoji} {selectedHobby} - Ton Rôle Idéal
-            </CardTitle>
-            <CardDescription className="text-slate-400">
+            <div className="flex items-center gap-3">
+              {selectedHobby && HOBBIES.find(h => h.name === selectedHobby)?.emoji && (
+                <span className="text-3xl">{HOBBIES.find(h => h.name === selectedHobby)?.emoji}</span>
+              )}
+              <div className="flex-1">
+                <CardTitle className="text-2xl text-white">
+                  {selectedHobby} - Ton Rôle Idéal
+                </CardTitle>
+                {computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color] && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-lg">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
+                    <span className="text-sm text-slate-400">
+                      Énergie {DISC_ELEMENTS[computedProfile.dominant_color].elementFr} • Esprit {DISC_ELEMENTS[computedProfile.dominant_color].animalEmoji} {DISC_ELEMENTS[computedProfile.dominant_color].animalFr}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <CardDescription className="text-slate-400 mt-2">
               Recommandation basée sur ton profil DISC
             </CardDescription>
           </CardHeader>

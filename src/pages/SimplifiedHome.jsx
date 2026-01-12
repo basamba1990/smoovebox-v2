@@ -729,7 +729,7 @@ export default function SimplifiedHome({
                   🎥 Nouvelle Vidéo
                 </Button>
                 <Button
-                  onClick={() => navigate("/dashboard")}
+                  onClick={() => navigate("/")}
                   variant="outline"
                   className="border-gray-600 text-gray-300 hover:bg-gray-700"
                 >

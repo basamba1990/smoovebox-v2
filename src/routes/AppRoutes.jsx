@@ -213,18 +213,6 @@ export default function AppRoutes({
         }
       />
 
-      <Route
-        path="/dashboard"
-        element={
-          <RequireAuth>
-            <Dashboard
-              refreshKey={Date.now()}
-              onVideoUploaded={handleVideoUploaded}
-              userProfile={profile}
-            />
-          </RequireAuth>
-        }
-      />
 
       <Route
         path="/video-vault"

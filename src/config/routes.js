@@ -168,16 +168,6 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
       },
     },
     {
-      path: "/dashboard",
-      element: Dashboard,
-      requiresAuth: true,
-      props: {
-        refreshKey: Date.now(),
-        onVideoUploaded: handleVideoUploaded,
-        userProfile: profile,
-      },
-    },
-    {
       path: "/video-vault",
       element: VideoVault,
       requiresAuth: true,
