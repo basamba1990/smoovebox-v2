@@ -667,23 +667,24 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
 
       // 3. Structure de données compatible
       const videoInsertData = {
-        title: title || `Vidéo ${new Date().toLocaleDateString('fr-FR')}`,
-        description: description || 'Vidéo enregistrée depuis la caméra',
-        file_path: filePath,
-        storage_path: filePath,
-        file_size: recordedVideo.blob.size,
-        duration: Math.round(recordingTime),
+        title: title || `Vidéo ${new Date().toLocaleDateString(\'fr-FR\')}`,
+        description: description || \'Vidéo enregistrée depuis la caméra\',
+        storage_path: filePath, // Utiliser storage_path pour le chemin interne
+        video_url: urlData.publicUrl, // Utiliser video_url pour l\'URL publique
+        file_size_bytes: recordedVideo.blob.size, // Nouvelle colonne
+        duration_seconds: Math.round(recordingTime), // Nouvelle colonne
+        video_format: recordedVideo.format, // Nouvelle colonne
         user_id: user.id,
         status: VIDEO_STATUS.UPLOADED,
-        use_avatar: useAvatar,
-        public_url: urlData.publicUrl,
-        video_url: urlData.publicUrl,
-        format: recordedVideo.format,
-        tone_analysis: toneAnalysis,
-        tags: tags,
-        transcription_language: selectedLanguage,
+        use_avatar: useAvatar, // Nouvelle colonne
+        tags: tags, // Nouvelle colonne
+        transcription_language: selectedLanguage, // Nouvelle colonne
+        // Les champs tone_analysis et profile_information seront mis à jour par les Edge Functions.
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
+        // Ajouter portfolio_id et prompt_id si l\'intégration du portfolio est active
+        // portfolio_id: selectedPortfolioId,
+        // prompt_id: selectedPromptId,
       };
 
       console.log('📝 Insertion en base:', videoInsertData);

@@ -314,11 +314,10 @@ Deno.serve(async (req) => {
       model: 'whisper-1',
       processed_at: new Date().toISOString()
     }
-
-    // ✅ SAUVEGARDE TRANSCRIPTION
+    // ✅ SAUVEGARDE TRANSCRIPTION - CORRIGÉE
     console.log("💾 Sauvegarde transcription...")
     const { error: updateError } = await supabase
-      .from('videos')
+      .from(\'videos\')
       .update({
         status: VIDEO_STATUS.TRANSCRIBED,
         transcription_text: transcriptionText,
@@ -326,9 +325,7 @@ Deno.serve(async (req) => {
         transcription_language: detectedLanguage,
         updated_at: new Date().toISOString()
       })
-      .eq('id', videoId)
-
-    if (updateError) {
+      .eq(\'id\', videoId)   if (updateError) {
       console.error('❌ Erreur sauvegarde:', updateError)
       throw new Error(`Erreur sauvegarde: ${updateError.message}`)
     }
