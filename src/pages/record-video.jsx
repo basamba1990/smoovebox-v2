@@ -163,7 +163,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
       } catch (err) {
         console.error('❌ Erreur initialisation:', err);
         if (mounted) {
-          setError('Erreur lors de l\'initialisation de la caméra.');
+          setError('Erreur lors de l'initialisation de la caméra.');
           toast.error('Erreur initialisation caméra');
         }
       }
@@ -185,7 +185,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
           const newTime = prev + 1;
           if (newTime >= maxRecordingTime) {
             stopRecording();
-            toast.warning('Temps d\'enregistrement maximum atteint (5 minutes).');
+            toast.warning('Temps d'enregistrement maximum atteint (5 minutes).');
           }
           return newTime;
         });
@@ -236,9 +236,9 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
           }, 1500);
         } else if (video.status === VIDEO_STATUS.FAILED) {
           setAnalysisProgress(VIDEO_STATUS.FAILED);
-          const errorMsg = video.error_message || 'L\'analyse de la vidéo a échoué.';
+          const errorMsg = video.error_message || 'L'analyse de la vidéo a échoué.';
           setError(errorMsg);
-          toast.error('❌ Échec de l\'analyse');
+          toast.error('❌ Échec de l'analyse');
           clearInterval(intervalId);
         } else {
           setAnalysisProgress(video.status);
@@ -350,14 +350,14 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
       setupAudioAnalysis(stream);
     } catch (err) {
       console.error('❌ Erreur accès caméra:', err);
-      let errorMessage = 'Impossible d\'accéder à la caméra. ';
+      let errorMessage = 'Impossible d'accéder à la caméra. ';
       
       if (err.name === 'NotAllowedError') {
-        errorMessage += 'Veuillez autoriser l\'accès à la caméra et au microphone.';
+        errorMessage += 'Veuillez autoriser l'accès à la caméra et au microphone.';
       } else if (err.name === 'NotFoundError') {
-        errorMessage += 'Aucune caméra n\'a été détectée.';
+        errorMessage += 'Aucune caméra n'a été détectée.';
       } else if (err.name === 'NotSupportedError') {
-        errorMessage += 'Votre navigateur ne supporte pas l\'enregistrement vidéo.';
+        errorMessage += 'Votre navigateur ne supporte pas l'enregistrement vidéo.';
       } else {
         errorMessage += `Erreur: ${err.message}`;
       }
@@ -370,13 +370,13 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
   // ✅ Démarrer enregistrement
   const startRecording = async () => {
     if (!cameraAccess) {
-      setError('Veuillez autoriser l\'accès à la caméra.');
+      setError('Veuillez autoriser l'accès à la caméra.');
       toast.error('Accès caméra requis.');
       return;
     }
 
     if (typeof MediaRecorder === 'undefined') {
-      setError('L\'enregistrement vidéo n\'est pas supporté sur votre navigateur. Essayez Chrome ou Firefox.');
+      setError('L'enregistrement vidéo n'est pas supporté sur votre navigateur. Essayez Chrome ou Firefox.');
       toast.error('Enregistrement non supporté');
       return;
     }
@@ -470,10 +470,10 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
       toast.success('🎥 Enregistrement démarré !');
     } catch (err) {
       console.error('❌ Erreur démarrage enregistrement:', err);
-      let errorMsg = 'Erreur lors du démarrage de l\'enregistrement.';
+      let errorMsg = 'Erreur lors du démarrage de l'enregistrement.';
       
       if (isIOS) {
-        errorMsg = 'Enregistrement limité sur Safari iOS. Essayez l\'application Chrome.';
+        errorMsg = 'Enregistrement limité sur Safari iOS. Essayez l'application Chrome.';
       } else if (err.name === 'InvalidStateError') {
         errorMsg = 'État MediaRecorder invalide. Rafraîchissez la page.';
       }
@@ -544,7 +544,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         setToneAnalysis(data.analysis);
         toast.success('🎵 Analyse de tonalité terminée !');
       } else {
-        throw new Error('Réponse d\'analyse invalide');
+        throw new Error('Réponse d'analyse invalide');
       }
 
     } catch (err) {
@@ -667,10 +667,10 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
 
       // 3. Structure de données compatible
       const videoInsertData = {
-        title: title || `Vidéo ${new Date().toLocaleDateString(\'fr-FR\')}`,
-        description: description || \'Vidéo enregistrée depuis la caméra\',
+        title: title || `Vidéo ${new Date().toLocaleDateString('fr-FR')}`,
+        description: description || 'Vidéo enregistrée depuis la caméra',
         storage_path: filePath, // Utiliser storage_path pour le chemin interne
-        video_url: urlData.publicUrl, // Utiliser video_url pour l\'URL publique
+        video_url: urlData.publicUrl, // Utiliser video_url pour l'URL publique
         file_size_bytes: recordedVideo.blob.size, // Nouvelle colonne
         duration_seconds: Math.round(recordingTime), // Nouvelle colonne
         video_format: recordedVideo.format, // Nouvelle colonne
@@ -682,7 +682,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         // Les champs tone_analysis et profile_information seront mis à jour par les Edge Functions.
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
-        // Ajouter portfolio_id et prompt_id si l\'intégration du portfolio est active
+        // Ajouter portfolio_id et prompt_id si l'intégration du portfolio est active
         // portfolio_id: selectedPortfolioId,
         // prompt_id: selectedPromptId,
       };
@@ -745,7 +745,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
       }
       
       setError(errorMessage);
-      toast.error('❌ Échec de l\'upload');
+      toast.error('❌ Échec de l'upload');
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -795,7 +795,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         } else if (error.message.includes('timeout') || error.message.includes('abort')) {
           errorMessage = 'Timeout - le serveur met trop de temps à répondre';
         } else if (error.message.includes('auth') || error.message.includes('token')) {
-          errorMessage = 'Erreur d\'authentification - reconnexion nécessaire';
+          errorMessage = 'Erreur d'authentification - reconnexion nécessaire';
         }
         
         throw new Error(errorMessage);
@@ -1220,7 +1220,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
                   {analysisProgress === VIDEO_STATUS.FAILED && (
                     <div className="mt-3 p-3 bg-red-900/30 rounded-lg border border-red-700">
                       <p className="text-red-300 text-sm">
-                        {error || 'Une erreur est survenue lors de l\'analyse. Veuillez réessayer.'}
+                        {error || 'Une erreur est survenue lors de l'analyse. Veuillez réessayer.'}
                       </p>
                       <Button 
                         onClick={retryRecording}
