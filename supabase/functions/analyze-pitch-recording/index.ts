@@ -396,7 +396,7 @@ Deno.serve(async (req: Request) => {
     // Handle CORS preflight
     if (req.method === "OPTIONS") {
       return new Response(null, {
-        status: 204, // ✅ Changé de 200 à 204 pour la conformité CORS
+        status: 200, // ✅ Changed from 204 to 200
         headers: {
           "Content-Type": "application/json",
           "Access-Control-Allow-Origin": "*",
