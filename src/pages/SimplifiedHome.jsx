@@ -26,6 +26,7 @@ import SoftPowerPassions from "../components/SoftPowerPassions.jsx";
 import PitchRecording from "../components/PitchRecording.jsx";
 import FootballChatModal from "../components/FootballChatModal.jsx";
 import QuickActions from "../components/QuickActions.jsx";
+import GenupPortfolioPage from "./genupPortfolioPage.jsx";
 
 // ✅ Navigation simplifiée complète
 const simplifiedTabs = [
@@ -51,24 +52,31 @@ const simplifiedTabs = [
     description: "Voir mes statistiques",
   },
   {
+    id: "genup-portfolio",
+    name: "📚 Portfolio GENUP",
+    icon: "📚",
+    priority: 4,
+    description: "Votre journal de transformation personnel",
+  },
+  {
     id: "profile",
     name: "👤 Profil",
     icon: "👤",
-    priority: 4,
+    priority: 5,
     description: "Gérer mon compte",
   },
   {
     id: "community",
     name: "👥 Communauté",
     icon: "👥",
-    priority: 5,
+    priority: 6,
     description: "Trouver des synergies",
   },
   {
     id: "more",
     name: "☰",
     icon: "☰",
-    priority: 6,
+    priority: 7,
     description: "Autres fonctionnalités",
   },
 ];
@@ -301,202 +309,29 @@ export default function SimplifiedHome({
           </div>
         );
 
-      case "immersion":
-        return (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">🎮 Préparation & Immersion</h2>
-              <div className="flex gap-2">
-                <Button variant={activeImmersionTab === "parcours" ? "default" : "outline"} onClick={() => setActiveImmersionTab("parcours")} className="btn-spotbulle-dark">
-                  🧭 Parcours
-                </Button>
-                <Button variant={activeImmersionTab === "scenarios" ? "default" : "outline"} onClick={() => setActiveImmersionTab("scenarios")} className="btn-spotbulle-dark">
-                  🎬 Scénarios
-                </Button>
-                <Button onClick={() => setActiveSubTab("main")} variant="outline" className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700">
-                  ← Retour
-                </Button>
-              </div>
-            </div>
-            {renderImmersionContent()}
-          </div>
-        );
-
-      case "pitchrecording":
-        return (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">🎤 Pitch Recording</h2>
-              <Button onClick={() => setActiveSubTab("main")} variant="outline" className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700">
-                ← Retour
-              </Button>
-            </div>
-            <PitchRecording user={user} profile={profile} />
-          </div>
-        );
-
-      case "softpower":
-        return (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">🌟 Soft Power Passions</h2>
-              <Button onClick={() => setActiveSubTab("main")} variant="outline" className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700">
-                ← Retour
-              </Button>
-            </div>
-            <SoftPowerPassions user={user} profile={profile} />
-          </div>
-        );
-
-      case "personas":
-        return (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">🎭 Personas & Modèle M/T</h2>
-              <Button onClick={() => setActiveSubTab("main")} variant="outline" className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700">
-                ← Retour
-              </Button>
-            </div>
-            <PersonasSelector user={user} profile={profile} />
-          </div>
-        );
-
-      case "language":
-        return (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">🌐 Sélection de la Langue</h2>
-              <Button onClick={() => setActiveSubTab("main")} variant="outline" className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700">
-                ← Retour
-              </Button>
-            </div>
-            <LanguageSelector 
-              selectedLanguage={selectedLanguage} 
-              onLanguageChange={handleLanguageChange} 
-              showAutoDetect={true} 
-            />
-          </div>
-        );
-
       default:
         return (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">➕ Fonctionnalités Avancées</h2>
-              <Button onClick={() => setActiveTab("record")} className="bg-blue-600 hover:bg-blue-700 text-white">
-                🎥 Nouvelle Vidéo
-              </Button>
-            </div>
-
+          <div className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* Cartes existantes */}
               <div
                 onClick={() => setActiveSubTab("seminars")}
-                className="bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
+                className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
               >
                 <div className="text-3xl mb-3">🎓</div>
                 <h3 className="text-xl font-bold mb-2">Séminaires</h3>
                 <p className="text-white/90 text-sm">
-                  Formations et ateliers pour développer vos compétences
+                  Accédez à vos formations et contenus pédagogiques
                 </p>
               </div>
 
               <div
                 onClick={() => setActiveSubTab("certification")}
-                className="bg-gradient-to-br from-green-600 to-green-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
+                className="bg-gradient-to-br from-purple-600 to-pink-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
               >
                 <div className="text-3xl mb-3">🏆</div>
                 <h3 className="text-xl font-bold mb-2">Certification</h3>
                 <p className="text-white/90 text-sm">
-                  Obtenez votre certification en expression orale
-                </p>
-              </div>
-
-              <div
-                onClick={() => setActiveSubTab("immersion")}
-                className="bg-gradient-to-br from-orange-600 to-orange-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
-              >
-                <div className="text-3xl mb-3">🎮</div>
-                <h3 className="text-xl font-bold mb-2">Préparation</h3>
-                <p className="text-white/90 text-sm">
-                  Exercices d'immersion et scénarios guidés
-                </p>
-              </div>
-
-              <div
-                onClick={() => setActiveTab("community")}
-                className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
-              >
-                <div className="text-3xl mb-3">👥</div>
-                <h3 className="text-xl font-bold mb-2">Communauté</h3>
-                <p className="text-white/90 text-sm">
-                  Rencontrez d'autres passionnés
-                </p>
-              </div>
-
-              <div
-                onClick={() => setShowQuestionnaire(true)}
-                className="bg-gradient-to-br from-pink-600 to-pink-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
-              >
-                <div className="text-3xl mb-3">🎨</div>
-                <h3 className="text-xl font-bold mb-2">Test Personnalité</h3>
-                <p className="text-white/90 text-sm">
-                  Découvrez votre profil unique
-                </p>
-              </div>
-
-              <div
-                onClick={() => setActiveSubTab("language")}
-                className="bg-gradient-to-br from-cyan-600 to-cyan-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
-              >
-                <div className="text-3xl mb-3">🌐</div>
-                <h3 className="text-xl font-bold mb-2">Langues</h3>
-                <p className="text-white/90 text-sm">
-                  Sélectionnez votre langue de transcription
-                </p>
-              </div>
-
-              <div
-                onClick={() => setActiveSubTab("personas")}
-                className="bg-gradient-to-br from-red-600 to-red-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
-              >
-                <div className="text-3xl mb-3">🎭</div>
-                <h3 className="text-xl font-bold mb-2">Personas & Modèle M/T</h3>
-                <p className="text-white/90 text-sm">
-                  Configurez votre assistant Estelle (Personas, Modèle M/T)
-                </p>
-              </div>
-
-              <div
-                onClick={() => setActiveSubTab("softpower")}
-                className="bg-gradient-to-br from-yellow-600 to-yellow-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
-              >
-                <div className="text-3xl mb-3">🌟</div>
-                <h3 className="text-xl font-bold mb-2">Soft Power Passions</h3>
-                <p className="text-white/90 text-sm">
-                  Découvrez et exprimez vos passions
-                </p>
-              </div>
-
-              <div
-                onClick={() => setActiveSubTab("pitchrecording")}
-                className="bg-gradient-to-br from-teal-600 to-teal-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
-              >
-                <div className="text-3xl mb-3">🎤</div>
-                <h3 className="text-xl font-bold mb-2">Pitch Recording</h3>
-                <p className="text-white/90 text-sm">
-                  Enregistrez et analysez votre pitch de présentation
-                </p>
-              </div>
-
-              <div
-                onClick={() => navigate("/future-jobs-generator")}
-                className="bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
-              >
-                <div className="text-3xl mb-3">🚀</div>
-                <h3 className="text-xl font-bold mb-2">Métiers du Futur</h3>
-                <p className="text-white/90 text-sm">
-                  Générez des vidéos sur les métiers du futur
+                  Validez vos acquis et obtenez votre certification
                 </p>
               </div>
 
@@ -508,17 +343,6 @@ export default function SimplifiedHome({
                 <h3 className="text-xl font-bold mb-2">Tendances</h3>
                 <p className="text-white/90 text-sm">
                   Visualisez les tendances du marché de l'emploi
-                </p>
-              </div>
-
-              <div
-                onClick={() => navigate("/genup-portfolio")}
-                className="bg-gradient-to-br from-emerald-600 to-teal-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
-              >
-                <div className="text-3xl mb-3">📚</div>
-                <h3 className="text-xl font-bold mb-2">Portfolio GENUP</h3>
-                <p className="text-white/90 text-sm">
-                  Votre journal de transformation personnel
                 </p>
               </div>
             </div>
@@ -756,6 +580,26 @@ export default function SimplifiedHome({
           </div>
         );
 
+      case "genup-portfolio":
+        return (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-french font-bold text-white">
+                📚 Portfolio GENUP
+              </h2>
+              <Button
+                onClick={() => setActiveTab("record")}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                🎥 Nouvelle Vidéo
+              </Button>
+            </div>
+            <div className="bg-gray-800/50 rounded-xl p-1 border border-gray-700">
+              <GenupPortfolioPage />
+            </div>
+          </div>
+        );
+
       case "profile":
         return (
           <div className="space-y-6">
@@ -776,14 +620,7 @@ export default function SimplifiedHome({
                       variant="outline"
                       className="flex items-center gap-2 border-red-400 text-red-300 hover:bg-red-900"
                     >
-                      🔄 Regénérer le DISC
-                    </Button>
-                    <Button
-                      onClick={() => setActiveTab("dashboard")}
-                      variant="outline"
-                      className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700"
-                    >
-                      ← Retour
+                      🔄 Régénérer mon DISC
                     </Button>
                   </div>
             </div>
@@ -803,11 +640,15 @@ export default function SimplifiedHome({
 
       default:
         return (
-          <RecordVideo
-            user={user}
-            onVideoUploaded={handleVideoUploaded}
-            selectedLanguage={selectedLanguage}
-          />
+          <div className="text-center py-12">
+            <h2 className="text-2xl font-bold text-white">Onglet non trouvé</h2>
+            <Button
+              onClick={() => setActiveTab("record")}
+              className="mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Retour à l'accueil
+            </Button>
+          </div>
         );
     }
   };
@@ -819,6 +660,7 @@ export default function SimplifiedHome({
         profile={profile}
         connectionStatus={connectionStatus}
         onSignOut={onSignOut}
+        onAuthModalOpen={() => {}}
         currentSection={activeTab}
         welcomeTitle={`🎯 Bienvenue${
           profile?.full_name ? `, ${profile.full_name}` : ""
@@ -841,12 +683,13 @@ export default function SimplifiedHome({
               <Button
                 onClick={() => {
                   setAppError(null);
+                  setRefreshKey((p) => p + 1);
                 }}
                 variant="outline"
                 size="sm"
-                className="border-red-600 text-red-300 hover:bg-red-800"
+                className="border-red-700 text-red-300 hover:bg-red-900/50"
               >
-                ×
+                Réessayer
               </Button>
             </div>
           </div>
