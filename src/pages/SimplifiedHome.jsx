@@ -66,7 +66,7 @@ const simplifiedTabs = [
   },
   {
     id: "more",
-    name: "☰ Spotplus",
+    name: "☰",
     icon: "☰",
     priority: 6,
     description: "Autres fonctionnalités",
@@ -508,6 +508,17 @@ export default function SimplifiedHome({
                 <h3 className="text-xl font-bold mb-2">Tendances</h3>
                 <p className="text-white/90 text-sm">
                   Visualisez les tendances du marché de l'emploi
+                </p>
+              </div>
+
+              <div
+                onClick={() => navigate("/genup-portfolio")}
+                className="bg-gradient-to-br from-emerald-600 to-teal-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
+              >
+                <div className="text-3xl mb-3">📚</div>
+                <h3 className="text-xl font-bold mb-2">Portfolio GENUP</h3>
+                <p className="text-white/90 text-sm">
+                  Votre journal de transformation personnel
                 </p>
               </div>
             </div>

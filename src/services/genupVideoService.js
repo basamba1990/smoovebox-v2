@@ -36,8 +36,10 @@ export async function saveGenupVideo(videoData) {
         session_id: videoData.sessionId,
         storage_path: videoData.storagePath,
         public_url: videoData.publicUrl,
+        video_url: videoData.publicUrl, // AJOUT : pour compatibilité
         status: 'pending',
         metadata: videoData.metadata || {},
+        language: 'fr' // AJOUT : pour compatibilité
       })
       .select()
       .single();

@@ -672,6 +672,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         file_path: filePath,
         storage_path: filePath,
         file_size: recordedVideo.blob.size,
+        size: recordedVideo.blob.size, // AJOUT : pour compatibilité
         duration: Math.round(recordingTime),
         user_id: user.id,
         status: VIDEO_STATUS.UPLOADED,
@@ -682,6 +683,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         tone_analysis: toneAnalysis,
         tags: tags,
         transcription_language: selectedLanguage,
+        language: selectedLanguage || 'fr', // AJOUT : pour compatibilité
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
