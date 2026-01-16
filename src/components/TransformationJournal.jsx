@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useTransformationSession } from '../hooks/useTransformationSession';
+import { futureJobsVideoService } from '../services/futureJobsVideoService';
+import { toast } from 'react-hot-toast';
+import { Download, Eye, Play } from 'lucide-react';
 
 /**
  * Composant pour afficher le journal de transformation GENUP
@@ -183,19 +186,33 @@ export default function TransformationJournal({ sessionId }) {
                   </div>
                 </div>
 
-                {/* Bouton de lecture */}
-                {video.public_url && (
-                  <div className="flex-shrink-0">
-                    <a
-                      href={video.public_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-700 transition-colors"
-                    >
-                      <span className="text-white">▶</span>
-                    </a>
-                  </div>
-                )}
+                {/* Actions */}
+                <div className="flex flex-col gap-2">
+                  {(video.public_url || video.video_url || video.url) && (
+                    <>
+                      <a
+                        href={video.public_url || video.video_url || video.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-700 transition-colors"
+                        title="Voir la vidéo"
+                      >
+                        <Eye size={18} className="text-white" />
+                      </a>
+                      <button
+                        onClick={async () => {
+                          const res = await futureJobsVideoService.downloadVideo(video);
+                          if (res.success) toast.success('Téléchargement lancé');
+                          else toast.error('Erreur de téléchargement');
+                        }}
+                        className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-green-600 hover:bg-green-700 transition-colors"
+                        title="Télécharger"
+                      >
+                        <Download size={18} className="text-white" />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           ))}
