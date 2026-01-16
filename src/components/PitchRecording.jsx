@@ -1,13 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { saveGenupVideo } from '../services/genupVideoService'
 import { v4 as uuidv4 } from 'uuid'
 
 /**
- * VERSION AUGMENTÉE : Portfolio Vidéo GENUP
- * Restaure l'intégralité de la logique visuelle originale (600+ lignes)
- * tout en intégrant le support VIDÉO complet.
+ * VERSION CORRIGÉE : Portfolio Vidéo GENUP
+ * Intègre l'initialisation automatique de la caméra et la gestion robuste du flux.
  */
 export default function PitchRecording({ videoType = 'pitch', sessionId, onVideoRecorded, user }) {
   const [recordingState, setRecordingState] = useState('idle')
@@ -30,9 +29,53 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
   const timerRef = useRef(null)
 
   /**
-   * Nettoie les ressources
+   * Démarre la caméra pour la prévisualisation
+   * Mémorisé avec useCallback pour éviter les re-créations inutiles
+   */
+  const startCamera = useCallback(async () => {
+    try {
+      setError(null)
+      setRecordingState('loading_camera')
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          width: { ideal: 1280 }, 
+          height: { ideal: 720 }, 
+          facingMode: 'user' 
+        },
+        audio: { 
+          echoCancellation: true, 
+          noiseSuppression: true 
+        } 
+      })
+      
+      streamRef.current = stream
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        // S'assurer que la vidéo joue bien
+        try {
+          await videoRef.current.play()
+        } catch (playErr) {
+          console.warn("Auto-play bloqué ou échoué:", playErr)
+        }
+      }
+      
+      setRecordingState('preview')
+    } catch (err) {
+      console.error('Erreur caméra:', err)
+      setError(`Erreur d'accès à la caméra: ${err.message}. Veuillez vérifier les permissions de votre navigateur.`)
+      setRecordingState('idle')
+    }
+  }, [])
+
+  /**
+   * Initialisation automatique au montage du composant
    */
   useEffect(() => {
+    startCamera()
+
+    // Nettoyage des ressources au démontage
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop())
@@ -44,7 +87,7 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
         URL.revokeObjectURL(previewUrl)
       }
     }
-  }, [previewUrl])
+  }, [startCamera])
 
   /**
    * Récupère le token d'authentification
@@ -60,31 +103,13 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
   }
 
   /**
-   * Démarre la caméra pour la prévisualisation
-   */
-  const startCamera = async () => {
-    try {
-      setError(null)
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { width: 1280, height: 720, facingMode: 'user' },
-        audio: { echoCancellation: true, noiseSuppression: true } 
-      })
-      streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-      }
-      setRecordingState('preview')
-    } catch (err) {
-      console.error('Erreur caméra:', err)
-      setError(`Erreur d'accès à la caméra: ${err.message}. Vérifiez les permissions.`)
-    }
-  }
-
-  /**
    * Démarre l'enregistrement vidéo
    */
   const startRecording = () => {
-    if (!streamRef.current) return
+    if (!streamRef.current) {
+      startCamera()
+      return
+    }
 
     try {
       setError(null)
@@ -93,7 +118,12 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
       setFeedback(null)
       setHasAnalyzed(false)
 
-      const options = { mimeType: 'video/webm;codecs=vp8,opus' }
+      // Vérification des types supportés
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') 
+        ? 'video/webm;codecs=vp8,opus' 
+        : 'video/webm'
+        
+      const options = { mimeType }
       const mediaRecorder = new MediaRecorder(streamRef.current, options)
       mediaRecorderRef.current = mediaRecorder
       chunksRef.current = []
@@ -255,7 +285,7 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-6xl mx-auto">
-        {/* Header identique à l'original */}
+        {/* Header */}
         <div className="mb-12">
           <button 
             onClick={goBack}
@@ -289,25 +319,35 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
         </div>
 
         {/* Zone d'enregistrement / Prévisualisation */}
-        {(recordingState === 'idle' || recordingState === 'preview' || recordingState === 'recording' || recordingState === 'processing') && (
+        {(recordingState === 'idle' || recordingState === 'loading_camera' || recordingState === 'preview' || recordingState === 'recording' || recordingState === 'processing') && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
             <div className="lg:col-span-2">
               <div className="relative aspect-video bg-slate-800 rounded-3xl overflow-hidden border-4 border-slate-700 shadow-2xl group">
                 {recordingState === 'processing' && previewUrl ? (
                   <video src={previewUrl} controls className="w-full h-full object-cover" />
                 ) : (
-                  <video 
-                    ref={videoRef} 
-                    autoPlay 
-                    muted 
-                    playsInline 
-                    className={`w-full h-full object-cover ${recordingState !== 'processing' ? 'mirror' : ''}`} 
-                  />
+                  <>
+                    <video 
+                      ref={videoRef} 
+                      autoPlay 
+                      muted 
+                      playsInline 
+                      className={`w-full h-full object-cover ${recordingState !== 'processing' ? 'scale-x-[-1]' : ''}`} 
+                    />
+                    {recordingState === 'loading_camera' && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/80">
+                        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500/30 border-t-blue-500 mb-4"></div>
+                        <p className="text-blue-400 font-medium">Activation de la caméra...</p>
+                      </div>
+                    )}
+                  </>
                 )}
                 
                 {recordingState === 'preview' && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <p className="text-white font-bold text-xl">Prêt à enregistrer</p>
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none">
+                    <div className="bg-blue-500/20 backdrop-blur-sm px-6 py-2 rounded-full border border-blue-500/30">
+                      <p className="text-white font-bold">Caméra active - Prêt à enregistrer</p>
+                    </div>
                   </div>
                 )}
               </div>
@@ -335,10 +375,11 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
               </div>
 
               <div className="flex flex-col gap-4">
-                {recordingState === 'preview' && (
+                {(recordingState === 'preview' || recordingState === 'loading_camera') && (
                   <button
                     onClick={startRecording}
-                    className="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white font-bold py-5 rounded-2xl transition-all transform hover:scale-[1.02] shadow-xl flex items-center justify-center gap-3"
+                    disabled={recordingState === 'loading_camera'}
+                    className="w-full bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white font-bold py-5 rounded-2xl transition-all transform hover:scale-[1.02] shadow-xl flex items-center justify-center gap-3 disabled:opacity-50"
                   >
                     <div className="w-4 h-4 bg-white rounded-full"></div>
                     Démarrer l'enregistrement
@@ -380,7 +421,7 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
           </div>
         )}
 
-        {/* Résultats de l'analyse (Restauration de la richesse visuelle originale) */}
+        {/* Résultats de l'analyse */}
         {recordingState === 'completed' && analysis && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
