@@ -101,5 +101,33 @@ export const futureJobsVideoService = {
         videos: []
       };
     }
+  },
+
+  /**
+   * Télécharge une vidéo
+   */
+  async downloadVideo(video) {
+    try {
+      const url = video.url || video.public_url || video.video_url;
+      if (!url) throw new Error("URL de vidéo manquante");
+
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      const fileName = video.title ? `${video.title.replace(/\s+/g, '_')}.mp4` : `video_${video.id.substring(0, 8)}.mp4`;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+
+      return { success: true, fileName };
+    } catch (error) {
+      console.error("Erreur téléchargement:", error);
+      return { success: false, error: error.message };
+    }
   }
 };

@@ -676,16 +676,25 @@ export default function FutureJobsGenerator() {
                           )}
                         </div>
                         <div className="flex gap-2 ml-4">
-                          {(video.url || video.public_url || video.video_url) && (
-                            <a
-                              href={video.url || video.public_url || video.video_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded flex items-center gap-1"
-                            >
-                              <Eye size={14} />
-                              Voir
-                            </a>
+                          {(video.url || video.public_url || video.video_url || video.status === 'ready' || video.status === 'transcribed') && (
+                            <div className="flex gap-2">
+                              <a
+                                href={video.url || video.public_url || video.video_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded flex items-center gap-1"
+                              >
+                                <Eye size={14} />
+                                Voir
+                              </a>
+                              <button
+                                onClick={() => futureJobsVideoService.downloadVideo(video)}
+                                className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded flex items-center gap-1"
+                              >
+                                <Download size={14} />
+                                Télécharger
+                              </button>
+                            </div>
                           )}
                           {video.status === 'generating' && (
                             <button
