@@ -20,12 +20,12 @@ const HOBBIES = [
   { name: "Basketball", emoji: "🏀", color: "orange" },
 ];
 
-// DISC Color to Element mapping (same as in lumi-onboarding.jsx)
+// DISC Color to Element mapping (same as in lumi-onboarding.jsx, without animals)
 const DISC_ELEMENTS = {
-  'rouge': { elementFr: 'Feu', icon: '🔥', animalFr: 'Lion', animalEmoji: '🦁' },
-  'jaune': { elementFr: 'Air', icon: '🌬️', animalFr: 'Perroquet', animalEmoji: '🦜' },
-  'vert': { elementFr: 'Terre', icon: '🌱', animalFr: 'Cerf', animalEmoji: '🦌' },
-  'bleu': { elementFr: 'Eau', icon: '💧', animalFr: 'Hibou', animalEmoji: '🦉' }
+  'rouge': { elementFr: 'Feu', icon: '🔥' },
+  'jaune': { elementFr: 'Air', icon: '🌬️' },
+  'vert': { elementFr: 'Terre', icon: '🌱' },
+  'bleu': { elementFr: 'Eau', icon: '💧' }
 };
 
 export default function HobbyFlow({ computedProfile, ageRange }) {
@@ -343,7 +343,7 @@ export default function HobbyFlow({ computedProfile, ageRange }) {
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-lg">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
                     <span className="text-sm text-slate-400">
-                      Énergie {DISC_ELEMENTS[computedProfile.dominant_color].elementFr} • Esprit {DISC_ELEMENTS[computedProfile.dominant_color].animalEmoji} {DISC_ELEMENTS[computedProfile.dominant_color].animalFr}
+                      Énergie {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
                     </span>
                   </div>
                 )}
@@ -413,4 +413,5 @@ export default function HobbyFlow({ computedProfile, ageRange }) {
     </>
   );
 }
+
 
