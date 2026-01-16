@@ -10,8 +10,8 @@ import { useAuth } from '../context/AuthContext';
  * Page principale du Portfolio Vidéo GENUP
  * Permet de :
  * 1. Créer une nouvelle session de transformation
- * 2. Sélectionner le type de vidéo
- * 3. Enregistrer une vidéo
+ * 2. Sélectionner le type de vidéo (Pitch, Réflexion, Trace d'action)
+ * 3. Enregistrer un audio/vidéo
  * 4. Visualiser le journal de transformation
  */
 export default function GenupPortfolioPage() {
@@ -47,11 +47,11 @@ export default function GenupPortfolioPage() {
 
   const handleVideoRecorded = () => {
     setVideoRecorded(true);
-    // Retourner à la vue du journal après un délai
+    // Retourner à la vue du journal après un délai pour laisser l'utilisateur voir le succès
     setTimeout(() => {
       setCurrentStep('view-journal');
       setVideoRecorded(false);
-    }, 2000);
+    }, 3000);
   };
 
   const handleBackToJournal = () => {
@@ -78,7 +78,7 @@ export default function GenupPortfolioPage() {
           </button>
 
           <h1 className="text-4xl font-bold mb-2">
-            📚 Portfolio Vidéo GENUP
+            📚 Portfolio GENUP
           </h1>
           <p className="text-gray-400 text-lg">
             Votre journal de transformation personnel. Documentez votre évolution à travers des vidéos, réflexions et actions.
@@ -86,7 +86,7 @@ export default function GenupPortfolioPage() {
         </div>
 
         {/* Contenu principal */}
-        {currentStep === 'view-journal' && sessionId && (
+        {currentStep === 'view-journal' && (
           <div>
             <div className="mb-8 flex justify-between items-center">
               <h2 className="text-2xl font-bold">Journal de Transformation</h2>
@@ -95,29 +95,26 @@ export default function GenupPortfolioPage() {
                 disabled={sessionLoading}
                 className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition-colors"
               >
-                {sessionLoading ? '⏳ Chargement...' : '+ Ajouter une vidéo'}
+                {sessionLoading ? '⏳ Chargement...' : '+ Ajouter un enregistrement'}
               </button>
             </div>
-            <TransformationJournal sessionId={sessionId} />
-          </div>
-        )}
-
-        {currentStep === 'view-journal' && !sessionId && (
-          <div className="bg-slate-700 rounded-lg p-12 text-center">
-            <div className="mb-6">
-              <div className="text-6xl mb-4">🚀</div>
-              <h2 className="text-2xl font-bold mb-2">Commencez votre parcours de transformation</h2>
-              <p className="text-gray-400 mb-8">
-                Créez une nouvelle session pour documenter votre évolution personnelle et professionnelle.
-              </p>
-            </div>
-            <button
-              onClick={handleStartNewVideo}
-              disabled={sessionLoading}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white font-bold py-3 px-8 rounded-lg transition-colors text-lg"
-            >
-              {sessionLoading ? '⏳ Création en cours...' : 'Créer une nouvelle session'}
-            </button>
+            {sessionId ? (
+              <TransformationJournal sessionId={sessionId} />
+            ) : (
+              <div className="bg-slate-800 rounded-lg p-12 text-center border border-slate-700">
+                <div className="text-6xl mb-4">🚀</div>
+                <h2 className="text-2xl font-bold mb-2">Commencez votre parcours</h2>
+                <p className="text-gray-400 mb-8">
+                  Créez votre première session pour documenter votre évolution.
+                </p>
+                <button
+                  onClick={handleStartNewVideo}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg transition-colors"
+                >
+                  Démarrer maintenant
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -154,6 +151,7 @@ export default function GenupPortfolioPage() {
               videoType={selectedVideoType}
               sessionId={sessionId}
               onVideoRecorded={handleVideoRecorded}
+              user={user}
             />
           </div>
         )}
