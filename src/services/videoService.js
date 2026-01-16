@@ -141,9 +141,16 @@ export const videoService = {
           user_id: userId,
           title: metadata.title || 'Untitled Video',
           description: metadata.description || '',
-          file_path: filePath,
-          public_url: publicUrl,
+          storage_path: filePath, // Utiliser storage_path
+          video_url: publicUrl, // Utiliser video_url
+          file_size_bytes: blob.size, // Nouvelle colonne
+          duration_seconds: metadata.duration, // Assumer que la durée est passée en metadata
+          video_format: blob.type.split('/')[1] || 'mp4', // Nouvelle colonne
           status: 'uploaded',
+          tags: metadata.tags || [], // Nouvelle colonne
+          use_avatar: metadata.useAvatar || false, // Nouvelle colonne
+          // Les champs transcription_text, analysis, ai_score, profile_information, error_message
+          // seront mis à jour par les Edge Functions.
         })
         .select()
         .single();

@@ -25,15 +25,12 @@ const AGE_RANGES = [
   { value: "46+", label: "46 ans et plus" },
 ];
 
-// DISC Color to Element and Spirit Animal mapping
+// DISC Color to Element mapping
 const DISC_ELEMENTS = {
   'rouge': {
     element: 'Fire',
     elementFr: 'Feu',
     icon: '🔥',
-    animal: 'Lion',
-    animalFr: 'Lion',
-    animalEmoji: '🦁',
     description: 'You are Fire: direct, driven, and action-oriented. You move fast, take decisions, and push things forward.',
     descriptionFr: 'Tu es Feu : direct, déterminé et orienté action. Tu agis vite, prends des décisions et fais avancer les choses.',
     colorClass: 'from-red-500/20 to-red-600/10',
@@ -44,9 +41,6 @@ const DISC_ELEMENTS = {
     element: 'Air',
     elementFr: 'Air',
     icon: '🌬️',
-    animal: 'Parrot',
-    animalFr: 'Perroquet',
-    animalEmoji: '🦜',
     description: 'You are Air: creative, communicative, and full of ideas. You bring innovation, connect people, and keep the energy high.',
     descriptionFr: 'Tu es Air : créatif, communicatif et plein d\'idées. Tu apportes l\'innovation, connectes les gens et maintiens l\'énergie.',
     colorClass: 'from-yellow-500/20 to-yellow-600/10',
@@ -57,9 +51,6 @@ const DISC_ELEMENTS = {
     element: 'Earth',
     elementFr: 'Terre',
     icon: '🌱',
-    animal: 'Deer',
-    animalFr: 'Cerf',
-    animalEmoji: '🦌',
     description: 'You are Earth: stable, supportive, and harmonious. You bring calm, loyalty, and team spirit.',
     descriptionFr: 'Tu es Terre : stable, solidaire et harmonieux. Tu apportes le calme, la loyauté et l\'esprit d\'équipe.',
     colorClass: 'from-green-500/20 to-green-600/10',
@@ -70,9 +61,6 @@ const DISC_ELEMENTS = {
     element: 'Water',
     elementFr: 'Eau',
     icon: '💧',
-    animal: 'Owl',
-    animalFr: 'Hibou',
-    animalEmoji: '🦉',
     description: 'You are Water: analytical, deep, and precise. You think before acting, go deep, and bring structure.',
     descriptionFr: 'Tu es Eau : analytique, profond et précis. Tu réfléchis avant d\'agir, vas en profondeur et apportes la structure.',
     colorClass: 'from-blue-500/20 to-blue-600/10',
@@ -337,14 +325,14 @@ export default function LumiOnboarding() {
                            </p>
                          </div>
                        </div>
-                       <div className="mt-3 pt-3 border-t border-slate-700/50">
-                         <p className={`text-sm font-semibold ${DISC_ELEMENTS[computedProfile.dominant_color].textClass} mb-1`}>
-                           {DISC_ELEMENTS[computedProfile.dominant_color].icon} {DISC_ELEMENTS[computedProfile.dominant_color].elementFr} • {DISC_ELEMENTS[computedProfile.dominant_color].animalFr}
-                         </p>
-                         <p className="text-xs text-slate-300">
-                           {DISC_ELEMENTS[computedProfile.dominant_color].descriptionFr}
-                         </p>
-                       </div>
+                      <div className="mt-3 pt-3 border-t border-slate-700/50">
+                        <p className={`text-sm font-semibold ${DISC_ELEMENTS[computedProfile.dominant_color].textClass} mb-1`}>
+                          {DISC_ELEMENTS[computedProfile.dominant_color].icon} {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
+                        </p>
+                        <p className="text-xs text-slate-300">
+                          {DISC_ELEMENTS[computedProfile.dominant_color].descriptionFr}
+                        </p>
+                      </div>
                      </div>
                    )}
                    
@@ -360,14 +348,14 @@ export default function LumiOnboarding() {
                            </p>
                          </div>
                        </div>
-                       <div className="mt-3 pt-3 border-t border-slate-700/50">
-                         <p className={`text-sm font-semibold ${DISC_ELEMENTS[computedProfile.secondary_color].textClass} mb-1`}>
-                           {DISC_ELEMENTS[computedProfile.secondary_color].icon} {DISC_ELEMENTS[computedProfile.secondary_color].elementFr} • {DISC_ELEMENTS[computedProfile.secondary_color].animalFr}
-                         </p>
-                         <p className="text-xs text-slate-300">
-                           {DISC_ELEMENTS[computedProfile.secondary_color].descriptionFr}
-                         </p>
-                       </div>
+                      <div className="mt-3 pt-3 border-t border-slate-700/50">
+                        <p className={`text-sm font-semibold ${DISC_ELEMENTS[computedProfile.secondary_color].textClass} mb-1`}>
+                          {DISC_ELEMENTS[computedProfile.secondary_color].icon} {DISC_ELEMENTS[computedProfile.secondary_color].elementFr}
+                        </p>
+                        <p className="text-xs text-slate-300">
+                          {DISC_ELEMENTS[computedProfile.secondary_color].descriptionFr}
+                        </p>
+                      </div>
                      </div>
                    )}
                  </div>
@@ -400,17 +388,14 @@ export default function LumiOnboarding() {
                      {/* Combined Description with Element */}
                      {computedProfile.traits.combined_description && computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color] && (
                        <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.dominant_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.dominant_color].borderClass}`}>
-                         <div className="flex items-center gap-3 mb-3">
-                           <span className="text-4xl">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
-                           <div>
-                             <h3 className="text-lg font-semibold text-white">
-                               Ton Énergie Principale : {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
-                             </h3>
-                             <p className={`text-sm ${DISC_ELEMENTS[computedProfile.dominant_color].textClass}`}>
-                               Esprit {DISC_ELEMENTS[computedProfile.dominant_color].animalFr}
-                             </p>
-                           </div>
-                         </div>
+                      <div className="flex items-center gap-3 mb-3">
+                        <span className="text-4xl">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
+                        <div>
+                          <h3 className="text-lg font-semibold text-white">
+                            Ton Énergie Principale : {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
+                          </h3>
+                        </div>
+                      </div>
                          <p className="text-slate-200 leading-relaxed">
                            {computedProfile.traits.combined_description}
                          </p>
@@ -446,9 +431,7 @@ export default function LumiOnboarding() {
                            <p className="text-lg font-bold text-white">
                              {computedProfile.traits.dominant.name}
                            </p>
-                           <p className={`text-xs font-medium ${DISC_ELEMENTS[computedProfile.dominant_color].textClass} mb-2`}>
-                             {DISC_ELEMENTS[computedProfile.dominant_color].animalEmoji} Esprit {DISC_ELEMENTS[computedProfile.dominant_color].animalFr}
-                           </p>
+                          {/* Animal spirit removed */}
                            <p className="text-sm text-slate-300">
                              {computedProfile.traits.dominant.description}
                            </p>
@@ -495,9 +478,7 @@ export default function LumiOnboarding() {
                            <p className="text-lg font-bold text-white">
                              {computedProfile.traits.secondary.name}
                            </p>
-                           <p className={`text-xs font-medium ${DISC_ELEMENTS[computedProfile.secondary_color].textClass} mb-2`}>
-                             {DISC_ELEMENTS[computedProfile.secondary_color].animalEmoji} Esprit {DISC_ELEMENTS[computedProfile.secondary_color].animalFr}
-                           </p>
+                          {/* Animal spirit removed */}
                            <p className="text-sm text-slate-300">
                              {computedProfile.traits.secondary.description}
                            </p>
