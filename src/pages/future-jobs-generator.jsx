@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronDown, Copy, Download, Zap, Eye, Play, Loader2, CheckCircle, XCircle, RefreshCw, LogIn } from 'lucide-react';
+import { ChevronDown, Copy, Download, Zap, Eye, Play, Loader2, CheckCircle, XCircle, RefreshCw, LogIn, ArrowLeft } from 'lucide-react';
 import pinnPromptService from '../services/pinnPromptService';
 import { futureJobsVideoService } from '../services/futureJobsVideoService';
 import { useAuth } from '../context/AuthContext';
@@ -332,6 +332,15 @@ export default function FutureJobsGenerator() {
   return (
     <div className="future-jobs-container min-h-screen bg-slate-950 text-white p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
+        <div className="mb-6">
+          <button
+            onClick={() => window.history.back()}
+            className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors group"
+          >
+            <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+            <span>Retour</span>
+          </button>
+        </div>
         <header className="mb-12 text-center">
           <h1 className="text-4xl md:text-6xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500">
             Générateur de Métiers du Futur

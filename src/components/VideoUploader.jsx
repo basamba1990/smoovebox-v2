@@ -141,10 +141,12 @@ const VideoUploader = ({ onUploadComplete }) => {
             file_path: filePath,
             original_file_name: file.name,
             file_size: file.size,
+            size: file.size, // AJOUT : pour compatibilité
             format: fileExt,
             // Correction : Changer en 'processing' pour lancer le flux (transcription → analyse)
             status: 'processing',
-            storage_path: filePath
+            storage_path: filePath,
+            language: 'fr' // AJOUT : pour compatibilité
           }
         ])
         .select()

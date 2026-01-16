@@ -618,7 +618,49 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         .from('videos')
         .getPublicUrl(filePath);
 
-      console.log('🌐 URL publique:', publicUrl);
+      console.log('🔗 URL publique:', urlData.publicUrl);
+
+      // ✅ VÉRIFICATION CRITIQUE : Tester l'URL
+      try {
+        const urlCheck = await fetch(urlData.publicUrl, { method: 'HEAD' });
+        console.log('🔍 Vérification URL:', {
+          url: urlData.publicUrl,
+          status: urlCheck.status,
+          ok: urlCheck.ok
+        });
+        
+        if (!urlCheck.ok) {
+          throw new Error(`URL vidéo inaccessible: ${urlCheck.status}`);
+        }
+      } catch (urlError) {
+        console.error('❌ Erreur vérification URL:', urlError);
+        throw new Error(`URL vidéo invalide: ${urlError.message}`);
+      }
+
+      // 3. Structure de données compatible
+      const videoInsertData = {
+        title: title || `Vidéo ${new Date().toLocaleDateString('fr-FR')}`,
+        description: description || 'Vidéo enregistrée depuis la caméra',
+        file_path: filePath,
+        storage_path: filePath,
+        file_size: recordedVideo.blob.size,
+        size: recordedVideo.blob.size, // AJOUT : pour compatibilité
+        duration: Math.round(recordingTime),
+        user_id: user.id,
+        status: VIDEO_STATUS.UPLOADED,
+        use_avatar: useAvatar,
+        public_url: urlData.publicUrl,
+        video_url: urlData.publicUrl,
+        format: recordedVideo.format,
+        tone_analysis: toneAnalysis,
+        tags: tags,
+        transcription_language: selectedLanguage,
+        language: selectedLanguage || 'fr', // AJOUT : pour compatibilité
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      console.log('📝 Insertion en base:', videoInsertData);
 
       // 2. Enregistrer les métadonnées dans la base de données
       const { data: videoData, error: dbError } = await supabase
