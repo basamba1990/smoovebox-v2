@@ -20,7 +20,7 @@ import SeminarsList from "../components/SeminarsList.jsx";
 import Certification from "../components/Certification.jsx";
 import ImmersionSimulator from "../components/ImmersionSimulator.jsx";
 import ComplementaryMatches from "../components/ComplementaryMatches.jsx";
-import LanguageSelector from "../components/LanguageSelector.jsx"; // ✅ CORRECT
+import LanguageSelector from "../components/LanguageSelector.jsx";
 import PersonasSelector from "../components/PersonasSelector.jsx";
 import SoftPowerPassions from "../components/SoftPowerPassions.jsx";
 import PitchRecording from "../components/PitchRecording.jsx";
@@ -74,7 +74,7 @@ const simplifiedTabs = [
   },
   {
     id: "more",
-    name: "☰",
+    name: "☰ SpotPlus",
     icon: "☰",
     priority: 7,
     description: "Autres fonctionnalités",
@@ -300,7 +300,7 @@ export default function SimplifiedHome({
         return (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">🏆 Certification</h2>
+              <h2 className="text-2xl font-french font-bold text-white">🏆 Certifications</h2>
               <Button onClick={() => setActiveSubTab("main")} variant="outline" className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700">
                 ← Retour
               </Button>
@@ -309,29 +309,83 @@ export default function SimplifiedHome({
           </div>
         );
 
+      case "immersion":
+        return (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-french font-bold text-white">🎮 Simulateur d'Immersion</h2>
+              <Button onClick={() => setActiveSubTab("main")} variant="outline" className="flex items-center gap-2 border-gray-600 text-gray-300 hover:bg-gray-700">
+                ← Retour
+              </Button>
+            </div>
+            
+            <div className="flex gap-4 mb-6">
+              <Button 
+                onClick={() => setActiveImmersionTab("parcours")}
+                variant={activeImmersionTab === "parcours" ? "default" : "outline"}
+                className={activeImmersionTab === "parcours" ? "bg-blue-600" : "border-gray-600 text-gray-300"}
+              >
+                🚀 Parcours
+              </Button>
+              <Button 
+                onClick={() => setActiveImmersionTab("scenarios")}
+                variant={activeImmersionTab === "scenarios" ? "default" : "outline"}
+                className={activeImmersionTab === "scenarios" ? "bg-blue-600" : "border-gray-600 text-gray-300"}
+              >
+                🎬 Scénarios
+              </Button>
+            </div>
+
+            {renderImmersionContent()}
+          </div>
+        );
+
       default:
         return (
           <div className="space-y-8">
+            <h2 className="text-2xl font-french font-bold text-white">☰ Autres fonctionnalités</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div
+                onClick={() => setActiveSubTab("immersion")}
+                className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
+              >
+                <div className="text-3xl mb-3">🎮</div>
+                <h3 className="text-xl font-bold mb-2">Immersion</h3>
+                <p className="text-white/90 text-sm">
+                  Préparez-vous avec nos simulateurs et scénarios
+                </p>
+              </div>
+
+              <div
                 onClick={() => setActiveSubTab("seminars")}
-                className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
+                className="bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
               >
                 <div className="text-3xl mb-3">🎓</div>
                 <h3 className="text-xl font-bold mb-2">Séminaires</h3>
                 <p className="text-white/90 text-sm">
-                  Accédez à vos formations et contenus pédagogiques
+                  Accédez à nos formations et séminaires exclusifs
                 </p>
               </div>
 
               <div
                 onClick={() => setActiveSubTab("certification")}
-                className="bg-gradient-to-br from-purple-600 to-pink-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
+                className="bg-gradient-to-br from-green-600 to-green-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
               >
                 <div className="text-3xl mb-3">🏆</div>
-                <h3 className="text-xl font-bold mb-2">Certification</h3>
+                <h3 className="text-xl font-bold mb-2">Certifications</h3>
                 <p className="text-white/90 text-sm">
-                  Validez vos acquis et obtenez votre certification
+                  Gérez vos certifications et réussites
+                </p>
+              </div>
+
+              <div
+                onClick={() => navigate("/future-jobs-generator")}
+                className="bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-xl p-6 text-white cursor-pointer transform hover:scale-105 transition-all duration-300 shadow-lg"
+              >
+                <div className="text-3xl mb-3">🚀</div>
+                <h3 className="text-xl font-bold mb-2">Métiers du Futur</h3>
+                <p className="text-white/90 text-sm">
+                  Générez des vidéos sur les métiers du futur
                 </p>
               </div>
 
@@ -458,23 +512,7 @@ export default function SimplifiedHome({
         );
 
       default:
-        return (
-          <div className="text-center py-12">
-            <div className="text-6xl mb-4">🎮</div>
-            <h3 className="text-xl font-semibold text-white mb-2">
-              Module d'Immersion
-            </h3>
-            <p className="text-gray-300 mb-4">
-              Préparez-vous à l'enregistrement avec nos exercices d'immersion
-            </p>
-            <Button
-              onClick={() => setActiveImmersionTab("parcours")}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              Commencer l'immersion
-            </Button>
-          </div>
-        );
+        return null;
     }
   };
 
@@ -531,7 +569,7 @@ export default function SimplifiedHome({
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-french font-bold text-white">
-                📁 Mon Coffre-fort Vidéo testttttt
+                📁 Mon Coffre-fort Vidéo
               </h2>
               <Button
                 onClick={() => setActiveTab("record")}
