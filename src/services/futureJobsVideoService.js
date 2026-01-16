@@ -111,20 +111,37 @@ export const futureJobsVideoService = {
       const url = video.url || video.public_url || video.video_url;
       if (!url) throw new Error("URL de vidéo manquante");
 
-      const response = await fetch(url);
-      const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      
+      // Tentative de téléchargement direct via fetch (peut échouer à cause de CORS)
+      try {
+        const response = await fetch(url, { mode: 'cors' });
+        if (response.ok) {
+          const blob = await response.blob();
+          const blobUrl = window.URL.createObjectURL(blob);
+          
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          const fileName = video.title ? `${video.title.replace(/\s+/g, '_')}.mp4` : `video_${video.id.substring(0, 8)}.mp4`;
+          link.setAttribute('download', fileName);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+          return { success: true, fileName };
+        }
+      } catch (fetchErr) {
+        console.warn("Fetch direct échoué (CORS?), repli sur ouverture d'onglet:", fetchErr);
+      }
+
+      // Repli : ouvrir l'URL dans un nouvel onglet (le navigateur gérera le téléchargement si les headers Content-Disposition sont présents)
       const link = document.createElement('a');
-      link.href = blobUrl;
-      const fileName = video.title ? `${video.title.replace(/\s+/g, '_')}.mp4` : `video_${video.id.substring(0, 8)}.mp4`;
-      link.setAttribute('download', fileName);
+      link.href = url;
+      link.target = '_blank';
+      link.download = video.title ? `${video.title.replace(/\s+/g, '_')}.mp4` : `video_${video.id.substring(0, 8)}.mp4`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
 
-      return { success: true, fileName };
+      return { success: true, fileName: 'via_browser' };
     } catch (error) {
       console.error("Erreur téléchargement:", error);
       return { success: false, error: error.message };

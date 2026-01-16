@@ -177,11 +177,11 @@ export default function FutureJobsGenerator() {
       }
     } catch (error) {
       console.error('❌ Erreur génération vidéo:', error);
+      // Correction : s'assurer que videoError est un objet avec les bonnes propriétés
       setVideoError({
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        status: error.status
+        message: error.message || 'Erreur inconnue',
+        code: error.code || 'UNKNOWN_ERROR',
+        details: error.details || error.stack || ''
       });
       setGenerationStatus('❌ Erreur lors de la génération');
       
@@ -285,17 +285,18 @@ export default function FutureJobsGenerator() {
     }
   };
 
-  const handleDownloadVideo = async () => {
-    if (!videoResult) return;
+  const handleDownloadVideo = async (video = videoResult) => {
+    if (!video) return;
     
     try {
-      const result = await futureJobsVideoService.downloadVideo(videoResult);
+      const result = await futureJobsVideoService.downloadVideo(video);
       if (result.success) {
         toast.success(`Téléchargement de ${result.fileName} lancé !`);
       } else {
-        toast.error('Erreur lors du téléchargement');
+        toast.error('Erreur lors du téléchargement : ' + (result.error || 'Inconnu'));
       }
     } catch (error) {
+      console.error('Erreur téléchargement:', error);
       toast.error('Erreur lors du téléchargement');
     }
   };
@@ -688,7 +689,7 @@ export default function FutureJobsGenerator() {
                                 Voir
                               </a>
                               <button
-                                onClick={() => futureJobsVideoService.downloadVideo(video)}
+                                onClick={() => handleDownloadVideo(video)}
                                 className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm rounded flex items-center gap-1"
                               >
                                 <Download size={14} />
