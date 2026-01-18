@@ -1,21 +1,12 @@
 import { supabase } from '../lib/supabase';
 
 /**
- * Service pour gérer les vidéos GENUP
- * Inclut l'enregistrement avec type et session
+ * VERSION CORRIGÉE : Service pour gérer les vidéos GENUP
+ * Correction : Extraction explicite de l'analyse pour compatibilité avec le journal.
  */
 
 /**
  * Enregistre une vidéo avec ses métadonnées GENUP
- * @param {Object} videoData - Données de la vidéo
- * @param {string} videoData.title - Titre de la vidéo
- * @param {string} videoData.description - Description
- * @param {string} videoData.videoType - Type de vidéo (pitch, reflexive, action_trace)
- * @param {string} videoData.sessionId - ID de la session
- * @param {string} videoData.storagePath - Chemin de stockage dans Supabase Storage
- * @param {string} videoData.publicUrl - URL publique de la vidéo
- * @param {Object} videoData.metadata - Métadonnées supplémentaires
- * @returns {Promise<Object>} Données de la vidéo enregistrée
  */
 export async function saveGenupVideo(videoData) {
   try {
@@ -26,21 +17,27 @@ export async function saveGenupVideo(videoData) {
 
     const userId = session.session.user.id;
 
+    // Préparation des données avec compatibilité descendante
+    const insertData = {
+      user_id: userId,
+      title: videoData.title || `${videoData.videoType} - ${new Date().toLocaleDateString()}`,
+      description: videoData.description,
+      video_type: videoData.videoType,
+      session_id: videoData.sessionId,
+      storage_path: videoData.storagePath,
+      public_url: videoData.publicUrl,
+      video_url: videoData.publicUrl,
+      status: 'ready', // Changé de 'pending' à 'ready' car l'analyse est déjà faite
+      metadata: videoData.metadata || {},
+      language: 'fr',
+      // AJOUT : Extraction explicite pour les colonnes dédiées si elles existent
+      analysis: videoData.metadata?.analysis || null,
+      transcription_text: videoData.metadata?.transcription || null
+    };
+
     const { data, error } = await supabase
       .from('videos')
-      .insert({
-        user_id: userId,
-        title: videoData.title || `${videoData.videoType} - ${new Date().toLocaleDateString()}`,
-        description: videoData.description,
-        video_type: videoData.videoType,
-        session_id: videoData.sessionId,
-        storage_path: videoData.storagePath,
-        public_url: videoData.publicUrl,
-        video_url: videoData.publicUrl, // AJOUT : pour compatibilité
-        status: 'pending',
-        metadata: videoData.metadata || {},
-        language: 'fr' // AJOUT : pour compatibilité
-      })
+      .insert(insertData)
       .select()
       .single();
 
@@ -57,9 +54,6 @@ export async function saveGenupVideo(videoData) {
 
 /**
  * Met à jour le statut d'une vidéo
- * @param {string} videoId - ID de la vidéo
- * @param {string} status - Nouveau statut
- * @returns {Promise<Object>} Données mises à jour
  */
 export async function updateVideoStatus(videoId, status) {
   try {
@@ -83,7 +77,6 @@ export async function updateVideoStatus(videoId, status) {
 
 /**
  * Récupère toutes les sessions de transformation d'un utilisateur
- * @returns {Promise<Array>} Liste des sessions uniques
  */
 export async function getUserSessions() {
   try {
@@ -105,7 +98,6 @@ export async function getUserSessions() {
       throw error;
     }
 
-    // Dédupliquer les sessions
     const uniqueSessions = [];
     const seenSessionIds = new Set();
 
@@ -128,8 +120,6 @@ export async function getUserSessions() {
 
 /**
  * Récupère les statistiques de transformation pour une session
- * @param {string} sessionId - ID de la session
- * @returns {Promise<Object>} Statistiques de la session
  */
 export async function getSessionStats(sessionId) {
   try {

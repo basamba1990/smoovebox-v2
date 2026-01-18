@@ -17,8 +17,6 @@ type ReqBody = {
   bucket?: string;
 };
 
-console.info("🚀 generate-video: Démarrage (Version Finale Corrigée v2)");
-
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -36,176 +34,94 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(
-        JSON.stringify({ success: false, error: "Authentification requise", code: "UNAUTHORIZED" }),
+        JSON.stringify({ success: false, error: "Authentification requise" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const token = authHeader.replace("Bearer ", "");
-
-    // Client utilisateur: on passe le JWT utilisateur (RLS actif)
     const supabaseUser = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-      auth: { persistSession: false }
+      global: { headers: { Authorization: `Bearer ${token}` } }
     });
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    // Client admin: pour opérations système (Storage, signed URL, mises à jour finales)
-    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-      auth: { persistSession: false }
-    });
-
-    // Vérifier l'utilisateur à partir du token
-    const { data: userRes, error: getUserErr } = await supabaseUser.auth.getUser();
-    if (getUserErr || !userRes?.user) {
+    const { data: { user }, error: getUserErr } = await supabaseUser.auth.getUser();
+    if (getUserErr || !user) {
       return new Response(
-        JSON.stringify({ success: false, error: "Session invalide", code: "INVALID_SESSION" }),
+        JSON.stringify({ success: false, error: "Session invalide" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-    const userId = userRes.user.id;
 
     const body: ReqBody = await req.json();
-    if (!body?.prompt?.trim()) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Prompt manquant", code: "INVALID_PROMPT" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const prompt = body.prompt.trim();
-    const generator = (body.generator || "runway").toLowerCase().trim() as "sora" | "runway" | "pika";
-    const style = (body.style || "cinematic").toLowerCase().trim();
-    const duration = Math.max(1, Math.min(120, Number(body.duration) || 30));
-    const bucket = body.bucket?.trim() || "videos";
-    const access = body.access === "public" ? "public" : "signed";
-
-    // Enregistrement initial sous identité utilisateur (respect policies RLS)
+    const prompt = body.prompt?.trim();
+    const generator = (body.generator || "runway").toLowerCase();
+    const style = body.style || "cinematic";
+    const bucket = "videos";
+    
     const videoId = crypto.randomUUID();
-    const extension = generator === "sora" ? ".jpg" : ".mp4"; // placeholder image si sora
-    const storagePath = `${bucket}/${userId}/${videoId}${extension}`;
+    const isSora = generator === "sora";
+    const extension = isSora ? ".jpg" : ".mp4";
+    
+    // CORRECTION: Chemin aligné avec les politiques RLS (genup_videos/{user_id}/)
+    const storagePath = `genup_videos/${user.id}/${videoId}${extension}`;
 
-    const insertPayload: Record<string, unknown> = {
-      id: videoId,
-      user_id: userId,
-      status: "generating",
-      storage_path: storagePath,
-      metadata: {
-        prompt,
-        generator,
-        style,
-        duration,
-        job_id: body.jobId ?? null,
-        created_at: new Date().toISOString(),
-      },
-      title: "Untitled video",
-    };
-
+    // Insertion initiale
     const { data: videoRecord, error: insertError } = await supabaseUser
       .from("videos")
-      .insert(insertPayload)
-      .select()
-      .single();
+      .insert({
+        id: videoId,
+        user_id: user.id,
+        status: "generating",
+        storage_path: storagePath,
+        title: body.jobId ? `Job Video ${body.jobId}` : "Untitled video",
+        metadata: { prompt, generator, style, duration: body.duration, is_placeholder: isSora }
+      })
+      .select().single();
 
-    if (insertError) {
-      console.error("❌ Insert videos (RLS)", insertError);
-      return new Response(
-        JSON.stringify({ success: false, error: "Erreur base de données (insert)", details: insertError.message, code: insertError.code }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    if (insertError) throw insertError;
 
-    // Choisir une source (mock/placeholder)
     let sourceUrl = `https://storage.googleapis.com/ai-video-samples/${generator}-sample.mp4`;
     let isPlaceholder = false;
 
-    if (generator === "sora" && OPENAI_API_KEY) {
-      try {
-        const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-        const response = await openai.images.generate({
-          model: "dall-e-3",
-          prompt: `${prompt.substring(0, 800)} - Style ${style}`,
-          size: "1024x1024",
-        });
-        // @ts-ignore
-        sourceUrl = response?.data?.[0]?.url || sourceUrl;
-        isPlaceholder = true;
-      } catch (e) {
-        console.warn("⚠️ OpenAI placeholder fallback", e);
-        isPlaceholder = true;
-      }
+    // Logique DALL-E pour Sora (API Sora non disponible)
+    if (isSora && OPENAI_API_KEY) {
+      const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+      const response = await openai.images.generate({
+        model: "dall-e-3",
+        prompt: `${prompt} - Style ${style}`,
+        size: "1024x1024",
+      });
+      sourceUrl = response.data[0].url!;
+      isPlaceholder = true;
     }
 
-    // Upload dans Storage puis obtention d'une URL finale
-    let finalUrl = sourceUrl;
-    try {
-      const fetchRes = await fetch(sourceUrl);
-      if (fetchRes.ok) {
-        const arrayBuffer = await fetchRes.arrayBuffer();
-        const { error: uploadErr } = await supabaseAdmin.storage
-          .from(bucket)
-          .upload(storagePath, arrayBuffer, {
-            contentType: generator === "sora" ? "image/jpeg" : "video/mp4",
-            upsert: true,
-          });
+    // Upload vers Storage
+    const fetchRes = await fetch(sourceUrl);
+    const arrayBuffer = await fetchRes.arrayBuffer();
+    await supabaseAdmin.storage.from(bucket).upload(storagePath, arrayBuffer, {
+      contentType: isSora ? "image/jpeg" : "video/mp4",
+      upsert: true
+    });
 
-        if (!uploadErr) {
-          if (access === "public") {
-            const { data: pub } = supabaseAdmin.storage.from(bucket).getPublicUrl(storagePath);
-            if (pub?.publicUrl) finalUrl = pub.publicUrl;
-          } else {
-            const { data: signData } = await supabaseAdmin.storage.from(bucket).createSignedUrl(storagePath, 3600);
-            if (signData?.signedUrl) finalUrl = signData.signedUrl;
-          }
-        } else {
-          console.warn("⚠️ Upload storage error", uploadErr);
-        }
-      }
-    } catch (e) {
-      console.warn("⚠️ Storage fetch/upload fallback", e);
-    }
+    const { data: { publicUrl } } = supabaseAdmin.storage.from(bucket).getPublicUrl(storagePath);
 
-    // Mise à jour finale: IMPORTANT -> ne jamais écrire dans une colonne inexistante ('url')
-    const updatePayload: Record<string, unknown> = {
+    // Mise à jour finale
+    await supabaseAdmin.from("videos").update({
       status: "ready",
-      video_url: finalUrl,        // URL exploitable pour l'UI
-      public_url: access === "public" ? finalUrl : null,
-      storage_path: storagePath,
-      metadata: {
-        ...(videoRecord?.metadata ?? {}),
-        completed_at: new Date().toISOString(),
-        is_placeholder: isPlaceholder,
-      },
-    };
-
-    const { error: updateErr } = await supabaseAdmin
-      .from("videos")
-      .update(updatePayload)
-      .eq("id", videoId);
-
-    if (updateErr) {
-      console.error("❌ Update videos (final)", updateErr);
-      return new Response(
-        JSON.stringify({ success: false, error: "Erreur base de données (update)", details: updateErr.message, code: updateErr.code }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+      video_url: publicUrl,
+      public_url: publicUrl,
+      metadata: { ...videoRecord.metadata, is_placeholder: isPlaceholder, completed_at: new Date().toISOString() }
+    }).eq("id", videoId);
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        videoId,
-        status: "ready",
-        url: finalUrl,
-        video_url: finalUrl,
-        public_url: access === "public" ? finalUrl : null,
-        metadata: updatePayload.metadata,
-      }),
+      JSON.stringify({ success: true, data: { videoId, url: publicUrl, metadata: { is_placeholder: isPlaceholder } } }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
     return new Response(
-      JSON.stringify({ success: false, error: "Erreur interne", details: message }),
+      JSON.stringify({ success: false, error: error.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
