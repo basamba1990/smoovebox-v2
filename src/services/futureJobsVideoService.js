@@ -1,8 +1,9 @@
 import { supabase, invokeEdgeFunctionWithRetry } from '../lib/supabase';
+import { qg } from '../utils/logger';
 
 /**
  * Service de génération vidéo pour les métiers du futur
- * Version Finale Corrigée - Zéro Erreur - Gestion JWT Optimisée
+ * Version Corrigée - Gestion robuste du téléchargement et des logs
  */
 export const futureJobsVideoService = {
   /**
@@ -13,10 +14,11 @@ export const futureJobsVideoService = {
       return { success: false, error: "Prompt manquant", code: "INVALID_INPUT" };
     }
 
-    // Vérification et rafraîchissement de la session avant l'appel
+    qg.info('Démarrage de la génération vidéo', { generator: data.generator });
+
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
-      return { success: false, error: "Session expirée ou utilisateur non connecté", code: "AUTH_REQUIRED" };
+      return { success: false, error: "Session expirée", code: "AUTH_REQUIRED" };
     }
 
     const payload = {
@@ -31,6 +33,7 @@ export const futureJobsVideoService = {
       const result = await invokeEdgeFunctionWithRetry('generate-video', payload);
 
       if (!result.success) {
+        qg.error('Erreur Edge Function:', result.error);
         return {
           success: false,
           error: result.error || "Erreur lors de la génération",
@@ -41,9 +44,10 @@ export const futureJobsVideoService = {
 
       return { success: true, ...result.data };
     } catch (error) {
+      qg.error('Erreur réseau génération:', error);
       return { 
         success: false, 
-        error: error.message || "Erreur réseau ou serveur", 
+        error: error.message || "Erreur réseau", 
         code: "NETWORK_ERROR"
       };
     }
@@ -65,11 +69,7 @@ export const futureJobsVideoService = {
       if (error) throw error;
       return { success: true, ...data };
     } catch (error) {
-      return { 
-        success: false, 
-        error: "Erreur vérification statut", 
-        code: "STATUS_CHECK_FAILED"
-      };
+      return { success: false, error: error.message };
     }
   },
 
@@ -88,62 +88,43 @@ export const futureJobsVideoService = {
         .limit(limit);
 
       if (error) throw error;
-
-      return { 
-        success: true, 
-        videos: data || [],
-        count: (data || []).length
-      };
+      return { success: true, videos: data || [] };
     } catch (error) {
-      return {
-        success: false,
-        error: "Impossible de récupérer l'historique",
-        videos: []
-      };
+      qg.error('Erreur historique:', error);
+      return { success: false, error: error.message, videos: [] };
     }
   },
 
   /**
-   * Télécharge une vidéo
+   * Télécharge une vidéo ou une image (DALL-E)
    */
   async downloadVideo(video) {
     try {
       const url = video.url || video.public_url || video.video_url;
-      if (!url) throw new Error("URL de vidéo manquante");
+      if (!url) throw new Error("URL manquante");
 
-      // Tentative de téléchargement direct via fetch (peut échouer à cause de CORS)
-      try {
-        const response = await fetch(url, { mode: 'cors' });
-        if (response.ok) {
-          const blob = await response.blob();
-          const blobUrl = window.URL.createObjectURL(blob);
-          
-          const link = document.createElement('a');
-          link.href = blobUrl;
-          const fileName = video.title ? `${video.title.replace(/\s+/g, '_')}.mp4` : `video_${video.id.substring(0, 8)}.mp4`;
-          link.setAttribute('download', fileName);
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(blobUrl);
-          return { success: true, fileName };
-        }
-      } catch (fetchErr) {
-        console.warn("Fetch direct échoué (CORS?), repli sur ouverture d'onglet:", fetchErr);
-      }
+      qg.info('Téléchargement de la ressource:', url);
 
-      // Repli : ouvrir l'URL dans un nouvel onglet (le navigateur gérera le téléchargement si les headers Content-Disposition sont présents)
+      // Création d'un lien temporaire pour forcer le téléchargement
       const link = document.createElement('a');
       link.href = url;
       link.target = '_blank';
-      link.download = video.title ? `${video.title.replace(/\s+/g, '_')}.mp4` : `video_${video.id.substring(0, 8)}.mp4`;
+      
+      // Déterminer le nom du fichier
+      const isImage = url.includes('.jpg') || url.includes('.png') || (video.metadata && video.metadata.is_placeholder);
+      const ext = isImage ? 'jpg' : 'mp4';
+      const fileName = video.title 
+        ? `${video.title.replace(/\s+/g, '_')}.${ext}` 
+        : `spotbulle_${video.id.substring(0, 8)}.${ext}`;
+      
+      link.setAttribute('download', fileName);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
 
-      return { success: true, fileName: 'via_browser' };
+      return { success: true };
     } catch (error) {
-      console.error("Erreur téléchargement:", error);
+      qg.error("Erreur téléchargement:", error);
       return { success: false, error: error.message };
     }
   }
