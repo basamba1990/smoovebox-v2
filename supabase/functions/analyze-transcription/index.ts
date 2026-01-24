@@ -101,7 +101,7 @@ const VIDEO_STATUS = {
 // ✅ CORRECTION CORS - Headers complets
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, x-client-version, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
   'Content-Type': 'application/json',
 };
@@ -695,7 +695,7 @@ function createAdvancedFallbackAnalysis(text: string, language = 'fr') {
 async function saveAnalysisToDB(supabase: any, videoId: string, analysisResult: any) {
   const updatePayload = {
     status: VIDEO_STATUS.ANALYZED,
-    analysis: analysisResult.analysis, // ✅ Utiliser analysisResult.analysis
+    analysis: analysisResult, // ✅ FIXED: Use the whole result
     ai_score: analysisResult.ai_score || analysisResult.performance_metrics?.overall_score || 7.5,
     // ✅ Nouveau champ: profil structuré extrait du texte (si présent)
     profile_information: analysisResult.profile_information || null,
@@ -724,7 +724,7 @@ function createSuccessResponse(analysisResult: any, fromCache = false) {
     JSON.stringify({ 
       success: true, 
       message: 'Analyse avancée terminée avec succès',
-      analysis: analysisResult.analysis, // ✅ Utiliser analysisResult.analysis
+      analysis: analysisResult, // ✅ FIXED: Use the whole result
       fromCache: fromCache,
       model_used: analysisResult.metadata?.model_used || "gpt-4o",
       ai_score: analysisResult.ai_score

@@ -226,6 +226,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
 
         console.log('📊 Statut vidéo:', video.status);
 
+        // ✅ Update progress for all status changes
         if (video.status === VIDEO_STATUS.ANALYZED) {
           setAnalysisProgress(VIDEO_STATUS.ANALYZED);
           toast.success('🎉 Analyse terminée avec succès !');
@@ -236,11 +237,14 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
           }, 1500);
         } else if (video.status === VIDEO_STATUS.FAILED) {
           setAnalysisProgress(VIDEO_STATUS.FAILED);
-          // CORRECTION DE L'ERREUR DE SYNTAXE ICI
-          const errorMsg = video.error_message || "L'analyse de la vidéo a échoué.";
+          const errorMsg = video.error_message || 'L analyse de la vidéo a échoué.';
           setError(errorMsg);
           toast.error("❌ Échec de l'analyse");
           clearInterval(intervalId);
+        } else {
+          // ✅ Update progress for intermediate statuses
+          setAnalysisProgress(video.status);
+          console.log('📈 Mise à jour progression:', video.status);
         }
       } catch (err) {
         console.error('❌ Erreur vérification progression:', err);
@@ -522,21 +526,30 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         language: 'fr'
       };
 
-      console.log('📤 Appel analyse tonalité...');
+      console.log('📤 Appel analyse tonalité (analyze-tone)...');
+      console.log('📦 Payload:', {
+        userId: user.id,
+        language: 'fr',
+        audioLength: requestBody.audio.length
+      });
 
       // ✅ UTILISATION DE LA NOUVELLE FONCTION AVEC RETRY ET HTTPS
-      const { data, error } = await invokeEdgeFunctionWithRetry('analyze-tone', requestBody, {
+      const result = await invokeEdgeFunctionWithRetry('analyze-tone', requestBody, {
         maxRetries: 2,
         timeout: 15000
       });
 
-      if (error) {
-        console.warn('⚠️ Analyse tonalité échouée:', error);
+      console.log('📥 Réponse brute analyze-tone:', result);
+
+      if (!result.success) {
+        console.error('❌ Analyse tonalité échouée:', result.error);
+        console.log('📝 Erreur détaillée:', result.originalError || result.error);
         setToneAnalysis(getFallbackToneAnalysis());
         setIsAnalyzingTone(false);
         return;
       }
 
+      const { data } = result;
       console.log('✅ Analyse tonalité réussie:', data);
       
       if (data.success && data.analysis) {
@@ -618,13 +631,13 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         .from('videos')
         .getPublicUrl(filePath);
 
-      console.log('🔗 URL publique:', urlData.publicUrl);
+      console.log('🔗 URL publique:', publicUrl);
 
       // ✅ VÉRIFICATION CRITIQUE : Tester l'URL
       try {
-        const urlCheck = await fetch(urlData.publicUrl, { method: 'HEAD' });
+        const urlCheck = await fetch(publicUrl, { method: 'HEAD' });
         console.log('🔍 Vérification URL:', {
-          url: urlData.publicUrl,
+          url: publicUrl,
           status: urlCheck.status,
           ok: urlCheck.ok
         });
@@ -637,49 +650,30 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         throw new Error(`URL vidéo invalide: ${urlError.message}`);
       }
 
-      // 3. Structure de données compatible
-      const videoInsertData = {
+      // 2. Enregistrer les métadonnées dans la base de données
+      const videoDataToInsert = {
+        user_id: user.id,
         title: title || `Vidéo ${new Date().toLocaleDateString('fr-FR')}`,
         description: description || 'Vidéo enregistrée depuis la caméra',
-        file_path: filePath,
         storage_path: filePath,
-        file_size: recordedVideo.blob.size,
-        size: recordedVideo.blob.size, // AJOUT : pour compatibilité
-        duration: Math.round(recordingTime),
-        user_id: user.id,
+        video_url: publicUrl,
+        duration_seconds: Math.round(recordingTime),
+        file_size_bytes: recordedVideo.blob.size,
+        video_format: recordedVideo.format || 'mp4',
+        tags: tags || [],
         status: VIDEO_STATUS.UPLOADED,
-        use_avatar: useAvatar,
-        public_url: urlData.publicUrl,
-        video_url: urlData.publicUrl,
-        format: recordedVideo.format,
+        use_avatar: useAvatar || false,
         tone_analysis: toneAnalysis,
-        tags: tags,
-        transcription_language: selectedLanguage,
-        language: selectedLanguage || 'fr', // AJOUT : pour compatibilité
+        transcription_language: selectedLanguage || 'fr',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
 
-      console.log('📝 Insertion en base:', videoInsertData);
+      console.log('📝 Insertion en base:', videoDataToInsert);
 
-      // 2. Enregistrer les métadonnées dans la base de données
       const { data: videoData, error: dbError } = await supabase
         .from('videos')
-        .insert([
-          {
-            user_id: user.id,
-            title: title,
-            description: description,
-            storage_path: filePath,
-            public_url: publicUrl,
-            duration: recordedVideo.duration,
-            size: recordedVideo.size,
-            tags: tags,
-            status: VIDEO_STATUS.UPLOADED,
-            tone_analysis: toneAnalysis,
-            language: selectedLanguage || 'auto'
-          }
-        ])
+        .insert([videoDataToInsert])
         .select()
         .single();
 
@@ -1007,8 +1001,11 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
               </div>
             )}
 
-            {/* Affichage de la progression de l'analyse */}
-            {analysisProgress && analysisProgress !== VIDEO_STATUS.FAILED && (
+            {/* Affichage de la progression de l'analyse - Only show during upload, hide after */}
+            {analysisProgress && 
+             analysisProgress !== VIDEO_STATUS.FAILED && 
+             analysisProgress !== VIDEO_STATUS.UPLOADED && 
+             analysisProgress !== VIDEO_STATUS.TRANSCRIBED && (
               <div className="bg-blue-900 border border-blue-700 text-white p-4 rounded-lg mt-4">
                 <p className="font-bold">Statut de l'analyse :</p>
                 <p className="flex items-center gap-2">

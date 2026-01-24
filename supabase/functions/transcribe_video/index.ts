@@ -15,7 +15,7 @@ const VIDEO_STATUS = {
 // ✅ CORRECTION CORS DÉFINITIVE
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, x-client-version, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS, GET, PUT, DELETE',
   'Content-Type': 'application/json',
 }

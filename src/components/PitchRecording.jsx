@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 /**
  * VERSION CORRIGÉE : Portfolio Vidéo GENUP
- * Intègre l'initialisation automatique de la caméra et la gestion robuste du flux.
+ * Correction : Ajout des paramètres manquants pour l'Edge Function (softPromptTask).
  */
 export default function PitchRecording({ videoType = 'pitch', sessionId, onVideoRecorded, user }) {
   const [recordingState, setRecordingState] = useState('idle')
@@ -28,10 +28,6 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
   const chunksRef = useRef([])
   const timerRef = useRef(null)
 
-  /**
-   * Démarre la caméra pour la prévisualisation
-   * Mémorisé avec useCallback pour éviter les re-créations inutiles
-   */
   const startCamera = useCallback(async () => {
     try {
       setError(null)
@@ -53,7 +49,6 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream
-        // S'assurer que la vidéo joue bien
         try {
           await videoRef.current.play()
         } catch (playErr) {
@@ -69,13 +64,8 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
     }
   }, [])
 
-  /**
-   * Initialisation automatique au montage du composant
-   */
   useEffect(() => {
     startCamera()
-
-    // Nettoyage des ressources au démontage
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop())
@@ -89,9 +79,6 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
     }
   }, [startCamera])
 
-  /**
-   * Récupère le token d'authentification
-   */
   const getAuthToken = async () => {
     try {
       const { data } = await supabase.auth.getSession()
@@ -102,9 +89,6 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
     }
   }
 
-  /**
-   * Démarre l'enregistrement vidéo
-   */
   const startRecording = () => {
     if (!streamRef.current) {
       startCamera()
@@ -118,7 +102,6 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
       setFeedback(null)
       setHasAnalyzed(false)
 
-      // Vérification des types supportés
       const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') 
         ? 'video/webm;codecs=vp8,opus' 
         : 'video/webm'
@@ -159,9 +142,6 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
     }
   }
 
-  /**
-   * Arrête l'enregistrement
-   */
   const stopRecording = () => {
     if (mediaRecorderRef.current && recordingState === 'recording') {
       mediaRecorderRef.current.stop()
@@ -169,9 +149,6 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
     }
   }
 
-  /**
-   * Envoie la vidéo pour analyse et sauvegarde
-   */
   const submitPitch = async () => {
     if (!videoBlob || hasAnalyzed) return
 
@@ -179,7 +156,6 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
     setError(null)
     
     try {
-      // 1. Upload vers Supabase Storage
       setProcessingStep('upload')
       const fileName = `${uuidv4()}.webm`
       const storagePath = `genup_videos/${user?.id || 'anonymous'}/${fileName}`
@@ -194,7 +170,6 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
         .from('videos')
         .getPublicUrl(storagePath)
 
-      // 2. Analyse via Edge Function
       setProcessingStep('transcription')
       const reader = new FileReader()
       reader.readAsDataURL(videoBlob)
@@ -204,6 +179,7 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
         const EDGE_FUNCTION_URL = 'https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/analyze-pitch-recording'
         const authToken = await getAuthToken()
         
+        // CORRECTION : Ajout de softPromptTask requis par l'Edge Function
         const response = await fetch(EDGE_FUNCTION_URL, {
           method: 'POST',
           headers: {
@@ -216,7 +192,8 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
             videoType: videoType,
             sessionId: sessionId,
             personaId: 'young-talent',
-            agentName: 'personas_young_talent'
+            agentName: 'personas_young_talent',
+            softPromptTask: 'pitch-analysis' // AJOUTÉ
           })
         })
 
@@ -227,7 +204,6 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
 
         const data = await response.json()
 
-        // 3. Sauvegarde dans la base de données GENUP
         await saveGenupVideo({
           title: `Vidéo ${videoType} - ${new Date().toLocaleDateString()}`,
           description: `Enregistrement Portfolio GENUP - Type: ${videoType}`,
@@ -285,7 +261,6 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
   return (
     <div className="min-h-screen bg-slate-900 text-white p-6">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
         <div className="mb-12">
           <button 
             onClick={goBack}
@@ -318,7 +293,6 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
           </div>
         </div>
 
-        {/* Zone d'enregistrement / Prévisualisation */}
         {(recordingState === 'idle' || recordingState === 'loading_camera' || recordingState === 'preview' || recordingState === 'recording' || recordingState === 'processing') && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
             <div className="lg:col-span-2">
@@ -421,11 +395,9 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
           </div>
         )}
 
-        {/* Résultats de l'analyse */}
         {recordingState === 'completed' && analysis && (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Transcription */}
               <div className="lg:col-span-2 space-y-6">
                 <div className="bg-slate-800 rounded-3xl p-8 border border-slate-700 shadow-xl">
                   <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
@@ -438,7 +410,6 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
                   </div>
                 </div>
 
-                {/* Feedback Personnalisé */}
                 {feedback && (
                   <div className="bg-gradient-to-br from-emerald-600 to-teal-700 rounded-3xl p-8 shadow-2xl">
                     <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
@@ -462,7 +433,6 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
                 )}
               </div>
 
-              {/* Analyse Émotionnelle et Confiance */}
               <div className="space-y-6">
                 <div className="bg-slate-800 rounded-3xl p-8 border border-slate-700 shadow-xl">
                   <h2 className="text-xl font-bold mb-6 flex items-center gap-3">
@@ -514,7 +484,6 @@ export default function PitchRecording({ videoType = 'pitch', sessionId, onVideo
           </div>
         )}
 
-        {/* Gestion des erreurs */}
         {error && (
           <div className="mt-8 bg-red-500/10 border-2 border-red-500/50 rounded-3xl p-8 text-center">
             <div className="text-4xl mb-4">⚠️</div>

@@ -17,8 +17,6 @@ type ReqBody = {
   bucket?: string;
 };
 
-console.info("🚀 generate-video: Démarrage (Version Finale Corrigée)");
-
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -36,142 +34,94 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(
-        JSON.stringify({ success: false, error: "Authentification requise", code: "UNAUTHORIZED" }),
+        JSON.stringify({ success: false, error: "Authentification requise" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const token = authHeader.replace("Bearer ", "");
-    const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
+    const supabaseUser = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      global: { headers: { Authorization: `Bearer ${token}` } }
+    });
+    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    if (authError || !user) {
+    const { data: { user }, error: getUserErr } = await supabaseUser.auth.getUser();
+    if (getUserErr || !user) {
       return new Response(
-        JSON.stringify({ success: false, error: "Session invalide", code: "INVALID_SESSION" }),
+        JSON.stringify({ success: false, error: "Session invalide" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const userId = user.id;
     const body: ReqBody = await req.json();
-
-    if (!body.prompt?.trim()) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Prompt manquant", code: "INVALID_PROMPT" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const prompt = body.prompt.trim();
-    const generator = (body.generator || "runway").toLowerCase().trim();
-    const style = (body.style || "cinematic").toLowerCase().trim();
-    const duration = Math.max(1, Math.min(120, Number(body.duration) || 30));
-    const bucket = body.bucket?.trim() || "videos";
-    const access = body.access === "public" ? "public" : "signed";
-
-    // Utilisation du client avec le token utilisateur pour respecter le RLS lors de l'insertion
-    const supabaseUserClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-      global: { headers: { Authorization: `Bearer ${token}` } }
-    });
-
+    const prompt = body.prompt?.trim();
+    const generator = (body.generator || "runway").toLowerCase();
+    const style = body.style || "cinematic";
+    const bucket = "videos";
+    
     const videoId = crypto.randomUUID();
-    const extension = generator === "sora" ? ".jpg" : ".mp4";
-    const storagePath = `${bucket}/${userId}/${videoId}${extension}`;
+    const isSora = generator === "sora";
+    const extension = isSora ? ".jpg" : ".mp4";
+    
+    // CORRECTION: Chemin aligné avec les politiques RLS (genup_videos/{user_id}/)
+    const storagePath = `genup_videos/${user.id}/${videoId}${extension}`;
 
-    const { data: videoRecord, error: insertError } = await supabaseUserClient
+    // Insertion initiale
+    const { data: videoRecord, error: insertError } = await supabaseUser
       .from("videos")
       .insert({
         id: videoId,
-        user_id: userId,
+        user_id: user.id,
         status: "generating",
         storage_path: storagePath,
-        metadata: {
-          prompt,
-          generator,
-          style,
-          duration,
-          job_id: body.jobId,
-          created_at: new Date().toISOString(),
-        },
+        title: body.jobId ? `Job Video ${body.jobId}` : "Untitled video",
+        metadata: { prompt, generator, style, duration: body.duration, is_placeholder: isSora }
       })
-      .select()
-      .single();
+      .select().single();
 
-    if (insertError) {
-      console.error("❌ Erreur DB (Insert):", insertError);
-      return new Response(
-        JSON.stringify({ success: false, error: "Erreur base de données", details: insertError.message, code: insertError.code }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    if (insertError) throw insertError;
 
-    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
     let sourceUrl = `https://storage.googleapis.com/ai-video-samples/${generator}-sample.mp4`;
     let isPlaceholder = false;
 
-    if (generator === "sora" && OPENAI_API_KEY) {
-      try {
-        const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-        const response = await openai.images.generate({
-          model: "dall-e-3",
-          prompt: `${prompt.substring(0, 800)} - Style ${style}`,
-          size: "1024x1024",
-        });
-        sourceUrl = (response as any).data?.[0]?.url || sourceUrl;
-        isPlaceholder = true;
-      } catch (_) {
-        isPlaceholder = true;
-      }
+    // Logique DALL-E pour Sora (API Sora non disponible)
+    if (isSora && OPENAI_API_KEY) {
+      const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+      const response = await openai.images.generate({
+        model: "dall-e-3",
+        prompt: `${prompt} - Style ${style}`,
+        size: "1024x1024",
+      });
+      sourceUrl = response.data[0].url!;
+      isPlaceholder = true;
     }
 
-    let finalUrl = sourceUrl;
-    try {
-      const fetchRes = await fetch(sourceUrl);
-      if (fetchRes.ok) {
-        const blob = await fetchRes.blob();
-        const { error: uploadErr } = await supabaseAdmin.storage
-          .from(bucket)
-          .upload(storagePath, await blob.arrayBuffer(), {
-            contentType: generator === "sora" ? "image/jpeg" : "video/mp4",
-            upsert: true,
-          });
+    // Upload vers Storage
+    const fetchRes = await fetch(sourceUrl);
+    const arrayBuffer = await fetchRes.arrayBuffer();
+    await supabaseAdmin.storage.from(bucket).upload(storagePath, arrayBuffer, {
+      contentType: isSora ? "image/jpeg" : "video/mp4",
+      upsert: true
+    });
 
-        if (!uploadErr) {
-          if (access === "public") {
-            finalUrl = supabaseAdmin.storage.from(bucket).getPublicUrl(storagePath).data.publicUrl;
-          } else {
-            const { data: signData } = await supabaseAdmin.storage.from(bucket).createSignedUrl(storagePath, 3600);
-            if (signData) finalUrl = signData.signedUrl;
-          }
-        }
-      }
-    } catch (_) {
-      console.warn("⚠️ Erreur Storage");
-    }
+    const { data: { publicUrl } } = supabaseAdmin.storage.from(bucket).getPublicUrl(storagePath);
 
-    await supabaseAdmin
-      .from("videos")
-      .update({
-        status: "ready",
-        url: finalUrl,
-        video_url: sourceUrl,
-        public_url: access === "public" ? finalUrl : null,
-        metadata: {
-          ...videoRecord.metadata,
-          completed_at: new Date().toISOString(),
-          is_placeholder: isPlaceholder,
-        },
-      })
-      .eq("id", videoId);
+    // Mise à jour finale
+    await supabaseAdmin.from("videos").update({
+      status: "ready",
+      video_url: publicUrl,
+      public_url: publicUrl,
+      metadata: { ...videoRecord.metadata, is_placeholder: isPlaceholder, completed_at: new Date().toISOString() }
+    }).eq("id", videoId);
 
     return new Response(
-      JSON.stringify({ success: true, videoId, status: "ready", url: finalUrl, isPlaceholder }),
+      JSON.stringify({ success: true, data: { videoId, url: publicUrl, metadata: { is_placeholder: isPlaceholder } } }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
     return new Response(
-      JSON.stringify({ success: false, error: "Erreur interne", details: message }),
+      JSON.stringify({ success: false, error: error.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
