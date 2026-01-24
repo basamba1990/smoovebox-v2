@@ -626,13 +626,13 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         .from('videos')
         .getPublicUrl(filePath);
 
-      console.log('🔗 URL publique:', urlData.publicUrl);
+      console.log('🔗 URL publique:', publicUrl);
 
       // ✅ VÉRIFICATION CRITIQUE : Tester l'URL
       try {
-        const urlCheck = await fetch(urlData.publicUrl, { method: 'HEAD' });
+        const urlCheck = await fetch(publicUrl, { method: 'HEAD' });
         console.log('🔍 Vérification URL:', {
-          url: urlData.publicUrl,
+          url: publicUrl,
           status: urlCheck.status,
           ok: urlCheck.ok
         });
@@ -645,49 +645,30 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         throw new Error(`URL vidéo invalide: ${urlError.message}`);
       }
 
-      // 3. Structure de données compatible
-      const videoInsertData = {
+      // 2. Enregistrer les métadonnées dans la base de données
+      const videoDataToInsert = {
+        user_id: user.id,
         title: title || `Vidéo ${new Date().toLocaleDateString('fr-FR')}`,
         description: description || 'Vidéo enregistrée depuis la caméra',
-        file_path: filePath,
         storage_path: filePath,
-        file_size: recordedVideo.blob.size,
-        size: recordedVideo.blob.size, // AJOUT : pour compatibilité
-        duration: Math.round(recordingTime),
-        user_id: user.id,
+        video_url: publicUrl,
+        duration_seconds: Math.round(recordingTime),
+        file_size_bytes: recordedVideo.blob.size,
+        video_format: recordedVideo.format || 'mp4',
+        tags: tags || [],
         status: VIDEO_STATUS.UPLOADED,
-        use_avatar: useAvatar,
-        public_url: urlData.publicUrl,
-        video_url: urlData.publicUrl,
-        format: recordedVideo.format,
+        use_avatar: useAvatar || false,
         tone_analysis: toneAnalysis,
-        tags: tags,
-        transcription_language: selectedLanguage,
-        language: selectedLanguage || 'fr', // AJOUT : pour compatibilité
+        transcription_language: selectedLanguage || 'fr',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
 
-      console.log('📝 Insertion en base:', videoInsertData);
+      console.log('📝 Insertion en base:', videoDataToInsert);
 
-      // 2. Enregistrer les métadonnées dans la base de données
       const { data: videoData, error: dbError } = await supabase
         .from('videos')
-        .insert([
-          {
-            user_id: user.id,
-            title: title,
-            description: description,
-            storage_path: filePath,
-            public_url: publicUrl,
-            duration: recordedVideo.duration,
-            size: recordedVideo.size,
-            tags: tags,
-            status: VIDEO_STATUS.UPLOADED,
-            tone_analysis: toneAnalysis,
-            language: selectedLanguage || 'auto'
-          }
-        ])
+        .insert([videoDataToInsert])
         .select()
         .single();
 
