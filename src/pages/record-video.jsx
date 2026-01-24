@@ -226,6 +226,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
 
         console.log('📊 Statut vidéo:', video.status);
 
+        // ✅ Update progress for all status changes
         if (video.status === VIDEO_STATUS.ANALYZED) {
           setAnalysisProgress(VIDEO_STATUS.ANALYZED);
           toast.success('🎉 Analyse terminée avec succès !');
@@ -240,6 +241,10 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
           setError(errorMsg);
           toast.error("❌ Échec de l'analyse");
           clearInterval(intervalId);
+        } else {
+          // ✅ Update progress for intermediate statuses
+          setAnalysisProgress(video.status);
+          console.log('📈 Mise à jour progression:', video.status);
         }
       } catch (err) {
         console.error('❌ Erreur vérification progression:', err);
@@ -996,8 +1001,11 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
               </div>
             )}
 
-            {/* Affichage de la progression de l'analyse */}
-            {analysisProgress && analysisProgress !== VIDEO_STATUS.FAILED && (
+            {/* Affichage de la progression de l'analyse - Only show during upload, hide after */}
+            {analysisProgress && 
+             analysisProgress !== VIDEO_STATUS.FAILED && 
+             analysisProgress !== VIDEO_STATUS.UPLOADED && 
+             analysisProgress !== VIDEO_STATUS.TRANSCRIBED && (
               <div className="bg-blue-900 border border-blue-700 text-white p-4 rounded-lg mt-4">
                 <p className="font-bold">Statut de l'analyse :</p>
                 <p className="flex items-center gap-2">
