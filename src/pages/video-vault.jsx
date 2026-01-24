@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase, invokeEdgeFunctionWithRetry } from "../lib/supabase";
 import { Button } from "../components/ui/button-enhanced.jsx";
 import { toast } from "sonner";
 import ProfessionalHeader from "../components/ProfessionalHeader.jsx";
@@ -362,30 +362,20 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
         console.log("📝 Video needs transcription first...");
         toast.loading("Transcription en cours...", { id: "transcribe-toast" });
 
-        const transcribeResponse = await fetch(
-          "https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/transcribe-video",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${session.access_token}`,
-            },
-            body: JSON.stringify({
-              videoId: video.id,
-              userId: video.user_id,
-              videoUrl: video.video_url || video.public_url,
-            }),
+        const { data: transcribeData, error: transcribeError } = await supabase.functions.invoke('transcribe-video', {
+          body: {
+            videoId: video.id,
+            userId: video.user_id,
+            videoUrl: video.video_url || video.public_url,
           }
-        );
+        });
 
-        if (!transcribeResponse.ok) {
-          const errorResult = await transcribeResponse.json().catch(() => ({}));
-          toast.error("Erreur lors de la transcription", {
+        if (transcribeError) {
+          console.error("❌ Erreur transcription:", transcribeError);
+          toast.error(`Erreur transcription: ${transcribeError.message}`, {
             id: "transcribe-toast",
           });
-          throw new Error(
-            errorResult.error || "Erreur lors de la transcription"
-          );
+          throw new Error(transcribeError.message || "Erreur lors de la transcription");
         }
 
         toast.success(
@@ -399,41 +389,20 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
       console.log("🔍 Starting analysis with transcription...");
       toast.loading("Démarrage de l'analyse IA...", { id: "analyze-toast" });
 
-      const response = await fetch(
-        "https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/analyze-transcription",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            videoId: video.id,
-            transcriptionText: transcriptionText.trim(),
-            userId: video.user_id,
-          }),
-        }
-      );
+      // ✅ Use robust invoker with direct HTTPS fallback
+      const result = await invokeEdgeFunctionWithRetry('analyze-transcription', {
+        videoId: video.id,
+        transcriptionText: transcriptionText.trim(),
+        userId: video.user_id,
+      });
 
-      if (!response.ok) {
-        let errorMessage = "Erreur lors de l'analyse";
-        try {
-          const errorResult = await response.json();
-          errorMessage =
-            errorResult.error || errorResult.details || errorMessage;
-        } catch (e) {
-          errorMessage = `${response.status} ${response.statusText}`;
-        }
-        toast.error(errorMessage, { id: "analyze-toast" });
-        throw new Error(errorMessage);
+      if (!result.success) {
+        console.error("❌ Edge Function Failure:", result.error);
+        toast.error(`Erreur analyse: ${result.error}`, { id: "analyze-toast" });
+        throw new Error(result.error || "Erreur lors de l'analyse");
       }
 
-      const result = await response.json();
-      if (result.error) {
-        toast.error(result.error, { id: "analyze-toast" });
-        throw new Error(result.error);
-      }
-
+      console.log("✅ Analysis Result:", result.data);
       toast.success(`Analyse démarrée pour: ${video.title}`);
 
       const updatedVideos = videos.map((v) =>
@@ -486,27 +455,15 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
         throw new Error("Session non valide, veuillez vous reconnecter");
       }
 
-      const response = await fetch(
-        `${
-          import.meta.env.VITE_SUPABASE_URL
-        }/functions/v1/extract-profile-information`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            videoId: video.id,
-            user_id: video.user_id,
-          }),
+      const { data: result, error: extractError } = await supabase.functions.invoke('extract-profile-information', {
+        body: {
+          videoId: video.id,
+          user_id: video.user_id,
         }
-      );
+      });
 
-      const result = await response.json().catch(() => ({}));
-
-      if (!response.ok || result.error) {
-        throw new Error(result.error || `Erreur ${response.status}`);
+      if (extractError) {
+        throw new Error(extractError.message || "Erreur lors de l'extraction");
       }
 
       setProfileMessage(`Profil IA mis à jour pour "${video.title}".`);

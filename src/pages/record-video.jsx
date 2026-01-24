@@ -236,7 +236,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
           }, 1500);
         } else if (video.status === VIDEO_STATUS.FAILED) {
           setAnalysisProgress(VIDEO_STATUS.FAILED);
-          const errorMsg = video.error_message || 'L'analyse de la vidéo a échoué.';
+          const errorMsg = video.error_message || 'L analyse de la vidéo a échoué.';
           setError(errorMsg);
           toast.error("❌ Échec de l'analyse");
           clearInterval(intervalId);
