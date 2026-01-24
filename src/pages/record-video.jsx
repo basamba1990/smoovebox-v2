@@ -240,8 +240,6 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
           setError(errorMsg);
           toast.error("❌ Échec de l'analyse");
           clearInterval(intervalId);
-        } else {
-          setAnalysisProgress(video.status);
         }
       } catch (err) {
         console.error('❌ Erreur vérification progression:', err);
@@ -579,79 +577,52 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
   const getFallbackToneAnalysis = () => {
     const emotions = ['enthousiaste', 'confiant', 'calme', 'énergique', 'passionné'];
     const paces = ['modéré', 'dynamique', 'équilibré'];
-    const energyLevels = ['élevé', 'moyen', 'bon'];
-    
+    const randomEmotion = emotions[Math.floor(Math.random() * emotions.length)];
+    const randomPace = paces[Math.floor(Math.random() * paces.length)];
+
     return {
-      confidence: 0.7 + Math.random() * 0.2,
-      emotion: emotions[Math.floor(Math.random() * emotions.length)],
-      pace: paces[Math.floor(Math.random() * paces.length)],
-      clarity: 'bonne',
-      energy: energyLevels[Math.floor(Math.random() * energyLevels.length)],
-      suggestions: [
-        'Excellent enthousiasme dans votre communication !',
-        'Le débit est parfaitement équilibré pour la compréhension',
-        'Continuez à sourire pour maintenir une énergie positive'
-      ],
-      analyzed_at: new Date().toISOString()
+      emotion: randomEmotion,
+      pace: randomPace,
+      confidence: (Math.random() * 0.2 + 0.7).toFixed(2), // 70-90%
+      suggestion: "Analyse de tonalité par défaut. Veuillez réessayer pour une analyse plus précise."
     };
   };
 
-  // ✅ Uploader vidéo CORRIGÉ AVEC GESTION HTTPS
+  // ✅ Upload vidéo
   const uploadVideo = async () => {
-    if (!recordedVideo) {
-      setError('Vous devez enregistrer une vidéo.');
-      toast.error('Aucune vidéo à uploader.');
-      return;
-    }
+    if (!recordedVideo || uploading) return;
 
-    if (!user) {
-      setError('Vous devez être connecté pour uploader une vidéo.');
-      toast.error('Utilisateur non connecté');
-      return;
-    }
-
+    setUploading(true);
+    setError(null);
+    setAnalysisProgress(VIDEO_STATUS.UPLOADED);
+    
     try {
-      setUploading(true);
-      setError(null);
-      setUploadProgress(0);
-
-      console.log('🚀 Début upload vidéo...');
-
-      // 1. Upload du fichier vers Supabase Storage
-      const fileName = `video-${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${recordedVideo.format}`;
-      const filePath = `${user.id}/${fileName}`;
+      const file = new File([recordedVideo.blob], `${user.id}_${Date.now()}.${recordedVideo.format}`, { type: recordedVideo.blob.type });
+      const filePath = `public/${file.name}`;
       
-      console.log('📤 Upload vers:', filePath);
+      console.log('📤 Démarrage upload vers:', filePath);
 
-      if (!filePath || filePath.trim() === '') {
-        throw new Error('Le chemin de stockage ne peut pas être vide');
-      }
-
-      // ✅ Upload avec progression
-      const { error: uploadError } = await supabase.storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from('videos')
-        .upload(filePath, recordedVideo.blob, {
+        .upload(filePath, file, {
           cacheControl: '3600',
           upsert: false,
-          onUploadProgress: (progress) => {
-            if (progress.totalBytes) {
-              const percent = Math.round((progress.loadedBytes / progress.totalBytes) * 100);
-              setUploadProgress(percent);
-              console.log(`📊 Progression upload: ${percent}%`);
-            }
+          onProgress: (event) => {
+            const progress = Math.round((event.loaded / event.total) * 100);
+            setUploadProgress(progress);
+            console.log(`⬆️ Upload progress: ${progress}%`);
           }
         });
 
       if (uploadError) {
-        console.error('❌ Erreur upload storage:', uploadError);
-        throw new Error(`Erreur upload: ${uploadError.message}`);
+        console.error('❌ Erreur upload:', uploadError);
+        throw uploadError;
       }
 
-      console.log('✅ Fichier uploadé avec succès');
-      setUploadProgress(100);
+      console.log('✅ Upload réussi:', uploadData.path);
 
-      // 2. Récupérer l'URL publique
-      const { data: urlData } = supabase.storage
+      // 1. Récupérer l'URL publique
+      const { data: { publicUrl } } = supabase.storage
         .from('videos')
         .getPublicUrl(filePath);
 
@@ -678,75 +649,69 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
       const videoInsertData = {
         title: title || `Vidéo ${new Date().toLocaleDateString('fr-FR')}`,
         description: description || 'Vidéo enregistrée depuis la caméra',
-        storage_path: filePath, // Utiliser storage_path pour le chemin interne
-        video_url: urlData.publicUrl, // Utiliser video_url pour l'URL publique
-        file_size_bytes: recordedVideo.blob.size, // Nouvelle colonne
-        duration_seconds: Math.round(recordingTime), // Nouvelle colonne
-        video_format: recordedVideo.format, // Nouvelle colonne
+        file_path: filePath,
+        storage_path: filePath,
+        file_size: recordedVideo.blob.size,
+        size: recordedVideo.blob.size, // AJOUT : pour compatibilité
+        duration: Math.round(recordingTime),
         user_id: user.id,
         status: VIDEO_STATUS.UPLOADED,
-        use_avatar: useAvatar, // Nouvelle colonne
-        tags: tags, // Nouvelle colonne
-        transcription_language: selectedLanguage, // Nouvelle colonne
-        // Les champs tone_analysis et profile_information seront mis à jour par les Edge Functions.
+        use_avatar: useAvatar,
+        public_url: urlData.publicUrl,
+        video_url: urlData.publicUrl,
+        format: recordedVideo.format,
+        tone_analysis: toneAnalysis,
+        tags: tags,
+        transcription_language: selectedLanguage,
+        language: selectedLanguage || 'fr', // AJOUT : pour compatibilité
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
-        // Ajouter portfolio_id et prompt_id si l'intégration du portfolio est active
-        // portfolio_id: selectedPortfolioId,
-        // prompt_id: selectedPromptId,
       };
 
       console.log('📝 Insertion en base:', videoInsertData);
 
-      // 4. Insérer la vidéo en base
-      const { data: videoData, error: videoError } = await supabase
+      // 2. Enregistrer les métadonnées dans la base de données
+      const { data: videoData, error: dbError } = await supabase
         .from('videos')
-        .insert(videoInsertData)
+        .insert([
+          {
+            user_id: user.id,
+            title: title,
+            description: description,
+            storage_path: filePath,
+            public_url: publicUrl,
+            duration: recordedVideo.duration,
+            size: recordedVideo.size,
+            tags: tags,
+            status: VIDEO_STATUS.UPLOADED,
+            tone_analysis: toneAnalysis,
+            language: selectedLanguage || 'auto'
+          }
+        ])
         .select()
         .single();
 
-      if (videoError) {
-        console.error('❌ Erreur insertion vidéo:', videoError);
-        
-        let errorMsg = `Erreur création vidéo: ${videoError.message}`;
-        if (videoError.message.includes('stockage') || videoError.message.includes('NULL')) {
-          errorMsg = 'Erreur de configuration du stockage. Veuillez réessayer.';
-        } else if (videoError.message.includes('row') && videoError.message.includes('violates')) {
-          errorMsg = 'Erreur de contrainte base de données. Vérifiez les données.';
-        }
-        
-        throw new Error(errorMsg);
+      if (dbError) {
+        console.error('❌ Erreur DB insertion:', dbError);
+        throw dbError;
       }
 
-      console.log('✅ Vidéo créée en base:', videoData.id);
-      setUploadedVideoId(videoData.id);
-      toast.success('🎉 Vidéo uploadée avec succès !');
+      const videoId = videoData.id;
+      setUploadedVideoId(videoId);
+      console.log('✅ Vidéo enregistrée en DB:', videoId);
+      toast.success('Vidéo uploadée ! Démarrage de l\'analyse...');
 
-      // ✅ CORRECTION CRITIQUE : Déclenchement transcription avec la nouvelle fonction robuste
-      try {
-        await triggerTranscription(videoData.id, user.id, urlData.publicUrl);
-      } catch (transcriptionError) {
-        console.error('❌ Erreur déclenchement transcription:', transcriptionError);
-        
-        // Mettre à jour le statut mais ne pas bloquer l'upload
-        await supabase
-          .from('videos')
-          .update({
-            status: VIDEO_STATUS.FAILED,
-            error_message: `Upload réussi mais transcription échouée: ${transcriptionError.message}`.substring(0, 500),
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', videoData.id);
-
-        toast.warning('📹 Vidéo uploadée mais transcription en échec. Vous pouvez réessayer plus tard.');
-      }
+      // 3. Déclencher la transcription et l'analyse
+      setAnalysisProgress(VIDEO_STATUS.PROCESSING);
+      await triggerTranscription(videoId, user.id, publicUrl);
 
     } catch (err) {
-      console.error('❌ Erreur upload:', err);
-      let errorMessage = `Erreur lors de l'upload: ${err.message}`;
+      console.error('❌ Erreur globale upload:', err);
       
-      if (err.message.includes('stockage') || err.message.includes('NULL')) {
-        errorMessage = 'Erreur de configuration du stockage. Le chemin de la vidéo est invalide.';
+      let errorMessage = "Une erreur inconnue est survenue lors de l'upload.";
+      
+      if (err.message.includes('duplicate key')) {
+        errorMessage = 'Un fichier avec le même nom existe déjà. Veuillez réessayer.';
       } else if (err.message.includes('quota') || err.message.includes('space')) {
         errorMessage = 'Espace de stockage insuffisant.';
       } else if (err.message.includes('network') || err.message.includes('fetch')) {
@@ -1003,340 +968,148 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
                       </span>
                     ) : (
                       <span className="flex items-center gap-2">
-                        ● Commencer
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                        </svg>
+                        Démarrer l'enregistrement
                       </span>
                     )}
                   </Button>
-                  
                   {recording && (
                     <Button 
                       onClick={stopRecording}
-                      className="bg-gray-600 hover:bg-gray-700 text-white px-8 py-4 rounded-lg font-semibold text-lg"
+                      className="bg-gray-500 hover:bg-gray-600 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-all"
                     >
-                      <span className="flex items-center gap-2">
-                        ■ Arrêter
-                      </span>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" />
+                      </svg>
+                      Arrêter
                     </Button>
                   )}
                 </>
               ) : (
-                <div className="flex gap-4 w-full">
+                <>
                   <Button 
                     onClick={uploadVideo}
-                    disabled={uploading || isAnalyzingTone}
-                    className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-lg font-semibold text-lg flex-1 transition-all"
+                    disabled={uploading || analysisProgress !== null}
+                    className="bg-green-600 hover:bg-green-700 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-all"
                   >
-                    {uploading ? (
-                      <span className="flex items-center gap-3">
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        Upload...
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-2">
-                        📤 Uploader la vidéo
-                      </span>
-                    )}
+                    {uploading ? 'Upload en cours...' : '🚀 Uploader et Analyser'}
                   </Button>
-                  
                   <Button 
                     onClick={retryRecording}
-                    variant="outline"
-                    className="border-gray-600 text-gray-300 hover:bg-gray-700 px-6 py-4 rounded-lg font-semibold"
+                    disabled={uploading || analysisProgress !== null}
+                    className="bg-yellow-600 hover:bg-yellow-700 text-white px-8 py-4 rounded-lg font-semibold text-lg transition-all"
                   >
-                    <span className="flex items-center gap-2">
-                      🔄
-                    </span>
+                    🔄 Réenregistrer
                   </Button>
-                </div>
+                </>
               )}
             </div>
 
-            {/* Informations vidéo enregistrée */}
-            {recordedVideo && (
-              <div className="bg-gray-800 rounded-lg p-4 border border-gray-600">
-                <div className="grid grid-cols-2 gap-4 text-sm text-gray-300">
-                  <div>
-                    <span className="text-gray-400">Durée:</span>
-                    <div className="font-semibold">{formatTime(recordingTime)}</div>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Taille:</span>
-                    <div className="font-semibold">{formatFileSize(recordedVideo.size)}</div>
-                  </div>
-                </div>
+            {/* Affichage des messages d'erreur */}
+            {error && (
+              <div className="bg-red-900 border border-red-700 text-white p-4 rounded-lg mt-4">
+                <p className="font-bold">Erreur :</p>
+                <p>{error}</p>
               </div>
             )}
 
-            {/* Indicateur d'analyse de tonalité */}
-            {isAnalyzingTone && (
-              <div className="bg-blue-900/30 border border-blue-700 rounded-lg p-4 animate-pulse">
-                <div className="flex items-center gap-3">
-                  <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-                  <span className="text-blue-300 font-medium">Analyse de tonalité en cours...</span>
-                </div>
-                <p className="text-blue-400 text-sm mt-2">
-                  Notre IA analyse votre voix pour détecter l'émotion et le ton
+            {/* Affichage de la progression de l'analyse */}
+            {analysisProgress && analysisProgress !== VIDEO_STATUS.FAILED && (
+              <div className="bg-blue-900 border border-blue-700 text-white p-4 rounded-lg mt-4">
+                <p className="font-bold">Statut de l'analyse :</p>
+                <p className="flex items-center gap-2">
+                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  {getProgressMessage(analysisProgress)}
                 </p>
               </div>
             )}
           </div>
 
-          {/* Paramètres et analyse */}
-          <div className="space-y-6">
-            {/* Informations de base */}
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-              <h3 className="font-semibold text-white mb-4 text-lg">📝 Informations vidéo</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Titre de la vidéo *
-                  </label>
-                  <input 
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Donnez un titre à votre vidéo..."
-                    className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Description
-                  </label>
-                  <textarea 
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Décrivez le contenu de votre vidéo..."
-                    rows="3"
-                    className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  />
-                </div>
-              </div>
-            </div>
+          {/* Détails et métadonnées */}
+          <div className="space-y-6 bg-gray-700 p-6 rounded-lg shadow-xl">
+            <h2 className="text-2xl font-bold text-white border-b border-gray-600 pb-3">Détails de la Vidéo</h2>
 
-            {/* Composant Tags */}
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-              <TagInput tags={tags} setTags={setTags} />
-            </div>
-
-            {/* Option avatar */}
-            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-              <label className="flex items-center gap-3 cursor-pointer group">
-                <div className="relative">
-                  <input 
-                    type="checkbox"
-                    checked={useAvatar}
-                    onChange={(e) => setUseAvatar(e.target.checked)}
-                    className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 focus:ring-2"
-                  />
-                </div>
-                <div className="flex-1">
-                  <span className="font-medium text-white group-hover:text-blue-300 transition-colors">
-                    Utiliser un avatar virtuel
-                  </span>
-                  <p className="text-gray-400 text-sm mt-1">
-                    Remplacer votre visage par un avatar animé IA (fonctionnalité à venir)
-                  </p>
-                </div>
+            {/* Titre */}
+            <div>
+              <label htmlFor="title" className="block font-semibold text-white mb-1">
+                Titre de la vidéo
               </label>
+              <input
+                id="title"
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Ex: Mon premier dribble réussi"
+                className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500"
+                maxLength={100}
+              />
+              <p className="text-sm text-gray-400 mt-1">{title.length}/100 caractères</p>
             </div>
 
-            {/* Affichage résultats analyse de tonalité */}
-            {toneAnalysis && (
-              <div className="bg-gradient-to-br from-purple-900 to-blue-900 rounded-xl p-6 border border-purple-700 animate-fade-in">
-                <h3 className="font-semibold mb-4 text-white text-lg flex items-center gap-2">
-                  🎵 Analyse de tonalité IA
-                  {toneAnalysis.confidence > 0.7 && (
-                    <span className="text-xs bg-green-600 text-white px-2 py-1 rounded-full animate-pulse">
-                      {Math.round(toneAnalysis.confidence * 100)}% de confiance
-                    </span>
-                  )}
-                </h3>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="text-center p-3 bg-purple-800/50 rounded-lg">
-                      <div className="text-purple-300 text-sm mb-1">Émotion</div>
-                      <div className="text-white font-semibold capitalize text-lg">{toneAnalysis.emotion}</div>
-                    </div>
-                    <div className="text-center p-3 bg-blue-800/50 rounded-lg">
-                      <div className="text-blue-300 text-sm mb-1">Débit</div>
-                      <div className="text-white font-semibold capitalize text-lg">{toneAnalysis.pace}</div>
-                    </div>
-                    <div className="text-center p-3 bg-indigo-800/50 rounded-lg">
-                      <div className="text-indigo-300 text-sm mb-1">Clarté</div>
-                      <div className="text-white font-semibold capitalize text-lg">{toneAnalysis.clarity}</div>
-                    </div>
-                    <div className="text-center p-3 bg-cyan-800/50 rounded-lg">
-                      <div className="text-cyan-300 text-sm mb-1">Énergie</div>
-                      <div className="text-white font-semibold capitalize text-lg">{toneAnalysis.energy}</div>
-                    </div>
-                  </div>
-                  
-                  {toneAnalysis.suggestions && toneAnalysis.suggestions.length > 0 && (
-                    <div className="mt-4">
-                      <h4 className="font-medium text-white mb-3 flex items-center gap-2">
-                        💡 Suggestions d'amélioration
-                      </h4>
-                      <ul className="space-y-2">
-                        {toneAnalysis.suggestions.map((suggestion, index) => (
-                          <li key={index} className="text-purple-200 text-sm bg-purple-800/30 rounded-lg p-3 border-l-4 border-purple-500">
-                            {suggestion}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+            {/* Description */}
+            <div>
+              <label htmlFor="description" className="block font-semibold text-white mb-1">
+                Description
+              </label>
+              <textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Décrivez ce que vous faites dans cette vidéo..."
+                rows={4}
+                className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500"
+                maxLength={500}
+              />
+              <p className="text-sm text-gray-400 mt-1">{description.length}/500 caractères</p>
+            </div>
+
+            {/* Tags */}
+            <TagInput tags={tags} setTags={setTags} />
+
+            {/* Informations sur la vidéo enregistrée */}
+            {recordedVideo && (
+              <div className="space-y-3 pt-4 border-t border-gray-600">
+                <h3 className="text-xl font-semibold text-white">Informations d'enregistrement</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm text-gray-300">
+                  <p>Durée : <span className="font-bold text-white">{formatTime(recordedVideo.duration)}</span></p>
+                  <p>Taille estimée : <span className="font-bold text-white">{formatFileSize(recordedVideo.size)}</span></p>
+                  <p>Format : <span className="font-bold text-white">{recordedVideo.format}</span></p>
                 </div>
               </div>
             )}
 
-            {/* Progression de l'analyse */}
-            {analysisProgress && (
-              <div className="bg-gradient-to-br from-green-900 to-emerald-900 rounded-xl p-6 border border-green-700 animate-fade-in">
-                <h3 className="font-semibold mb-4 text-white text-lg">📊 Progression de l'analyse</h3>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-green-300 font-medium text-lg">
-                      {getProgressMessage(analysisProgress)}
-                    </span>
-                    <span className="text-green-400 text-2xl">
-                      {analysisProgress === VIDEO_STATUS.ANALYZED ? '✅' : 
-                       analysisProgress === VIDEO_STATUS.FAILED ? '❌' : '🔄'}
-                    </span>
-                  </div>
-                  
-                  <div className="w-full bg-green-800 rounded-full h-3 overflow-hidden">
-                    <div 
-                      className="bg-gradient-to-r from-green-500 to-emerald-500 h-3 rounded-full transition-all duration-1000 ease-out"
-                      style={{ 
-                        width: analysisProgress === VIDEO_STATUS.ANALYZED ? '100%' :
-                               analysisProgress === VIDEO_STATUS.FAILED ? '100%' :
-                               analysisProgress === VIDEO_STATUS.ANALYZING ? '75%' :
-                               analysisProgress === VIDEO_STATUS.TRANSCRIBED ? '50%' :
-                               analysisProgress === VIDEO_STATUS.PROCESSING ? '25%' : '10%'
-                      }}
-                    ></div>
-                  </div>
-                  
-                  <div className="grid grid-cols-4 gap-2 text-xs text-green-400">
-                    <div className="text-center">Upload</div>
-                    <div className="text-center">Traitement</div>
-                    <div className="text-center">Transcription</div>
-                    <div className="text-center">Analyse IA</div>
-                  </div>
-
-                  {analysisProgress === VIDEO_STATUS.FAILED && (
-                    <div className="mt-3 p-3 bg-red-900/30 rounded-lg border border-red-700">
-                      <p className="text-red-300 text-sm">
-                        {error || "Une erreur est survenue lors de l'analyse. Veuillez réessayer."}
-                      </p>
-                      <Button 
-                        onClick={retryRecording}
-                        className="mt-2 bg-red-600 hover:bg-red-700 text-white text-sm"
-                      >
-                        Réessayer
-                      </Button>
-                    </div>
-                  )}
-                </div>
+            {/* Analyse de tonalité */}
+            {isAnalyzingTone && (
+              <div className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg">
+                <svg className="animate-spin h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span className="text-white">Analyse de tonalité en cours...</span>
               </div>
             )}
 
-            {/* Message d'erreur général */}
-            {error && !analysisProgress && (
-              <div className="bg-red-900/30 border border-red-700 rounded-xl p-4 animate-shake">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-red-400 text-xl">❌</span>
-                  <span className="font-medium text-red-300">Erreur</span>
+            {toneAnalysis && !isAnalyzingTone && (
+              <div className="space-y-3 p-4 bg-gray-800 rounded-lg border border-blue-500">
+                <h3 className="text-xl font-semibold text-blue-400">🎵 Tonalité Détectée</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm text-gray-300">
+                  <p>Émotion dominante : <span className="font-bold text-white">{toneAnalysis.emotion}</span></p>
+                  <p>Rythme de parole : <span className="font-bold text-white">{toneAnalysis.pace}</span></p>
+                  <p>Confiance : <span className="font-bold text-white">{Math.round(toneAnalysis.confidence * 100)}%</span></p>
                 </div>
-                <p className="text-red-400 text-sm">{error}</p>
-                <Button 
-                  onClick={retryRecording}
-                  className="mt-3 bg-red-600 hover:bg-red-700 text-white text-sm"
-                >
-                  Réessayer
-                </Button>
+                <p className="text-sm text-gray-400 mt-2 border-t border-gray-700 pt-2">
+                  **Suggestion :** {toneAnalysis.suggestion}
+                </p>
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Conseils */}
-        <div className="mt-8 bg-gradient-to-br from-orange-900 to-amber-900 rounded-xl p-6 border border-orange-700">
-          <h3 className="font-semibold mb-6 text-white text-xl flex items-center gap-3">
-            <span className="text-2xl">💡</span>
-            Conseils pour un enregistrement réussi
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <div className="flex items-start gap-4 p-3 bg-orange-800/30 rounded-lg hover:bg-orange-800/50 transition-colors">
-                <span className="text-orange-400 text-xl mt-1">🎯</span>
-                <div>
-                  <h4 className="font-medium text-white mb-1">Préparation</h4>
-                  <p className="text-orange-200 text-sm">Préparez vos idées principales avant de commencer</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-4 p-3 bg-orange-800/30 rounded-lg hover:bg-orange-800/50 transition-colors">
-                <span className="text-orange-400 text-xl mt-1">💡</span>
-                <div>
-                  <h4 className="font-medium text-white mb-1">Éclairage</h4>
-                  <p className="text-orange-200 text-sm">Placez-vous face à la lumière naturelle</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-4 p-3 bg-orange-800/30 rounded-lg hover:bg-orange-800/50 transition-colors">
-                <span className="text-orange-400 text-xl mt-1">🎙️</span>
-                <div>
-                  <h4 className="font-medium text-white mb-1">Audio</h4>
-                  <p className="text-orange-200 text-sm">Parlez clairement et à un rythme modéré</p>
-                </div>
-              </div>
-            </div>
-            <div className="space-y-4">
-              <div className="flex items-start gap-4 p-3 bg-orange-800/30 rounded-lg hover:bg-orange-800/50 transition-colors">
-                <span className="text-orange-400 text-xl mt-1">⏱️</span>
-                <div>
-                  <h4 className="font-medium text-white mb-1">Durée</h4>
-                  <p className="text-orange-200 text-sm">5 minutes maximum pour garder l'attention</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-4 p-3 bg-orange-800/30 rounded-lg hover:bg-orange-800/50 transition-colors">
-                <span className="text-orange-400 text-xl mt-1">😊</span>
-                <div>
-                  <h4 className="font-medium text-white mb-1">Expression</h4>
-                  <p className="text-orange-200 text-sm">Souriez et soyez naturel</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-4 p-3 bg-orange-800/30 rounded-lg hover:bg-orange-800/50 transition-colors">
-                <span className="text-orange-400 text-xl mt-1">🏷️</span>
-                <div>
-                  <h4 className="font-medium text-white mb-1">Mots-clés</h4>
-                  <p className="text-orange-200 text-sm">Ajoutez des tags pertinents pour les rapprochements</p>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
-
-      {/* Styles d'animation */}
-      <style jsx>{`
-        @keyframes fade-in {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes shake {
-          0%, 100% { transform: translateX(0); }
-          25% { transform: translateX(-5px); }
-          75% { transform: translateX(5px); }
-        }
-        .animate-fade-in {
-          animation: fade-in 0.5s ease-out;
-        }
-        .animate-shake {
-          animation: shake 0.5s ease-in-out;
-        }
-      `}</style>
     </div>
   );
 };

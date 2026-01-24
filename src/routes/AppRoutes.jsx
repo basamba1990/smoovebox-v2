@@ -31,6 +31,7 @@ import SoftPowerPassions from "../components/SoftPowerPassions.jsx";
 import PitchRecording from "../components/PitchRecording.jsx";
 import FutureJobsGenerator from "../pages/future-jobs-generator.jsx";
 import TrendsDashboard from "../pages/TrendsDashboard.jsx";
+import GenupPortfolioPage from "../pages/genupPortfolioPage.jsx";
 import PersonasSelector from "../components/PersonasSelector.jsx";
 import ImmersionSimulator from "../components/ImmersionSimulator.jsx";
 import ComplementaryMatches from "../components/ComplementaryMatches.jsx";
@@ -316,6 +317,14 @@ export default function AppRoutes({
         element={
           <RequireAuth>
             <TrendsDashboard user={user} profile={profile} />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/genup-portfolio"
+        element={
+          <RequireAuth>
+            <GenupPortfolioPage user={user} profile={profile} />
           </RequireAuth>
         }
       />
