@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, invokeEdgeFunctionWithRetry } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -174,32 +174,12 @@ const VideoManagement = () => {
         [video.id]: { step: 'Transcription en cours...', progress: 30 }
       }));
 
-      const transcribeResponse = await fetch(
-        'https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/transcribe-video',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.session.access_token}`,
-          },
-          body: JSON.stringify({ video_id: video.id }),
-        }
-      );
+      const { data: transcribeResult, error: transcribeError } = await supabase.functions.invoke('transcribe-video', {
+        body: { video_id: video.id }
+      });
 
-      if (!transcribeResponse.ok) {
-        let errorMessage = 'Erreur lors de la transcription';
-        try {
-          const errorResult = await transcribeResponse.json();
-          errorMessage = errorResult.error || errorResult.details || errorMessage;
-        } catch (e) {
-          errorMessage = `${transcribeResponse.status} ${transcribeResponse.statusText}`;
-        }
-        throw new Error(errorMessage);
-      }
-
-      const transcribeResult = await transcribeResponse.json();
-      if (transcribeResult.error) {
-        throw new Error(transcribeResult.error);
+      if (transcribeError) {
+        throw new Error(transcribeError.message || 'Erreur lors de la transcription');
       }
 
       setAnalysisProgress(prev => ({
@@ -218,33 +198,17 @@ const VideoManagement = () => {
         [video.id]: { step: 'Analyse IA en cours...', progress: 80 }
       }));
 
-      const analyzeResponse = await fetch(
-        'https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/analyze-transcription',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.session.access_token}`,
-          },
-          body: JSON.stringify({ video_id: video.id }),
-        }
-      );
+      console.log("📊 Invoking analyze-transcription for:", video.id);
+      const result = await invokeEdgeFunctionWithRetry('analyze-transcription', {
+        video_id: video.id
+      });
 
-      if (!analyzeResponse.ok) {
-        let errorMessage = 'Erreur lors de l\'analyse';
-        try {
-          const errorResult = await analyzeResponse.json();
-          errorMessage = errorResult.error || errorMessage;
-        } catch (e) {
-          errorMessage = `${analyzeResponse.status} ${analyzeResponse.statusText}`;
-        }
-        throw new Error(errorMessage);
+      if (!result.success) {
+        console.error("❌ Analyze Edge Function Error:", result.error);
+        throw new Error(result.error || 'Erreur lors de l\'analyse');
       }
 
-      const analyzeResult = await analyzeResponse.json();
-      if (analyzeResult.error) {
-        throw new Error(analyzeResult.error);
-      }
+      console.log("✅ Analyze Success:", result.data);
 
       setAnalysisProgress(prev => ({
         ...prev,
@@ -291,36 +255,17 @@ const VideoManagement = () => {
       setProcessingVideoId(video.id);
       toast.loading('Démarrage de la transcription...', { id: 'transcribe-toast' });
 
-      const { data: session, error: authError } = await supabase.auth.getSession();
-      if (authError || !session?.session?.access_token) {
-        throw new Error('Session non valide, veuillez vous reconnecter');
-      }
-
-      const response = await fetch('https://nyxtckjfaajhacboxojd.supabase.co/functions/v1/transcribe-video', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.session.access_token}`,
-        },
-        body: JSON.stringify({ video_id: video.id }),
+      console.log("🎤 Invoking transcribe-video for:", video.id);
+      const result = await invokeEdgeFunctionWithRetry('transcribe-video', {
+        video_id: video.id
       });
 
-      if (!response.ok) {
-        let errorMessage = 'Erreur lors de la transcription';
-        try {
-          const errorResult = await response.json();
-          errorMessage = errorResult.error || errorResult.details || errorMessage;
-        } catch (e) {
-          errorMessage = `${response.status} ${response.statusText}`;
-        }
-        throw new Error(errorMessage);
+      if (!result.success) {
+        console.error("❌ Transcribe Edge Function Error:", result.error);
+        throw new Error(result.error || 'Erreur lors de la transcription');
       }
 
-      const result = await response.json();
-      if (result.error) {
-        throw new Error(result.error);
-      }
-
+      console.log("✅ Transcribe Success:", result.data);
       toast.success('Transcription démarrée avec succès', { id: 'transcribe-toast' });
 
       // Invalidate to refetch updated video status

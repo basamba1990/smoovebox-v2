@@ -441,4 +441,3 @@ export async function getMyHobbyProfile(hobbyName = null) {
     return { success: false, error: error.message };
   }
 }
-

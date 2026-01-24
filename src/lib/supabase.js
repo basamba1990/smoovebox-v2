@@ -40,8 +40,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   global: {
     headers: {
       'X-Client-Info': 'spotbulle-secure',
-      'X-Client-Version': '2.0.0',
-      'Accept': 'application/json' // ✅ CORRECTION: Ajout de l'en-tête Accept
+      'Accept': 'application/json'
     },
   },
   db: {
@@ -229,12 +228,14 @@ export const invokeEdgeFunctionWithRetry = async (functionName, body, options = 
       }
 
       // ✅ APPEL STANDARD SUPABASE
+      console.log(`📡 [invokeEdgeFunctionWithRetry] Attempting standard invoke for ${functionName}`);
       const { data, error } = await supabase.functions.invoke(functionName, {
         body,
         signal: AbortSignal.timeout(timeout)
       });
 
       if (error) {
+        console.warn(`📡 [invokeEdgeFunctionWithRetry] Standard invoke failed for ${functionName}:`, error);
         throw error;
       }
 
@@ -292,8 +293,15 @@ const invokeEdgeFunctionDirectHttps = async (functionName, body, timeout = 30000
 
     clearTimeout(timeoutId);
 
+    console.log(`📡 [invokeEdgeFunctionDirectHttps] Response for ${functionName}:`, {
+      status: response.status,
+      ok: response.ok,
+      statusText: response.statusText
+    });
+
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`📡 [invokeEdgeFunctionDirectHttps] Error response for ${functionName}:`, errorText);
       throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
 

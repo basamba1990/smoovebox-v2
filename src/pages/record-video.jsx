@@ -236,8 +236,7 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
           }, 1500);
         } else if (video.status === VIDEO_STATUS.FAILED) {
           setAnalysisProgress(VIDEO_STATUS.FAILED);
-          // CORRECTION DE L'ERREUR DE SYNTAXE ICI
-          const errorMsg = video.error_message || "L'analyse de la vidéo a échoué.";
+          const errorMsg = video.error_message || 'L analyse de la vidéo a échoué.';
           setError(errorMsg);
           toast.error("❌ Échec de l'analyse");
           clearInterval(intervalId);
@@ -522,21 +521,30 @@ const RecordVideo = ({ onVideoUploaded = () => {}, selectedLanguage = null }) =>
         language: 'fr'
       };
 
-      console.log('📤 Appel analyse tonalité...');
+      console.log('📤 Appel analyse tonalité (analyze-tone)...');
+      console.log('📦 Payload:', {
+        userId: user.id,
+        language: 'fr',
+        audioLength: requestBody.audio.length
+      });
 
       // ✅ UTILISATION DE LA NOUVELLE FONCTION AVEC RETRY ET HTTPS
-      const { data, error } = await invokeEdgeFunctionWithRetry('analyze-tone', requestBody, {
+      const result = await invokeEdgeFunctionWithRetry('analyze-tone', requestBody, {
         maxRetries: 2,
         timeout: 15000
       });
 
-      if (error) {
-        console.warn('⚠️ Analyse tonalité échouée:', error);
+      console.log('📥 Réponse brute analyze-tone:', result);
+
+      if (!result.success) {
+        console.error('❌ Analyse tonalité échouée:', result.error);
+        console.log('📝 Erreur détaillée:', result.originalError || result.error);
         setToneAnalysis(getFallbackToneAnalysis());
         setIsAnalyzingTone(false);
         return;
       }
 
+      const { data } = result;
       console.log('✅ Analyse tonalité réussie:', data);
       
       if (data.success && data.analysis) {
