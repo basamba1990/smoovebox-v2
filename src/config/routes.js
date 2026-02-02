@@ -46,26 +46,11 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
   } = context;
 
   return [
-    // Root route - conditional based on auth (handled dynamically)
+    // Root route - logic now handled directly in AppRoutes (redirect to /login or /embark)
     {
       path: "/",
-      element: SimplifiedHome, // Default, but won't be used for conditional routes
-      requiresAuth: false, // Handled conditionally, not with RequireAuth wrapper
-      isConditional: true, // Flag to indicate conditional rendering
-      conditionalElement: SimplifiedHome, // Component for authenticated users
-      conditionalElementGuest: WelcomeAgent, // Component for guests
-      conditionalProps: {
-        user,
-        profile,
-        connectionStatus,
-        onSignOut,
-        dashboardData,
-        loading: dashboardLoading,
-      },
-      conditionalPropsGuest: {
-        onOpenAuthModal: () => setIsAuthModalOpen(true),
-        onDemoMode: () => navigate("/demo"),
-      },
+      element: SimplifiedHome,
+      requiresAuth: false,
     },
 
     // Auth routes (public)
@@ -151,7 +136,7 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
       requiresAuth: true,
     },
     {
-      path: "/spotcoach",
+      path: "/embark",
       element: SpotCoach,
       requiresAuth: true,
     },
@@ -250,6 +235,19 @@ export const createRoutes = (context, navigate, setIsAuthModalOpen) => {
       path: "/directory",
       element: Directory,
       requiresAuth: true,
+    },
+    {
+      path: "/old",
+      element: SimplifiedHome,
+      requiresAuth: true,
+      props: {
+        user,
+        profile,
+        connectionStatus,
+        onSignOut,
+        dashboardData,
+        dashboardLoading,
+      },
     },
 
     // Error routes
