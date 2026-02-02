@@ -501,7 +501,7 @@ export default function Home({
         return (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-french font-bold text-white">📁 Mon Coffre-fort Vidéo testtt</h2>
+              <h2 className="text-2xl font-french font-bold text-white">📁 Mon Coffre-fort Vidéo</h2>
               <Button
                 onClick={() => setActiveTab('record')}
                 className="bg-blue-600 hover:bg-blue-700 text-white"

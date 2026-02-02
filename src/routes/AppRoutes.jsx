@@ -53,27 +53,13 @@ export default function AppRoutes({
 }) {
   return (
     <Routes>
-      {/* Route racine intelligente */}
+      {/* Root route: redirect based on auth */}
       <Route
         path="/"
         element={
-          user ? (
-            <RequireAuth>
-              <SimplifiedHome
-                user={user}
-                profile={profile}
-                connectionStatus={connectionStatus}
-                onSignOut={onSignOut}
-                dashboardData={dashboardData}
-                loading={dashboardLoading}
-              />
-            </RequireAuth>
-          ) : (
-            <WelcomeAgent
-              onOpenAuthModal={() => setIsAuthModalOpen(true)}
-              onDemoMode={() => navigate("/demo")}
-            />
-          )
+          user
+            ? <Navigate to="/embark" replace />
+            : <Navigate to="/login" replace />
         }
       />
 
@@ -164,13 +150,15 @@ export default function AppRoutes({
       {/* Routes Premium & Coaching */}
       <Route path="/premium" element={<SpotBullePremium />} />
       <Route
-        path="/spotcoach"
+        path="/embark"
         element={
           <RequireAuth>
             <SpotCoach user={user} profile={profile} />
           </RequireAuth>
         }
       />
+      {/* Optional backward compatibility for old /spotcoach URL */}
+      <Route path="/spotcoach" element={<Navigate to="/embark" replace />} />
       <Route
         path="/lumi/onboarding"
         element={
@@ -303,6 +291,23 @@ export default function AppRoutes({
         }
       />
 
+      {/* Ancienne home / dashboard simplifié */}
+      <Route
+        path="/old"
+        element={
+          <RequireAuth>
+            <SimplifiedHome
+              user={user}
+              profile={profile}
+              connectionStatus={connectionStatus}
+              onSignOut={onSignOut}
+              dashboardData={dashboardData}
+              loading={dashboardLoading}
+            />
+          </RequireAuth>
+        }
+      />
+
       {/* ✅ NOUVELLES ROUTES FUTUR & IA */}
       <Route
         path="/future-jobs-generator"
@@ -339,21 +344,12 @@ export default function AppRoutes({
         element={
           <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800">
             <div className="text-center text-white">
-              <h1 className="text-6xl font-bold mb-4">404</h1>
-              <p className="text-xl mb-8">Page non trouvée</p>
-              <button
-                onClick={() => navigate("/")}
-                style={{
-                  padding: "10px 20px",
-                  background: "hsl(222.2 84% 4.9%)",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                }}
-              >
-                Retour à l'accueil
-              </button>
+              <h1 className="text-4xl md:text-5xl font-extrabold mb-4 tracking-wide">
+                le sas d'accueil : Radar de naissance
+              </h1>
+              <p className="text-lg md:text-xl text-slate-300">
+                Cette étape de l&apos;odyssée n&apos;existe pas encore dans le voyage de Lumi.
+              </p>
             </div>
           </div>
         }

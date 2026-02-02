@@ -1,7 +1,6 @@
 // src/pages/SpotCoach.jsx
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button.jsx';
 import { Input } from '../components/ui/input.jsx';
 import { Label } from '../components/ui/label.jsx';
@@ -33,7 +32,6 @@ function parseMultiline(text) {
 }
 
 export default function SpotCoach() {
-  const navigate = useNavigate();
   const [form, setForm] = useState(initialState);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -224,22 +222,12 @@ export default function SpotCoach() {
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 py-10">
       <div className="max-w-6xl mx-auto px-4 space-y-10">
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <Button
-              onClick={() => navigate('/')}
-              variant="outline"
-              className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800"
-            >
-              ← Retour à l'accueil
-            </Button>
-          </div>
           <div className="text-center space-y-3">
             <h1 className="text-3xl md:text-4xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400">
-              SpotCoach – Profil Symbolique Personnalisé
+              le sas d'accueil : Radar de naissance
             </h1>
             <p className="text-slate-300 max-w-3xl mx-auto">
-              Renseigne les informations de naissance, réponds aux mini-questionnaires passions / talents et partage tes intentions.
-              SpotCoach combinera ces données avec l&apos;analyse symbolique pour générer un profil aligné sur ton essence.
+              Renseigne ta date, heure et lieu de naissance pour calculer ton Radar de naissance.
             </p>
           </div>
         </div>
