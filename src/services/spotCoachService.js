@@ -63,8 +63,9 @@ export const spotCoachService = {
         },
       });
 
+      const timeoutMs = 90000; // 90s to allow Astro + OpenAI to finish
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Timeout after 45s calling spotcoach-profile')), 45000)
+        setTimeout(() => reject(new Error('Timeout after 90s calling spotcoach-profile')), timeoutMs)
       );
 
       const { data, error } = await Promise.race([invokePromise, timeoutPromise]);

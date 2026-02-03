@@ -31,7 +31,7 @@ export default function OdysseyLayout({
     >
       {/* Top-right accent: Tache.png + page title and subtitle (hidden on small screens via CSS media query) */}
       <div
-        className="tache-desktop-only absolute top-0 right-0 z-20 flex flex-col items-center justify-start text-center opacity-95"
+        className="tache-desktop-only absolute top-0 right-0 flex flex-col items-center justify-start text-center opacity-95"
         style={{
           width: '700px',
           height: '700px',
