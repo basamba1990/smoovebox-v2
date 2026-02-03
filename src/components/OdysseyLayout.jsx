@@ -29,9 +29,9 @@ export default function OdysseyLayout({
         backgroundRepeat: 'no-repeat',
       }}
     >
-      {/* Top-right accent: Tache.png + page title and subtitle */}
+      {/* Top-right accent: Tache.png + page title and subtitle (hidden on small screens via CSS media query) */}
       <div
-        className="absolute top-0 right-0 flex flex-col items-center justify-start text-center opacity-95"
+        className="tache-desktop-only absolute top-0 right-0 z-20 flex flex-col items-center justify-start text-center opacity-95"
         style={{
           width: '700px',
           height: '700px',
@@ -70,6 +70,18 @@ export default function OdysseyLayout({
 
       <div className={`${maxWidthClass} mx-auto px-4 space-y-10 relative z-10`}>
         <OdysseySteps currentStep={currentStep} />
+
+        {/* Mobile/tablet title block (shown when Tache accent is hidden, below md, just above page description/content) */}
+        <div className="md:hidden text-center mb-6">
+          <h1 className="text-2xl font-semibold text-white leading-tight">
+            {title}
+          </h1>
+          {subtitle && (
+            <p className="text-white/90 text-sm mt-2 max-w-md mx-auto">
+              {subtitle}
+            </p>
+          )}
+        </div>
 
         {children}
       </div>
