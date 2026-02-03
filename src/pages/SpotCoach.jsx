@@ -11,7 +11,8 @@ import { TimePicker } from '../components/ui/time-picker.jsx';
 import { CityAutocomplete } from '../components/ui/city-autocomplete.jsx';
 import { spotCoachService } from '../services/spotCoachService.js';
 import { toast } from 'sonner';
-import OdysseySteps from '../components/OdysseySteps.jsx';
+import OdysseyLayout from '../components/OdysseyLayout.jsx';
+import { getOdysseyStepById } from '../config/odysseyConfig.js';
 
 const initialState = {
   name: '',
@@ -33,7 +34,8 @@ function parseMultiline(text) {
     .filter(Boolean);
 }
 
-const ODYSSEY_STEP_2_PATH = '/scan-elements'; // Le scan des 4 éléments
+const STEP_2 = getOdysseyStepById(2);
+const ODYSSEY_STEP_2_PATH = STEP_2?.path || '/scan-elements'; // Le scan des 4 éléments
 
 export default function SpotCoach() {
   const navigate = useNavigate();
@@ -224,22 +226,17 @@ export default function SpotCoach() {
   };
 
   return (
-    <div className="min-h-screen py-10" style={{ backgroundColor: '#3d6b66' }}>
-      <div className="max-w-6xl mx-auto px-4 space-y-10">
-        <OdysseySteps currentStep={1} />
-
-        <div className="space-y-3">
-          <div className="text-center space-y-3">
-            <h1 className="text-3xl md:text-4xl font-semibold text-white">
-              le sas d'accueil : Radar de naissance
-            </h1>
-            <p className="text-white/90 max-w-3xl mx-auto">
-              Renseigne ta date, heure et lieu de naissance pour calculer ton Radar de naissance.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <OdysseyLayout
+      currentStep={1}
+      title="le sas d'accueil : Radar de naissance"
+      maxWidthClass="max-w-6xl"
+    >
+      <p className="text-white/90 text-center my-6 max-w-2xl mx-auto">
+        {result?.profile
+          ? 'Ton Radar de naissance est enregistré. Consulte ton profil ci-dessous.'
+          : 'Renseigne ta date, heure et lieu de naissance pour calculer ton Radar de naissance.'}
+      </p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {showForm && (
             <Card className="lg:col-span-2 bg-white/95 border border-slate-200 shadow-lg backdrop-blur">
               <CardHeader>
@@ -511,8 +508,7 @@ export default function SpotCoach() {
             </CardContent>
           </Card>
         </div>
-      </div>
-    </div>
+    </OdysseyLayout>
   );
 }
 

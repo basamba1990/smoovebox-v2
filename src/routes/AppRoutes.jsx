@@ -24,6 +24,7 @@ import VideoSuccess from "../pages/video-success.jsx";
 import Directory from "../pages/directory.jsx";
 import LumiOnboarding from "../pages/lumi-onboarding.jsx";
 import LumiUnifiedProfile from "../pages/LumiUnifiedProfile.jsx";
+import ModuleMimetique from "../pages/ModuleMimetique.jsx";
 import UpdateDISC from "../pages/UpdateDISC.jsx";
 import PitchAnalysisPage from "../pages/PitchAnalysisPage.jsx";
 import { CompanyRecord } from "../pages/company-record.jsx";
@@ -168,6 +169,14 @@ export default function AppRoutes({
         }
       />
       <Route path="/lumi/onboarding" element={<Navigate to="/scan-elements" replace />} />
+      <Route
+        path="/module-mimetique"
+        element={
+          <RequireAuth>
+            <ModuleMimetique />
+          </RequireAuth>
+        }
+      />
       <Route
         path="/lumi/profile"
         element={

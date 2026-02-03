@@ -16,6 +16,7 @@ import HobbyFlow from "../components/HobbyFlow.jsx";
 import { checkVideoProfileInformation } from "../services/videoService.js";
 import { useUser } from "@supabase/auth-helpers-react";
 import { toast } from "sonner";
+import OdysseyLayout from "../components/OdysseyLayout.jsx";
 import OdysseySteps from "../components/OdysseySteps.jsx";
 
 // Age range options
@@ -158,35 +159,31 @@ export default function LumiOnboarding() {
   // Show loading while checking for existing profile or age
   if (checkingProfile || checkingAge) {
     return (
-      <div className="min-h-screen py-10" style={{ backgroundColor: "#3d6b66" }}>
-        <div className="max-w-4xl mx-auto px-4">
-          <OdysseySteps currentStep={2} className="mb-8" />
-          <div className="text-center py-12">
-            <div className="text-4xl mb-4">✨</div>
-            <p className="text-white/80">Chargement...</p>
-          </div>
+      <OdysseyLayout
+        currentStep={2}
+        title="Le scan des 4 éléments"
+        maxWidthClass="max-w-4xl"
+      >
+        <div className="text-center py-12">
+          <div className="text-4xl mb-4">✨</div>
+          <p className="text-white/80">Chargement...</p>
         </div>
-      </div>
+      </OdysseyLayout>
     );
   }
 
   return (
-    <div className="min-h-screen py-10" style={{ backgroundColor: "#3d6b66" }}>
-      <div className="max-w-4xl mx-auto px-4 space-y-8">
-        <OdysseySteps currentStep={2} />
-        {/* Header */}
-        <div className="text-center space-y-2">
-          <h1 className="text-3xl md:text-4xl font-semibold text-white">
-            Le scan des 4 éléments
-          </h1>
-          <p className="text-white/90 max-w-2xl mx-auto">
-            Test rapide pour révéler ton élément (Feu, Air, Eau, Terre) et faire naître ton étoile.
-          </p>
-        </div>
-
-        {/* Age Selection Card - Show if age not found */}
-        {showAgeSelection && !ageRange && !currentQuestion && !computedProfile && (
-          <Card className="bg-slate-900/60 border-slate-800">
+    <OdysseyLayout
+      currentStep={2}
+      title="Le scan des 4 éléments"
+      maxWidthClass="max-w-4xl"
+    >
+      <p className="text-white/90 text-center my-6 max-w-2xl mx-auto">
+        Test rapide pour révéler ton élément (Feu, Air, Eau, Terre) et faire naître ton étoile.
+      </p>
+      {/* Age Selection Card - Show if age not found */}
+      {showAgeSelection && !ageRange && !currentQuestion && !computedProfile && (
+        <Card className="bg-slate-900/60 border-slate-800">
             <CardHeader>
               <CardTitle className="text-2xl text-white">
                 Quelle tranche d'âge vous correspond le mieux ?
@@ -530,6 +527,19 @@ export default function LumiOnboarding() {
          {/* Hobby Flow Component */}
          <HobbyFlow computedProfile={computedProfile} ageRange={ageRange} />
 
+         {/* Continue to Step 3 */}
+         {computedProfile && (
+           <div className="mt-8 flex justify-center">
+             <Button
+               onClick={() => navigate('/module-mimetique')}
+               size="lg"
+               className="bg-teal-600 hover:bg-teal-500 text-white px-8"
+             >
+               Continuer →
+             </Button>
+           </div>
+         )}
+
          {/* Question Display */}
          {currentQuestion && !computingProfile && !computedProfile && (
           <Card className="bg-slate-900/60 border-slate-800">
@@ -749,7 +759,6 @@ export default function LumiOnboarding() {
             </CardContent>
           </Card>
         )}
-      </div>
-    </div>
+    </OdysseyLayout>
   );
 }
