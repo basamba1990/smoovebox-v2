@@ -1,6 +1,7 @@
 // src/pages/SpotCoach.jsx
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button.jsx';
 import { Input } from '../components/ui/input.jsx';
 import { Label } from '../components/ui/label.jsx';
@@ -32,7 +33,10 @@ function parseMultiline(text) {
     .filter(Boolean);
 }
 
+const ODYSSEY_STEP_2_PATH = '/scan-elements'; // Le scan des 4 éléments
+
 export default function SpotCoach() {
+  const navigate = useNavigate();
   const [form, setForm] = useState(initialState);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -470,7 +474,13 @@ export default function SpotCoach() {
                   )}
 
                   {result && !showForm && (
-                    <div className="pt-4 border-t border-slate-200">
+                    <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center gap-3">
+                      <Button
+                        onClick={() => navigate(ODYSSEY_STEP_2_PATH)}
+                        className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+                      >
+                        Continuer →
+                      </Button>
                       <Button 
                         onClick={async () => {
                           if (confirm('Êtes-vous sûr de vouloir supprimer ce profil ? Cette action est irréversible.')) {

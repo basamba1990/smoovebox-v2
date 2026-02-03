@@ -160,13 +160,14 @@ export default function AppRoutes({
       {/* Optional backward compatibility for old /spotcoach URL */}
       <Route path="/spotcoach" element={<Navigate to="/embark" replace />} />
       <Route
-        path="/lumi/onboarding"
+        path="/scan-elements"
         element={
           <RequireAuth>
             <LumiOnboarding user={user} profile={profile} />
           </RequireAuth>
         }
       />
+      <Route path="/lumi/onboarding" element={<Navigate to="/scan-elements" replace />} />
       <Route
         path="/lumi/profile"
         element={
