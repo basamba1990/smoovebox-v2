@@ -527,9 +527,16 @@ export default function LumiOnboarding() {
          {/* Hobby Flow Component */}
          <HobbyFlow computedProfile={computedProfile} ageRange={ageRange} />
 
-         {/* Continue to Step 3 */}
+         {/* Précédent / Continuer navigation */}
          {computedProfile && (
-           <div className="mt-8 flex justify-center">
+           <div className="mt-8 flex justify-between items-center">
+             <Button
+               onClick={() => navigate('/embark')}
+               size="lg"
+               className="bg-teal-600 hover:bg-teal-500 text-white px-8"
+             >
+               ← Précédent
+             </Button>
              <Button
                onClick={() => navigate('/module-mimetique')}
                size="lg"

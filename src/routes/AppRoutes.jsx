@@ -353,13 +353,19 @@ export default function AppRoutes({
         path="/404"
         element={
           <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800">
-            <div className="text-center text-white">
+            <div className="text-center text-white px-4">
               <h1 className="text-4xl md:text-5xl font-extrabold mb-4 tracking-wide">
-                le sas d'accueil : Radar de naissance
+                404
               </h1>
-              <p className="text-lg md:text-xl text-slate-300">
-                Cette étape de l&apos;odyssée n&apos;existe pas encore dans le voyage de Lumi.
+              <p className="text-lg md:text-xl text-slate-300 mb-6">
+                Cette page n&apos;existe pas.
               </p>
+              <a
+                href="/"
+                className="inline-block text-teal-400 hover:text-teal-300 font-medium underline underline-offset-2"
+              >
+                Retour à l&apos;accueil
+              </a>
             </div>
           </div>
         }
