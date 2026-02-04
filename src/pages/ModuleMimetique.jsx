@@ -1,21 +1,50 @@
 // src/pages/ModuleMimetique.jsx
-// Step 3 – Le module mimétique (placeholder for Odyssée de Lumi)
+// Step 3 – Le module mimétique (vidéo / miroir de ton étoile)
 
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import OdysseyLayout from "../components/OdysseyLayout.jsx";
+import { Button } from "../components/ui/button.jsx";
+import EnhancedRecordVideo from "./enhanced-record-video.jsx";
+import { getOdysseyStepById } from "../config/odysseyConfig.js";
 
-export default function ModuleMimetique() {
+const STEP_4 = getOdysseyStepById(4);
+const STEP_4_PATH = STEP_4?.path ?? "/labo-transformation";
+
+export default function ModuleMimetique({ user, profile, onSignOut, onVideoUploaded, cameraChecked }) {
+  const navigate = useNavigate();
+
   return (
     <OdysseyLayout
       currentStep={3}
       title="Le module mimétique"
-      subtitle="Bientôt : enregistrement vidéo et miroir de ton étoile."
-      maxWidthClass="max-w-4xl"
+      subtitle="Enregistrement vidéo et miroir de ton étoile."
+      maxWidthClass="max-w-6xl"
     >
-      <div className="mt-8 rounded-xl bg-white/95 backdrop-blur border border-slate-200 shadow-lg p-8 text-center">
-        <p className="text-slate-700 text-lg">
-          Cette étape sera dédiée au module mimétique (vidéo). Contenu à venir.
-        </p>
+      <EnhancedRecordVideo
+        user={user}
+        profile={profile}
+        onSignOut={onSignOut}
+        onVideoUploaded={onVideoUploaded}
+        cameraChecked={cameraChecked}
+        embedInOdyssey
+      />
+
+      <div className="mt-8 flex justify-between items-center">
+        <Button
+          onClick={() => navigate("/scan-elements")}
+          size="lg"
+          className="bg-teal-600 hover:bg-teal-500 text-white px-8"
+        >
+          ← Précédent
+        </Button>
+        <Button
+          onClick={() => navigate(STEP_4_PATH)}
+          size="lg"
+          className="bg-teal-600 hover:bg-teal-500 text-white px-8"
+        >
+          Continuer →
+        </Button>
       </div>
     </OdysseyLayout>
   );

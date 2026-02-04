@@ -31,7 +31,7 @@ export const ODYSSEY_STEPS = [
     id: 4,
     key: 'labo-transformation',
     title: 'Le labo de transformation',
-    path: null,
+    path: '/labo-transformation',
     Icon: Brain,
   },
   {

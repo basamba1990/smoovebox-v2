@@ -25,6 +25,7 @@ import Directory from "../pages/directory.jsx";
 import LumiOnboarding from "../pages/lumi-onboarding.jsx";
 import LumiUnifiedProfile from "../pages/LumiUnifiedProfile.jsx";
 import ModuleMimetique from "../pages/ModuleMimetique.jsx";
+import LaboTransformation from "../pages/LaboTransformation.jsx";
 import UpdateDISC from "../pages/UpdateDISC.jsx";
 import PitchAnalysisPage from "../pages/PitchAnalysisPage.jsx";
 import { CompanyRecord } from "../pages/company-record.jsx";
@@ -173,7 +174,21 @@ export default function AppRoutes({
         path="/module-mimetique"
         element={
           <RequireAuth>
-            <ModuleMimetique />
+            <ModuleMimetique
+              user={user}
+              profile={profile}
+              onSignOut={onSignOut}
+              onVideoUploaded={handleVideoUploaded}
+              cameraChecked={cameraChecked}
+            />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/labo-transformation"
+        element={
+          <RequireAuth>
+            <LaboTransformation />
           </RequireAuth>
         }
       />
