@@ -1,6 +1,7 @@
 // src/pages/SpotCoach.jsx
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button.jsx';
 import { Input } from '../components/ui/input.jsx';
 import { Label } from '../components/ui/label.jsx';
@@ -10,7 +11,8 @@ import { TimePicker } from '../components/ui/time-picker.jsx';
 import { CityAutocomplete } from '../components/ui/city-autocomplete.jsx';
 import { spotCoachService } from '../services/spotCoachService.js';
 import { toast } from 'sonner';
-import OdysseySteps from '../components/OdysseySteps.jsx';
+import OdysseyLayout from '../components/OdysseyLayout.jsx';
+import { getOdysseyStepById } from '../config/odysseyConfig.js';
 
 const initialState = {
   name: '',
@@ -32,13 +34,49 @@ function parseMultiline(text) {
     .filter(Boolean);
 }
 
+const STEP_2 = getOdysseyStepById(2);
+const ODYSSEY_STEP_2_PATH = STEP_2?.path || '/scan-elements'; // Le scan des 4 éléments
+
+/** Map raw DB row from profiles_symboliques to the result shape used by the UI. */
+function mapExistingToResult(existing) {
+  const passions = Array.isArray(existing.passions)
+    ? existing.passions
+    : typeof existing.passions === 'string'
+      ? (() => {
+          try {
+            const parsed = JSON.parse(existing.passions);
+            return Array.isArray(parsed) ? parsed : [existing.passions];
+          } catch {
+            return [existing.passions];
+          }
+        })()
+      : [];
+  return {
+    mode: 'persisted',
+    profile: {
+      phrase_synchronie: existing.phrase_synchronie ?? '',
+      archetype: existing.archetype ?? '',
+      element: existing.element ?? '',
+      signe_soleil: existing.signe_soleil ?? '',
+      signe_lune: existing.signe_lune ?? '',
+      signe_ascendant: existing.signe_ascendant ?? '',
+      profile_text: existing.profile_text ?? '',
+      couleur_dominante: existing.couleur_dominante ?? '',
+      passions,
+    },
+    stored: existing,
+  };
+}
+
 export default function SpotCoach() {
+  const navigate = useNavigate();
   const [form, setForm] = useState(initialState);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
   const [loadingExisting, setLoadingExisting] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [longerMessage, setLongerMessage] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -48,34 +86,7 @@ export default function SpotCoach() {
         const existing = await spotCoachService.getExistingProfile();
         if (!mounted) return;
         if (existing) {
-          const passions = Array.isArray(existing.passions)
-            ? existing.passions
-            : typeof existing.passions === 'string'
-              ? (() => {
-                  try {
-                    const parsed = JSON.parse(existing.passions);
-                    return Array.isArray(parsed) ? parsed : [existing.passions];
-                  } catch {
-                    return [existing.passions];
-                  }
-                })()
-              : [];
-
-          const mapped = {
-            mode: 'persisted',
-            profile: {
-              phrase_synchronie: existing.phrase_synchronie ?? '',
-              archetype: existing.archetype ?? '',
-              element: existing.element ?? '',
-              signe_soleil: existing.signe_soleil ?? '',
-              signe_lune: existing.signe_lune ?? '',
-              signe_ascendant: existing.signe_ascendant ?? '',
-              profile_text: existing.profile_text ?? '',
-              passions,
-            },
-            stored: existing,
-          };
-          setResult(mapped);
+          setResult(mapExistingToResult(existing));
           setForm((prev) => ({
             ...prev,
             name: existing.name ?? '',
@@ -212,30 +223,46 @@ export default function SpotCoach() {
       }); } catch {}
       try { console.dir(err); } catch {}
       const message = err?.message || err?.error || 'Impossible de générer le profil symbolique.';
-      setError(message);
+
+      if (err?.message?.includes('Timeout')) {
+        setLongerMessage(true);
+        const pollIntervalMs = 5000;
+        const pollDurationMs = 60000;
+        const deadline = Date.now() + pollDurationMs;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, pollIntervalMs));
+          const existing = await spotCoachService.getExistingProfile();
+          if (existing) {
+            setResult(mapExistingToResult(existing));
+            setShowForm(false);
+            setError(null);
+            setLongerMessage(false);
+            setLoading(false);
+            return;
+          }
+        }
+        setError('La génération a pris trop de temps. Rafraîchis la page dans un instant pour voir ton profil.');
+        setLongerMessage(false);
+      } else {
+        setError(message);
+      }
     } finally {
-      console.log('[SpotCoach] submit finished');
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen py-10" style={{ backgroundColor: '#3d6b66' }}>
-      <div className="max-w-6xl mx-auto px-4 space-y-10">
-        <OdysseySteps currentStep={1} />
-
-        <div className="space-y-3">
-          <div className="text-center space-y-3">
-            <h1 className="text-3xl md:text-4xl font-semibold text-white">
-              le sas d'accueil : Radar de naissance
-            </h1>
-            <p className="text-white/90 max-w-3xl mx-auto">
-              Renseigne ta date, heure et lieu de naissance pour calculer ton Radar de naissance.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <OdysseyLayout
+      currentStep={1}
+      title="le sas d'accueil : Radar de naissance"
+      maxWidthClass="max-w-6xl"
+    >
+      <p className="text-white/90 text-center my-6 max-w-2xl mx-auto">
+        {result?.profile
+          ? 'Ton Radar de naissance est enregistré. Consulte ton profil ci-dessous.'
+          : 'Renseigne ta date, heure et lieu de naissance pour calculer ton Radar de naissance.'}
+      </p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {showForm && (
             <Card className="lg:col-span-2 bg-white/95 border border-slate-200 shadow-lg backdrop-blur">
               <CardHeader>
@@ -367,9 +394,6 @@ export default function SpotCoach() {
           <Card className={showForm ? "bg-white/95 border border-slate-200 shadow-lg backdrop-blur h-max sticky top-6" : "lg:col-span-3 bg-white/95 border border-slate-200 shadow-lg backdrop-blur"}>
             <CardHeader>
               <CardTitle className="text-slate-800">Résultat SpotCoach</CardTitle>
-              <CardDescription className="text-slate-600">
-                Le profil généré par l&apos;IA sera affiché ici. En mode sauvegarde, il est également enregistré dans la table `profiles_symboliques`.
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {!result && !loading && !loadingExisting && (
@@ -378,9 +402,15 @@ export default function SpotCoach() {
                 </div>
               )}
 
-              {loading && (
+              {loading && !longerMessage && (
                 <div className="text-sm text-teal-700 animate-pulse">
                   Analyse symbolique en cours… SpotCoach fusionne les données et tes intentions.
+                </div>
+              )}
+
+              {longerMessage && (
+                <div className="text-sm text-amber-700 bg-amber-50/80 border border-amber-200 rounded-lg px-4 py-3 animate-pulse">
+                  Génération plus longue que prévu… Ton profil s'affichera dès qu'il sera prêt.
                 </div>
               )}
 
@@ -470,7 +500,7 @@ export default function SpotCoach() {
                   )}
 
                   {result && !showForm && (
-                    <div className="pt-4 border-t border-slate-200">
+                    <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
                       <Button 
                         onClick={async () => {
                           if (confirm('Êtes-vous sûr de vouloir supprimer ce profil ? Cette action est irréversible.')) {
@@ -494,6 +524,12 @@ export default function SpotCoach() {
                       >
                         Supprimer le profil
                       </Button>
+                      <Button
+                        onClick={() => navigate(ODYSSEY_STEP_2_PATH)}
+                        className="bg-teal-600 hover:bg-teal-700 text-white font-semibold"
+                      >
+                        Continuer →
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -501,8 +537,7 @@ export default function SpotCoach() {
             </CardContent>
           </Card>
         </div>
-      </div>
-    </div>
+    </OdysseyLayout>
   );
 }
 

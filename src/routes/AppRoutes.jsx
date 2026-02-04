@@ -24,6 +24,8 @@ import VideoSuccess from "../pages/video-success.jsx";
 import Directory from "../pages/directory.jsx";
 import LumiOnboarding from "../pages/lumi-onboarding.jsx";
 import LumiUnifiedProfile from "../pages/LumiUnifiedProfile.jsx";
+import ModuleMimetique from "../pages/ModuleMimetique.jsx";
+import LaboTransformation from "../pages/LaboTransformation.jsx";
 import UpdateDISC from "../pages/UpdateDISC.jsx";
 import PitchAnalysisPage from "../pages/PitchAnalysisPage.jsx";
 import { CompanyRecord } from "../pages/company-record.jsx";
@@ -160,10 +162,33 @@ export default function AppRoutes({
       {/* Optional backward compatibility for old /spotcoach URL */}
       <Route path="/spotcoach" element={<Navigate to="/embark" replace />} />
       <Route
-        path="/lumi/onboarding"
+        path="/scan-elements"
         element={
           <RequireAuth>
             <LumiOnboarding user={user} profile={profile} />
+          </RequireAuth>
+        }
+      />
+      <Route path="/lumi/onboarding" element={<Navigate to="/scan-elements" replace />} />
+      <Route
+        path="/module-mimetique"
+        element={
+          <RequireAuth>
+            <ModuleMimetique
+              user={user}
+              profile={profile}
+              onSignOut={onSignOut}
+              onVideoUploaded={handleVideoUploaded}
+              cameraChecked={cameraChecked}
+            />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/labo-transformation"
+        element={
+          <RequireAuth>
+            <LaboTransformation />
           </RequireAuth>
         }
       />
@@ -343,13 +368,19 @@ export default function AppRoutes({
         path="/404"
         element={
           <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800">
-            <div className="text-center text-white">
+            <div className="text-center text-white px-4">
               <h1 className="text-4xl md:text-5xl font-extrabold mb-4 tracking-wide">
-                le sas d'accueil : Radar de naissance
+                404
               </h1>
-              <p className="text-lg md:text-xl text-slate-300">
-                Cette étape de l&apos;odyssée n&apos;existe pas encore dans le voyage de Lumi.
+              <p className="text-lg md:text-xl text-slate-300 mb-6">
+                Cette page n&apos;existe pas.
               </p>
+              <a
+                href="/"
+                className="inline-block text-teal-400 hover:text-teal-300 font-medium underline underline-offset-2"
+              >
+                Retour à l&apos;accueil
+              </a>
             </div>
           </div>
         }

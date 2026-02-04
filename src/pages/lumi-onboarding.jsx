@@ -16,6 +16,8 @@ import HobbyFlow from "../components/HobbyFlow.jsx";
 import { checkVideoProfileInformation } from "../services/videoService.js";
 import { useUser } from "@supabase/auth-helpers-react";
 import { toast } from "sonner";
+import OdysseyLayout from "../components/OdysseyLayout.jsx";
+import OdysseySteps from "../components/OdysseySteps.jsx";
 
 // Age range options
 const AGE_RANGES = [
@@ -157,41 +159,31 @@ export default function LumiOnboarding() {
   // Show loading while checking for existing profile or age
   if (checkingProfile || checkingAge) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 py-10">
-        <div className="max-w-4xl mx-auto px-4">
-          <div className="text-center py-12">
-            <div className="text-4xl mb-4">✨</div>
-            <p className="text-slate-400">Chargement...</p>
-          </div>
+      <OdysseyLayout
+        currentStep={2}
+        title="Le scan des 4 éléments"
+        maxWidthClass="max-w-6xl"
+      >
+        <div className="text-center py-12">
+          <div className="text-4xl mb-4">✨</div>
+          <p className="text-white/80">Chargement...</p>
         </div>
-      </div>
+      </OdysseyLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 py-10">
-      <div className="max-w-4xl mx-auto px-4">
-        {/* Header */}
-        <div className="mb-8">
-          <Button
-            variant="ghost"
-            onClick={() => navigate("/")}
-            className="mb-4"
-          >
-            ← Retour à l'accueil
-          </Button>
-          <h1 className="text-4xl font-bold mb-2">
-            Découvre qui tu es
-          </h1>
-          <p className="text-slate-400">
-            Réponds à quelques questions pour découvrir ta couleur dominante et
-            tes talents
-          </p>
-        </div>
-
-        {/* Age Selection Card - Show if age not found */}
-        {showAgeSelection && !ageRange && !currentQuestion && !computedProfile && (
-          <Card className="bg-slate-900/60 border-slate-800">
+    <OdysseyLayout
+      currentStep={2}
+      title="Le scan des 4 éléments"
+      maxWidthClass="max-w-6xl"
+    >
+      <p className="text-white/90 text-center my-6 max-w-2xl mx-auto">
+        Test rapide pour révéler ton élément (Feu, Air, Eau, Terre) et faire naître ton étoile.
+      </p>
+      {/* Age Selection Card - Show if age not found */}
+      {showAgeSelection && !ageRange && !currentQuestion && !computedProfile && (
+        <Card className="bg-slate-900/60 border-slate-800">
             <CardHeader>
               <CardTitle className="text-2xl text-white">
                 Quelle tranche d'âge vous correspond le mieux ?
@@ -300,12 +292,12 @@ export default function LumiOnboarding() {
 
          {/* Profile Results */}
          {computedProfile && (
-           <Card className="bg-slate-900/60 border-slate-800">
+           <Card className="bg-white border-slate-200 shadow-lg">
              <CardHeader>
-               <CardTitle className="text-2xl text-white">
+               <CardTitle className="text-2xl text-slate-800">
                  Ton Profil
                </CardTitle>
-               <CardDescription className="text-slate-400">
+               <CardDescription className="text-slate-600">
                  Découvre qui tu es vraiment
                </CardDescription>
              </CardHeader>
@@ -319,17 +311,17 @@ export default function LumiOnboarding() {
                        <div className="flex items-center gap-3 mb-2">
                          <span className="text-3xl">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
                          <div>
-                           <p className="text-sm text-slate-400">Couleur Dominante</p>
-                           <p className="text-xl font-bold text-white capitalize">
+                           <p className="text-sm text-slate-500">Couleur Dominante</p>
+                           <p className="text-xl font-bold text-slate-800 capitalize">
                              {computedProfile.dominant_color}
                            </p>
                          </div>
                        </div>
-                      <div className="mt-3 pt-3 border-t border-slate-700/50">
-                        <p className={`text-sm font-semibold ${DISC_ELEMENTS[computedProfile.dominant_color].textClass} mb-1`}>
+                      <div className="mt-3 pt-3 border-t border-slate-200">
+                        <p className="text-sm font-semibold text-slate-800 mb-1">
                           {DISC_ELEMENTS[computedProfile.dominant_color].icon} {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
                         </p>
-                        <p className="text-xs text-slate-300">
+                        <p className="text-xs text-slate-600">
                           {DISC_ELEMENTS[computedProfile.dominant_color].descriptionFr}
                         </p>
                       </div>
@@ -342,17 +334,17 @@ export default function LumiOnboarding() {
                        <div className="flex items-center gap-3 mb-2">
                          <span className="text-3xl">{DISC_ELEMENTS[computedProfile.secondary_color].icon}</span>
                          <div>
-                           <p className="text-sm text-slate-400">Couleur Secondaire</p>
-                           <p className="text-xl font-bold text-white capitalize">
+                           <p className="text-sm text-slate-500">Couleur Secondaire</p>
+                           <p className="text-xl font-bold text-slate-800 capitalize">
                              {computedProfile.secondary_color}
                            </p>
                          </div>
                        </div>
-                      <div className="mt-3 pt-3 border-t border-slate-700/50">
-                        <p className={`text-sm font-semibold ${DISC_ELEMENTS[computedProfile.secondary_color].textClass} mb-1`}>
+                      <div className="mt-3 pt-3 border-t border-slate-200">
+                        <p className="text-sm font-semibold text-slate-800 mb-1">
                           {DISC_ELEMENTS[computedProfile.secondary_color].icon} {DISC_ELEMENTS[computedProfile.secondary_color].elementFr}
                         </p>
-                        <p className="text-xs text-slate-300">
+                        <p className="text-xs text-slate-600">
                           {DISC_ELEMENTS[computedProfile.secondary_color].descriptionFr}
                         </p>
                       </div>
@@ -363,19 +355,19 @@ export default function LumiOnboarding() {
                  {/* DISC Scores */}
                  {computedProfile.disc_scores && (
                    <div>
-                     <h4 className="text-lg font-semibold text-white mb-3">
+                     <h4 className="text-lg font-semibold text-slate-800 mb-3">
                        Scores DISC
                      </h4>
                      <div className="grid grid-cols-4 gap-3">
                        {Object.entries(computedProfile.disc_scores).map(([color, score]) => (
                          <div
                            key={color}
-                           className="p-3 bg-slate-800 rounded-lg border border-slate-700"
+                           className="p-3 bg-slate-50 rounded-lg border border-slate-200"
                          >
-                           <p className="text-sm text-slate-400 capitalize mb-1">
+                           <p className="text-sm text-slate-500 capitalize mb-1">
                              {color}
                            </p>
-                           <p className="text-xl font-bold text-white">{score}</p>
+                           <p className="text-xl font-bold text-slate-800">{score}</p>
                          </div>
                        ))}
                      </div>
@@ -391,12 +383,12 @@ export default function LumiOnboarding() {
                       <div className="flex items-center gap-3 mb-3">
                         <span className="text-4xl">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
                         <div>
-                          <h3 className="text-lg font-semibold text-white">
+                          <h3 className="text-lg font-semibold text-slate-800">
                             Ton Énergie Principale : {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
                           </h3>
                         </div>
                       </div>
-                         <p className="text-slate-200 leading-relaxed">
+                         <p className="text-slate-700 leading-relaxed">
                            {computedProfile.traits.combined_description}
                          </p>
                        </div>
@@ -405,8 +397,8 @@ export default function LumiOnboarding() {
                      {/* Profile Type */}
                      {computedProfile.traits.profile_type && (
                        <div className="text-center">
-                         <p className="text-sm text-slate-400 mb-1">Type de profil</p>
-                         <p className="text-xl font-bold text-white">
+                         <p className="text-sm text-slate-500 mb-1">Type de profil</p>
+                         <p className="text-xl font-bold text-slate-800">
                            {computedProfile.traits.profile_type}
                          </p>
                        </div>
@@ -420,19 +412,19 @@ export default function LumiOnboarding() {
                            <div className="flex items-center justify-between">
                              <div className="flex items-center gap-2">
                                <span className="text-2xl">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
-                               <h4 className={`text-sm font-semibold ${DISC_ELEMENTS[computedProfile.dominant_color].textClass}`}>
+                               <h4 className="text-sm font-semibold text-slate-800">
                                  Profil Dominant • {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
                                </h4>
                              </div>
-                             <span className={`text-xs ${DISC_ELEMENTS[computedProfile.dominant_color].textClass}/70`}>
+                             <span className="text-xs text-slate-600">
                                {computedProfile.traits.dominant.intensity} ({computedProfile.traits.dominant.percentage}%)
                              </span>
                            </div>
-                           <p className="text-lg font-bold text-white">
+                           <p className="text-lg font-bold text-slate-800">
                              {computedProfile.traits.dominant.name}
                            </p>
                           {/* Animal spirit removed */}
-                           <p className="text-sm text-slate-300">
+                           <p className="text-sm text-slate-600">
                              {computedProfile.traits.dominant.description}
                            </p>
                            {computedProfile.traits.dominant.traits && computedProfile.traits.dominant.traits.length > 0 && (
@@ -440,7 +432,7 @@ export default function LumiOnboarding() {
                                {computedProfile.traits.dominant.traits.map((trait, idx) => (
                                  <span
                                    key={idx}
-                                   className="px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-200 text-xs border border-yellow-500/40"
+                                   className="px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs border border-amber-200"
                                  >
                                    {trait}
                                  </span>
@@ -449,10 +441,10 @@ export default function LumiOnboarding() {
                            )}
                            {computedProfile.traits.dominant.characteristics && computedProfile.traits.dominant.characteristics.length > 0 && (
                              <div className="mt-3 space-y-1">
-                               <p className="text-xs text-slate-400">Caractéristiques :</p>
+                               <p className="text-xs text-slate-500">Caractéristiques :</p>
                                {computedProfile.traits.dominant.characteristics.map((char, idx) => (
-                                 <div key={idx} className="flex items-start gap-2 text-xs text-slate-300">
-                                   <span className="text-yellow-400 mt-0.5">•</span>
+                                 <div key={idx} className="flex items-start gap-2 text-xs text-slate-600">
+                                   <span className="text-amber-500 mt-0.5">•</span>
                                    <span>{char}</span>
                                  </div>
                                ))}
@@ -467,19 +459,19 @@ export default function LumiOnboarding() {
                            <div className="flex items-center justify-between">
                              <div className="flex items-center gap-2">
                                <span className="text-2xl">{DISC_ELEMENTS[computedProfile.secondary_color].icon}</span>
-                               <h4 className={`text-sm font-semibold ${DISC_ELEMENTS[computedProfile.secondary_color].textClass}`}>
+                               <h4 className="text-sm font-semibold text-slate-800">
                                  Profil Secondaire • {DISC_ELEMENTS[computedProfile.secondary_color].elementFr}
                                </h4>
                              </div>
-                             <span className={`text-xs ${DISC_ELEMENTS[computedProfile.secondary_color].textClass}/70`}>
+                             <span className="text-xs text-slate-600">
                                {computedProfile.traits.secondary.intensity} ({computedProfile.traits.secondary.percentage}%)
                              </span>
                            </div>
-                           <p className="text-lg font-bold text-white">
+                           <p className="text-lg font-bold text-slate-800">
                              {computedProfile.traits.secondary.name}
                            </p>
                           {/* Animal spirit removed */}
-                           <p className="text-sm text-slate-300">
+                           <p className="text-sm text-slate-600">
                              {computedProfile.traits.secondary.description}
                            </p>
                            {computedProfile.traits.secondary.traits && computedProfile.traits.secondary.traits.length > 0 && (
@@ -487,7 +479,7 @@ export default function LumiOnboarding() {
                                {computedProfile.traits.secondary.traits.map((trait, idx) => (
                                  <span
                                    key={idx}
-                                   className="px-3 py-1 rounded-full bg-green-500/20 text-green-200 text-xs border border-green-500/40"
+                                   className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs border border-emerald-200"
                                  >
                                    {trait}
                                  </span>
@@ -496,10 +488,10 @@ export default function LumiOnboarding() {
                            )}
                            {computedProfile.traits.secondary.characteristics && computedProfile.traits.secondary.characteristics.length > 0 && (
                              <div className="mt-3 space-y-1">
-                               <p className="text-xs text-slate-400">Caractéristiques :</p>
+                               <p className="text-xs text-slate-500">Caractéristiques :</p>
                                {computedProfile.traits.secondary.characteristics.map((char, idx) => (
-                                 <div key={idx} className="flex items-start gap-2 text-xs text-slate-300">
-                                   <span className="text-green-400 mt-0.5">•</span>
+                                 <div key={idx} className="flex items-start gap-2 text-xs text-slate-600">
+                                   <span className="text-emerald-500 mt-0.5">•</span>
                                    <span>{char}</span>
                                  </div>
                                ))}
@@ -511,14 +503,14 @@ export default function LumiOnboarding() {
 
                      {/* All Characteristics */}
                      {computedProfile.traits.characteristics && computedProfile.traits.characteristics.length > 0 && (
-                       <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
-                         <h4 className="text-sm font-semibold text-white mb-3">
+                       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                         <h4 className="text-sm font-semibold text-slate-800 mb-3">
                            Vos caractéristiques principales
                          </h4>
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                            {computedProfile.traits.characteristics.map((char, idx) => (
-                             <div key={idx} className="flex items-start gap-2 text-sm text-slate-300">
-                               <span className="text-indigo-400 mt-0.5">✓</span>
+                             <div key={idx} className="flex items-start gap-2 text-sm text-slate-700">
+                               <span className="text-teal-500 mt-0.5">✓</span>
                                <span>{char}</span>
                              </div>
                            ))}
@@ -534,6 +526,26 @@ export default function LumiOnboarding() {
 
          {/* Hobby Flow Component */}
          <HobbyFlow computedProfile={computedProfile} ageRange={ageRange} />
+
+         {/* Précédent / Continuer navigation */}
+         {computedProfile && (
+           <div className="mt-8 flex justify-between items-center">
+             <Button
+               onClick={() => navigate('/embark')}
+               size="lg"
+               className="bg-teal-600 hover:bg-teal-500 text-white px-8"
+             >
+               ← Précédent
+             </Button>
+             <Button
+               onClick={() => navigate('/module-mimetique')}
+               size="lg"
+               className="bg-teal-600 hover:bg-teal-500 text-white px-8"
+             >
+               Continuer →
+             </Button>
+           </div>
+         )}
 
          {/* Question Display */}
          {currentQuestion && !computingProfile && !computedProfile && (
@@ -754,7 +766,6 @@ export default function LumiOnboarding() {
             </CardContent>
           </Card>
         )}
-      </div>
-    </div>
+    </OdysseyLayout>
   );
 }
