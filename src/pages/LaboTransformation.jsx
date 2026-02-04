@@ -100,7 +100,7 @@ export default function LaboTransformation() {
     <OdysseyLayout
       currentStep={4}
       title="Le labo de transformation"
-      maxWidthClass="max-w-4xl"
+      maxWidthClass="max-w-6xl"
     >
       <p className="text-white/90 text-center my-6 max-w-2xl mx-auto">
         Métiers du futur (GPT) : explore 10 pistes avec Spot Coach.

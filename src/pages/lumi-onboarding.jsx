@@ -162,7 +162,7 @@ export default function LumiOnboarding() {
       <OdysseyLayout
         currentStep={2}
         title="Le scan des 4 éléments"
-        maxWidthClass="max-w-4xl"
+        maxWidthClass="max-w-6xl"
       >
         <div className="text-center py-12">
           <div className="text-4xl mb-4">✨</div>
@@ -176,7 +176,7 @@ export default function LumiOnboarding() {
     <OdysseyLayout
       currentStep={2}
       title="Le scan des 4 éléments"
-      maxWidthClass="max-w-4xl"
+      maxWidthClass="max-w-6xl"
     >
       <p className="text-white/90 text-center my-6 max-w-2xl mx-auto">
         Test rapide pour révéler ton élément (Feu, Air, Eau, Terre) et faire naître ton étoile.
