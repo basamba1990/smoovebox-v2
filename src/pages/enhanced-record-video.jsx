@@ -5,7 +5,7 @@ import { Button } from '../components/ui/button-enhanced';
 import { supabase } from '../lib/supabase';
 import ProfessionalHeader from '../components/ProfessionalHeader';
 
-const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded }) => {
+const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedInOdyssey = false }) => {
   const [recording, setRecording] = useState(false);
   const [recordedVideo, setRecordedVideo] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -291,19 +291,27 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded }) => {
 
     try {
       const stream = streamRef.current;
-      
-      // ✅ CORRECTION : Options d'enregistrement compatibles
-      const options = {
-        mimeType: MediaRecorder.isTypeSupported('video/webm; codecs=vp9,opus') 
-          ? 'video/webm; codecs=vp9,opus'
-          : MediaRecorder.isTypeSupported('video/webm; codecs=vp8,opus')
-          ? 'video/webm; codecs=vp8,opus'
-          : 'video/webm',
-        videoBitsPerSecond: 2500000
-      };
 
-      mediaRecorderRef.current = new MediaRecorder(stream, options);
-      
+      // Choisir un mimeType supporté par le navigateur (Safari ne supporte pas video/webm)
+      const mimeTypesToTry = [
+        'video/webm; codecs=vp9,opus',
+        'video/webm; codecs=vp8,opus',
+        'video/webm',
+        'video/mp4',
+        'video/mp4; codecs=avc1',
+      ];
+      const supportedMimeType = mimeTypesToTry.find((m) => MediaRecorder.isTypeSupported(m));
+      let options = supportedMimeType
+        ? { mimeType: supportedMimeType, videoBitsPerSecond: 2500000 }
+        : { videoBitsPerSecond: 2500000 };
+
+      try {
+        mediaRecorderRef.current = new MediaRecorder(stream, options);
+      } catch (e) {
+        // Fallback: laisser le navigateur choisir le format (ex. Safari)
+        mediaRecorderRef.current = new MediaRecorder(stream);
+      }
+
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) {
           recordedChunksRef.current.push(event.data);
@@ -311,9 +319,11 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded }) => {
       };
 
       mediaRecorderRef.current.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, { 
-          type: recordedChunksRef.current.length > 0 ? recordedChunksRef.current[0].type : 'video/webm'
-        });
+        const chunks = recordedChunksRef.current;
+        const blobType = chunks.length > 0 && chunks[0].type
+          ? chunks[0].type
+          : (mediaRecorderRef.current?.mimeType || 'video/webm');
+        const blob = new Blob(chunks, { type: blobType });
         const url = URL.createObjectURL(blob);
         setRecordedVideo({
           blob,
@@ -415,6 +425,7 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded }) => {
           user_id: session.user.id,
           title: `Vidéo ${new Date().toLocaleDateString()}`,
           video_url: publicUrl,
+          storage_path: fileName,
           duration: recordedVideo.duration,
           tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag),
           status: 'uploaded',
@@ -436,8 +447,10 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded }) => {
         onVideoUploaded();
       }
       
-      // Naviguer vers la page de succès
-      navigate(`/video-success?id=${videoData.id}`);
+      // Naviguer vers la page de succès (sauf si intégré dans l'odyssée)
+      if (!embedInOdyssey) {
+        navigate(`/video-success?id=${videoData.id}`);
+      }
 
     } catch (err) {
       console.error('❌ Erreur upload:', err);
@@ -488,23 +501,23 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded }) => {
     setShowScenarioSelection(false);
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
-      <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
-      
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-6xl mx-auto">
-          {/* En-tête amélioré */}
-          <div className="text-center mb-8">
-            <h1 className="text-4xl font-french font-bold text-gray-900 mb-4">
-              🎤 Expression Orale SpotBulle
-            </h1>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Transformez votre énergie d'immersion en parole authentique
-            </p>
-          </div>
+  const content = (
+    <div className={embedInOdyssey ? '' : 'container mx-auto px-4 py-8'}>
+      <div className="max-w-6xl mx-auto">
+        {!embedInOdyssey && (
+          <>
+            <div className="text-center mb-8">
+              <h1 className="text-4xl font-french font-bold text-gray-900 mb-4">
+                🎤 Expression Orale SpotBulle
+              </h1>
+              <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+                Transformez votre énergie d'immersion en parole authentique
+              </p>
+            </div>
+          </>
+        )}
 
-          {/* Sélection de scénario */}
+        {/* Sélection de scénario */}
           {showScenarioSelection && (
             <div className="card-spotbulle p-6 mb-8">
               <h2 className="text-2xl font-french font-bold mb-6 text-center">
@@ -553,50 +566,16 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded }) => {
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Options d'enregistrement */}
+            {/* Colonne latérale : analyse de tonalité */}
             <div className="space-y-6">
-              <div className="card-spotbulle p-6">
-                <h3 className="text-lg font-semibold mb-4">🛠️ Options</h3>
-                
-                {/* Option Avatar */}
-                <div className="mb-6">
-                  <label className="flex items-center justify-between cursor-pointer p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
-                    <div>
-                      <div className="font-medium">Utiliser un avatar virtuel</div>
-                      <div className="text-sm text-gray-600">Préserve votre anonymat</div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={useAvatar}
-                      onChange={(e) => setUseAvatar(e.target.checked)}
-                      className="rounded border-gray-300"
-                    />
-                  </label>
-                </div>
-
-                {/* Scénario sélectionné */}
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h4 className="font-semibold text-blue-800 mb-2">🎯 Thème sélectionné</h4>
-                  <p className="text-blue-700 text-sm mb-3">{selectedScenario}</p>
-                  <Button
-                    onClick={() => setShowScenarioSelection(true)}
-                    variant="outline"
-                    size="sm"
-                    className="w-full border-blue-300 text-blue-600"
-                  >
-                    Changer de thème
-                  </Button>
-                </div>
-              </div>
-
               {/* Analyse de tonalité en temps réel */}
               {toneAnalysis && (
                 <div className="card-spotbulle p-6">
-                  <h4 className="font-semibold text-purple-800 mb-3">🎵 Analyse Vocale</h4>
+                  <h4 className="font-semibold text-white mb-3">🎵 Analyse Vocale</h4>
                   
                   <div className="space-y-3">
                     <div>
-                      <div className="flex justify-between text-sm mb-1">
+                      <div className="flex justify-between text-sm mb-1 text-white">
                         <span>Volume</span>
                         <span>{Math.round(audioLevel * 100)}%</span>
                       </div>
@@ -608,7 +587,7 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded }) => {
                       </div>
                     </div>
                     
-                    <div className="text-sm space-y-2">
+                    <div className="text-sm space-y-2 text-white">
                       <div><strong>Émotion :</strong> {toneAnalysis.emotion}</div>
                       <div><strong>Débit :</strong> {toneAnalysis.pace}</div>
                       <div><strong>Clarté :</strong> {toneAnalysis.clarity}</div>
@@ -644,7 +623,8 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded }) => {
                 {/* Zone vidéo avec gestion d'erreur */}
                 <div className="relative mb-6">
                   <div className="bg-black rounded-lg overflow-hidden aspect-video relative">
-                    {cameraAccess && !recordedVideo && (
+                    {/* Video element always in DOM when not showing recording, so ref exists when requestCameraAccess runs */}
+                    {!recordedVideo && (
                       <video
                         ref={videoRef}
                         autoPlay
@@ -666,8 +646,9 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded }) => {
                       />
                     )}
                     
+                    {/* Overlay when camera not ready yet (so user can authorize and ref is set before we attach stream) */}
                     {!cameraAccess && !recordedVideo && (
-                      <div className="w-full h-full flex items-center justify-center text-white bg-gray-800">
+                      <div className="absolute inset-0 w-full h-full flex items-center justify-center text-white bg-gray-800/95">
                         <div className="text-center p-4">
                           <div className="text-4xl mb-4">📹</div>
                           <p className="text-lg mb-2">Caméra non disponible</p>
@@ -721,7 +702,7 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded }) => {
                     value={tags}
                     onChange={(e) => setTags(e.target.value)}
                     placeholder="ex: football, passion, communauté, France-Maroc"
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder:text-white"
                     disabled={recording}
                   />
                 </div>
@@ -758,7 +739,7 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded }) => {
                       <Button
                         onClick={retryRecording}
                         variant="outline"
-                        className="flex-1 py-3 text-lg font-semibold"
+                        className="flex-1 py-3 text-lg font-semibold text-white"
                       >
                         🔄 Réessayer
                       </Button>
@@ -796,7 +777,7 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded }) => {
                       onClick={retryCamera} 
                       variant="outline" 
                       size="sm" 
-                      className="mt-2 border-red-300 text-red-600"
+                      className="mt-2 border-red-300 text-white"
                     >
                       Réessayer la caméra
                     </Button>
@@ -804,38 +785,75 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded }) => {
                 )}
               </div>
 
-              {/* Barre de progression du parcours */}
+              {/* Barre de progression du parcours (masquée dans l'odyssée) */}
+              {!embedInOdyssey && (
+                <div className="card-spotbulle p-6">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4">🗺️ Votre parcours immersion</h3>
+                  <div className="flex items-center justify-between">
+                    {[
+                      { step: 1, name: '🎨 Test personnalité', status: 'completed' },
+                      { step: 2, name: '⚽ Immersion simulateur', status: 'completed' },
+                      { step: 3, name: '🎤 Expression orale', status: 'current' },
+                      { step: 4, name: '🏆 Restitution IA', status: 'pending' }
+                    ].map((step, index, array) => (
+                      <React.Fragment key={step.step}>
+                        <div className="text-center flex-1">
+                          <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg mx-auto mb-2 ${
+                            step.status === 'completed' ? 'bg-green-500' :
+                            step.status === 'current' ? 'bg-blue-500 animate-pulse' : 'bg-gray-300'
+                          }`}>
+                            {step.name.split(' ')[0]}
+                          </div>
+                          <div className={`text-xs ${
+                            step.status === 'completed' ? 'text-green-600' :
+                            step.status === 'current' ? 'text-blue-600 font-semibold' : 'text-gray-500'
+                          }`}>
+                            {step.name.split(' ').slice(1).join(' ')}
+                          </div>
+                        </div>
+                        {index < array.length - 1 && (
+                          <div className={`flex-1 h-1 mx-2 ${
+                            step.status === 'completed' ? 'bg-green-500' : 'bg-gray-300'
+                          }`}></div>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Options d'enregistrement et thème sélectionné (sous la vidéo, au-dessus des conseils) */}
               <div className="card-spotbulle p-6">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">🗺️ Votre parcours immersion</h3>
-                <div className="flex items-center justify-between">
-                  {[
-                    { step: 1, name: '🎨 Test personnalité', status: 'completed' },
-                    { step: 2, name: '⚽ Immersion simulateur', status: 'completed' },
-                    { step: 3, name: '🎤 Expression orale', status: 'current' },
-                    { step: 4, name: '🏆 Restitution IA', status: 'pending' }
-                  ].map((step, index, array) => (
-                    <React.Fragment key={step.step}>
-                      <div className="text-center flex-1">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg mx-auto mb-2 ${
-                          step.status === 'completed' ? 'bg-green-500' :
-                          step.status === 'current' ? 'bg-blue-500 animate-pulse' : 'bg-gray-300'
-                        }`}>
-                          {step.name.split(' ')[0]}
-                        </div>
-                        <div className={`text-xs ${
-                          step.status === 'completed' ? 'text-green-600' :
-                          step.status === 'current' ? 'text-blue-600 font-semibold' : 'text-gray-500'
-                        }`}>
-                          {step.name.split(' ').slice(1).join(' ')}
-                        </div>
-                      </div>
-                      {index < array.length - 1 && (
-                        <div className={`flex-1 h-1 mx-2 ${
-                          step.status === 'completed' ? 'bg-green-500' : 'bg-gray-300'
-                        }`}></div>
-                      )}
-                    </React.Fragment>
-                  ))}
+                <h3 className="text-lg font-semibold mb-4 text-white">🛠️ Options</h3>
+                
+                {/* Option Avatar */}
+                <div className="mb-6">
+                  <label className="flex items-center justify-between cursor-pointer p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
+                    <div>
+                      <div className="font-medium text-white">Utiliser un avatar virtuel</div>
+                      <div className="text-sm text-white/80">Préserve votre anonymat</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={useAvatar}
+                      onChange={(e) => setUseAvatar(e.target.checked)}
+                      className="rounded border-gray-300"
+                    />
+                  </label>
+                </div>
+
+                {/* Scénario sélectionné */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h4 className="font-semibold text-blue-800 mb-2">🎯 Thème sélectionné</h4>
+                  <p className="text-blue-700 text-sm mb-3">{selectedScenario}</p>
+                  <Button
+                    onClick={() => setShowScenarioSelection(true)}
+                    variant="outline"
+                    size="sm"
+                    className="w-full border-blue-300 text-blue-600"
+                  >
+                    Changer de thème
+                  </Button>
                 </div>
               </div>
 
@@ -873,6 +891,15 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded }) => {
           </div>
         </div>
       </div>
+  );
+
+  if (embedInOdyssey) {
+    return content;
+  }
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+      <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
+      {content}
     </div>
   );
 };

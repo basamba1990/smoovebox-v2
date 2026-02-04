@@ -24,6 +24,8 @@ import VideoSuccess from "../pages/video-success.jsx";
 import Directory from "../pages/directory.jsx";
 import LumiOnboarding from "../pages/lumi-onboarding.jsx";
 import LumiUnifiedProfile from "../pages/LumiUnifiedProfile.jsx";
+import ModuleMimetique from "../pages/ModuleMimetique.jsx";
+import LaboTransformation from "../pages/LaboTransformation.jsx";
 import UpdateDISC from "../pages/UpdateDISC.jsx";
 import PitchAnalysisPage from "../pages/PitchAnalysisPage.jsx";
 import { CompanyRecord } from "../pages/company-record.jsx";
@@ -53,27 +55,13 @@ export default function AppRoutes({
 }) {
   return (
     <Routes>
-      {/* Route racine intelligente */}
+      {/* Root route: redirect based on auth */}
       <Route
         path="/"
         element={
-          user ? (
-            <RequireAuth>
-              <SimplifiedHome
-                user={user}
-                profile={profile}
-                connectionStatus={connectionStatus}
-                onSignOut={onSignOut}
-                dashboardData={dashboardData}
-                loading={dashboardLoading}
-              />
-            </RequireAuth>
-          ) : (
-            <WelcomeAgent
-              onOpenAuthModal={() => setIsAuthModalOpen(true)}
-              onDemoMode={() => navigate("/demo")}
-            />
-          )
+          user
+            ? <Navigate to="/embark" replace />
+            : <Navigate to="/login" replace />
         }
       />
 
@@ -164,18 +152,43 @@ export default function AppRoutes({
       {/* Routes Premium & Coaching */}
       <Route path="/premium" element={<SpotBullePremium />} />
       <Route
-        path="/spotcoach"
+        path="/embark"
         element={
           <RequireAuth>
             <SpotCoach user={user} profile={profile} />
           </RequireAuth>
         }
       />
+      {/* Optional backward compatibility for old /spotcoach URL */}
+      <Route path="/spotcoach" element={<Navigate to="/embark" replace />} />
       <Route
-        path="/lumi/onboarding"
+        path="/scan-elements"
         element={
           <RequireAuth>
             <LumiOnboarding user={user} profile={profile} />
+          </RequireAuth>
+        }
+      />
+      <Route path="/lumi/onboarding" element={<Navigate to="/scan-elements" replace />} />
+      <Route
+        path="/module-mimetique"
+        element={
+          <RequireAuth>
+            <ModuleMimetique
+              user={user}
+              profile={profile}
+              onSignOut={onSignOut}
+              onVideoUploaded={handleVideoUploaded}
+              cameraChecked={cameraChecked}
+            />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/labo-transformation"
+        element={
+          <RequireAuth>
+            <LaboTransformation />
           </RequireAuth>
         }
       />
@@ -303,6 +316,23 @@ export default function AppRoutes({
         }
       />
 
+      {/* Ancienne home / dashboard simplifié */}
+      <Route
+        path="/old"
+        element={
+          <RequireAuth>
+            <SimplifiedHome
+              user={user}
+              profile={profile}
+              connectionStatus={connectionStatus}
+              onSignOut={onSignOut}
+              dashboardData={dashboardData}
+              loading={dashboardLoading}
+            />
+          </RequireAuth>
+        }
+      />
+
       {/* ✅ NOUVELLES ROUTES FUTUR & IA */}
       <Route
         path="/future-jobs-generator"
@@ -338,22 +368,19 @@ export default function AppRoutes({
         path="/404"
         element={
           <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800">
-            <div className="text-center text-white">
-              <h1 className="text-6xl font-bold mb-4">404</h1>
-              <p className="text-xl mb-8">Page non trouvée</p>
-              <button
-                onClick={() => navigate("/")}
-                style={{
-                  padding: "10px 20px",
-                  background: "hsl(222.2 84% 4.9%)",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                }}
+            <div className="text-center text-white px-4">
+              <h1 className="text-4xl md:text-5xl font-extrabold mb-4 tracking-wide">
+                404
+              </h1>
+              <p className="text-lg md:text-xl text-slate-300 mb-6">
+                Cette page n&apos;existe pas.
+              </p>
+              <a
+                href="/"
+                className="inline-block text-teal-400 hover:text-teal-300 font-medium underline underline-offset-2"
               >
-                Retour à l'accueil
-              </button>
+                Retour à l&apos;accueil
+              </a>
             </div>
           </div>
         }

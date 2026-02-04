@@ -30,3 +30,14 @@
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
+/* Tache accent: hide on small screens, show from 768px (md) and up */
+.tache-desktop-only {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .tache-desktop-only {
+    display: flex;
+  }
+}
