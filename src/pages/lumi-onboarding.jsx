@@ -349,17 +349,12 @@ export default function LumiOnboarding() {
                <div className="space-y-6">
                  {/* Dominant and Secondary Colors with Elements */}
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   {/* Dominant Color with Element */}
+                  {/* Dominant profile block (without explicit color name) */}
                    {computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color] && (
                      <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.dominant_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.dominant_color].borderClass}`}>
                        <div className="flex items-center gap-3 mb-2">
                          <span className="text-3xl">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
-                         <div>
-                           <p className="text-sm text-slate-500">Couleur Dominante</p>
-                           <p className="text-xl font-bold text-slate-800 capitalize">
-                             {computedProfile.dominant_color}
-                           </p>
-                         </div>
+                        {/* Intentionally no color name or label, only icon and element below */}
                        </div>
                       <div className="mt-3 pt-3 border-t border-slate-200">
                         <p className="text-sm font-semibold text-slate-800 mb-1">
@@ -372,17 +367,12 @@ export default function LumiOnboarding() {
                      </div>
                    )}
                    
-                   {/* Secondary Color with Element */}
+                  {/* Secondary profile block (without explicit color name) */}
                    {computedProfile.secondary_color && DISC_ELEMENTS[computedProfile.secondary_color] && (
                      <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.secondary_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.secondary_color].borderClass}`}>
                        <div className="flex items-center gap-3 mb-2">
                          <span className="text-3xl">{DISC_ELEMENTS[computedProfile.secondary_color].icon}</span>
-                         <div>
-                           <p className="text-sm text-slate-500">Couleur Secondaire</p>
-                           <p className="text-xl font-bold text-slate-800 capitalize">
-                             {computedProfile.secondary_color}
-                           </p>
-                         </div>
+                        {/* Intentionally no color name or label, only icon and element below */}
                        </div>
                       <div className="mt-3 pt-3 border-t border-slate-200">
                         <p className="text-sm font-semibold text-slate-800 mb-1">
@@ -394,31 +384,9 @@ export default function LumiOnboarding() {
                       </div>
                      </div>
                    )}
-                 </div>
+                </div>
 
-                 {/* DISC Scores */}
-                 {computedProfile.disc_scores && (
-                   <div>
-                     <h4 className="text-lg font-semibold text-slate-800 mb-3">
-                       Scores DISC
-                     </h4>
-                     <div className="grid grid-cols-4 gap-3">
-                       {Object.entries(computedProfile.disc_scores).map(([color, score]) => (
-                         <div
-                           key={color}
-                           className="p-3 bg-slate-50 rounded-lg border border-slate-200"
-                         >
-                           <p className="text-sm text-slate-500 capitalize mb-1">
-                             {color}
-                           </p>
-                           <p className="text-xl font-bold text-slate-800">{score}</p>
-                         </div>
-                       ))}
-                     </div>
-                   </div>
-                 )}
-
-                 {/* Traits */}
+                {/* Traits */}
                  {computedProfile.traits && typeof computedProfile.traits === 'object' && !Array.isArray(computedProfile.traits) && (
                    <div className="space-y-6">
                      {/* Combined Description with Element */}
