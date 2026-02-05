@@ -8,10 +8,12 @@ import { Input } from '../components/ui/input.jsx';
 import { Label } from '../components/ui/label.jsx';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card.jsx';
 import { checkCompanyMembershipAndRedirect } from '../utils/companyRedirect.js';
+import { Eye, EyeOff, Mail, Lock, LogIn, Loader2 } from 'lucide-react';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
@@ -36,13 +38,10 @@ const Login = () => {
 
       if (error) throw error;
 
-      console.log('Connexion réussie:', data.user);
       toast.success('Connexion réussie !');
       
-      // Check if user belongs to a company and redirect accordingly
       const isCompanyUser = await checkCompanyMembershipAndRedirect(navigate);
       if (!isCompanyUser) {
-        // Normal user, redirect to home
         navigate('/');
       }
     } catch (err) {
@@ -50,106 +49,123 @@ const Login = () => {
       const errorMessage = err.message || 'Une erreur s\'est produite lors de la connexion';
       setError(errorMessage);
       toast.error(errorMessage);
-      if (errorMessage.includes('Email ou mot de passe incorrect')) {
-        setTimeout(() => {
-          setError(errorMessage + ' - Vous pouvez créer un compte en vous inscrivant.');
-        }, 2000);
-      }
     } finally {
       setLoading(false);
     }
   };
 
-  const inputClass = 'bg-white/90 border-slate-300 text-slate-800 placeholder:text-slate-500 focus:border-teal-600 focus:ring-teal-500/30';
-
   return (
     <div 
-      className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden"
+      className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden bg-[#3d6b66]"
       style={{
-        backgroundColor: '#3d6b66',
         backgroundImage: "url('/Fond-2.png')",
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat',
       }}
     >
-      {/* Logo en haut à gauche comme dans OdysseyLayout */}
-      <div className="absolute top-0 left-0 p-4 z-10">
+      {/* Logo animé en haut à gauche */}
+      <div className="absolute top-0 left-0 p-4 z-10 animate-float">
         <img
           src="/Logo-2.png"
           alt="SpotBulle"
-          className="w-auto h-24 md:h-32"
+          className="w-auto h-24 md:h-32 drop-shadow-2xl"
         />
       </div>
 
+      {/* Décoration de fond (VoltFlow style) */}
+      <div className="absolute top-1/4 -left-20 w-64 h-64 bg-teal-500/20 rounded-full blur-3xl animate-pulse" />
+      <div className="absolute bottom-1/4 -right-20 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl animate-pulse" />
+
       <div className="max-w-md w-full space-y-8 relative z-10">
-        <Card className="bg-white/95 border border-slate-200 shadow-2xl backdrop-blur-sm rounded-3xl overflow-hidden">
+        <Card className="glass-card border-white/10 shadow-2xl rounded-3xl overflow-hidden animate-in fade-in zoom-in duration-500">
           <CardHeader className="text-center pt-8">
-            <CardTitle className="text-3xl font-bold text-slate-800">Connexion</CardTitle>
-            <CardDescription className="text-slate-600">
+            <div className="mx-auto w-16 h-16 bg-teal-500/20 rounded-2xl flex items-center justify-center mb-4 animate-glow-pulse">
+              <LogIn className="text-teal-400 w-8 h-8" />
+            </div>
+            <CardTitle className="text-3xl font-bold text-white tracking-tight">Connexion</CardTitle>
+            <CardDescription className="text-teal-100/70">
               Accédez à votre Odyssée SpotBulle
             </CardDescription>
           </CardHeader>
           <CardContent className="px-8 pb-8">
             <form onSubmit={handleLogin} className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-slate-800 font-medium">
+                <Label htmlFor="email" className="text-teal-50/90 font-medium ml-1">
                   Email
                 </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className={inputClass}
-                  placeholder="votre@email.com"
-                  required
-                />
+                <div className="relative group">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-teal-400/60 group-focus-within:text-teal-400 transition-colors" />
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="input-volt pl-10 h-12 rounded-xl"
+                    placeholder="nom@exemple.com"
+                    required
+                  />
+                </div>
               </div>
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password" className="text-slate-800 font-medium">
+                <div className="flex items-center justify-between ml-1">
+                  <Label htmlFor="password" className="text-teal-50/90 font-medium">
                     Mot de passe
                   </Label>
                   <Link
                     to="/reset-password"
-                    className="text-xs text-teal-700 hover:text-teal-900 hover:underline"
+                    className="text-xs text-teal-400 hover:text-teal-300 transition-colors"
                   >
-                    Mot de passe oublié ?
+                    Oublié ?
                   </Link>
                 </div>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className={inputClass}
-                  placeholder="••••••••"
-                  required
-                  minLength={6}
-                />
+                <div className="relative group">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-teal-400/60 group-focus-within:text-teal-400 transition-colors" />
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="input-volt pl-10 pr-10 h-12 rounded-xl"
+                    placeholder="••••••••"
+                    required
+                    minLength={6}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-teal-400/40 hover:text-teal-400 transition-colors"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
               
               {error && (
-                <div className="text-sm p-3 rounded-xl text-red-600 bg-red-50 border border-red-100 animate-in fade-in slide-in-from-top-1">
+                <div className="text-sm p-3 rounded-xl text-red-200 bg-red-500/20 border border-red-500/30 animate-in slide-in-from-top-2">
                   {error}
                 </div>
               )}
 
               <Button 
                 type="submit" 
-                className="w-full h-12 bg-teal-700 hover:bg-teal-800 text-white rounded-xl shadow-lg transition-all active:scale-[0.98]" 
+                className="w-full h-12 bg-teal-600 hover:bg-teal-500 text-white rounded-xl shadow-lg shadow-teal-900/20 transition-all active:scale-[0.98] font-semibold text-lg" 
                 disabled={loading}
               >
-                {loading ? 'Connexion en cours...' : 'Se connecter'}
+                {loading ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Connexion...</span>
+                  </div>
+                ) : 'Se connecter'}
               </Button>
 
               <div className="text-center pt-2">
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-teal-100/60">
                   Pas encore de compte ?{' '}
                   <Link
                     to="/register"
-                    className="font-semibold text-teal-700 hover:text-teal-900 hover:underline"
+                    className="font-bold text-teal-400 hover:text-teal-300 transition-colors"
                   >
                     Inscrivez-vous
                   </Link>
@@ -159,9 +175,9 @@ const Login = () => {
           </CardContent>
         </Card>
         
-        <div className="text-center">
-          <p className="text-white/60 text-xs">
-            SpotBulle — Votre voyage vers demain commence ici
+        <div className="text-center animate-pulse">
+          <p className="text-teal-100/40 text-xs tracking-widest uppercase">
+            SpotBulle — Explorez vos talents
           </p>
         </div>
       </div>
