@@ -92,6 +92,7 @@ export default function LumiOnboarding() {
   const [currentQuestion, setCurrentQuestion] = useState(null);
   const [currentAnswer, setCurrentAnswer] = useState(null); // For single answers (open_text, scale)
   const [currentAnswers, setCurrentAnswers] = useState([]); // For multiple answers (multiple_choice)
+  const [displayOptions, setDisplayOptions] = useState([]); // Shuffled options for multiple_choice
   const [submitting, setSubmitting] = useState(false);
   const [computingProfile, setComputingProfile] = useState(false);
   const [computedProfile, setComputedProfile] = useState(null);
@@ -112,6 +113,33 @@ export default function LumiOnboarding() {
       return [...prev, value];
     });
   }
+
+  // Build a randomized display order for multiple choice options when question changes
+  useEffect(() => {
+    if (!currentQuestion || currentQuestion.question_type !== "multiple_choice") {
+      setDisplayOptions([]);
+      return;
+    }
+
+    const raw = currentQuestion.options?.options;
+    let items = [];
+
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      // Object form: { key: label }
+      items = Object.entries(raw).map(([key, label]) => ({ key, label }));
+    } else if (Array.isArray(raw)) {
+      // Array form: [label1, label2, ...] – use label as key as well
+      items = raw.map((label) => ({ key: label, label }));
+    }
+
+    // Shuffle once (Fisher–Yates)
+    for (let i = items.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [items[i], items[j]] = [items[j], items[i]];
+    }
+
+    setDisplayOptions(items);
+  }, [currentQuestion]);
 
   // Check if user already has a profile and get age from videos (only once on mount)
   useEffect(() => {
@@ -199,16 +227,16 @@ export default function LumiOnboarding() {
       </p>
       {/* Age Selection Card - Show if age not found */}
       {showAgeSelection && !ageRange && !currentQuestion && !computedProfile && (
-        <Card className="bg-slate-900/60 border-slate-800">
-            <CardHeader>
-              <CardTitle className="text-2xl text-white">
-                Quelle tranche d'âge vous correspond le mieux ?
-              </CardTitle>
-              <CardDescription className="text-slate-400">
-                Cette information nous permet de vous proposer des questions adaptées à votre situation
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+        <Card className="glass-card border-white/10 shadow-2xl rounded-3xl overflow-hidden animate-in fade-in zoom-in duration-500 bg-white/95">
+          <CardHeader className="text-center pt-6">
+            <CardTitle className="text-2xl font-bold text-white">
+              Quelle tranche d&apos;âge vous correspond le mieux ?
+            </CardTitle>
+            <CardDescription className="text-slate-500">
+              Cette information nous permet de vous proposer des questions adaptées à votre situation.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pb-6">
               <div className="space-y-3">
                 {AGE_RANGES.map((range) => (
                   <button
@@ -218,7 +246,7 @@ export default function LumiOnboarding() {
                       setAgeRange(selectedValue);
                       setShowAgeSelection(false);
                     }}
-                    className="w-full p-4 text-left rounded-lg border-2 border-slate-700 bg-slate-800 text-slate-300 hover:border-indigo-500 hover:bg-indigo-500/20 transition-all"
+                    className="w-full p-4 text-left rounded-lg border-2 border-[#3d6b66]/40 bg-[#3d6b66]/10 text-white hover:border-[#3d6b66]/60 hover:bg-[#3d6b66]/20 transition-all"
                   >
                     {range.label}
                   </button>
@@ -230,16 +258,16 @@ export default function LumiOnboarding() {
 
         {/* Welcome Card - Only show when no question, no existing profile, and age range is set */}
         {!currentQuestion && !computedProfile && ageRange && !showAgeSelection && (
-          <Card className="bg-slate-900/60 border-slate-800">
-            <CardHeader>
-              <CardTitle className="text-2xl text-white">
-                Bienvenue dans l'univers SpotBulle
+          <Card className="glass-card border-white/10 shadow-2xl rounded-3xl overflow-hidden animate-in fade-in zoom-in duration-500 bg-white/95 mt-8">
+            <CardHeader className="text-center pt-6">
+              <CardTitle className="text-2xl font-bold text-white">
+                Bienvenue dans l&apos;univers SpotBulle
               </CardTitle>
-              <CardDescription className="text-slate-400">
-                Lumi va te poser quelques questions pour mieux te connaître
+              <CardDescription className="text-slate-500">
+                Lumi va te poser quelques questions pour mieux te connaître.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pb-6">
               <div className="space-y-4">
                 <p className="text-slate-300">
                   Ce parcours rapide te permettra de :
@@ -277,11 +305,11 @@ export default function LumiOnboarding() {
                         );
                       }
                     }}
-                    className="w-full"
+                    className="w-full h-12 bg-teal-600 hover:bg-teal-500 text-white rounded-xl shadow-lg shadow-teal-900/20 transition-all active:scale-[0.98] font-semibold"
                     size="lg"
                     disabled={loading}
                   >
-                    {loading ? "Chargement..." : "Commencer avec Lumi"}
+                    {loading ? "Chargement..." : "Lancer le scan avec Lumi"}
                   </Button>
                 </div>
               </div>
@@ -306,18 +334,18 @@ export default function LumiOnboarding() {
            </Card>
          )}
 
-         {/* Profile Results */}
-         {computedProfile && (
-           <Card className="bg-white border-slate-200 shadow-lg">
-             <CardHeader>
-               <CardTitle className="text-2xl text-slate-800">
-                 Ton Profil
-               </CardTitle>
-               <CardDescription className="text-slate-600">
-                 Découvre qui tu es vraiment
-               </CardDescription>
-             </CardHeader>
-             <CardContent>
+        {/* Profile Results */}
+        {computedProfile && (
+          <Card className="glass-card border-white/10 shadow-2xl rounded-3xl overflow-hidden animate-in fade-in zoom-in duration-500 bg-white/95 mt-8">
+            <CardHeader className="text-center pt-6">
+              <CardTitle className="text-2xl font-bold text-white">
+                Ton Profil
+              </CardTitle>
+              <CardDescription className="text-slate-500">
+                Découvre qui tu es vraiment
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pb-6">
                <div className="space-y-6">
                  {/* Dominant and Secondary Colors with Elements */}
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -563,18 +591,18 @@ export default function LumiOnboarding() {
            </div>
          )}
 
-         {/* Question Display */}
-         {currentQuestion && !computingProfile && !computedProfile && (
-          <Card className="bg-slate-900/60 border-slate-800">
-            <CardHeader>
-              <CardTitle className="text-2xl text-white">
+        {/* Question Display */}
+        {currentQuestion && !computingProfile && !computedProfile && (
+          <Card className="glass-card border-white/10 shadow-2xl rounded-3xl overflow-hidden animate-in fade-in zoom-in duration-500 bg-white/95 mt-8">
+            <CardHeader className="pt-6">
+              <CardTitle className="text-2xl font-bold text-white">
                 {currentQuestion.question_text}
               </CardTitle>
-              <CardDescription className="text-slate-400">
+              <CardDescription className="text-slate-500">
                 Question {currentQuestion.order_index}
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pb-6">
               <div className="space-y-4">
                 {/* Open Text Question */}
                 {currentQuestion.question_type === "open_text" && (
@@ -582,7 +610,7 @@ export default function LumiOnboarding() {
                     type="text"
                     value={currentAnswer || ""}
                     onChange={(e) => setCurrentAnswer(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
                     placeholder="Ta réponse..."
                   />
                 )}
@@ -596,12 +624,12 @@ export default function LumiOnboarding() {
                       onChange={(e) => setCurrentAnswer(e.target.value)}
                       min={currentQuestion.options?.min || 0}
                       max={currentQuestion.options?.max || 100}
-                      className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
                       placeholder="Ta réponse..."
                     />
                     {currentQuestion.options?.min &&
                       currentQuestion.options?.max && (
-                        <p className="text-sm text-slate-400">
+                        <p className="text-sm text-slate-500">
                           Entre {currentQuestion.options.min} et{" "}
                           {currentQuestion.options.max}
                         </p>
@@ -612,77 +640,42 @@ export default function LumiOnboarding() {
                 {/* Multiple Choice Question - Supports Multiple Answers */}
                 {currentQuestion.question_type === "multiple_choice" && (
                   <div className="space-y-3">
-                    {currentQuestion.options?.options &&
-                      typeof currentQuestion.options.options === "object" &&
-                      Object.entries(currentQuestion.options.options).map(
-                        ([key, value]) => {
-                          const isSelected = currentAnswers.includes(key);
-                          return (
-                            <button
-                              key={key}
-                              type="button"
-                              onClick={() => {
-                                toggleMultiAnswer(key);
-                              }}
-                              className={`w-full p-4 text-left rounded-lg border-2 transition-all flex items-center gap-3 ${
-                                isSelected
-                                  ? "border-indigo-500 bg-indigo-500/20 text-indigo-300"
-                                  : "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-600"
-                              }`}
-                            >
-                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                                isSelected
-                                  ? "border-indigo-400 bg-indigo-500"
-                                  : "border-slate-500"
-                              }`}>
-                                {isSelected && (
-                                  <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                  </svg>
-                                )}
-                              </div>
-                              <span>{value}</span>
-                            </button>
-                          );
-                        }
-                      )}
-                    {Array.isArray(currentQuestion.options?.options) &&
-                      currentQuestion.options.options.map((option, index) => {
-                        const isSelected = currentAnswers.includes(option);
-                        return (
-                          <button
-                            key={index}
-                            type="button"
-                            onClick={() => {
-                              toggleMultiAnswer(option);
-                            }}
-                            className={`w-full p-4 text-left rounded-lg border-2 transition-all flex items-center gap-3 ${
-                              isSelected
-                                ? "border-indigo-500 bg-indigo-500/20 text-indigo-300"
-                                : "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-600"
-                            }`}
-                          >
-                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                              isSelected
-                                ? "border-indigo-400 bg-indigo-500"
-                                : "border-slate-500"
-                            }`}>
-                              {isSelected && (
-                                <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                              )}
-                            </div>
-                            <span>{option}</span>
-                          </button>
-                        );
-                      })}
+                    {displayOptions.map(({ key, label }) => {
+                      const isSelected = currentAnswers.includes(key);
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            toggleMultiAnswer(key);
+                          }}
+                          className={`w-full p-4 text-left rounded-lg border-2 transition-all flex items-center gap-3 ${
+                            isSelected
+                              ? "border-[#3d6b66]/80 bg-[#3d6b66]/40 text-white"
+                              : "border-[#3d6b66]/40 bg-[#3d6b66]/10 text-white hover:border-[#3d6b66]/60 hover:bg-[#3d6b66]/20"
+                          }`}
+                        >
+                          <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                            isSelected
+                              ? "border-white bg-white/20"
+                              : "border-white/60"
+                          }`}>
+                            {isSelected && (
+                              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                          </div>
+                          <span>{label}</span>
+                        </button>
+                      );
+                    })}
                     {currentAnswers.length > 0 && (
-                      <p className="text-sm text-slate-400 mt-2">
+                      <p className="text-sm text-slate-500 mt-2">
                         {currentAnswers.length} réponse{currentAnswers.length > 1 ? 's' : ''} sélectionnée{currentAnswers.length > 1 ? 's' : ''}
                       </p>
                     )}
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-500">
                       Maximum {MAX_MULTI_ANSWERS} réponses.
                     </p>
                   </div>
@@ -762,7 +755,7 @@ export default function LumiOnboarding() {
                         );
                       }
                     }}
-                    className="flex-1"
+                    className="flex-1 h-12 bg-teal-600 hover:bg-teal-500 text-white rounded-xl shadow-lg shadow-teal-900/20 transition-all active:scale-[0.98] font-semibold"
                     size="lg"
                     disabled={submitting || ((currentAnswer === null || currentAnswer === '') && (currentQuestion?.question_type !== "multiple_choice" || currentAnswers.length === 0))}
                   >
