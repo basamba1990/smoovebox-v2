@@ -97,6 +97,22 @@ export default function LumiOnboarding() {
   const [computedProfile, setComputedProfile] = useState(null);
   const hasCheckedVideoAge = useRef(false);
 
+  const MAX_MULTI_ANSWERS = 2;
+
+  function toggleMultiAnswer(value) {
+    setCurrentAnswers((prev) => {
+      const isSelected = prev.includes(value);
+      if (isSelected) {
+        return prev.filter((v) => v !== value);
+      }
+      if (prev.length >= MAX_MULTI_ANSWERS) {
+        toast.error(`Tu peux sélectionner au maximum ${MAX_MULTI_ANSWERS} réponses.`);
+        return prev;
+      }
+      return [...prev, value];
+    });
+  }
+
   // Check if user already has a profile and get age from videos (only once on mount)
   useEffect(() => {
     
@@ -606,13 +622,7 @@ export default function LumiOnboarding() {
                               key={key}
                               type="button"
                               onClick={() => {
-                                if (isSelected) {
-                                  // Remove from selection
-                                  setCurrentAnswers(currentAnswers.filter(a => a !== key));
-                                } else {
-                                  // Add to selection
-                                  setCurrentAnswers([...currentAnswers, key]);
-                                }
+                                toggleMultiAnswer(key);
                               }}
                               className={`w-full p-4 text-left rounded-lg border-2 transition-all flex items-center gap-3 ${
                                 isSelected
@@ -644,13 +654,7 @@ export default function LumiOnboarding() {
                             key={index}
                             type="button"
                             onClick={() => {
-                              if (isSelected) {
-                                // Remove from selection
-                                setCurrentAnswers(currentAnswers.filter(a => a !== option));
-                              } else {
-                                // Add to selection
-                                setCurrentAnswers([...currentAnswers, option]);
-                              }
+                              toggleMultiAnswer(option);
                             }}
                             className={`w-full p-4 text-left rounded-lg border-2 transition-all flex items-center gap-3 ${
                               isSelected
@@ -678,6 +682,9 @@ export default function LumiOnboarding() {
                         {currentAnswers.length} réponse{currentAnswers.length > 1 ? 's' : ''} sélectionnée{currentAnswers.length > 1 ? 's' : ''}
                       </p>
                     )}
+                    <p className="text-xs text-slate-400">
+                      Maximum {MAX_MULTI_ANSWERS} réponses.
+                    </p>
                   </div>
                 )}
 
