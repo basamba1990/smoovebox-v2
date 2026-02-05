@@ -13,24 +13,32 @@ import { ODYSSEY_STEPS } from '../config/odysseyConfig.js';
  */
 export default function OdysseySteps({ currentStep, steps = ODYSSEY_STEPS, className = '' }) {
   return (
-    <div className={`w-full overflow-x-auto pb-2 ${className}`.trim()}>
-      <div className="flex items-start justify-center gap-x-6 min-w-max px-4">
+    <div className={`w-full overflow-x-auto pb-4 ${className}`.trim()}>
+      <div className="flex items-start justify-center gap-x-8 min-w-max px-4">
         {steps.map((step, index) => {
           const Icon = step.Icon;
           const isActive = currentStep != null && step.id === currentStep;
-          const opacityClass = isActive ? 'opacity-100' : 'opacity-50';
           const isClickable = step.id <= 4 && Boolean(step.path);
 
           const StepInner = (
             <>
-              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full border-2 border-white/40 bg-white/10 flex items-center justify-center shrink-0">
-                <Icon className="w-5 h-5 sm:w-6 sm:h-6 text-white/70" strokeWidth={1.5} />
+              <div className={`
+                w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center shrink-0 transition-all duration-500
+                ${isActive 
+                  ? 'bg-teal-500/20 border-2 border-teal-400 shadow-[0_0_20px_rgba(20,184,166,0.3)] animate-glow-pulse' 
+                  : 'bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20'}
+              `}>
+                <Icon className={`
+                  w-6 h-6 sm:w-7 sm:h-7 transition-colors duration-500
+                  ${isActive ? 'text-teal-400' : 'text-white/40'}
+                `} strokeWidth={isActive ? 2 : 1.5} />
               </div>
               <p
-                className={[
-                  'mt-2 text-center max-w-28 sm:max-w-36 text-[11px] sm:text-xs font-semibold leading-tight',
-                  isClickable ? 'text-white/90 hover:underline hover:underline-offset-4' : 'text-white/80',
-                ].join(' ')}
+                className={`
+                  mt-3 text-center max-w-28 sm:max-w-36 text-[11px] sm:text-xs font-bold leading-tight transition-all duration-500
+                  ${isActive ? 'text-teal-400 scale-105' : 'text-white/40'}
+                  ${isClickable && !isActive ? 'hover:text-white/80' : ''}
+                `}
               >
                 {step.title}
               </p>
@@ -43,25 +51,29 @@ export default function OdysseySteps({ currentStep, steps = ODYSSEY_STEPS, class
                 <Link
                   to={step.path}
                   aria-current={isActive ? 'step' : undefined}
-                  className={[
-                    'flex flex-col items-center shrink-0',
-                    opacityClass,
-                    'cursor-pointer transition-opacity hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent rounded-lg px-1',
-                  ].join(' ')}
+                  className={`
+                    flex flex-col items-center shrink-0 cursor-pointer transition-all duration-300
+                    ${isActive ? 'opacity-100' : 'opacity-60 hover:opacity-100'}
+                    focus:outline-none rounded-2xl
+                  `}
                 >
                   {StepInner}
                 </Link>
               ) : (
-                <div className={`flex flex-col items-center shrink-0 ${opacityClass}`}>
+                <div className={`flex flex-col items-center shrink-0 transition-opacity duration-300 ${isActive ? 'opacity-100' : 'opacity-40'}`}>
                   {StepInner}
                 </div>
               )}
-              {/* {index < steps.length - 1 && (
+              
+              {index < steps.length - 1 && (
                 <div
-                  className="w-4 sm:w-8 h-0.5 bg-white/30 rounded self-[1.75rem] sm:self-[1.875rem] shrink-0"
+                  className={`
+                    w-6 sm:w-10 h-[2px] rounded-full self-[1.75rem] sm:self-[2rem] shrink-0 transition-colors duration-500
+                    ${step.id < currentStep ? 'bg-teal-500/50' : 'bg-white/10'}
+                  `}
                   aria-hidden
                 />
-              )} */}
+              )}
             </React.Fragment>
           );
         })}
