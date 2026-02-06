@@ -29,6 +29,8 @@ const DISC_ELEMENTS = {
 };
 
 export default function HobbyFlow({ computedProfile, ageRange }) {
+  const MAX_HOBBY_MULTI_ANSWERS = 2;
+
   const [showHobbySelection, setShowHobbySelection] = useState(false);
   const [selectedHobby, setSelectedHobby] = useState(null);
   const [hobbySessionId, setHobbySessionId] = useState(null);
@@ -39,6 +41,22 @@ export default function HobbyFlow({ computedProfile, ageRange }) {
   const [gettingHobbyRecommendation, setGettingHobbyRecommendation] = useState(false);
   const [hobbyProfile, setHobbyProfile] = useState(null);
   const [loadingExisting, setLoadingExisting] = useState(true);
+  const [currentHobbyDisplayOptions, setCurrentHobbyDisplayOptions] = useState([]);
+
+  // Toggle helper enforcing max 2 answers (like DISC)
+  const toggleHobbyMultiAnswer = (key) => {
+    setCurrentHobbyAnswers((prev) => {
+      const isSelected = prev.includes(key);
+      if (isSelected) {
+        return prev.filter((a) => a !== key);
+      }
+      if (prev.length >= MAX_HOBBY_MULTI_ANSWERS) {
+        toast.error(`Tu peux choisir au maximum ${MAX_HOBBY_MULTI_ANSWERS} réponses.`);
+        return prev;
+      }
+      return [...prev, key];
+    });
+  };
 
   // Check for existing hobby profile on mount
   useEffect(() => {
@@ -59,6 +77,25 @@ export default function HobbyFlow({ computedProfile, ageRange }) {
 
     checkExistingHobby();
   }, [computedProfile]);
+
+  // Randomize display order of options for each hobby question (like DISC)
+  useEffect(() => {
+    if (
+      currentHobbyQuestion &&
+      currentHobbyQuestion.question_type === "multiple_choice" &&
+      currentHobbyQuestion.options?.options &&
+      typeof currentHobbyQuestion.options.options === "object"
+    ) {
+      const entries = Object.entries(currentHobbyQuestion.options.options).map(
+        ([key, label]) => ({ key, label })
+      );
+      // Shuffle once per question id
+      const shuffled = [...entries].sort(() => Math.random() - 0.5);
+      setCurrentHobbyDisplayOptions(shuffled);
+    } else {
+      setCurrentHobbyDisplayOptions([]);
+    }
+  }, [currentHobbyQuestion?.id]);
 
   if (!computedProfile) {
     return null;
@@ -211,21 +248,15 @@ export default function HobbyFlow({ computedProfile, ageRange }) {
               {/* Multiple Choice Question (styled like DISC questions) */}
               {currentHobbyQuestion.question_type === "multiple_choice" && (
                 <div className="space-y-3">
-                  {currentHobbyQuestion.options?.options &&
-                    typeof currentHobbyQuestion.options.options === "object" &&
-                    Object.entries(currentHobbyQuestion.options.options).map(
-                      ([key, value]) => {
+                  {currentHobbyDisplayOptions.map(
+                      ({ key, label }) => {
                         const isSelected = currentHobbyAnswers.includes(key);
                         return (
                           <button
                             key={key}
                             type="button"
                             onClick={() => {
-                              if (isSelected) {
-                                setCurrentHobbyAnswers(currentHobbyAnswers.filter(a => a !== key));
-                              } else {
-                                setCurrentHobbyAnswers([...currentHobbyAnswers, key]);
-                              }
+                              toggleHobbyMultiAnswer(key);
                             }}
                             className={`w-full p-4 text-left rounded-lg border-2 transition-all flex items-center gap-3 ${
                               isSelected
@@ -244,7 +275,7 @@ export default function HobbyFlow({ computedProfile, ageRange }) {
                                 </svg>
                               )}
                             </div>
-                            <span>{value}</span>
+                            <span>{label}</span>
                           </button>
                         );
                       }
@@ -254,6 +285,9 @@ export default function HobbyFlow({ computedProfile, ageRange }) {
                       {currentHobbyAnswers.length} réponse{currentHobbyAnswers.length > 1 ? 's' : ''} sélectionnée{currentHobbyAnswers.length > 1 ? 's' : ''}
                     </p>
                   )}
+                  <p className="text-xs text-slate-400">
+                    Maximum {MAX_HOBBY_MULTI_ANSWERS} réponses.
+                  </p>
                 </div>
               )}
             </div>
@@ -318,7 +352,7 @@ export default function HobbyFlow({ computedProfile, ageRange }) {
                   
                   setSubmittingHobbyAnswer(false);
                 }}
-                className="flex-1"
+                className="flex-1 h-12 bg-teal-600 hover:bg-teal-500 text-white rounded-xl shadow-lg shadow-teal-900/20 transition-all active:scale-[0.98] font-semibold"
                 size="lg"
                 disabled={submittingHobbyAnswer || gettingHobbyRecommendation || ((currentHobbyAnswer === null || currentHobbyAnswer === '') && (currentHobbyQuestion?.question_type !== "multiple_choice" || currentHobbyAnswers.length === 0))}
               >
@@ -331,44 +365,44 @@ export default function HobbyFlow({ computedProfile, ageRange }) {
 
       {/* Hobby Results - Ton Rôle Idéal */}
       {hobbyProfile && computedProfile && (
-        <Card className="bg-white border-slate-200 shadow-lg mt-6">
-          <CardHeader>
+        <Card className="glass-card border-white/10 shadow-2xl rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-900/60 mt-6">
+          <CardHeader className="pt-4 sm:pt-6 px-4 sm:px-6">
             <div className="flex items-center gap-3">
               {selectedHobby && HOBBIES.find(h => h.name === selectedHobby)?.emoji && (
                 <span className="text-3xl">{HOBBIES.find(h => h.name === selectedHobby)?.emoji}</span>
               )}
-              <div className="flex-1">
-                <CardTitle className="text-2xl text-slate-800">
+              <div className="flex-1 min-w-0">
+                <CardTitle className="text-xl sm:text-2xl font-bold text-white">
                   {selectedHobby} - Ton Rôle Idéal
                 </CardTitle>
                 {computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color] && (
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-lg">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
-                    <span className="text-sm text-slate-600">
+                    <span className="text-sm text-teal-200">
                       Énergie {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
                     </span>
                   </div>
                 )}
               </div>
             </div>
-            <CardDescription className="text-slate-600 mt-2">
-              Recommandation basée sur ton profil DISC
+            <CardDescription className="text-slate-300 mt-2">
+              Recommandation basée sur ton profil Lumi
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pb-4 sm:pb-6 px-4 sm:px-6 lg:px-8">
             <div className="space-y-6">
               {/* Fit Score */}
               {hobbyProfile.fit_score !== null && (
-                <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <div className="p-4 rounded-xl border border-white/10 bg-slate-900/60">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm text-slate-500">Score de compatibilité</p>
-                    <p className="text-2xl font-bold text-slate-800">{hobbyProfile.fit_score}%</p>
+                    <p className="text-sm text-slate-300">Score de compatibilité</p>
+                    <p className="text-2xl font-bold text-white">{hobbyProfile.fit_score}%</p>
                   </div>
-                  <div className="w-full bg-slate-200 rounded-full h-3">
+                  <div className="w-full bg-slate-800 rounded-full h-3">
                     <div
                       className={`h-3 rounded-full ${
-                        hobbyProfile.fit_score >= 80 ? 'bg-green-500' :
-                        hobbyProfile.fit_score >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                        hobbyProfile.fit_score >= 80 ? 'bg-green-400' :
+                        hobbyProfile.fit_score >= 50 ? 'bg-yellow-400' : 'bg-red-400'
                       }`}
                       style={{ width: `${hobbyProfile.fit_score}%` }}
                     />
@@ -378,17 +412,17 @@ export default function HobbyFlow({ computedProfile, ageRange }) {
 
               {/* Recommended Role */}
               {hobbyProfile.recommended_role && (
-                <div className="p-4 bg-teal-50 rounded-lg border border-teal-200">
-                  <p className="text-sm text-teal-600 mb-2">Rôle Recommandé</p>
-                  <p className="text-2xl font-bold text-slate-800">{hobbyProfile.recommended_role}</p>
+                <div className="p-4 rounded-xl border border-teal-500/40 bg-teal-500/10">
+                  <p className="text-sm text-teal-200 mb-2">Rôle recommandé</p>
+                  <p className="text-2xl font-bold text-white">{hobbyProfile.recommended_role}</p>
                 </div>
               )}
 
               {/* Description */}
               {hobbyProfile.description && (
-                <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                  <h4 className="text-lg font-semibold text-slate-800 mb-2">Description</h4>
-                  <p className="text-slate-700 leading-relaxed whitespace-pre-line">
+                <div className="p-4 rounded-xl border border-white/10 bg-slate-900/70">
+                  <h4 className="text-lg font-semibold text-white mb-2">Description</h4>
+                  <p className="text-slate-200 leading-relaxed whitespace-pre-line">
                     {hobbyProfile.description}
                   </p>
                 </div>
@@ -396,12 +430,12 @@ export default function HobbyFlow({ computedProfile, ageRange }) {
 
               {/* Development Tips */}
               {hobbyProfile.development_tips && (
-                <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                  <h4 className="text-lg font-semibold text-slate-800 mb-3">💡 Conseils de développement</h4>
+                <div className="p-4 rounded-xl border border-white/10 bg-slate-900/70">
+                  <h4 className="text-lg font-semibold text-white mb-3">💡 Conseils de développement</h4>
                   <div className="space-y-2">
                     {hobbyProfile.development_tips.split('\n').filter(tip => tip.trim()).map((tip, idx) => (
-                      <div key={idx} className="flex items-start gap-2 text-slate-700">
-                        <span className="text-teal-500 mt-0.5">•</span>
+                      <div key={idx} className="flex items-start gap-2 text-slate-200">
+                        <span className="text-teal-400 mt-0.5">•</span>
                         <span>{tip.trim()}</span>
                       </div>
                     ))}
