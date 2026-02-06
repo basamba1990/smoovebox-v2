@@ -78,12 +78,12 @@ export default function HobbyFlow({ computedProfile, ageRange }) {
     <>
       {/* Hobby Selection Button - Show after profile is computed */}
       {!hobbyProfile && !currentHobbyQuestion && !showHobbySelection && (
-        <Card className="bg-white border-slate-200 shadow-lg mt-6">
+        <Card className="glass-card border-white/10 shadow-2xl rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-900/60 mt-6">
           <CardHeader>
-            <CardTitle className="text-2xl text-slate-800">
+            <CardTitle className="text-xl sm:text-2xl font-bold text-white">
               🎯 Découvre tes loisirs idéaux
             </CardTitle>
-            <CardDescription className="text-slate-600">
+            <CardDescription className="text-slate-300">
               Choisis un loisir et découvre ton rôle idéal selon ton profil DISC
             </CardDescription>
           </CardHeader>
@@ -101,17 +101,17 @@ export default function HobbyFlow({ computedProfile, ageRange }) {
 
       {/* Hobby Selection Cards */}
       {showHobbySelection && !selectedHobby && !currentHobbyQuestion && (
-        <Card className="bg-white border-slate-200 shadow-lg mt-6">
+        <Card className="glass-card border-white/10 shadow-2xl rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-900/60 mt-6">
           <CardHeader>
-            <CardTitle className="text-2xl text-slate-800">
+            <CardTitle className="text-xl sm:text-2xl font-bold text-white">
               Choisis un loisir qui t'intéresse
             </CardTitle>
-            <CardDescription className="text-slate-600">
+            <CardDescription className="text-slate-300">
               Sélectionne un loisir pour découvrir ton rôle idéal
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="flex flex-row justify-center gap-4">
               {HOBBIES.map((hobby) => (
                 <button
                   key={hobby.name}
@@ -175,38 +175,40 @@ export default function HobbyFlow({ computedProfile, ageRange }) {
                       setShowHobbySelection(true);
                     }
                   }}
-                  className="p-6 bg-slate-50 rounded-lg border-2 border-slate-200 hover:border-teal-500 transition-all text-center space-y-3"
+                  className="p-6 rounded-2xl border border-white/10 bg-slate-900/60 hover:border-teal-500/70 hover:bg-slate-900/80 transition-all text-center space-y-3 shadow-lg"
                 >
                   <div className="text-5xl">{hobby.emoji}</div>
-                  <div className="text-xl font-semibold text-slate-800">{hobby.name}</div>
+                  <div className="text-lg sm:text-xl font-semibold text-white">{hobby.name}</div>
                 </button>
               ))}
             </div>
-            <Button
-              onClick={() => setShowHobbySelection(false)}
-              variant="outline"
-              className="w-full mt-4 border-slate-300 text-slate-700 hover:bg-slate-100"
-            >
-              Annuler
-            </Button>
+            <div className="mt-4 flex justify-center">
+              <Button
+                onClick={() => setShowHobbySelection(false)}
+                variant="outline"
+                className="px-6 py-2 rounded-full border-teal-400 text-teal-300 hover:bg-teal-500/10 hover:border-teal-300 transition-all"
+              >
+                Annuler
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
 
       {/* Hobby Question Display */}
       {currentHobbyQuestion && !hobbyProfile && (
-        <Card className="bg-white border-slate-200 shadow-lg mt-6">
-          <CardHeader>
-            <CardTitle className="text-2xl text-slate-800">
+        <Card className="glass-card border-white/10 shadow-2xl rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-900/60 mt-6">
+          <CardHeader className="pt-4 sm:pt-6 px-4 sm:px-6">
+            <CardTitle className="text-xl sm:text-2xl font-bold text-white">
               {currentHobbyQuestion.question_text}
             </CardTitle>
-            <CardDescription className="text-slate-600">
+            <CardDescription className="text-slate-300">
               {selectedHobby} - Question {currentHobbyQuestion.order_index}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pb-4 sm:pb-6 px-4 sm:px-6 lg:px-8">
             <div className="space-y-4">
-              {/* Multiple Choice Question */}
+              {/* Multiple Choice Question (styled like DISC questions) */}
               {currentHobbyQuestion.question_type === "multiple_choice" && (
                 <div className="space-y-3">
                   {currentHobbyQuestion.options?.options &&
@@ -227,14 +229,14 @@ export default function HobbyFlow({ computedProfile, ageRange }) {
                             }}
                             className={`w-full p-4 text-left rounded-lg border-2 transition-all flex items-center gap-3 ${
                               isSelected
-                                ? "border-teal-500 bg-teal-50 text-teal-700"
-                                : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300"
+                                ? "border-[#3d6b66]/80 bg-[#3d6b66]/40 text-white"
+                                : "border-[#3d6b66]/40 bg-[#3d6b66]/10 text-white hover:border-[#3d6b66]/60 hover:bg-[#3d6b66]/20"
                             }`}
                           >
                             <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
                               isSelected
-                                ? "border-teal-500 bg-teal-600"
-                                : "border-slate-300"
+                                ? "border-white bg-white/20"
+                                : "border-white/60"
                             }`}>
                               {isSelected && (
                                 <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -248,7 +250,7 @@ export default function HobbyFlow({ computedProfile, ageRange }) {
                       }
                     )}
                   {currentHobbyAnswers.length > 0 && (
-                    <p className="text-sm text-slate-600 mt-2">
+                    <p className="text-sm text-slate-300 mt-2">
                       {currentHobbyAnswers.length} réponse{currentHobbyAnswers.length > 1 ? 's' : ''} sélectionnée{currentHobbyAnswers.length > 1 ? 's' : ''}
                     </p>
                   )}
