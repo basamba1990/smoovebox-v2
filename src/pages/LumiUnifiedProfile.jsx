@@ -744,9 +744,12 @@ export default function LumiUnifiedProfile() {
                 </Button>
 
                 {isJobListOpen && (
-                  <div className="fixed right-4 bottom-32 z-50 w-80 max-h-80 bg-slate-950/95 border border-slate-800 rounded-xl shadow-2xl overflow-y-auto p-3 space-y-2">
+                  <div className="fixed right-4 bottom-32 z-50 w-80 max-h-80 bg-slate-950/95 border border-white/10 rounded-2xl shadow-2xl overflow-y-auto p-3 space-y-2">
                     <div className="flex items-center justify-between mb-1">
-                      <p className="text-xs font-semibold text-slate-200">
+                      <p className="text-xs font-semibold text-teal-200 tracking-wide flex items-center gap-2">
+                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-teal-500/20 text-teal-200 text-[10px] font-bold">
+                          ⭐
+                        </span>
                         Mes pistes de métiers
                       </p>
                       <Button
@@ -762,13 +765,12 @@ export default function LumiUnifiedProfile() {
                     {jobConversations.map((conv) => (
                       <div
                         key={conv.id}
-                        className="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 space-y-1"
+                        className="rounded-xl border border-white/10 bg-slate-900/80 px-3 py-2 space-y-1 hover:border-teal-400 hover:bg-slate-900 transition-colors cursor-pointer"
                         onClick={() => {
                           setSelectedConversation(conv);
                           setIsJobListOpen(false);
                           setIsJobChatExpanded(false);
                         }}
-                        style={{ cursor: "pointer" }}
                       >
                         <p className="text-sm font-semibold text-white line-clamp-2">
                           {conv.job_title}
