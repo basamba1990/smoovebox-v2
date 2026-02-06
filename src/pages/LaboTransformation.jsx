@@ -99,11 +99,14 @@ export default function LaboTransformation({ onSignOut }) {
   return (
     <OdysseyLayout
       currentStep={4}
-      title="Le labo de transformation"
+      title=""
       maxWidthClass="max-w-6xl"
       onSignOut={onSignOut}
     >
-      <p className="text-white/90 text-center my-6 max-w-2xl mx-auto">
+      <h1 className="text-2xl sm:text-3xl font-semibold text-white text-center mt-2">
+        Le labo de transformation
+      </h1>
+      <p className="text-white/90 text-center mt-3 mb-6 max-w-2xl mx-auto">
         Métiers du futur (GPT) : explore 10 pistes avec Spot Coach.
       </p>
 

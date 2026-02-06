@@ -205,10 +205,13 @@ export default function LumiOnboarding({ onSignOut }) {
     return (
       <OdysseyLayout
         currentStep={2}
-        title="Le scan des 4 éléments"
+        title=""
         maxWidthClass="max-w-6xl"
         onSignOut={onSignOut}
       >
+        <h1 className="text-2xl sm:text-3xl font-semibold text-white text-center mt-2">
+          Le scan des 4 éléments
+        </h1>
         <div className="text-center py-12">
           <div className="text-4xl mb-4">✨</div>
           <p className="text-white/80">Chargement...</p>
@@ -220,11 +223,14 @@ export default function LumiOnboarding({ onSignOut }) {
   return (
     <OdysseyLayout
       currentStep={2}
-      title="Le scan des 4 éléments"
+      title=""
       maxWidthClass="max-w-6xl"
       onSignOut={onSignOut}
     >
-      <p className="text-white/90 text-center my-6 max-w-2xl mx-auto">
+      <h1 className="text-2xl sm:text-3xl font-semibold text-white text-center mt-2">
+        Le scan des 4 éléments
+      </h1>
+      <p className="text-white/90 text-center mt-3 mb-6 max-w-2xl mx-auto">
         Test rapide pour révéler ton élément (Feu, Air, Eau, Terre) et faire naître ton étoile.
       </p>
       {/* Age Selection Card - Show if age not found */}

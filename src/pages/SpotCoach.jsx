@@ -255,11 +255,14 @@ export default function SpotCoach({ onSignOut }) {
   return (
     <OdysseyLayout
       currentStep={1}
-      title="le sas d'accueil : Radar de naissance"
+      title=""
       maxWidthClass="max-w-6xl"
       onSignOut={onSignOut}
     >
-      <p className="text-white/90 text-center my-6 max-w-2xl mx-auto">
+      <h1 className="text-2xl sm:text-3xl font-semibold text-white text-center mt-2">
+        le sas d'accueil : Radar de naissance
+      </h1>
+      <p className="text-white/90 text-center mt-3 mb-6 max-w-2xl mx-auto">
         {result?.profile
           ? 'Ton Radar de naissance est enregistré. Consulte ton profil ci-dessous.'
           : 'Renseigne ta date, heure et lieu de naissance pour calculer ton Radar de naissance.'}
@@ -430,7 +433,6 @@ export default function SpotCoach({ onSignOut }) {
                 <div className="space-y-6 text-sm text-slate-200">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
-                      <p className="text-[11px] uppercase text-slate-400">Mode</p>
                       <p className="text-slate-100">
                         {result.mode === 'preview'
                           ? 'Prévisualisation (non sauvegardée)'
@@ -438,29 +440,23 @@ export default function SpotCoach({ onSignOut }) {
                       </p>
                     </div>
                     <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
-                      <p className="text-[11px] uppercase text-slate-400">Élément</p>
                       <p className="font-medium text-slate-100">{result.profile.element}</p>
                     </div>
                     <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
-                      <p className="text-[11px] uppercase text-slate-400">Phrase de synchronie</p>
                       <p className="font-medium text-teal-300 italic">
                         {result.profile.phrase_synchronie}
                       </p>
                     </div>
                     <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
-                      <p className="text-[11px] uppercase text-slate-400">Archétype</p>
                       <p className="font-medium text-slate-100">{result.profile.archetype}</p>
                     </div>
                     <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
-                      <p className="text-[11px] uppercase text-slate-400">Soleil</p>
                       <p className="font-medium text-slate-100">{result.profile.signe_soleil}</p>
                     </div>
                     <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
-                      <p className="text-[11px] uppercase text-slate-400">Lune</p>
                       <p className="font-medium text-slate-100">{result.profile.signe_lune}</p>
                     </div>
                     <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
-                      <p className="text-[11px] uppercase text-slate-400">Ascendant</p>
                       <p className="font-medium text-slate-100">{result.profile.signe_ascendant}</p>
                     </div>
                   </div>
