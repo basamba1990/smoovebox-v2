@@ -17,10 +17,14 @@ export default function ModuleMimetique({ user, profile, onSignOut, onVideoUploa
   return (
     <OdysseyLayout
       currentStep={3}
-      title="Le module mimétique"
+      title=""
       maxWidthClass="max-w-6xl"
+      onSignOut={onSignOut}
     >
-      <p className="text-white/90 text-center my-6 max-w-2xl mx-auto">
+      <h1 className="text-2xl sm:text-3xl font-semibold text-white text-center mt-2">
+        Le module mimétique
+      </h1>
+      <p className="text-white/90 text-center mt-3 mb-6 max-w-2xl mx-auto">
         Enregistrement vidéo et miroir de ton étoile.
       </p>
 

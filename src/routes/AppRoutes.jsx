@@ -4,6 +4,7 @@ import RequireAuth from "../components/RequireAuth.jsx";
 import WelcomeAgent from "../components/WelcomeAgent.jsx";
 import SimplifiedHome from "../pages/SimplifiedHome.jsx";
 import Login from "../pages/login.jsx";
+import Register from "../pages/register.jsx";
 import AuthCallback from "../pages/AuthCallback.jsx";
 import ResetPassword from "../pages/ResetPassword.jsx";
 import { TransformationDemo } from "../pages/TransformationDemo.jsx";
@@ -67,6 +68,7 @@ export default function AppRoutes({
 
       {/* Routes d'authentification */}
       <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/transformation-demo" element={<TransformationDemo />} />
@@ -155,7 +157,7 @@ export default function AppRoutes({
         path="/embark"
         element={
           <RequireAuth>
-            <SpotCoach user={user} profile={profile} />
+            <SpotCoach user={user} profile={profile} onSignOut={onSignOut} />
           </RequireAuth>
         }
       />
@@ -165,7 +167,7 @@ export default function AppRoutes({
         path="/scan-elements"
         element={
           <RequireAuth>
-            <LumiOnboarding user={user} profile={profile} />
+            <LumiOnboarding user={user} profile={profile} onSignOut={onSignOut} />
           </RequireAuth>
         }
       />
@@ -188,7 +190,7 @@ export default function AppRoutes({
         path="/labo-transformation"
         element={
           <RequireAuth>
-            <LaboTransformation />
+            <LaboTransformation onSignOut={onSignOut} />
           </RequireAuth>
         }
       />

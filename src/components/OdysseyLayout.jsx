@@ -2,6 +2,7 @@
 // Shared layout shell for the Odyssée de Lumi journey pages.
 
 import React from 'react';
+import { Button } from './ui/button.jsx';
 import OdysseySteps from './OdysseySteps.jsx';
 
 /**
@@ -18,6 +19,7 @@ export default function OdysseyLayout({
   subtitle,
   children,
   maxWidthClass = 'max-w-6xl',
+  onSignOut,
 }) {
   return (
     <div
@@ -29,60 +31,37 @@ export default function OdysseyLayout({
         backgroundRepeat: 'no-repeat',
       }}
     >
-      {/* Top-right accent: Tache.png + page title and subtitle (hidden on small screens via CSS media query) */}
-      <div
-        className="tache-desktop-only absolute top-0 right-0 flex flex-col items-center justify-start text-center opacity-95"
-        style={{
-          width: '700px',
-          height: '700px',
-          paddingTop: '80px',
-          backgroundImage: "url('/Tache.png')",
-          backgroundSize: 'contain',
-          backgroundRepeat: 'no-repeat',
-          backgroundPosition: 'top right',
-        }}
-      >
-        <h1
-          className="text-2xl md:text-3xl font-semibold text-white leading-tight"
-          style={{ width: '360px' }}
-        >
-          {title}
-        </h1>
-        {subtitle && (
-          <p className="text-white/90 text-sm md:text-base mt-2 max-w-md">
-            {subtitle}
-          </p>
-        )}
-      </div>
+      {/* Animated background blobs – centered vertically like login */}
+      <div className="fixed top-50 -translate-y-1/2 -right-20 w-64 h-dvh bg-teal-500/20 rounded-full blur-3xl animate-pulse" />
+      {/* <div className="absolute top-[20%] -translate-y-1/2 -right-20 w-64 h-dvh bg-blue-500/20 rounded-full blur-3xl animate-pulse" /> */}
 
-      {/* Full-width header bar; logo on the left, no width constraint on parent */}
+      {/* Header: logo + page title/subtitle */}
       <header className="relative z-10 w-full">
-        <div className="px-4 flex items-center justify-between">
+        <div className={`${maxWidthClass} mx-auto px-4 sm:px-6 flex items-center justify-between gap-4`}>
           <img
             src="/Logo-2.png"
             alt="SpotBulle"
-            className="w-auto"
-            style={{ height: '150px' }}
+            className="w-auto h-16 sm:h-24 md:h-36"
           />
-          {/* Right side reserved for future actions (profile, status, etc.) */}
+          <div className="flex-1" />
+          {onSignOut && (
+            <div className="flex justify-end min-w-[120px]">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-slate-100 hover:text-teal-300 hover:bg-slate-900/60"
+                onClick={onSignOut}
+              >
+                Se déconnecter
+              </Button>
+            </div>
+          )}
         </div>
       </header>
 
-      <div className={`${maxWidthClass} mx-auto px-4 space-y-10 relative z-10`}>
+      <div className={`${maxWidthClass} mx-auto px-4 sm:px-6 space-y-10 relative z-10`}>
         <OdysseySteps currentStep={currentStep} />
-
-        {/* Mobile/tablet title block (shown when Tache accent is hidden, below md, just above page description/content) */}
-        <div className="md:hidden text-center mb-6">
-          <h1 className="text-2xl font-semibold text-white leading-tight">
-            {title}
-          </h1>
-          {subtitle && (
-            <p className="text-white/90 text-sm mt-2 max-w-md mx-auto">
-              {subtitle}
-            </p>
-          )}
-        </div>
-
         {children}
       </div>
     </div>

@@ -1,29 +1,31 @@
-// src/pages/login.jsx
+// src/pages/register.jsx
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext.jsx';
 import { toast } from 'sonner';
 import { Button } from '../components/ui/button-enhanced.jsx';
 import { Input } from '../components/ui/input.jsx';
 import { Label } from '../components/ui/label.jsx';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card.jsx';
-import { checkCompanyMembershipAndRedirect } from '../utils/companyRedirect.js';
-import { Eye, EyeOff, Mail, Lock, LogIn, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, User, Mail, Lock, UserPlus, Loader2 } from 'lucide-react';
 
-const Login = () => {
+const Register = () => {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
+  const { signUp } = useAuth();
 
-  const handleLogin = async (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    if (!email || !password) {
+    if (!email || !password || !firstName || !lastName) {
       setError('Veuillez remplir tous les champs');
       setLoading(false);
       toast.error('Veuillez remplir tous les champs');
@@ -31,22 +33,12 @@ const Login = () => {
     }
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) throw error;
-
-      toast.success('Connexion réussie !');
-      
-      const isCompanyUser = await checkCompanyMembershipAndRedirect(navigate);
-      if (!isCompanyUser) {
-        navigate('/');
-      }
+      await signUp(email.trim(), password, firstName.trim(), lastName.trim());
+      toast.success('Inscription réussie ! Vérifiez votre email.');
+      navigate('/login');
     } catch (err) {
-      console.error('Erreur lors de la connexion:', err);
-      const errorMessage = err.message || 'Une erreur s\'est produite lors de la connexion';
+      console.error('Erreur lors de l\'inscription:', err);
+      const errorMessage = err.message || 'Une erreur s\'est produite lors de l\'inscription';
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -73,23 +65,60 @@ const Login = () => {
         />
       </div>
 
-      {/* Décoration de fond (VoltFlow style) */}
-      <div className="absolute top-1/4 -left-20 w-64 h-64 bg-teal-500/20 rounded-full blur-3xl animate-pulse" />
-      <div className="absolute bottom-1/4 -right-20 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl animate-pulse" />
+      {/* Décoration de fond */}
+      <div className="absolute top-1/3 -right-20 w-72 h-72 bg-teal-500/20 rounded-full blur-3xl animate-pulse" />
+      <div className="absolute bottom-1/3 -left-20 w-72 h-72 bg-blue-500/20 rounded-full blur-3xl animate-pulse" />
 
       <div className="max-w-md w-full space-y-8 relative z-10">
         <Card className="glass-card border-white/10 shadow-2xl rounded-3xl overflow-hidden animate-in fade-in zoom-in duration-500">
           <CardHeader className="text-center pt-8">
             <div className="mx-auto w-16 h-16 bg-teal-500/20 rounded-2xl flex items-center justify-center mb-4 animate-glow-pulse">
-              <LogIn className="text-teal-400 w-8 h-8" />
+              <UserPlus className="text-teal-400 w-8 h-8" />
             </div>
-            <CardTitle className="text-3xl font-bold text-white tracking-tight">Connexion</CardTitle>
+            <CardTitle className="text-3xl font-bold text-white tracking-tight">Inscription</CardTitle>
             <CardDescription className="text-teal-100/70">
-              Accédez à votre Odyssée SpotBulle
+              Rejoignez l'aventure SpotBulle
             </CardDescription>
           </CardHeader>
           <CardContent className="px-8 pb-8">
-            <form onSubmit={handleLogin} className="space-y-6">
+            <form onSubmit={handleRegister} className="space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName" className="text-teal-50/90 font-medium ml-1">
+                    Prénom
+                  </Label>
+                  <div className="relative group">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-teal-400/60 group-focus-within:text-teal-400 transition-colors" />
+                    <Input
+                      id="firstName"
+                      type="text"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      className="input-volt pl-10 h-12 rounded-xl"
+                      placeholder="Prénom"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName" className="text-teal-50/90 font-medium ml-1">
+                    Nom
+                  </Label>
+                  <div className="relative group">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-teal-400/60 group-focus-within:text-teal-400 transition-colors" />
+                    <Input
+                      id="lastName"
+                      type="text"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      className="input-volt pl-10 h-12 rounded-xl"
+                      placeholder="Nom"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+              
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-teal-50/90 font-medium ml-1">
                   Email
@@ -107,18 +136,11 @@ const Login = () => {
                   />
                 </div>
               </div>
+              
               <div className="space-y-2">
-                <div className="flex items-center justify-between ml-1">
-                  <Label htmlFor="password" className="text-teal-50/90 font-medium">
-                    Mot de passe
-                  </Label>
-                  <Link
-                    to="/reset-password"
-                    className="text-xs text-teal-400 hover:text-teal-300 transition-colors"
-                  >
-                    Oublié ?
-                  </Link>
-                </div>
+                <Label htmlFor="password" className="text-teal-50/90 font-medium ml-1">
+                  Mot de passe
+                </Label>
                 <div className="relative group">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-teal-400/60 group-focus-within:text-teal-400 transition-colors" />
                   <Input
@@ -155,19 +177,19 @@ const Login = () => {
                 {loading ? (
                   <div className="flex items-center justify-center gap-2">
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Connexion...</span>
+                    <span>Création...</span>
                   </div>
-                ) : 'Se connecter'}
+                ) : 'Créer mon compte'}
               </Button>
 
               <div className="text-center pt-2">
                 <p className="text-sm text-teal-100/60">
-                  Pas encore de compte ?{' '}
+                  Déjà un compte ?{' '}
                   <Link
-                    to="/register"
+                    to="/login"
                     className="font-bold text-teal-400 hover:text-teal-300 transition-colors"
                   >
-                    Inscrivez-vous
+                    Connectez-vous
                   </Link>
                 </p>
               </div>
@@ -177,7 +199,7 @@ const Login = () => {
         
         <div className="text-center animate-pulse">
           <p className="text-teal-100/40 text-xs tracking-widest uppercase">
-            SpotBulle — Explorez vos talents
+            SpotBulle — Tracez votre futur
           </p>
         </div>
       </div>
@@ -185,4 +207,4 @@ const Login = () => {
   );
 };
 
-export default Login;
+export default Register;

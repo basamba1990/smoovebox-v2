@@ -80,7 +80,7 @@ function getAgeRangeFromAge(age) {
   return null;
 }
 
-export default function LumiOnboarding() {
+export default function LumiOnboarding({ onSignOut }) {
   const navigate = useNavigate();
   const user = useUser();
   const [loading, setLoading] = useState(false);
@@ -92,10 +92,54 @@ export default function LumiOnboarding() {
   const [currentQuestion, setCurrentQuestion] = useState(null);
   const [currentAnswer, setCurrentAnswer] = useState(null); // For single answers (open_text, scale)
   const [currentAnswers, setCurrentAnswers] = useState([]); // For multiple answers (multiple_choice)
+  const [displayOptions, setDisplayOptions] = useState([]); // Shuffled options for multiple_choice
   const [submitting, setSubmitting] = useState(false);
   const [computingProfile, setComputingProfile] = useState(false);
   const [computedProfile, setComputedProfile] = useState(null);
   const hasCheckedVideoAge = useRef(false);
+
+  const MAX_MULTI_ANSWERS = 2;
+
+  function toggleMultiAnswer(value) {
+    setCurrentAnswers((prev) => {
+      const isSelected = prev.includes(value);
+      if (isSelected) {
+        return prev.filter((v) => v !== value);
+      }
+      if (prev.length >= MAX_MULTI_ANSWERS) {
+        toast.error(`Tu peux sélectionner au maximum ${MAX_MULTI_ANSWERS} réponses.`);
+        return prev;
+      }
+      return [...prev, value];
+    });
+  }
+
+  // Build a randomized display order for multiple choice options when question changes
+  useEffect(() => {
+    if (!currentQuestion || currentQuestion.question_type !== "multiple_choice") {
+      setDisplayOptions([]);
+      return;
+    }
+
+    const raw = currentQuestion.options?.options;
+    let items = [];
+
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      // Object form: { key: label }
+      items = Object.entries(raw).map(([key, label]) => ({ key, label }));
+    } else if (Array.isArray(raw)) {
+      // Array form: [label1, label2, ...] – use label as key as well
+      items = raw.map((label) => ({ key: label, label }));
+    }
+
+    // Shuffle once (Fisher–Yates)
+    for (let i = items.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [items[i], items[j]] = [items[j], items[i]];
+    }
+
+    setDisplayOptions(items);
+  }, [currentQuestion]);
 
   // Check if user already has a profile and get age from videos (only once on mount)
   useEffect(() => {
@@ -161,9 +205,13 @@ export default function LumiOnboarding() {
     return (
       <OdysseyLayout
         currentStep={2}
-        title="Le scan des 4 éléments"
+        title=""
         maxWidthClass="max-w-6xl"
+        onSignOut={onSignOut}
       >
+        <h1 className="text-2xl sm:text-3xl font-semibold text-white text-center mt-2">
+          Le scan des 4 éléments
+        </h1>
         <div className="text-center py-12">
           <div className="text-4xl mb-4">✨</div>
           <p className="text-white/80">Chargement...</p>
@@ -175,24 +223,28 @@ export default function LumiOnboarding() {
   return (
     <OdysseyLayout
       currentStep={2}
-      title="Le scan des 4 éléments"
+      title=""
       maxWidthClass="max-w-6xl"
+      onSignOut={onSignOut}
     >
-      <p className="text-white/90 text-center my-6 max-w-2xl mx-auto">
+      <h1 className="text-2xl sm:text-3xl font-semibold text-white text-center mt-2">
+        Le scan des 4 éléments
+      </h1>
+      <p className="text-white/90 text-center mt-3 mb-6 max-w-2xl mx-auto">
         Test rapide pour révéler ton élément (Feu, Air, Eau, Terre) et faire naître ton étoile.
       </p>
       {/* Age Selection Card - Show if age not found */}
       {showAgeSelection && !ageRange && !currentQuestion && !computedProfile && (
-        <Card className="bg-slate-900/60 border-slate-800">
-            <CardHeader>
-              <CardTitle className="text-2xl text-white">
-                Quelle tranche d'âge vous correspond le mieux ?
-              </CardTitle>
-              <CardDescription className="text-slate-400">
-                Cette information nous permet de vous proposer des questions adaptées à votre situation
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+        <Card className="glass-card border-white/10 shadow-2xl rounded-3xl overflow-hidden animate-in fade-in zoom-in duration-500 bg-white/95">
+          <CardHeader className="text-center pt-6">
+            <CardTitle className="text-2xl font-bold text-white">
+              Quelle tranche d&apos;âge vous correspond le mieux ?
+            </CardTitle>
+            <CardDescription className="text-slate-500">
+              Cette information nous permet de vous proposer des questions adaptées à votre situation.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pb-6">
               <div className="space-y-3">
                 {AGE_RANGES.map((range) => (
                   <button
@@ -202,7 +254,7 @@ export default function LumiOnboarding() {
                       setAgeRange(selectedValue);
                       setShowAgeSelection(false);
                     }}
-                    className="w-full p-4 text-left rounded-lg border-2 border-slate-700 bg-slate-800 text-slate-300 hover:border-indigo-500 hover:bg-indigo-500/20 transition-all"
+                    className="w-full p-4 text-left rounded-lg border-2 border-[#3d6b66]/40 bg-[#3d6b66]/10 text-white hover:border-[#3d6b66]/60 hover:bg-[#3d6b66]/20 transition-all"
                   >
                     {range.label}
                   </button>
@@ -214,16 +266,16 @@ export default function LumiOnboarding() {
 
         {/* Welcome Card - Only show when no question, no existing profile, and age range is set */}
         {!currentQuestion && !computedProfile && ageRange && !showAgeSelection && (
-          <Card className="bg-slate-900/60 border-slate-800">
-            <CardHeader>
-              <CardTitle className="text-2xl text-white">
-                Bienvenue dans l'univers SpotBulle
+          <Card className="glass-card border-white/10 shadow-2xl rounded-3xl overflow-hidden animate-in fade-in zoom-in duration-500 bg-white/95 mt-8">
+            <CardHeader className="text-center pt-6">
+              <CardTitle className="text-2xl font-bold text-white">
+                Bienvenue dans l&apos;univers SpotBulle
               </CardTitle>
-              <CardDescription className="text-slate-400">
-                Lumi va te poser quelques questions pour mieux te connaître
+              <CardDescription className="text-slate-500">
+                Lumi va te poser quelques questions pour mieux te connaître.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pb-6">
               <div className="space-y-4">
                 <p className="text-slate-300">
                   Ce parcours rapide te permettra de :
@@ -261,11 +313,11 @@ export default function LumiOnboarding() {
                         );
                       }
                     }}
-                    className="w-full"
+                    className="w-full h-12 bg-teal-600 hover:bg-teal-500 text-white rounded-xl shadow-lg shadow-teal-900/20 transition-all active:scale-[0.98] font-semibold"
                     size="lg"
                     disabled={loading}
                   >
-                    {loading ? "Chargement..." : "Commencer avec Lumi"}
+                    {loading ? "Chargement..." : "Lancer le scan avec Lumi"}
                   </Button>
                 </div>
               </div>
@@ -290,239 +342,193 @@ export default function LumiOnboarding() {
            </Card>
          )}
 
-         {/* Profile Results */}
-         {computedProfile && (
-           <Card className="bg-white border-slate-200 shadow-lg">
-             <CardHeader>
-               <CardTitle className="text-2xl text-slate-800">
-                 Ton Profil
-               </CardTitle>
-               <CardDescription className="text-slate-600">
-                 Découvre qui tu es vraiment
-               </CardDescription>
-             </CardHeader>
-             <CardContent>
-               <div className="space-y-6">
-                 {/* Dominant and Secondary Colors with Elements */}
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   {/* Dominant Color with Element */}
-                   {computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color] && (
-                     <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.dominant_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.dominant_color].borderClass}`}>
-                       <div className="flex items-center gap-3 mb-2">
-                         <span className="text-3xl">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
-                         <div>
-                           <p className="text-sm text-slate-500">Couleur Dominante</p>
-                           <p className="text-xl font-bold text-slate-800 capitalize">
-                             {computedProfile.dominant_color}
-                           </p>
-                         </div>
-                       </div>
-                      <div className="mt-3 pt-3 border-t border-slate-200">
-                        <p className="text-sm font-semibold text-slate-800 mb-1">
-                          {DISC_ELEMENTS[computedProfile.dominant_color].icon} {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
-                        </p>
-                        <p className="text-xs text-slate-600">
-                          {DISC_ELEMENTS[computedProfile.dominant_color].descriptionFr}
-                        </p>
+        {/* Profile Results */}
+        {computedProfile && (
+          <Card className="glass-card border-white/10 shadow-2xl rounded-2xl sm:rounded-3xl overflow-hidden animate-in fade-in zoom-in duration-500 bg-white/95 mt-6 sm:mt-8">
+            <CardHeader className="text-center pt-4 sm:pt-6 px-4 sm:px-6">
+              <CardTitle className="text-xl sm:text-2xl font-bold text-white">
+                Profil du joueur
+              </CardTitle>
+              <CardDescription className="text-slate-500 text-sm sm:text-base">
+                Synthèse de ton profil Lumi (4 éléments)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pb-4 sm:pb-6 px-4 sm:px-6 lg:px-8">
+              {/* Top summary row inspired by player card */}
+              <div className="grid grid-cols-1 md:grid-cols-[2fr,3fr] gap-4 sm:gap-6 items-center mb-4 sm:mb-6">
+                {/* Left: avatar + basic info */}
+                <div className="flex flex-col items-center md:items-start text-center md:text-left space-y-2">
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-[#3d6b66]/20 border border-[#3d6b66]/60 flex items-center justify-center text-3xl sm:text-4xl text-white shadow-lg shadow-teal-900/30">
+                    {computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color]
+                      ? DISC_ELEMENTS[computedProfile.dominant_color].icon
+                      : "⭐️"}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-base sm:text-lg font-semibold text-white truncate sm:whitespace-normal">
+                      {user?.user_metadata?.full_name || user?.email || "Ton profil Lumi"}
+                    </p>
+                    <p className="text-[10px] sm:text-xs text-teal-100/80">
+                      Profil Lumi • 4 éléments
+                    </p>
+                  </div>
+                </div>
+
+                {/* Right: dominant + secondary elements summary with description */}
+                <div className="bg-slate-900/40 border border-teal-500/40 rounded-xl sm:rounded-2xl px-3 sm:px-4 py-3 sm:py-4">
+                  <p className="text-xs uppercase tracking-widest text-teal-200 mb-2 sm:mb-3">
+                    Tes deux énergies clés
+                  </p>
+                  <div className="flex flex-row gap-3 text-xs">
+                    {[computedProfile.dominant_color, computedProfile.secondary_color]
+                      .filter((colorKey) => colorKey && DISC_ELEMENTS[colorKey])
+                      .map((colorKey, idx) => {
+                        const el = DISC_ELEMENTS[colorKey];
+                        const isDom = idx === 0;
+                        const base =
+                          "flex-1 flex flex-col rounded-xl border px-3 py-2 transition-colors";
+                        const classes = isDom
+                          ? "bg-[#3d6b66] border-[#3d6b66] text-white"
+                          : "bg-[#3d6b66]/20 border-[#3d6b66]/70 text-teal-50";
+                        return (
+                          <div key={colorKey} className={`${base} ${classes}`}>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-lg">{el.icon}</span>
+                              <div>
+                                <p className="text-[11px] font-semibold">
+                                  {el.elementFr}
+                                </p>
+                                <p className="text-[10px] text-slate-200/80">
+                                  {isDom ? "Énergie principale" : "Énergie secondaire"}
+                                </p>
+                              </div>
+                            </div>
+                            <p className="text-[11px] leading-snug text-slate-100/90">
+                              {el.descriptionFr}
+                            </p>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Énergie Principale summary block */}
+              {computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color] && (
+                <div className="rounded-xl sm:rounded-2xl border border-teal-500/40 bg-slate-900/40 px-3 sm:px-4 py-3 sm:py-4 mb-4 sm:mb-6">
+                  <h3 className="text-xs sm:text-sm font-semibold text-teal-200 mb-2">
+                    Énergie Principale : {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
+                  </h3>
+                  {computedProfile.traits?.combined_description && (
+                    <p className="text-xs sm:text-sm text-slate-200 leading-relaxed mb-2">
+                      {computedProfile.traits.combined_description}
+                    </p>
+                  )}
+                  {computedProfile.traits?.dominant?.percentage != null && computedProfile.traits?.secondary?.percentage != null && (
+                    <p className="text-xs text-teal-100/90">
+                      Votre profil est élevéement orienté {computedProfile.dominant_color} ({computedProfile.traits.dominant.percentage}%), avec une tendance {computedProfile.secondary_color} ({computedProfile.traits.secondary.percentage}%).
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Profil Dominant + Secondaire (responsive: stack on small, row on sm+) */}
+              <div className="flex flex-col sm:flex-row gap-4 mb-4 sm:mb-6">
+                {/* Profil Dominant (in-card) */}
+                {computedProfile.traits?.dominant && computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color] && (
+                  <div className="flex-1 min-w-0 rounded-xl sm:rounded-2xl border border-teal-500/40 bg-slate-900/40 px-3 sm:px-4 py-3 sm:py-4 space-y-2 sm:space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xl sm:text-2xl shrink-0">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
+                        <h3 className="text-xs sm:text-sm font-semibold text-teal-200 truncate">
+                          Profil Dominant • {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
+                        </h3>
                       </div>
-                     </div>
-                   )}
-                   
-                   {/* Secondary Color with Element */}
-                   {computedProfile.secondary_color && DISC_ELEMENTS[computedProfile.secondary_color] && (
-                     <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.secondary_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.secondary_color].borderClass}`}>
-                       <div className="flex items-center gap-3 mb-2">
-                         <span className="text-3xl">{DISC_ELEMENTS[computedProfile.secondary_color].icon}</span>
-                         <div>
-                           <p className="text-sm text-slate-500">Couleur Secondaire</p>
-                           <p className="text-xl font-bold text-slate-800 capitalize">
-                             {computedProfile.secondary_color}
-                           </p>
-                         </div>
-                       </div>
-                      <div className="mt-3 pt-3 border-t border-slate-200">
-                        <p className="text-sm font-semibold text-slate-800 mb-1">
-                          {DISC_ELEMENTS[computedProfile.secondary_color].icon} {DISC_ELEMENTS[computedProfile.secondary_color].elementFr}
-                        </p>
-                        <p className="text-xs text-slate-600">
-                          {DISC_ELEMENTS[computedProfile.secondary_color].descriptionFr}
-                        </p>
+                      <span className="text-[10px] sm:text-xs text-teal-100/90 shrink-0">
+                        {computedProfile.traits.dominant.intensity} ({computedProfile.traits.dominant.percentage}%)
+                      </span>
+                    </div>
+                    <p className="text-sm sm:text-base font-bold text-white">
+                      {computedProfile.traits.dominant.name}
+                    </p>
+                    <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+                      {computedProfile.traits.dominant.description}
+                    </p>
+                    {computedProfile.traits.dominant.traits && computedProfile.traits.dominant.traits.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {computedProfile.traits.dominant.traits.map((trait, idx) => (
+                          <span
+                            key={idx}
+                            className="px-3 py-1 rounded-full bg-teal-500/20 text-teal-200 text-xs border border-teal-500/40"
+                          >
+                            {trait}
+                          </span>
+                        ))}
                       </div>
-                     </div>
-                   )}
-                 </div>
-
-                 {/* DISC Scores */}
-                 {computedProfile.disc_scores && (
-                   <div>
-                     <h4 className="text-lg font-semibold text-slate-800 mb-3">
-                       Scores DISC
-                     </h4>
-                     <div className="grid grid-cols-4 gap-3">
-                       {Object.entries(computedProfile.disc_scores).map(([color, score]) => (
-                         <div
-                           key={color}
-                           className="p-3 bg-slate-50 rounded-lg border border-slate-200"
-                         >
-                           <p className="text-sm text-slate-500 capitalize mb-1">
-                             {color}
-                           </p>
-                           <p className="text-xl font-bold text-slate-800">{score}</p>
-                         </div>
-                       ))}
-                     </div>
-                   </div>
-                 )}
-
-                 {/* Traits */}
-                 {computedProfile.traits && typeof computedProfile.traits === 'object' && !Array.isArray(computedProfile.traits) && (
-                   <div className="space-y-6">
-                     {/* Combined Description with Element */}
-                     {computedProfile.traits.combined_description && computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color] && (
-                       <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.dominant_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.dominant_color].borderClass}`}>
-                      <div className="flex items-center gap-3 mb-3">
-                        <span className="text-4xl">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
-                        <div>
-                          <h3 className="text-lg font-semibold text-slate-800">
-                            Ton Énergie Principale : {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
-                          </h3>
-                        </div>
+                    )}
+                    {computedProfile.traits.dominant.characteristics && computedProfile.traits.dominant.characteristics.length > 0 && (
+                      <div className="mt-3 space-y-1">
+                        <p className="text-xs text-teal-200/90">Caractéristiques :</p>
+                        {computedProfile.traits.dominant.characteristics.map((char, idx) => (
+                          <div key={idx} className="flex items-start gap-2 text-xs text-slate-200">
+                            <span className="text-teal-400 mt-0.5">•</span>
+                            <span>{char}</span>
+                          </div>
+                        ))}
                       </div>
-                         <p className="text-slate-700 leading-relaxed">
-                           {computedProfile.traits.combined_description}
-                         </p>
-                       </div>
-                     )}
+                    )}
+                  </div>
+                )}
 
-                     {/* Profile Type */}
-                     {computedProfile.traits.profile_type && (
-                       <div className="text-center">
-                         <p className="text-sm text-slate-500 mb-1">Type de profil</p>
-                         <p className="text-xl font-bold text-slate-800">
-                           {computedProfile.traits.profile_type}
-                         </p>
-                       </div>
-                     )}
+                {/* Profil Secondaire (in-card) */}
+                {computedProfile.traits?.secondary && computedProfile.secondary_color && DISC_ELEMENTS[computedProfile.secondary_color] && (
+                  <div className="flex-1 min-w-0 rounded-xl sm:rounded-2xl border border-teal-500/40 bg-slate-900/40 px-3 sm:px-4 py-3 sm:py-4 space-y-2 sm:space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xl sm:text-2xl shrink-0">{DISC_ELEMENTS[computedProfile.secondary_color].icon}</span>
+                        <h3 className="text-xs sm:text-sm font-semibold text-teal-200 truncate">
+                          Profil Secondaire • {DISC_ELEMENTS[computedProfile.secondary_color].elementFr}
+                        </h3>
+                      </div>
+                      <span className="text-[10px] sm:text-xs text-teal-100/90 shrink-0">
+                        {computedProfile.traits.secondary.intensity} ({computedProfile.traits.secondary.percentage}%)
+                      </span>
+                    </div>
+                    <p className="text-sm sm:text-base font-bold text-white">
+                      {computedProfile.traits.secondary.name}
+                    </p>
+                    <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+                      {computedProfile.traits.secondary.description}
+                    </p>
+                    {computedProfile.traits.secondary.traits && computedProfile.traits.secondary.traits.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {computedProfile.traits.secondary.traits.map((trait, idx) => (
+                          <span
+                            key={idx}
+                            className="px-3 py-1 rounded-full bg-teal-500/20 text-teal-200 text-xs border border-teal-500/40"
+                          >
+                            {trait}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {computedProfile.traits.secondary.characteristics && computedProfile.traits.secondary.characteristics.length > 0 && (
+                      <div className="mt-3 space-y-1">
+                        <p className="text-xs text-teal-200/90">Caractéristiques :</p>
+                        {computedProfile.traits.secondary.characteristics.map((char, idx) => (
+                          <div key={idx} className="flex items-start gap-2 text-xs text-slate-200">
+                            <span className="text-teal-400 mt-0.5">•</span>
+                            <span>{char}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
-                     {/* Dominant and Secondary Profiles */}
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                       {/* Dominant Profile */}
-                       {computedProfile.traits.dominant && computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color] && (
-                         <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.dominant_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.dominant_color].borderClass} space-y-3`}>
-                           <div className="flex items-center justify-between">
-                             <div className="flex items-center gap-2">
-                               <span className="text-2xl">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
-                               <h4 className="text-sm font-semibold text-slate-800">
-                                 Profil Dominant • {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
-                               </h4>
-                             </div>
-                             <span className="text-xs text-slate-600">
-                               {computedProfile.traits.dominant.intensity} ({computedProfile.traits.dominant.percentage}%)
-                             </span>
-                           </div>
-                           <p className="text-lg font-bold text-slate-800">
-                             {computedProfile.traits.dominant.name}
-                           </p>
-                          {/* Animal spirit removed */}
-                           <p className="text-sm text-slate-600">
-                             {computedProfile.traits.dominant.description}
-                           </p>
-                           {computedProfile.traits.dominant.traits && computedProfile.traits.dominant.traits.length > 0 && (
-                             <div className="flex flex-wrap gap-2 mt-2">
-                               {computedProfile.traits.dominant.traits.map((trait, idx) => (
-                                 <span
-                                   key={idx}
-                                   className="px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs border border-amber-200"
-                                 >
-                                   {trait}
-                                 </span>
-                               ))}
-                             </div>
-                           )}
-                           {computedProfile.traits.dominant.characteristics && computedProfile.traits.dominant.characteristics.length > 0 && (
-                             <div className="mt-3 space-y-1">
-                               <p className="text-xs text-slate-500">Caractéristiques :</p>
-                               {computedProfile.traits.dominant.characteristics.map((char, idx) => (
-                                 <div key={idx} className="flex items-start gap-2 text-xs text-slate-600">
-                                   <span className="text-amber-500 mt-0.5">•</span>
-                                   <span>{char}</span>
-                                 </div>
-                               ))}
-                             </div>
-                           )}
-                         </div>
-                       )}
-
-                       {/* Secondary Profile */}
-                       {computedProfile.traits.secondary && computedProfile.secondary_color && DISC_ELEMENTS[computedProfile.secondary_color] && (
-                         <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.secondary_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.secondary_color].borderClass} space-y-3`}>
-                           <div className="flex items-center justify-between">
-                             <div className="flex items-center gap-2">
-                               <span className="text-2xl">{DISC_ELEMENTS[computedProfile.secondary_color].icon}</span>
-                               <h4 className="text-sm font-semibold text-slate-800">
-                                 Profil Secondaire • {DISC_ELEMENTS[computedProfile.secondary_color].elementFr}
-                               </h4>
-                             </div>
-                             <span className="text-xs text-slate-600">
-                               {computedProfile.traits.secondary.intensity} ({computedProfile.traits.secondary.percentage}%)
-                             </span>
-                           </div>
-                           <p className="text-lg font-bold text-slate-800">
-                             {computedProfile.traits.secondary.name}
-                           </p>
-                          {/* Animal spirit removed */}
-                           <p className="text-sm text-slate-600">
-                             {computedProfile.traits.secondary.description}
-                           </p>
-                           {computedProfile.traits.secondary.traits && computedProfile.traits.secondary.traits.length > 0 && (
-                             <div className="flex flex-wrap gap-2 mt-2">
-                               {computedProfile.traits.secondary.traits.map((trait, idx) => (
-                                 <span
-                                   key={idx}
-                                   className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs border border-emerald-200"
-                                 >
-                                   {trait}
-                                 </span>
-                               ))}
-                             </div>
-                           )}
-                           {computedProfile.traits.secondary.characteristics && computedProfile.traits.secondary.characteristics.length > 0 && (
-                             <div className="mt-3 space-y-1">
-                               <p className="text-xs text-slate-500">Caractéristiques :</p>
-                               {computedProfile.traits.secondary.characteristics.map((char, idx) => (
-                                 <div key={idx} className="flex items-start gap-2 text-xs text-slate-600">
-                                   <span className="text-emerald-500 mt-0.5">•</span>
-                                   <span>{char}</span>
-                                 </div>
-                               ))}
-                             </div>
-                           )}
-                         </div>
-                       )}
-                     </div>
-
-                     {/* All Characteristics */}
-                     {computedProfile.traits.characteristics && computedProfile.traits.characteristics.length > 0 && (
-                       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                         <h4 className="text-sm font-semibold text-slate-800 mb-3">
-                           Vos caractéristiques principales
-                         </h4>
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                           {computedProfile.traits.characteristics.map((char, idx) => (
-                             <div key={idx} className="flex items-start gap-2 text-sm text-slate-700">
-                               <span className="text-teal-500 mt-0.5">✓</span>
-                               <span>{char}</span>
-                             </div>
-                           ))}
-                         </div>
-                       </div>
-                     )}
-                   </div>
-                 )}
-               </div>
-             </CardContent>
-           </Card>
-         )}
+            </CardContent>
+          </Card>
+        )}
 
          {/* Hobby Flow Component */}
          <HobbyFlow computedProfile={computedProfile} ageRange={ageRange} />
@@ -547,18 +553,18 @@ export default function LumiOnboarding() {
            </div>
          )}
 
-         {/* Question Display */}
-         {currentQuestion && !computingProfile && !computedProfile && (
-          <Card className="bg-slate-900/60 border-slate-800">
-            <CardHeader>
-              <CardTitle className="text-2xl text-white">
+        {/* Question Display */}
+        {currentQuestion && !computingProfile && !computedProfile && (
+          <Card className="glass-card border-white/10 shadow-2xl rounded-3xl overflow-hidden animate-in fade-in zoom-in duration-500 bg-white/95 mt-8">
+            <CardHeader className="pt-6">
+              <CardTitle className="text-2xl font-bold text-white">
                 {currentQuestion.question_text}
               </CardTitle>
-              <CardDescription className="text-slate-400">
+              <CardDescription className="text-slate-500">
                 Question {currentQuestion.order_index}
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pb-6">
               <div className="space-y-4">
                 {/* Open Text Question */}
                 {currentQuestion.question_type === "open_text" && (
@@ -566,7 +572,7 @@ export default function LumiOnboarding() {
                     type="text"
                     value={currentAnswer || ""}
                     onChange={(e) => setCurrentAnswer(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
                     placeholder="Ta réponse..."
                   />
                 )}
@@ -580,12 +586,12 @@ export default function LumiOnboarding() {
                       onChange={(e) => setCurrentAnswer(e.target.value)}
                       min={currentQuestion.options?.min || 0}
                       max={currentQuestion.options?.max || 100}
-                      className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
                       placeholder="Ta réponse..."
                     />
                     {currentQuestion.options?.min &&
                       currentQuestion.options?.max && (
-                        <p className="text-sm text-slate-400">
+                        <p className="text-sm text-slate-500">
                           Entre {currentQuestion.options.min} et{" "}
                           {currentQuestion.options.max}
                         </p>
@@ -596,88 +602,44 @@ export default function LumiOnboarding() {
                 {/* Multiple Choice Question - Supports Multiple Answers */}
                 {currentQuestion.question_type === "multiple_choice" && (
                   <div className="space-y-3">
-                    {currentQuestion.options?.options &&
-                      typeof currentQuestion.options.options === "object" &&
-                      Object.entries(currentQuestion.options.options).map(
-                        ([key, value]) => {
-                          const isSelected = currentAnswers.includes(key);
-                          return (
-                            <button
-                              key={key}
-                              type="button"
-                              onClick={() => {
-                                if (isSelected) {
-                                  // Remove from selection
-                                  setCurrentAnswers(currentAnswers.filter(a => a !== key));
-                                } else {
-                                  // Add to selection
-                                  setCurrentAnswers([...currentAnswers, key]);
-                                }
-                              }}
-                              className={`w-full p-4 text-left rounded-lg border-2 transition-all flex items-center gap-3 ${
-                                isSelected
-                                  ? "border-indigo-500 bg-indigo-500/20 text-indigo-300"
-                                  : "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-600"
-                              }`}
-                            >
-                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                                isSelected
-                                  ? "border-indigo-400 bg-indigo-500"
-                                  : "border-slate-500"
-                              }`}>
-                                {isSelected && (
-                                  <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                  </svg>
-                                )}
-                              </div>
-                              <span>{value}</span>
-                            </button>
-                          );
-                        }
-                      )}
-                    {Array.isArray(currentQuestion.options?.options) &&
-                      currentQuestion.options.options.map((option, index) => {
-                        const isSelected = currentAnswers.includes(option);
-                        return (
-                          <button
-                            key={index}
-                            type="button"
-                            onClick={() => {
-                              if (isSelected) {
-                                // Remove from selection
-                                setCurrentAnswers(currentAnswers.filter(a => a !== option));
-                              } else {
-                                // Add to selection
-                                setCurrentAnswers([...currentAnswers, option]);
-                              }
-                            }}
-                            className={`w-full p-4 text-left rounded-lg border-2 transition-all flex items-center gap-3 ${
-                              isSelected
-                                ? "border-indigo-500 bg-indigo-500/20 text-indigo-300"
-                                : "border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-600"
-                            }`}
-                          >
-                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
-                              isSelected
-                                ? "border-indigo-400 bg-indigo-500"
-                                : "border-slate-500"
-                            }`}>
-                              {isSelected && (
-                                <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                              )}
-                            </div>
-                            <span>{option}</span>
-                          </button>
-                        );
-                      })}
+                    {displayOptions.map(({ key, label }) => {
+                      const isSelected = currentAnswers.includes(key);
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            toggleMultiAnswer(key);
+                          }}
+                          className={`w-full p-4 text-left rounded-lg border-2 transition-all flex items-center gap-3 ${
+                            isSelected
+                              ? "border-[#3d6b66]/80 bg-[#3d6b66]/40 text-white"
+                              : "border-[#3d6b66]/40 bg-[#3d6b66]/10 text-white hover:border-[#3d6b66]/60 hover:bg-[#3d6b66]/20"
+                          }`}
+                        >
+                          <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                            isSelected
+                              ? "border-white bg-white/20"
+                              : "border-white/60"
+                          }`}>
+                            {isSelected && (
+                              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                          </div>
+                          <span>{label}</span>
+                        </button>
+                      );
+                    })}
                     {currentAnswers.length > 0 && (
-                      <p className="text-sm text-slate-400 mt-2">
+                      <p className="text-sm text-slate-500 mt-2">
                         {currentAnswers.length} réponse{currentAnswers.length > 1 ? 's' : ''} sélectionnée{currentAnswers.length > 1 ? 's' : ''}
                       </p>
                     )}
+                    <p className="text-xs text-slate-500">
+                      Maximum {MAX_MULTI_ANSWERS} réponses.
+                    </p>
                   </div>
                 )}
 
@@ -755,7 +717,7 @@ export default function LumiOnboarding() {
                         );
                       }
                     }}
-                    className="flex-1"
+                    className="flex-1 h-12 bg-teal-600 hover:bg-teal-500 text-white rounded-xl shadow-lg shadow-teal-900/20 transition-all active:scale-[0.98] font-semibold"
                     size="lg"
                     disabled={submitting || ((currentAnswer === null || currentAnswer === '') && (currentQuestion?.question_type !== "multiple_choice" || currentAnswers.length === 0))}
                   >
