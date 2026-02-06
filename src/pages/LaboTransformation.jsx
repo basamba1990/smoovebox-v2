@@ -106,21 +106,21 @@ export default function LaboTransformation() {
         Métiers du futur (GPT) : explore 10 pistes avec Spot Coach.
       </p>
 
-      <Card className="bg-white/95 border border-slate-200 shadow-lg backdrop-blur">
-        <CardHeader>
-          <CardTitle className="text-2xl text-slate-800">
+      <Card className="glass-card border-white/10 shadow-2xl rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-900/60">
+        <CardHeader className="pt-4 sm:pt-6 px-4 sm:px-6">
+          <CardTitle className="text-xl sm:text-2xl font-bold text-white">
             Métiers du futur (GPT)
           </CardTitle>
-          <CardDescription className="text-slate-600">
+          <CardDescription className="text-slate-300">
             Spot Coach te pose quelques questions puis te propose 10 idées de métiers
             du futur basées sur ton profil (symbolique, DISC, vidéo si dispo).
           </CardDescription>
         </CardHeader>
-        <CardContent className="text-slate-700">
+        <CardContent className="pb-4 sm:pb-6 px-4 sm:px-6 lg:px-8 text-slate-200">
           {loading ? (
             <p>Chargement…</p>
           ) : error ? (
-            <p className="text-red-700">{error}</p>
+            <p className="text-red-300">{error}</p>
           ) : (
             <>
               <p className="mb-4">

@@ -866,14 +866,16 @@ export default function LumiUnifiedProfile() {
             <Card
               className={
                 isChatExpanded
-                  ? "bg-slate-900 border-slate-800 shadow-xl w-full h-full rounded-none flex flex-col"
-                  : "bg-slate-900/80 border-slate-800 shadow-xl"
+                  ? "bg-slate-900/95 border-white/10 shadow-2xl w-full h-full rounded-none flex flex-col"
+                  : "bg-slate-900/90 border-white/10 shadow-2xl rounded-2xl"
               }
             >
               <CardHeader className="flex flex-row items-start justify-between gap-2">
                 <div>
-                  <CardTitle>Métiers du futur (GPT)</CardTitle>
-                  <CardDescription>
+                  <CardTitle className="text-sm font-semibold text-slate-50">
+                    Métiers du futur (GPT)
+                  </CardTitle>
+                  <CardDescription className="text-xs text-slate-300">
                     Spot coach te pose quelques questions, puis te propose 10 idées de
                     métiers du futur basées sur ton profil.
                   </CardDescription>
@@ -911,7 +913,7 @@ export default function LumiUnifiedProfile() {
                         <div className="h-8 w-8 rounded-full bg-cyan-500 text-slate-950 flex items-center justify-center text-sm font-bold">
                           L
                         </div>
-                        <div className="bg-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-100 max-w-xl">
+                        <div className="rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-3 text-sm text-slate-100 max-w-xl">
                           Bonjour, je suis <span className="font-semibold">Spot coach</span>. Je
                           suis là pour t&apos;aider à explorer des pistes de métiers
                           du futur à partir de ton profil. On commence en douceur 😊
@@ -924,7 +926,7 @@ export default function LumiUnifiedProfile() {
                           <div className="h-8 w-8 rounded-full bg-cyan-500 text-slate-950 flex items-center justify-center text-sm font-bold">
                             L
                           </div>
-                          <div className="bg-slate-800 rounded-2xl px-4 py-3 text-sm text-slate-100 max-w-xl">
+                          <div className="rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-3 text-sm text-slate-100 max-w-xl">
                             Est-ce que tu veux choisir une ou plusieurs{" "}
                             <span className="font-semibold">filières</span> qui
                             t&apos;intéressent ?
@@ -962,7 +964,7 @@ export default function LumiUnifiedProfile() {
                               Tu peux cliquer sur une ou plusieurs filières. Tu
                               peux aussi continuer sans en choisir.
                             </p>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div className="flex flex-wrap gap-2">
                               {TRACK_OPTIONS.map((track) => {
                                 const selected = selectedTracks.includes(track);
                                 return (
@@ -977,10 +979,10 @@ export default function LumiUnifiedProfile() {
                                       );
                                     }}
                                     className={
-                                      "text-left px-3 py-2 rounded-lg border text-xs sm:text-sm transition-all " +
+                                      "px-3 py-2 rounded-full border text-xs sm:text-sm transition-all " +
                                       (selected
-                                        ? "bg-cyan-500/20 border-cyan-400 text-cyan-100"
-                                        : "bg-slate-900 border-slate-700 text-slate-200 hover:border-slate-500")
+                                        ? "border-teal-400 bg-teal-500/20 text-teal-100"
+                                        : "border-white/15 bg-slate-900/60 text-slate-100 hover:border-teal-400 hover:bg-slate-900/80")
                                     }
                                   >
                                     {track}
