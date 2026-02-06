@@ -68,16 +68,15 @@ export default function FutureJobsGptPanel({
   const isInline = uiMode === "inline";
   const isLight = isInline;
 
-  const bubbleClass = isLight
-    ? "bg-white border border-slate-200 text-slate-800"
-    : "bg-slate-800 text-slate-100";
-  const mutedTextClass = isLight ? "text-slate-600" : "text-slate-400";
+  // Use the new dark glass style for chat bubbles in both modes
+  const bubbleClass = "border border-white/10 bg-slate-900/70 text-slate-100";
+  const mutedTextClass = "text-slate-400";
   const outlineBtnClass = isLight
     ? "border-slate-300 text-slate-700 hover:text-slate-900 hover:bg-slate-100 text-sm"
     : "border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-sm";
   const trackBtnUnselectedClass = isLight
-    ? "bg-white border-slate-200 text-slate-800 hover:border-slate-300 hover:bg-slate-50"
-    : "bg-slate-900 border-slate-700 text-slate-200 hover:border-slate-500";
+    ? "bg-[#0f172a] border-white/15 text-slate-100 hover:border-teal-400 hover:bg-slate-900/80"
+    : "bg-slate-900/60 border-white/15 text-slate-100 hover:border-teal-400 hover:bg-slate-900/80";
   const textareaClass = isLight
     ? "w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-800 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
     : "w-full px-3 py-2 rounded-lg bg-slate-950/60 border border-slate-700 text-slate-100 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500";
@@ -347,22 +346,6 @@ export default function FutureJobsGptPanel({
       {/* Launchers row (inline) OR floating launchers (default) */}
       {uiMode === "inline" ? (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
-          {jobConversations?.length > 0 && (
-            <div>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full sm:w-auto border-slate-300 text-slate-800 hover:bg-slate-50 font-semibold shadow-sm rounded-full px-4 py-3 text-sm flex items-center justify-center gap-2"
-                onClick={() => setIsJobListOpen((v) => !v)}
-              >
-                <span className="h-6 w-6 rounded-full bg-cyan-500/15 text-cyan-700 flex items-center justify-center text-xs font-bold">
-                  {jobConversations.length}
-                </span>
-                <span>Mes métiers choisis</span>
-              </Button>
-            </div>
-          )}
-
           {!isChatOpen && (
             <Button
               type="button"
@@ -479,28 +462,21 @@ export default function FutureJobsGptPanel({
         </>
       )}
 
-      {/* Inline "Mes métiers choisis" panel (no popup) */}
-      {uiMode === "inline" && jobConversations?.length > 0 && isJobListOpen && (
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+      {/* Inline "Mes métiers choisis" panel – always shown under the 10 jobs in inline mode */}
+      {uiMode === "inline" && jobConversations?.length > 0 && (
+        <div className="mt-6 rounded-2xl border border-white/10 bg-slate-900/70 shadow-lg">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
             <div>
-              <p className="text-sm font-semibold text-slate-900">
+              <p className="text-sm sm:text-base font-semibold text-teal-200 tracking-wide flex items-center gap-2">
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-teal-500/20 text-teal-200 text-xs font-bold">
+                  ⭐
+                </span>
                 Mes métiers choisis
               </p>
-              <p className="text-xs text-slate-600">
+              <p className="text-xs text-slate-300">
                 Clique sur un métier pour rouvrir la discussion.
               </p>
             </div>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-              onClick={() => setIsJobListOpen(false)}
-              title="Fermer"
-            >
-              <span className="text-lg leading-none">×</span>
-            </Button>
           </div>
 
           <div className="max-h-80 overflow-y-auto p-3 space-y-2">
@@ -508,20 +484,19 @@ export default function FutureJobsGptPanel({
               <button
                 key={conv.id}
                 type="button"
-                className="w-full text-left rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 hover:bg-slate-100 transition-colors"
+                className="w-full text-left rounded-xl border border-white/10 bg-slate-950/60 px-3 py-3 hover:border-teal-400 hover:bg-slate-950/80 transition-colors"
                 onClick={() => {
                   setSelectedConversation(conv);
-                  setIsJobListOpen(false);
                   setIsJobChatExpanded(false);
                 }}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-900 line-clamp-2">
+                    <p className="text-sm font-semibold text-white line-clamp-2">
                       {conv.job_title}
                     </p>
                     {conv.reason && (
-                      <p className="text-xs text-slate-600 line-clamp-2 mt-1">
+                      <p className="text-xs text-slate-300 line-clamp-2 mt-1">
                         {conv.reason}
                       </p>
                     )}
@@ -530,7 +505,7 @@ export default function FutureJobsGptPanel({
                         {conv.sectors.slice(0, 4).map((s) => (
                           <span
                             key={s}
-                            className="px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-800 text-[10px] border border-cyan-500/30"
+                            className="px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-200 text-[10px] border border-teal-400/40"
                           >
                             {s}
                           </span>
@@ -540,7 +515,7 @@ export default function FutureJobsGptPanel({
                   </div>
 
                   {conv.created_at && (
-                    <p className="text-[10px] text-slate-500 whitespace-nowrap">
+                    <p className="text-[10px] text-slate-400 whitespace-nowrap">
                       {new Date(conv.created_at).toLocaleDateString("fr-FR")}
                     </p>
                   )}
@@ -597,10 +572,10 @@ export default function FutureJobsGptPanel({
             className={
               isChatExpanded
                 ? (isLight
-                    ? "bg-white border-slate-200 shadow-xl w-full h-full rounded-none flex flex-col"
+                    ? "bg-slate-900/95 border-white/10 shadow-2xl w-full h-full rounded-none flex flex-col"
                     : "bg-slate-900 border-slate-800 shadow-xl w-full h-full rounded-none flex flex-col")
                 : uiMode === "inline"
-                  ? "bg-white border-slate-200 shadow-xl"
+                  ? "bg-slate-900/95 border-white/10 shadow-2xl shadow-xl"
                   : "bg-slate-900/80 border-slate-800 shadow-xl"
             }
           >
@@ -612,7 +587,7 @@ export default function FutureJobsGptPanel({
                 <CardDescription
                   className={
                     uiMode === "inline"
-                      ? "mt-2 bg-white text-slate-700 border border-slate-200 rounded-lg px-3 py-2"
+                      ? "mt-2 bg-slate-900/95 border-white/10 shadow-2xl text-slate-700 border text-white rounded-lg px-3 py-2"
                       : undefined
                   }
                 >
@@ -902,11 +877,7 @@ export default function FutureJobsGptPanel({
                       return (
                         <div
                           key={index}
-                          className={
-                            isLight
-                              ? "border border-slate-200 rounded-lg px-4 py-3 bg-white space-y-2"
-                              : "border border-slate-800 rounded-lg px-4 py-3 bg-slate-900/60 space-y-2"
-                          }
+                          className="border border-white/10 rounded-2xl px-4 py-3 bg-slate-900/70 space-y-2"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <p className={`text-sm ${mutedTextClass}`}>
@@ -926,10 +897,10 @@ export default function FutureJobsGptPanel({
                               </div>
                             )}
                           </div>
-                          <h3 className={isLight ? "text-lg font-semibold text-slate-900" : "text-lg font-semibold text-white"}>
+                          <h3 className="text-lg font-semibold text-white">
                             {job.title}
                           </h3>
-                          <p className={isLight ? "text-sm text-slate-700" : "text-sm text-slate-200"}>
+                          <p className="text-sm text-slate-200">
                             {job.why_fit}
                           </p>
 

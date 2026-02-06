@@ -68,7 +68,7 @@ function mapExistingToResult(existing) {
   };
 }
 
-export default function SpotCoach() {
+export default function SpotCoach({ onSignOut }) {
   const navigate = useNavigate();
   const [form, setForm] = useState(initialState);
   const [loading, setLoading] = useState(false);
@@ -142,7 +142,8 @@ export default function SpotCoach() {
     return sections;
   }, [result]);
 
-  const inputClass = 'bg-white/90 border-slate-300 text-slate-800 placeholder:text-slate-500 focus:border-teal-600 focus:ring-teal-500/30';
+  const inputClass =
+    'bg-slate-900/60 border-white/15 text-slate-100 placeholder:text-slate-400 focus:border-teal-400 focus:ring-teal-500/40';
 
   const isSubmitDisabled = useMemo(() => {
     if (!form.name || !form.birthDate || !form.birthTime || !form.latitude || !form.longitude || !form.timezone) {
@@ -254,24 +255,30 @@ export default function SpotCoach() {
   return (
     <OdysseyLayout
       currentStep={1}
-      title="le sas d'accueil : Radar de naissance"
+      title=""
       maxWidthClass="max-w-6xl"
+      onSignOut={onSignOut}
     >
-      <p className="text-white/90 text-center my-6 max-w-2xl mx-auto">
+      <h1 className="text-2xl sm:text-3xl font-semibold text-white text-center mt-2">
+        le sas d'accueil : Radar de naissance
+      </h1>
+      <p className="text-white/90 text-center mt-3 mb-6 max-w-2xl mx-auto">
         {result?.profile
           ? 'Ton Radar de naissance est enregistré. Consulte ton profil ci-dessous.'
           : 'Renseigne ta date, heure et lieu de naissance pour calculer ton Radar de naissance.'}
       </p>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {showForm && (
-            <Card className="lg:col-span-2 bg-white/95 border border-slate-200 shadow-lg backdrop-blur">
-              <CardHeader>
-                <CardTitle className="text-slate-800">Questionnaire &amp; Informations</CardTitle>
-                <CardDescription className="text-slate-600">
+            <Card className="lg:col-span-2 glass-card border-white/10 shadow-2xl rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-900/70">
+              <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6">
+                <CardTitle className="text-xl sm:text-2xl font-bold text-white">
+                  Questionnaire &amp; Informations
+                </CardTitle>
+                <CardDescription className="text-slate-300">
                   Fournis des données précises pour une lecture symbolique pertinente. Les champs latitude / longitude sont requis.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-4 sm:px-6 pb-5">
                 {loadingExisting ? (
                   <div className="text-sm text-slate-600">Chargement du profil…</div>
                 ) : (
@@ -280,7 +287,7 @@ export default function SpotCoach() {
                       <h2 className="text-lg font-semibold text-slate-800">Identité &amp; Naissance</h2>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="coach-name" className="text-slate-800 font-medium">Nom *</Label>
+                          <Label htmlFor="coach-name" className="text-white font-medium">Nom *</Label>
                           <Input
                             id="coach-name"
                             placeholder="Ex: Alex Dupont"
@@ -291,29 +298,29 @@ export default function SpotCoach() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="coach-date" className="text-slate-800 font-medium">Date de naissance *</Label>
+                          <Label htmlFor="coach-date" className="text-white font-medium">Date de naissance *</Label>
                           <DatePicker
                             value={form.birthDate}
                             onChange={handleChange('birthDate')}
                             placeholder="Sélectionner votre date de naissance"
                             required
                             maxDate={new Date()} // Can't select future dates
-                            className="bg-white/90 border-slate-300 text-slate-800 hover:bg-slate-50"
+                            className="bg-slate-900/60 border-white/15 text-slate-100 hover:bg-slate-900/80"
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="coach-time" className="text-slate-800 font-medium">Heure de naissance *</Label>
+                          <Label htmlFor="coach-time" className="text-white font-medium">Heure de naissance *</Label>
                           <TimePicker
                             value={form.birthTime}
                             onChange={handleChange('birthTime')}
                             placeholder="Sélectionner l'heure de naissance"
                             step={1}
                             required
-                            className="bg-white/90 border-slate-300 text-slate-800 hover:bg-slate-50"
+                            className="bg-slate-900/60 border-white/15 text-slate-100 hover:bg-slate-900/80"
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="coach-city" className="text-slate-800 font-medium">Ville de naissance</Label>
+                          <Label htmlFor="coach-city" className="text-white font-medium">Ville de naissance</Label>
                           <CityAutocomplete
                             value={form.birthCity}
                             onChange={handleChange('birthCity')}
@@ -324,7 +331,7 @@ export default function SpotCoach() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="coach-lat" className="text-slate-800 font-medium">Latitude *</Label>
+                          <Label htmlFor="coach-lat" className="text-white font-medium">Latitude *</Label>
                           <Input
                             id="coach-lat"
                             type="number"
@@ -338,7 +345,7 @@ export default function SpotCoach() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="coach-lon" className="text-slate-800 font-medium">Longitude *</Label>
+                          <Label htmlFor="coach-lon" className="text-white font-medium">Longitude *</Label>
                           <Input
                             id="coach-lon"
                             type="number"
@@ -352,7 +359,7 @@ export default function SpotCoach() {
                           />
                         </div>
                         <div className="space-y-2 md:col-span-2">
-                          <Label htmlFor="coach-timezone" className="text-slate-800 font-medium">Fuseau horaire *</Label>
+                          <Label htmlFor="coach-timezone" className="text-white font-medium">Fuseau horaire *</Label>
                           <Input
                             id="coach-timezone"
                             placeholder="Sélectionnez une ville pour détecter automatiquement"
@@ -391,11 +398,19 @@ export default function SpotCoach() {
             </Card>
           )}
 
-          <Card className={showForm ? "bg-white/95 border border-slate-200 shadow-lg backdrop-blur h-max sticky top-6" : "lg:col-span-3 bg-white/95 border border-slate-200 shadow-lg backdrop-blur"}>
-            <CardHeader>
-              <CardTitle className="text-slate-800">Résultat SpotCoach</CardTitle>
+          <Card
+            className={
+              showForm
+                ? "glass-card border-white/10 shadow-2xl rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-900/70 h-max sticky top-6"
+                : "lg:col-span-3 glass-card border-white/10 shadow-2xl rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-900/70"
+            }
+          >
+            <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6">
+              <CardTitle className="text-xl sm:text-2xl font-bold text-white">
+                Résultat SpotCoach
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 px-4 sm:px-6 pb-5">
               {!result && !loading && !loadingExisting && (
                 <div className="text-sm text-slate-600">
                   Complète le formulaire et lance la génération pour découvrir le profil symbolique personnalisé.
@@ -415,51 +430,54 @@ export default function SpotCoach() {
               )}
 
               {result && result.profile && (
-                <div className="space-y-6 text-sm text-slate-800">
+                <div className="space-y-6 text-sm text-slate-200">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="border border-slate-200 rounded-lg px-3 py-2 bg-slate-50/80">
-                      <p className="text-xs uppercase text-slate-500">Mode</p>
-                      <p className="text-slate-800">{result.mode === 'preview' ? 'Prévisualisation (non sauvegardée)' : 'Profil enregistré'}</p>
+                    <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
+                      <p className="text-slate-100">
+                        {result.mode === 'preview'
+                          ? 'Prévisualisation (non sauvegardée)'
+                          : 'Profil enregistré'}
+                      </p>
                     </div>
-                    <div className="border border-slate-200 rounded-lg px-3 py-2 bg-slate-50/80">
-                      <p className="text-xs uppercase text-slate-500">Élément</p>
-                      <p className="font-medium text-slate-800">{result.profile.element}</p>
+                    <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
+                      <p className="font-medium text-slate-100">{result.profile.element}</p>
                     </div>
-                    <div className="border border-slate-200 rounded-lg px-3 py-2 bg-slate-50/80">
-                      <p className="text-xs uppercase text-slate-500">Phrase de synchronie</p>
-                      <p className="font-medium text-teal-700 italic">{result.profile.phrase_synchronie}</p>
+                    <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
+                      <p className="font-medium text-teal-300 italic">
+                        {result.profile.phrase_synchronie}
+                      </p>
                     </div>
-                    <div className="border border-slate-200 rounded-lg px-3 py-2 bg-slate-50/80">
-                      <p className="text-xs uppercase text-slate-500">Archétype</p>
-                      <p className="font-medium text-slate-800">{result.profile.archetype}</p>
+                    <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
+                      <p className="font-medium text-slate-100">{result.profile.archetype}</p>
                     </div>
-                    <div className="border border-slate-200 rounded-lg px-3 py-2 bg-slate-50/80">
-                      <p className="text-xs uppercase text-slate-500">Soleil</p>
-                      <p className="font-medium text-slate-800">{result.profile.signe_soleil}</p>
+                    <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
+                      <p className="font-medium text-slate-100">{result.profile.signe_soleil}</p>
                     </div>
-                    <div className="border border-slate-200 rounded-lg px-3 py-2 bg-slate-50/80">
-                      <p className="text-xs uppercase text-slate-500">Lune</p>
-                      <p className="font-medium text-slate-800">{result.profile.signe_lune}</p>
+                    <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
+                      <p className="font-medium text-slate-100">{result.profile.signe_lune}</p>
                     </div>
-                    <div className="border border-slate-200 rounded-lg px-3 py-2 bg-slate-50/80">
-                      <p className="text-xs uppercase text-slate-500">Ascendant</p>
-                      <p className="font-medium text-slate-800">{result.profile.signe_ascendant}</p>
+                    <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
+                      <p className="font-medium text-slate-100">{result.profile.signe_ascendant}</p>
                     </div>
                   </div>
 
                   {result.profile.profile_text && (
-                    <div className="border border-slate-200 rounded-lg px-4 py-4 bg-slate-50/80">
-                      <p className="text-xs uppercase tracking-wide text-slate-500 mb-3">Profil symbolique</p>
-                      <div className="text-slate-700 leading-relaxed whitespace-pre-wrap max-h-96 overflow-y-auto">
+                    <div className="border border-white/10 rounded-xl px-4 py-4 bg-slate-900/70">
+                      <p className="text-[11px] uppercase tracking-wide text-slate-400 mb-3">
+                        Profil symbolique
+                      </p>
+                      <div className="text-slate-100 leading-relaxed whitespace-pre-wrap max-h-96 overflow-y-auto">
                         {result.profile.profile_text}
                       </div>
                     </div>
                   )}
 
                   {Array.isArray(result.profile.passions) && result.profile.passions.length > 0 && (
-                    <div className="border border-slate-200 rounded-lg px-4 py-3 bg-slate-50/80">
-                      <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">Passions clés</p>
-                      <ul className="list-disc list-inside text-slate-700 space-y-1">
+                    <div className="border border-white/10 rounded-xl px-4 py-3 bg-slate-900/70">
+                      <p className="text-[11px] uppercase tracking-wide text-slate-400 mb-2">
+                        Passions clés
+                      </p>
+                      <ul className="list-disc list-inside text-slate-100 space-y-1">
                         {result.profile.passions.map((passion, index) => (
                           <li key={`${passion}-${index}`}>{passion}</li>
                         ))}
@@ -471,19 +489,22 @@ export default function SpotCoach() {
                     const isPointsForts = /^points forts$/i.test(section.title);
                     const isConclusion = /^conclusion$/i.test(section.title);
                     return (
-                      <div key={section.title} className="border border-slate-200 rounded-lg px-4 py-3 bg-slate-50/80 space-y-2">
-                        <h3 className="text-sm font-semibold text-teal-700">{section.title}</h3>
+                      <div
+                        key={section.title}
+                        className="border border-white/10 rounded-xl px-4 py-3 bg-slate-900/70 space-y-2"
+                      >
+                        <h3 className="text-sm font-semibold text-teal-300">{section.title}</h3>
                         {isPointsForts ? (
-                          <ul className="list-disc list-inside space-y-1 text-slate-700">
+                          <ul className="list-disc list-inside space-y-1 text-slate-100">
                             {section.rows.map((row, idx) => (
                               <li key={idx}>{row.replace(/^[-•]\s*/, '')}</li>
                             ))}
                           </ul>
                         ) : isConclusion ? (
-                          <p className="text-slate-700">{section.rows.join(' ')}</p>
+                          <p className="text-slate-100">{section.rows.join(' ')}</p>
                         ) : (
                           section.rows.map((row, idx) => (
-                            <p key={idx} className="text-slate-700 leading-relaxed">
+                            <p key={idx} className="text-slate-100 leading-relaxed">
                               {row}
                             </p>
                           ))
@@ -492,15 +513,14 @@ export default function SpotCoach() {
                     );
                   })}
 
-
                   {result.stored && (
-                    <div className="text-xs text-slate-600 border-t border-slate-200 pt-3">
+                    <div className="text-xs text-slate-400 border-t border-white/10 pt-3">
                       Profil sauvegardé le {new Date(result.stored.updated_at).toLocaleString()}.
                     </div>
                   )}
 
                   {result && !showForm && (
-                    <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                    <div className="pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
                       <Button 
                         onClick={async () => {
                           if (confirm('Êtes-vous sûr de vouloir supprimer ce profil ? Cette action est irréversible.')) {

@@ -23,7 +23,7 @@ import FutureJobsGptPanel from "../components/FutureJobsGptPanel.jsx";
 const STEP_3 = getOdysseyStepById(3);
 const STEP_3_PATH = STEP_3?.path ?? "/module-mimetique";
 
-export default function LaboTransformation() {
+export default function LaboTransformation({ onSignOut }) {
   const navigate = useNavigate();
   const user = useUser();
 
@@ -99,28 +99,32 @@ export default function LaboTransformation() {
   return (
     <OdysseyLayout
       currentStep={4}
-      title="Le labo de transformation"
+      title=""
       maxWidthClass="max-w-6xl"
+      onSignOut={onSignOut}
     >
-      <p className="text-white/90 text-center my-6 max-w-2xl mx-auto">
+      <h1 className="text-2xl sm:text-3xl font-semibold text-white text-center mt-2">
+        Le labo de transformation
+      </h1>
+      <p className="text-white/90 text-center mt-3 mb-6 max-w-2xl mx-auto">
         Métiers du futur (GPT) : explore 10 pistes avec Spot Coach.
       </p>
 
-      <Card className="bg-white/95 border border-slate-200 shadow-lg backdrop-blur">
-        <CardHeader>
-          <CardTitle className="text-2xl text-slate-800">
+      <Card className="glass-card border-white/10 shadow-2xl rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-900/60">
+        <CardHeader className="pt-4 sm:pt-6 px-4 sm:px-6">
+          <CardTitle className="text-xl sm:text-2xl font-bold text-white">
             Métiers du futur (GPT)
           </CardTitle>
-          <CardDescription className="text-slate-600">
+          <CardDescription className="text-slate-300">
             Spot Coach te pose quelques questions puis te propose 10 idées de métiers
             du futur basées sur ton profil (symbolique, DISC, vidéo si dispo).
           </CardDescription>
         </CardHeader>
-        <CardContent className="text-slate-700">
+        <CardContent className="pb-4 sm:pb-6 px-4 sm:px-6 lg:px-8 text-slate-200">
           {loading ? (
             <p>Chargement…</p>
           ) : error ? (
-            <p className="text-red-700">{error}</p>
+            <p className="text-red-300">{error}</p>
           ) : (
             <>
               <p className="mb-4">
