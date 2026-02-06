@@ -336,205 +336,191 @@ export default function LumiOnboarding() {
 
         {/* Profile Results */}
         {computedProfile && (
-          <Card className="glass-card border-white/10 shadow-2xl rounded-3xl overflow-hidden animate-in fade-in zoom-in duration-500 bg-white/95 mt-8">
-            <CardHeader className="text-center pt-6">
-              <CardTitle className="text-2xl font-bold text-white">
-                Ton Profil
+          <Card className="glass-card border-white/10 shadow-2xl rounded-2xl sm:rounded-3xl overflow-hidden animate-in fade-in zoom-in duration-500 bg-white/95 mt-6 sm:mt-8">
+            <CardHeader className="text-center pt-4 sm:pt-6 px-4 sm:px-6">
+              <CardTitle className="text-xl sm:text-2xl font-bold text-white">
+                Profil du joueur
               </CardTitle>
-              <CardDescription className="text-slate-500">
-                Découvre qui tu es vraiment
+              <CardDescription className="text-slate-500 text-sm sm:text-base">
+                Synthèse de ton profil Lumi (4 éléments)
               </CardDescription>
             </CardHeader>
-            <CardContent className="pb-6">
-               <div className="space-y-6">
-                 {/* Dominant and Secondary Colors with Elements */}
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Dominant profile block (without explicit color name) */}
-                   {computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color] && (
-                     <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.dominant_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.dominant_color].borderClass}`}>
-                       <div className="flex items-center gap-3 mb-2">
-                         <span className="text-3xl">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
-                        {/* Intentionally no color name or label, only icon and element below */}
-                       </div>
-                      <div className="mt-3 pt-3 border-t border-slate-200">
-                        <p className="text-sm font-semibold text-slate-800 mb-1">
-                          {DISC_ELEMENTS[computedProfile.dominant_color].icon} {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
-                        </p>
-                        <p className="text-xs text-slate-600">
-                          {DISC_ELEMENTS[computedProfile.dominant_color].descriptionFr}
-                        </p>
-                      </div>
-                     </div>
-                   )}
-                   
-                  {/* Secondary profile block (without explicit color name) */}
-                   {computedProfile.secondary_color && DISC_ELEMENTS[computedProfile.secondary_color] && (
-                     <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.secondary_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.secondary_color].borderClass}`}>
-                       <div className="flex items-center gap-3 mb-2">
-                         <span className="text-3xl">{DISC_ELEMENTS[computedProfile.secondary_color].icon}</span>
-                        {/* Intentionally no color name or label, only icon and element below */}
-                       </div>
-                      <div className="mt-3 pt-3 border-t border-slate-200">
-                        <p className="text-sm font-semibold text-slate-800 mb-1">
-                          {DISC_ELEMENTS[computedProfile.secondary_color].icon} {DISC_ELEMENTS[computedProfile.secondary_color].elementFr}
-                        </p>
-                        <p className="text-xs text-slate-600">
-                          {DISC_ELEMENTS[computedProfile.secondary_color].descriptionFr}
-                        </p>
-                      </div>
-                     </div>
-                   )}
+            <CardContent className="pb-4 sm:pb-6 px-4 sm:px-6 lg:px-8">
+              {/* Top summary row inspired by player card */}
+              <div className="grid grid-cols-1 md:grid-cols-[2fr,3fr] gap-4 sm:gap-6 items-center mb-4 sm:mb-6">
+                {/* Left: avatar + basic info */}
+                <div className="flex flex-col items-center md:items-start text-center md:text-left space-y-2">
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-[#3d6b66]/20 border border-[#3d6b66]/60 flex items-center justify-center text-3xl sm:text-4xl text-white shadow-lg shadow-teal-900/30">
+                    {computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color]
+                      ? DISC_ELEMENTS[computedProfile.dominant_color].icon
+                      : "⭐️"}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-base sm:text-lg font-semibold text-white truncate sm:whitespace-normal">
+                      {user?.user_metadata?.full_name || user?.email || "Ton profil Lumi"}
+                    </p>
+                    <p className="text-[10px] sm:text-xs text-teal-100/80">
+                      Profil Lumi • 4 éléments
+                    </p>
+                  </div>
                 </div>
 
-                {/* Traits */}
-                 {computedProfile.traits && typeof computedProfile.traits === 'object' && !Array.isArray(computedProfile.traits) && (
-                   <div className="space-y-6">
-                     {/* Combined Description with Element */}
-                     {computedProfile.traits.combined_description && computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color] && (
-                       <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.dominant_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.dominant_color].borderClass}`}>
-                      <div className="flex items-center gap-3 mb-3">
-                        <span className="text-4xl">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
-                        <div>
-                          <h3 className="text-lg font-semibold text-slate-800">
-                            Ton Énergie Principale : {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
-                          </h3>
-                        </div>
+                {/* Right: dominant + secondary elements summary with description */}
+                <div className="bg-slate-900/40 border border-teal-500/40 rounded-xl sm:rounded-2xl px-3 sm:px-4 py-3 sm:py-4">
+                  <p className="text-xs uppercase tracking-widest text-teal-200 mb-2 sm:mb-3">
+                    Tes deux énergies clés
+                  </p>
+                  <div className="flex flex-row gap-3 text-xs">
+                    {[computedProfile.dominant_color, computedProfile.secondary_color]
+                      .filter((colorKey) => colorKey && DISC_ELEMENTS[colorKey])
+                      .map((colorKey, idx) => {
+                        const el = DISC_ELEMENTS[colorKey];
+                        const isDom = idx === 0;
+                        const base =
+                          "flex-1 flex flex-col rounded-xl border px-3 py-2 transition-colors";
+                        const classes = isDom
+                          ? "bg-[#3d6b66] border-[#3d6b66] text-white"
+                          : "bg-[#3d6b66]/20 border-[#3d6b66]/70 text-teal-50";
+                        return (
+                          <div key={colorKey} className={`${base} ${classes}`}>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-lg">{el.icon}</span>
+                              <div>
+                                <p className="text-[11px] font-semibold">
+                                  {el.elementFr}
+                                </p>
+                                <p className="text-[10px] text-slate-200/80">
+                                  {isDom ? "Énergie principale" : "Énergie secondaire"}
+                                </p>
+                              </div>
+                            </div>
+                            <p className="text-[11px] leading-snug text-slate-100/90">
+                              {el.descriptionFr}
+                            </p>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Énergie Principale summary block */}
+              {computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color] && (
+                <div className="rounded-xl sm:rounded-2xl border border-teal-500/40 bg-slate-900/40 px-3 sm:px-4 py-3 sm:py-4 mb-4 sm:mb-6">
+                  <h3 className="text-xs sm:text-sm font-semibold text-teal-200 mb-2">
+                    Énergie Principale : {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
+                  </h3>
+                  {computedProfile.traits?.combined_description && (
+                    <p className="text-xs sm:text-sm text-slate-200 leading-relaxed mb-2">
+                      {computedProfile.traits.combined_description}
+                    </p>
+                  )}
+                  {computedProfile.traits?.dominant?.percentage != null && computedProfile.traits?.secondary?.percentage != null && (
+                    <p className="text-xs text-teal-100/90">
+                      Votre profil est élevéement orienté {computedProfile.dominant_color} ({computedProfile.traits.dominant.percentage}%), avec une tendance {computedProfile.secondary_color} ({computedProfile.traits.secondary.percentage}%).
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Profil Dominant + Secondaire (responsive: stack on small, row on sm+) */}
+              <div className="flex flex-col sm:flex-row gap-4 mb-4 sm:mb-6">
+                {/* Profil Dominant (in-card) */}
+                {computedProfile.traits?.dominant && computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color] && (
+                  <div className="flex-1 min-w-0 rounded-xl sm:rounded-2xl border border-teal-500/40 bg-slate-900/40 px-3 sm:px-4 py-3 sm:py-4 space-y-2 sm:space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xl sm:text-2xl shrink-0">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
+                        <h3 className="text-xs sm:text-sm font-semibold text-teal-200 truncate">
+                          Profil Dominant • {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
+                        </h3>
                       </div>
-                         <p className="text-slate-700 leading-relaxed">
-                           {computedProfile.traits.combined_description}
-                         </p>
-                       </div>
-                     )}
+                      <span className="text-[10px] sm:text-xs text-teal-100/90 shrink-0">
+                        {computedProfile.traits.dominant.intensity} ({computedProfile.traits.dominant.percentage}%)
+                      </span>
+                    </div>
+                    <p className="text-sm sm:text-base font-bold text-white">
+                      {computedProfile.traits.dominant.name}
+                    </p>
+                    <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+                      {computedProfile.traits.dominant.description}
+                    </p>
+                    {computedProfile.traits.dominant.traits && computedProfile.traits.dominant.traits.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {computedProfile.traits.dominant.traits.map((trait, idx) => (
+                          <span
+                            key={idx}
+                            className="px-3 py-1 rounded-full bg-teal-500/20 text-teal-200 text-xs border border-teal-500/40"
+                          >
+                            {trait}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {computedProfile.traits.dominant.characteristics && computedProfile.traits.dominant.characteristics.length > 0 && (
+                      <div className="mt-3 space-y-1">
+                        <p className="text-xs text-teal-200/90">Caractéristiques :</p>
+                        {computedProfile.traits.dominant.characteristics.map((char, idx) => (
+                          <div key={idx} className="flex items-start gap-2 text-xs text-slate-200">
+                            <span className="text-teal-400 mt-0.5">•</span>
+                            <span>{char}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                     {/* Profile Type */}
-                     {computedProfile.traits.profile_type && (
-                       <div className="text-center">
-                         <p className="text-sm text-slate-500 mb-1">Type de profil</p>
-                         <p className="text-xl font-bold text-slate-800">
-                           {computedProfile.traits.profile_type}
-                         </p>
-                       </div>
-                     )}
+                {/* Profil Secondaire (in-card) */}
+                {computedProfile.traits?.secondary && computedProfile.secondary_color && DISC_ELEMENTS[computedProfile.secondary_color] && (
+                  <div className="flex-1 min-w-0 rounded-xl sm:rounded-2xl border border-teal-500/40 bg-slate-900/40 px-3 sm:px-4 py-3 sm:py-4 space-y-2 sm:space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xl sm:text-2xl shrink-0">{DISC_ELEMENTS[computedProfile.secondary_color].icon}</span>
+                        <h3 className="text-xs sm:text-sm font-semibold text-teal-200 truncate">
+                          Profil Secondaire • {DISC_ELEMENTS[computedProfile.secondary_color].elementFr}
+                        </h3>
+                      </div>
+                      <span className="text-[10px] sm:text-xs text-teal-100/90 shrink-0">
+                        {computedProfile.traits.secondary.intensity} ({computedProfile.traits.secondary.percentage}%)
+                      </span>
+                    </div>
+                    <p className="text-sm sm:text-base font-bold text-white">
+                      {computedProfile.traits.secondary.name}
+                    </p>
+                    <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+                      {computedProfile.traits.secondary.description}
+                    </p>
+                    {computedProfile.traits.secondary.traits && computedProfile.traits.secondary.traits.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {computedProfile.traits.secondary.traits.map((trait, idx) => (
+                          <span
+                            key={idx}
+                            className="px-3 py-1 rounded-full bg-teal-500/20 text-teal-200 text-xs border border-teal-500/40"
+                          >
+                            {trait}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {computedProfile.traits.secondary.characteristics && computedProfile.traits.secondary.characteristics.length > 0 && (
+                      <div className="mt-3 space-y-1">
+                        <p className="text-xs text-teal-200/90">Caractéristiques :</p>
+                        {computedProfile.traits.secondary.characteristics.map((char, idx) => (
+                          <div key={idx} className="flex items-start gap-2 text-xs text-slate-200">
+                            <span className="text-teal-400 mt-0.5">•</span>
+                            <span>{char}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
-                     {/* Dominant and Secondary Profiles */}
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                       {/* Dominant Profile */}
-                       {computedProfile.traits.dominant && computedProfile.dominant_color && DISC_ELEMENTS[computedProfile.dominant_color] && (
-                         <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.dominant_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.dominant_color].borderClass} space-y-3`}>
-                           <div className="flex items-center justify-between">
-                             <div className="flex items-center gap-2">
-                               <span className="text-2xl">{DISC_ELEMENTS[computedProfile.dominant_color].icon}</span>
-                               <h4 className="text-sm font-semibold text-slate-800">
-                                 Profil Dominant • {DISC_ELEMENTS[computedProfile.dominant_color].elementFr}
-                               </h4>
-                             </div>
-                             <span className="text-xs text-slate-600">
-                               {computedProfile.traits.dominant.intensity} ({computedProfile.traits.dominant.percentage}%)
-                             </span>
-                           </div>
-                           <p className="text-lg font-bold text-slate-800">
-                             {computedProfile.traits.dominant.name}
-                           </p>
-                          {/* Animal spirit removed */}
-                           <p className="text-sm text-slate-600">
-                             {computedProfile.traits.dominant.description}
-                           </p>
-                           {computedProfile.traits.dominant.traits && computedProfile.traits.dominant.traits.length > 0 && (
-                             <div className="flex flex-wrap gap-2 mt-2">
-                               {computedProfile.traits.dominant.traits.map((trait, idx) => (
-                                 <span
-                                   key={idx}
-                                   className="px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs border border-amber-200"
-                                 >
-                                   {trait}
-                                 </span>
-                               ))}
-                             </div>
-                           )}
-                           {computedProfile.traits.dominant.characteristics && computedProfile.traits.dominant.characteristics.length > 0 && (
-                             <div className="mt-3 space-y-1">
-                               <p className="text-xs text-slate-500">Caractéristiques :</p>
-                               {computedProfile.traits.dominant.characteristics.map((char, idx) => (
-                                 <div key={idx} className="flex items-start gap-2 text-xs text-slate-600">
-                                   <span className="text-amber-500 mt-0.5">•</span>
-                                   <span>{char}</span>
-                                 </div>
-                               ))}
-                             </div>
-                           )}
-                         </div>
-                       )}
-
-                       {/* Secondary Profile */}
-                       {computedProfile.traits.secondary && computedProfile.secondary_color && DISC_ELEMENTS[computedProfile.secondary_color] && (
-                         <div className={`p-4 bg-gradient-to-br ${DISC_ELEMENTS[computedProfile.secondary_color].colorClass} rounded-lg border ${DISC_ELEMENTS[computedProfile.secondary_color].borderClass} space-y-3`}>
-                           <div className="flex items-center justify-between">
-                             <div className="flex items-center gap-2">
-                               <span className="text-2xl">{DISC_ELEMENTS[computedProfile.secondary_color].icon}</span>
-                               <h4 className="text-sm font-semibold text-slate-800">
-                                 Profil Secondaire • {DISC_ELEMENTS[computedProfile.secondary_color].elementFr}
-                               </h4>
-                             </div>
-                             <span className="text-xs text-slate-600">
-                               {computedProfile.traits.secondary.intensity} ({computedProfile.traits.secondary.percentage}%)
-                             </span>
-                           </div>
-                           <p className="text-lg font-bold text-slate-800">
-                             {computedProfile.traits.secondary.name}
-                           </p>
-                          {/* Animal spirit removed */}
-                           <p className="text-sm text-slate-600">
-                             {computedProfile.traits.secondary.description}
-                           </p>
-                           {computedProfile.traits.secondary.traits && computedProfile.traits.secondary.traits.length > 0 && (
-                             <div className="flex flex-wrap gap-2 mt-2">
-                               {computedProfile.traits.secondary.traits.map((trait, idx) => (
-                                 <span
-                                   key={idx}
-                                   className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs border border-emerald-200"
-                                 >
-                                   {trait}
-                                 </span>
-                               ))}
-                             </div>
-                           )}
-                           {computedProfile.traits.secondary.characteristics && computedProfile.traits.secondary.characteristics.length > 0 && (
-                             <div className="mt-3 space-y-1">
-                               <p className="text-xs text-slate-500">Caractéristiques :</p>
-                               {computedProfile.traits.secondary.characteristics.map((char, idx) => (
-                                 <div key={idx} className="flex items-start gap-2 text-xs text-slate-600">
-                                   <span className="text-emerald-500 mt-0.5">•</span>
-                                   <span>{char}</span>
-                                 </div>
-                               ))}
-                             </div>
-                           )}
-                         </div>
-                       )}
-                     </div>
-
-                     {/* All Characteristics */}
-                     {computedProfile.traits.characteristics && computedProfile.traits.characteristics.length > 0 && (
-                       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                         <h4 className="text-sm font-semibold text-slate-800 mb-3">
-                           Vos caractéristiques principales
-                         </h4>
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                           {computedProfile.traits.characteristics.map((char, idx) => (
-                             <div key={idx} className="flex items-start gap-2 text-sm text-slate-700">
-                               <span className="text-teal-500 mt-0.5">✓</span>
-                               <span>{char}</span>
-                             </div>
-                           ))}
-                         </div>
-                       </div>
-                     )}
-                   </div>
-                 )}
-               </div>
-             </CardContent>
-           </Card>
-         )}
+            </CardContent>
+          </Card>
+        )}
 
          {/* Hobby Flow Component */}
          <HobbyFlow computedProfile={computedProfile} ageRange={ageRange} />
