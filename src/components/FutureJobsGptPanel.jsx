@@ -473,9 +473,6 @@ export default function FutureJobsGptPanel({
                 </span>
                 Mes métiers choisis
               </p>
-              <p className="text-xs text-slate-300">
-                Clique sur un métier pour rouvrir la discussion.
-              </p>
             </div>
           </div>
 
