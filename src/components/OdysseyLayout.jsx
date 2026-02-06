@@ -31,6 +31,10 @@ export default function OdysseyLayout({
         backgroundRepeat: 'no-repeat',
       }}
     >
+      {/* Animated background blobs – centered vertically like login */}
+      <div className="fixed top-50 -translate-y-1/2 -right-20 w-64 h-dvh bg-teal-500/20 rounded-full blur-3xl animate-pulse" />
+      {/* <div className="absolute top-[20%] -translate-y-1/2 -right-20 w-64 h-dvh bg-blue-500/20 rounded-full blur-3xl animate-pulse" /> */}
+
       {/* Header: logo + page title/subtitle */}
       <header className="relative z-10 w-full">
         <div className={`${maxWidthClass} mx-auto px-4 sm:px-6 flex items-center justify-between gap-4`}>
