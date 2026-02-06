@@ -80,7 +80,7 @@ function getAgeRangeFromAge(age) {
   return null;
 }
 
-export default function LumiOnboarding() {
+export default function LumiOnboarding({ onSignOut }) {
   const navigate = useNavigate();
   const user = useUser();
   const [loading, setLoading] = useState(false);
@@ -207,6 +207,7 @@ export default function LumiOnboarding() {
         currentStep={2}
         title="Le scan des 4 éléments"
         maxWidthClass="max-w-6xl"
+        onSignOut={onSignOut}
       >
         <div className="text-center py-12">
           <div className="text-4xl mb-4">✨</div>
@@ -221,6 +222,7 @@ export default function LumiOnboarding() {
       currentStep={2}
       title="Le scan des 4 éléments"
       maxWidthClass="max-w-6xl"
+      onSignOut={onSignOut}
     >
       <p className="text-white/90 text-center my-6 max-w-2xl mx-auto">
         Test rapide pour révéler ton élément (Feu, Air, Eau, Terre) et faire naître ton étoile.

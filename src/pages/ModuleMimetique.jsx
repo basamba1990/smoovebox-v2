@@ -19,6 +19,7 @@ export default function ModuleMimetique({ user, profile, onSignOut, onVideoUploa
       currentStep={3}
       title="Le module mimétique"
       maxWidthClass="max-w-6xl"
+      onSignOut={onSignOut}
     >
       <p className="text-white/90 text-center my-6 max-w-2xl mx-auto">
         Enregistrement vidéo et miroir de ton étoile.

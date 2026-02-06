@@ -23,7 +23,7 @@ import FutureJobsGptPanel from "../components/FutureJobsGptPanel.jsx";
 const STEP_3 = getOdysseyStepById(3);
 const STEP_3_PATH = STEP_3?.path ?? "/module-mimetique";
 
-export default function LaboTransformation() {
+export default function LaboTransformation({ onSignOut }) {
   const navigate = useNavigate();
   const user = useUser();
 
@@ -101,6 +101,7 @@ export default function LaboTransformation() {
       currentStep={4}
       title="Le labo de transformation"
       maxWidthClass="max-w-6xl"
+      onSignOut={onSignOut}
     >
       <p className="text-white/90 text-center my-6 max-w-2xl mx-auto">
         Métiers du futur (GPT) : explore 10 pistes avec Spot Coach.

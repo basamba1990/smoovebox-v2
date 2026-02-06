@@ -68,7 +68,7 @@ function mapExistingToResult(existing) {
   };
 }
 
-export default function SpotCoach() {
+export default function SpotCoach({ onSignOut }) {
   const navigate = useNavigate();
   const [form, setForm] = useState(initialState);
   const [loading, setLoading] = useState(false);
@@ -257,6 +257,7 @@ export default function SpotCoach() {
       currentStep={1}
       title="le sas d'accueil : Radar de naissance"
       maxWidthClass="max-w-6xl"
+      onSignOut={onSignOut}
     >
       <p className="text-white/90 text-center my-6 max-w-2xl mx-auto">
         {result?.profile

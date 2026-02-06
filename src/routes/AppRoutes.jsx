@@ -157,7 +157,7 @@ export default function AppRoutes({
         path="/embark"
         element={
           <RequireAuth>
-            <SpotCoach user={user} profile={profile} />
+            <SpotCoach user={user} profile={profile} onSignOut={onSignOut} />
           </RequireAuth>
         }
       />
@@ -167,7 +167,7 @@ export default function AppRoutes({
         path="/scan-elements"
         element={
           <RequireAuth>
-            <LumiOnboarding user={user} profile={profile} />
+            <LumiOnboarding user={user} profile={profile} onSignOut={onSignOut} />
           </RequireAuth>
         }
       />
@@ -190,7 +190,7 @@ export default function AppRoutes({
         path="/labo-transformation"
         element={
           <RequireAuth>
-            <LaboTransformation />
+            <LaboTransformation onSignOut={onSignOut} />
           </RequireAuth>
         }
       />
