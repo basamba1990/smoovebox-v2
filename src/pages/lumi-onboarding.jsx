@@ -531,7 +531,11 @@ export default function LumiOnboarding({ onSignOut }) {
         )}
 
          {/* Hobby Flow Component */}
-         <HobbyFlow computedProfile={computedProfile} ageRange={ageRange} />
+         <HobbyFlow
+          computedProfile={computedProfile}
+          ageRange={ageRange}
+          userName={user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email ? user.email.split("@")[0] : null)}
+        />
 
          {/* Précédent / Continuer navigation */}
          {computedProfile && (
