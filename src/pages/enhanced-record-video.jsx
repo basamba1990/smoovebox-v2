@@ -326,7 +326,7 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
     });
   };
 
-  // ✅ UPLOAD VIDÉO
+  // ✅ UPLOAD VIDÉO - CORRECTION STORAGE_PATH
   const uploadVideo = async () => {
     if (!recordedVideo) {
       toast.error('Aucune vidéo à uploader');
@@ -358,11 +358,12 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
         .from('videos')
         .getPublicUrl(fileName);
 
-      // 3. INSÉRER LA VIDÉO DANS LA TABLE
+      // ✅ CORRECTION CRITIQUE : Inclure storage_path OBLIGATOIRE
       const videoData = {
         user_id: session.user.id,
         title: `Vidéo ${new Date().toLocaleDateString('fr-FR')}`,
         video_url: publicUrl,
+        storage_path: fileName, // ✅ COLONNE OBLIGATOIRE
         duration: recordedVideo.duration,
         tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag),
         status: 'uploaded',
@@ -375,6 +376,7 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
         updated_at: new Date().toISOString()
       };
 
+      // ✅ ENSUITE, seulement, nous insérons dans la base de données
       const { data: insertedVideo, error: dbError } = await supabase
         .from('videos')
         .insert(videoData)
@@ -382,27 +384,34 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
         .single();
 
       if (dbError) {
-        console.log('Tentative avec insertion minimale...');
+        console.error('❌ Erreur insertion vidéo:', dbError);
+        
+        // ✅ FALLBACK : Essayer avec seulement les colonnes absolument nécessaires
+        const minimalVideoData = {
+          user_id: session.user.id,
+          video_url: publicUrl,
+          storage_path: fileName, // ✅ TOUJOURS OBLIGATOIRE
+          status: 'uploaded',
+          format: fileExt
+        };
+        
+        console.log('🔄 Tentative insertion minimale...', minimalVideoData);
+        
         const { data: fallbackData, error: fallbackError } = await supabase
           .from('videos')
-          .insert({
-            user_id: session.user.id,
-            video_url: publicUrl,
-            status: 'uploaded',
-            format: fileExt
-          })
+          .insert(minimalVideoData)
           .select()
           .single();
           
         if (fallbackError) throw fallbackError;
         
         setUploadedVideoId(fallbackData.id);
+        toast.success('✅ Vidéo uploadée (mode minimal) !');
       } else {
         setUploadedVideoId(insertedVideo.id);
+        toast.success('✅ Vidéo uploadée ! Lancement de la transcription...');
       }
 
-      toast.success('✅ Vidéo uploadée ! Lancement de la transcription...');
-      
       // 4. APPELER LA FONCTION EDGE transcribe-video
       await startTranscriptionPipeline(
         insertedVideo?.id || fallbackData.id,
@@ -529,7 +538,7 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
     }, 3000);
   };
 
-  // ✅ ✅ ✅ NOUVEAU : APPELER ANALYZE-TRANSCRIPTION (GPT-4)
+  // ✅ APPELER ANALYZE-TRANSCRIPTION (GPT-4)
   const startAnalysisPipeline = async (videoId, transcriptionText, transcriptionLanguage) => {
     setAnalyzing(true);
     
@@ -545,8 +554,8 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
           videoId,
           transcriptionText,
           transcriptionLanguage,
-          personaId: 'jeune_talent', // ou selon l'ageGroup
-          modelType: 'master' // 'test' ou 'master'
+          personaId: 'jeune_talent',
+          modelType: 'master'
         }
       });
 
@@ -569,7 +578,7 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
       console.error('❌ Erreur analyse GPT-4:', err);
       toast.warning('Analyse IA partiellement échouée, résultats basiques uniquement');
       
-      // ✅ FALLBACK : Analyse basique si GPT-4 échoue
+      // ✅ FALLBACK
       const basicAnalysis = {
         summary: "Analyse basique : votre discours a été analysé avec succès.",
         tone_analysis: toneAnalysis,
