@@ -28,8 +28,10 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
   
   // Speech-to-Text states
   const [transcription, setTranscription] = useState('');
+  const [interimTranscription, setInterimTranscription] = useState('');
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef(null);
+  const transcriptionEndRef = useRef(null);
 
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -59,43 +61,84 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
     ]
   };
 
-  // Initialize Speech Recognition
+  // Auto-scroll transcription
   useEffect(() => {
+    if (transcriptionEndRef.current) {
+      transcriptionEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [transcription, interimTranscription]);
+
+  // Initialize Speech Recognition
+  const initSpeechRecognition = useCallback(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = 'fr-FR';
-
-      recognitionRef.current.onresult = (event) => {
-        let interimTranscript = '';
-        let finalTranscript = '';
-
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
-          } else {
-            interimTranscript += event.results[i][0].transcript;
-          }
-        }
-        setTranscription(prev => prev + finalTranscript);
-      };
-
-      recognitionRef.current.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        setIsListening(false);
-      };
-    } else {
+    if (!SpeechRecognition) {
       console.warn('Speech Recognition API not supported in this browser.');
+      return null;
     }
 
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'fr-FR';
+
+    recognition.onstart = () => {
+      console.log('Speech recognition started');
+      setIsListening(true);
+    };
+
+    recognition.onresult = (event) => {
+      let finalTranscript = '';
+      let interimTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript + ' ';
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+
+      if (finalTranscript) {
+        setTranscription(prev => prev + finalTranscript);
+      }
+      setInterimTranscription(interimTranscript);
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      if (event.error === 'no-speech') {
+        // Ignore no-speech errors to keep it running
+        return;
+      }
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      console.log('Speech recognition ended');
+      // Restart if still recording
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        try {
+          recognition.start();
+        } catch (e) {
+          console.error('Failed to restart recognition:', e);
+        }
+      } else {
+        setIsListening(false);
+      }
+    };
+
+    return recognition;
+  }, []);
+
+  useEffect(() => {
+    recognitionRef.current = initSpeechRecognition();
     return () => {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
       }
     };
-  }, []);
+  }, [initSpeechRecognition]);
 
   useEffect(() => {
     return () => {
@@ -224,13 +267,18 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
     setRecording(true);
     setRecordingTime(0);
     setTranscription('');
+    setInterimTranscription('');
     recordedChunksRef.current = [];
     
+    // Start Speech Recognition
     if (recognitionRef.current) {
       try {
         recognitionRef.current.start();
+      } catch (e) { 
+        console.error('Speech start error:', e);
+        // If already started, just ensure state is correct
         setIsListening(true);
-      } catch (e) { console.error('Speech start error:', e); }
+      }
     }
 
     try {
@@ -249,7 +297,7 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
     } catch (err) {
       console.error('❌ Erreur enregistrement:', err);
       setRecording(false);
-      setIsListening(false);
+      if (recognitionRef.current) recognitionRef.current.stop();
     }
   };
 
@@ -258,7 +306,7 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
       mediaRecorderRef.current.stop();
       setRecording(false);
     }
-    if (recognitionRef.current && isListening) {
+    if (recognitionRef.current) {
       recognitionRef.current.stop();
       setIsListening(false);
     }
@@ -279,7 +327,7 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
         video_url: publicUrl,
         storage_path: fileName,
         duration: recordedVideo.duration,
-        transcription_text: transcription,
+        transcription_text: transcription.trim(),
         tags: tags.split(',').map(t => t.trim()).filter(t => t),
         status: 'uploaded',
         use_avatar: useAvatar,
@@ -297,6 +345,7 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
   const retryRecording = () => {
     setRecordedVideo(null);
     setTranscription('');
+    setInterimTranscription('');
     requestCameraAccess();
   };
 
@@ -322,20 +371,42 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
             </Button>
           </div>
 
-          <div className="glass-card p-6 rounded-3xl border-white/10 min-h-[200px] flex flex-col">
+          <div className="glass-card p-6 rounded-3xl border-white/10 min-h-[250px] flex flex-col">
             <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
               <MessageSquare className="text-teal-400 w-5 h-5" /> Transcription Live
             </h3>
-            <div className="flex-1 bg-black/20 rounded-2xl p-4 overflow-y-auto max-h-[300px] custom-scrollbar">
-              {transcription ? (
-                <p className="text-teal-50/80 text-sm leading-relaxed animate-in fade-in slide-in-from-bottom-2">
-                  {transcription}
-                  {isListening && <span className="inline-block w-1 h-4 bg-teal-400 ml-1 animate-pulse" />}
-                </p>
+            <div className="flex-1 bg-black/20 rounded-2xl p-4 overflow-y-auto max-h-[350px] custom-scrollbar relative">
+              {(transcription || interimTranscription) ? (
+                <div className="text-teal-50/90 text-sm leading-relaxed space-y-2">
+                  <p className="animate-in fade-in duration-300">{transcription}</p>
+                  {interimTranscription && (
+                    <p className="text-teal-400/70 italic animate-pulse">
+                      {interimTranscription}
+                    </p>
+                  )}
+                  <div ref={transcriptionEndRef} />
+                </div>
               ) : (
-                <p className="text-white/20 text-sm italic text-center mt-8">
-                  {recording ? "Écoute en cours..." : "La transcription apparaîtra ici pendant l'enregistrement."}
-                </p>
+                <div className="flex flex-col items-center justify-center h-full text-center space-y-4 opacity-30">
+                  <Mic className={`w-12 h-12 ${isListening ? 'text-teal-400 animate-pulse' : 'text-white'}`} />
+                  <p className="text-white text-sm italic px-4">
+                    {recording ? "Écoute en cours..." : "La transcription apparaîtra ici pendant l'enregistrement."}
+                  </p>
+                </div>
+              )}
+              
+              {isListening && (
+                <div className="absolute top-4 right-4">
+                  <div className="flex gap-1 items-end h-4">
+                    {[1, 2, 3].map(i => (
+                      <div 
+                        key={i} 
+                        className="w-1 bg-teal-400 rounded-full animate-bounce" 
+                        style={{ height: `${Math.max(20, audioLevel * 100)}%`, animationDelay: `${i * 0.1}s` }} 
+                      />
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           </div>
