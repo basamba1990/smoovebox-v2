@@ -48,37 +48,62 @@ const DISC_BADGE_FILES = {
 };
 
 function RadarChartFourElements({ dominantColor, secondaryColor }) {
-  const size = 72;
+  const size = 90;
   const center = size / 2;
-  const radius = 28;
+  const maxRadius = 28;
   const axes = [
     { label: "Air", angle: -90 },
     { label: "Eau", angle: 0 },
     { label: "Terre", angle: 90 },
     { label: "Feu", angle: 180 },
   ];
+
+  // Base values for the 4 elements
   const values = [0.3, 0.3, 0.3, 0.3];
   if (dominantColor != null && ELEMENT_AXIS_INDEX[dominantColor] != null) {
-    values[ELEMENT_AXIS_INDEX[dominantColor]] = 0.85;
+    values[ELEMENT_AXIS_INDEX[dominantColor]] = 0.9;
   }
   if (secondaryColor != null && ELEMENT_AXIS_INDEX[secondaryColor] != null) {
-    values[ELEMENT_AXIS_INDEX[secondaryColor]] = 0.55;
+    values[ELEMENT_AXIS_INDEX[secondaryColor]] = 0.6;
   }
-  const points = axes.map((ax, i) => {
-    const rad = (ax.angle * Math.PI) / 180;
-    const r = radius * values[i];
-    return [center + r * Math.cos(rad), center + r * Math.sin(rad)];
-  });
-  const polygonPoints = points.map((p) => p.join(",")).join(" ");
 
   return (
     <div className="relative">
       <svg width={size} height={size} className="text-white">
-        {/* Grid: 4 lines from center */}
-        {axes.map((ax, i) => {
+        {/* Soft background circle */}
+        <defs>
+          <radialGradient id="radar-bg" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="rgba(15,23,42,0.0)" />
+            <stop offset="100%" stopColor="rgba(15,23,42,0.65)" />
+          </radialGradient>
+        </defs>
+        <circle
+          cx={center}
+          cy={center}
+          r={maxRadius + 4}
+          fill="url(#radar-bg)"
+          stroke="rgba(148, 163, 184, 0.6)"
+          strokeWidth={0.6}
+        />
+
+        {/* Concentric guide rings */}
+        {[0.33, 0.66, 1].map((ratio) => (
+          <circle
+            key={ratio}
+            cx={center}
+            cy={center}
+            r={maxRadius * ratio}
+            stroke="rgba(148, 163, 184, 0.35)"
+            strokeWidth={0.6}
+            fill="none"
+          />
+        ))}
+
+        {/* Axis lines */}
+        {axes.map((ax) => {
           const rad = (ax.angle * Math.PI) / 180;
-          const x = center + radius * Math.cos(rad);
-          const y = center + radius * Math.sin(rad);
+          const x = center + maxRadius * Math.cos(rad);
+          const y = center + maxRadius * Math.sin(rad);
           return (
             <line
               key={ax.label}
@@ -86,24 +111,71 @@ function RadarChartFourElements({ dominantColor, secondaryColor }) {
               y1={center}
               x2={x}
               y2={y}
-              stroke="currentColor"
-              strokeOpacity={0.4}
-              strokeWidth={0.8}
+              stroke="rgba(148, 163, 184, 0.4)"
+              strokeWidth={0.6}
             />
           );
         })}
-        {/* Filled wedge */}
-        <polygon
-          points={polygonPoints}
-          fill="white"
-          fillOpacity={0.6}
-          stroke="white"
-          strokeWidth={0.6}
-        />
-        {/* Axis labels */}
+
+        {/* Compute bubble centers for drawing connecting line */}
+        {(() => {
+          const pts = axes.map((ax, i) => {
+            const rad = (ax.angle * Math.PI) / 180;
+            const r = maxRadius * values[i];
+            const x = center + r * Math.cos(rad);
+            const y = center + r * Math.sin(rad);
+            return { x, y, label: ax.label, value: values[i] };
+          });
+
+          const pathD =
+            pts.length > 0
+              ? `M ${pts[0].x} ${pts[0].y} ` +
+                pts
+                  .slice(1)
+                  .map((p) => `L ${p.x} ${p.y}`)
+                  .join(" ") +
+                " Z"
+              : "";
+
+          return (
+            <>
+              {/* White rounded line connecting the bubbles */}
+              {pathD && (
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke="white"
+                  strokeWidth={1}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  strokeOpacity={0.9}
+                />
+              )}
+
+              {/* Rounded \"bubbles\" per element */}
+              {pts.map((p) => {
+                const bubbleRadius = 3 + p.value * 3; // bigger bubble for stronger element
+                return (
+                  <circle
+                    key={`${p.label}-bubble`}
+                    cx={p.x}
+                    cy={p.y}
+                    r={bubbleRadius}
+                    fill="white"
+                    fillOpacity={0.9}
+                    stroke="rgba(56, 189, 248, 0.8)"
+                    strokeWidth={0.6}
+                  />
+                );
+              })}
+            </>
+          );
+        })()}
+
+        {/* Axis labels around the circle */}
         {axes.map((ax) => {
           const rad = (ax.angle * Math.PI) / 180;
-          const r = radius + 8;
+          const r = maxRadius + 10;
           const x = center + r * Math.cos(rad);
           const y = center + r * Math.sin(rad);
           return (
@@ -729,10 +801,10 @@ export default function HobbyFlow({ computedProfile, ageRange, userName }) {
               minHeight: "260px",
             }}
           >
-            <CardContent className="h-full w-full px-6 sm:px-8 py-4 space-y-4">
+            <CardContent className="h-full w-full sm:px-8 py-4 space-y-4 justify-center">
               {/* Header: title + logo */}
-              <div className="w-full flex justify-start items-center pl-5">
-                <div className="rounded-xl relative bg-gradient-to-b from-green-800/25 to-black-500/10 shadow-lg shadow-sky-900/60 px-6 py-2 text-center">
+              <div className="w-full flex  items-center">
+                <div className="rounded-xl relative bg-gradient-to-b from-green-800/45 to-black-500/10 shadow-lg shadow-sky-900/60 px-6 py-2 text-center">
                   <p className="text-xs sm:text-sm font-semibold tracking-wide text-white uppercase">
                     Profil du joueur
                   </p>
@@ -749,7 +821,7 @@ export default function HobbyFlow({ computedProfile, ageRange, userName }) {
               {/* First section: player photo, radar chart, details, skill badges */}
               {computedProfile && (
                 <div className="rounded-xl border-[4px] border-teal-500/80 p-3 space-y-3">
-                  <div className="flex gap-3 items-start">
+                  <div className="flex gap-3 items-start justify-evenly">
                     {/* Left: player photo placeholder */}
                     <div className="shrink-0 flex flex-col items-center">
                       <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-slate-600/90 border-2 border-white/40 flex items-center justify-center overflow-hidden ring-2 ring-white/20">
@@ -766,7 +838,7 @@ export default function HobbyFlow({ computedProfile, ageRange, userName }) {
                       
                     </div>
                     {/* Right: radar chart (Air, Eau, Terre, Feu) */}
-                    <div className="flex-1 min-w-0 flex flex-col items-center">
+                    <div className=" min-w-0 flex flex-col items-center">
                       <RadarChartFourElements
                         dominantColor={computedProfile.dominant_color}
                         secondaryColor={computedProfile.secondary_color}
