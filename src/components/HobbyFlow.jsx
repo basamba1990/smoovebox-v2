@@ -39,6 +39,14 @@ const DISC_ELEMENTS = {
 // Axis order: Air (top), Eau (right), Terre (bottom), Feu (left)
 const ELEMENT_AXIS_INDEX = { jaune: 0, bleu: 1, vert: 2, rouge: 3 };
 
+// Mapping DISC colors to badge assets for the football card
+const DISC_BADGE_FILES = {
+  rouge: "24 Badge feu.png",
+  jaune: "25 Badge air.png",
+  vert: "26 Badge terre.png",
+  bleu: "27 Badge eau.png",
+};
+
 function RadarChartFourElements({ dominantColor, secondaryColor }) {
   const size = 72;
   const center = size / 2;
@@ -118,6 +126,62 @@ function RadarChartFourElements({ dominantColor, secondaryColor }) {
   );
 }
 
+// Build up to 4 skill badge entries based on dominant / secondary traits characteristics
+function buildSkillBadgesForProfile(computedProfile) {
+  if (!computedProfile || !computedProfile.dominant_color) return [];
+
+  const dominantColor = computedProfile.dominant_color;
+  const secondaryColor = computedProfile.secondary_color || null;
+  const dominantChars =
+    computedProfile.traits?.dominant?.characteristics || [];
+  const secondaryChars =
+    computedProfile.traits?.secondary?.characteristics || [];
+
+  const badges = [];
+
+  const addBadges = (color, labels, count, prefix) => {
+    const src = DISC_BADGE_FILES[color];
+    if (!src) return;
+    const safeLabels =
+      labels && labels.length > 0
+        ? labels
+        : [""];
+
+    for (let i = 0; i < count && badges.length < 4; i += 1) {
+      const baseLabel =
+        safeLabels[i] ||
+        safeLabels[i % safeLabels.length] ||
+        "";
+      badges.push({
+        key: `${prefix}-${i}`,
+        src,
+        label: baseLabel,
+      });
+    }
+  };
+
+  if (secondaryColor) {
+    // 2 badges for dominant, 2 for secondary
+    addBadges(dominantColor, dominantChars, 2, "dom");
+    addBadges(secondaryColor, secondaryChars, 2, "sec");
+
+    // If still less than 4 (missing characteristics), fill with dominant
+    if (badges.length < 4) {
+      addBadges(
+        dominantColor,
+        dominantChars,
+        4 - badges.length,
+        "dom-extra",
+      );
+    }
+  } else {
+    // Only dominant color: up to 4 badges all using dominant characteristics
+    addBadges(dominantColor, dominantChars, 4, "dom");
+  }
+
+  return badges.slice(0, 4);
+}
+
 export default function HobbyFlow({ computedProfile, ageRange, userName }) {
   const MAX_HOBBY_MULTI_ANSWERS = 2;
 
@@ -135,6 +199,9 @@ export default function HobbyFlow({ computedProfile, ageRange, userName }) {
   const [currentHobbyDisplayOptions, setCurrentHobbyDisplayOptions] = useState(
     [],
   );
+
+  // Build dynamic skill badges for the football DISC card from DISC characteristics
+  const skillBadges = buildSkillBadgesForProfile(computedProfile);
 
   // Toggle helper enforcing max 2 answers (like DISC)
   const toggleHobbyMultiAnswer = (key) => {
@@ -653,7 +720,7 @@ export default function HobbyFlow({ computedProfile, ageRange, userName }) {
       {hobbyProfile && selectedHobby === "Football" && (
         <div className="mt-4 flex justify-center">
           <Card
-            className="rounded-xl border-none bg-transparent overflow-hidden w-full max-w-[320px]"
+            className="rounded-xl border-none bg-transparent overflow-hidden w-full max-w-[360px]"
             style={{
               backgroundImage: "url('/football-disc-card/17 Fond.png')",
               backgroundSize: "100% 100%",
@@ -693,6 +760,10 @@ export default function HobbyFlow({ computedProfile, ageRange, userName }) {
                       <p className="text-[10px] sm:text-xs font-semibold text-white mt-1 uppercase truncate max-w-[72px] sm:max-w-[80px] text-center">
                         {userName ? String(userName).trim() : "—"}
                       </p>
+                      <div className=" text-white text-xs">
+                        {hobbyProfile?.recommended_role || "—"}
+                      </div>
+                      
                     </div>
                     {/* Right: radar chart (Air, Eau, Terre, Feu) */}
                     <div className="flex-1 min-w-0 flex flex-col items-center">
@@ -700,37 +771,34 @@ export default function HobbyFlow({ computedProfile, ageRange, userName }) {
                         dominantColor={computedProfile.dominant_color}
                         secondaryColor={computedProfile.secondary_color}
                       />
-                      <div className="mt-1 text-[10px] text-white/90 space-y-0.5">
-                        <p>Joueur: {hobbyProfile?.recommended_role || "—"}</p>
+                      <div className="mt-1 text-[10px] text-white/90">
+                        <p>Joueur: -</p>
                         <p>Équipe: —</p>
-                        <p><span className="text-teal-400 font-semibold">No: 10</span></p>
+                        {/* <p><span className="text-teal-400 font-semibold">No: 10</span></p> */}
                       </div>
                     </div>
                   </div>
-                  {/* Skill badges row */}
-                  <div className="flex flex-wrap justify-center gap-1.5">
-                    {[
-                      { src: "24 Badge feu.png", label: "Actions & lancers" },
-                      { src: "25 Badge air.png", label: "Vitesse & agilité" },
-                      { src: "26 Badge terre.png", label: "Attaque & passes" },
-                      { src: "27 Badge eau.png", label: "Force & calme" },
-                    ].map((badge) => (
-                      <div
-                        key={badge.src}
-                        className="flex flex-col items-center gap-0.5"
-                        title={badge.label}
-                      >
-                        <img
-                          src={`/football-disc-card/${badge.src}`}
-                          alt=""
-                          className="w-7 h-7 sm:w-8 sm:h-8 object-contain"
-                        />
-                        <span className="text-[8px] sm:text-[9px] text-white/80 text-center max-w-[52px] leading-tight">
-                          {badge.label}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  {/* Skill badges row (4 icons, dominant / secondary characteristics) */}
+                  {skillBadges.length > 0 && (
+                    <div className="flex justify-center gap-1.5">
+                      {skillBadges.map((badge) => (
+                        <div
+                          key={badge.key}
+                          className="flex flex-col items-center"
+                          title={badge.label}
+                        >
+                          <img
+                            src={`/football-disc-card/${badge.src}`}
+                            alt=""
+                            className="w-20 h-20 object-contain"
+                          />
+                          <span className="text-[8px] sm:text-[9px] text-white/80 text-center max-w-[72px] leading-tight line-clamp-2">
+                            {badge.label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
