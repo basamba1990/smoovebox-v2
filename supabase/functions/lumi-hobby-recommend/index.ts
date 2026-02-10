@@ -152,6 +152,19 @@ Deno.serve(async (req) => {
       };
     });
 
+    // Extract favorite player / team from raw answers (using question text)
+    const favoritePlayer =
+      formattedAnswers.find((qa: any) => {
+        const q = (qa.question || '').toLowerCase();
+        return q.includes('joueur préféré') || q.includes('joueur prefere');
+      })?.answer || null;
+
+    const favoriteTeam =
+      formattedAnswers.find((qa: any) => {
+        const q = (qa.question || '').toLowerCase();
+        return q.includes('équipe préférée') || q.includes('equipe préférée') || q.includes('equipe preferee');
+      })?.answer || null;
+
     // Build GPT prompt
     const discTraits = discProfile.traits;
     const dominantName = discTraits?.dominant?.name || 'Profil dominant';
@@ -224,6 +237,13 @@ Réponds en français et sois précis et personnalisé.`;
     } catch (e) {
       throw new Error('Invalid JSON response from GPT');
     }
+
+    // Enrich GPT response with favorite player / team so the frontend can display them
+    gptResponse = {
+      ...gptResponse,
+      favorite_player: favoritePlayer,
+      favorite_team: favoriteTeam,
+    };
 
     // Save to lumi_hobby_profiles
     const hobbyProfile = {

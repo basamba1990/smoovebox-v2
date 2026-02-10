@@ -14,10 +14,11 @@ import {
 import { startLumiSession, submitAnswer, computeProfile, getMyLumiProfile, getSessionAgeRange } from "../services/lumiService.js";
 import HobbyFlow from "../components/HobbyFlow.jsx";
 import { checkVideoProfileInformation } from "../services/videoService.js";
-import { useUser } from "@supabase/auth-helpers-react";
+import { useUser, useSupabaseClient } from "@supabase/auth-helpers-react";
 import { toast } from "sonner";
 import OdysseyLayout from "../components/OdysseyLayout.jsx";
 import OdysseySteps from "../components/OdysseySteps.jsx";
+import { getPublicUrl } from "../lib/storageUtils.js";
 
 // Age range options
 const AGE_RANGES = [
@@ -83,6 +84,7 @@ function getAgeRangeFromAge(age) {
 export default function LumiOnboarding({ onSignOut }) {
   const navigate = useNavigate();
   const user = useUser();
+  const supabaseClient = useSupabaseClient();
   const [loading, setLoading] = useState(false);
   const [checkingProfile, setCheckingProfile] = useState(true);
   const [checkingAge, setCheckingAge] = useState(true);
@@ -96,6 +98,7 @@ export default function LumiOnboarding({ onSignOut }) {
   const [submitting, setSubmitting] = useState(false);
   const [computingProfile, setComputingProfile] = useState(false);
   const [computedProfile, setComputedProfile] = useState(null);
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState(null);
   const hasCheckedVideoAge = useRef(false);
 
   const MAX_MULTI_ANSWERS = 2;
@@ -113,6 +116,34 @@ export default function LumiOnboarding({ onSignOut }) {
       return [...prev, value];
     });
   }
+
+  // Charger l'avatar du profil (table profiles) pour l'afficher dans la carte football
+  useEffect(() => {
+    const loadAvatar = async () => {
+      if (!user || !supabaseClient) return;
+      try {
+        const { data, error } = await supabaseClient
+          .from("profiles")
+          .select("avatar_url")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (error) {
+          console.error("[LumiOnboarding] Erreur chargement avatar:", error);
+          return;
+        }
+
+        if (data?.avatar_url) {
+          const publicUrl = getPublicUrl(data.avatar_url, "avatars");
+          setProfileAvatarUrl(publicUrl);
+        }
+      } catch (err) {
+        console.error("[LumiOnboarding] Exception chargement avatar:", err);
+      }
+    };
+
+    loadAvatar();
+  }, [user, supabaseClient]);
 
   // Build a randomized display order for multiple choice options when question changes
   useEffect(() => {
@@ -535,6 +566,7 @@ export default function LumiOnboarding({ onSignOut }) {
           computedProfile={computedProfile}
           ageRange={ageRange}
           userName={user?.user_metadata?.full_name || user?.user_metadata?.name || (user?.email ? user.email.split("@")[0] : null)}
+          avatarUrl={profileAvatarUrl}
         />
 
          {/* Précédent / Continuer navigation */}

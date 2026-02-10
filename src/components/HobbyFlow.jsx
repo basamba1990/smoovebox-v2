@@ -1,7 +1,7 @@
 // src/components/HobbyFlow.jsx
 // Component for hobby selection, questions, and results flow
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "./ui/button.jsx";
 import {
   Card,
@@ -20,6 +20,8 @@ import {
 } from "../services/lumiService.js";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
+import { useSupabaseClient, useUser } from "@supabase/auth-helpers-react";
+import { getPublicUrl } from "../lib/storageUtils.js";
 
 // Available hobbies
 const HOBBIES = [
@@ -254,8 +256,11 @@ function buildSkillBadgesForProfile(computedProfile) {
   return badges.slice(0, 4);
 }
 
-export default function HobbyFlow({ computedProfile, ageRange, userName }) {
+export default function HobbyFlow({ computedProfile, ageRange, userName, avatarUrl }) {
   const MAX_HOBBY_MULTI_ANSWERS = 2;
+
+  const supabaseClient = useSupabaseClient();
+  const authUser = useUser();
 
   const [showHobbySelection, setShowHobbySelection] = useState(false);
   const [selectedHobby, setSelectedHobby] = useState(null);
@@ -271,6 +276,77 @@ export default function HobbyFlow({ computedProfile, ageRange, userName }) {
   const [currentHobbyDisplayOptions, setCurrentHobbyDisplayOptions] = useState(
     [],
   );
+
+  // Local avatar URL so we can update after upload
+  const [localAvatarUrl, setLocalAvatarUrl] = useState(avatarUrl || null);
+  const avatarInputRef = useRef(null);
+
+  useEffect(() => {
+    setLocalAvatarUrl(avatarUrl || null);
+  }, [avatarUrl]);
+
+  const favoritePlayer =
+    hobbyProfile?.gpt_response?.favorite_player ||
+    hobbyProfile?.gpt_response?.favoritePlayer ||
+    null;
+  const favoriteTeam =
+    hobbyProfile?.gpt_response?.favorite_team ||
+    hobbyProfile?.gpt_response?.favoriteTeam ||
+    null;
+
+  const handleAvatarClick = () => {
+    if (!localAvatarUrl && avatarInputRef.current) {
+      avatarInputRef.current.click();
+    }
+  };
+
+  const handleAvatarFileChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || !authUser || !supabaseClient) return;
+
+    try {
+      const fileExt = file.name.split(".").pop();
+      const filePath = `${authUser.id}/${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabaseClient.storage
+        .from("avatars")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: true,
+        });
+
+      if (uploadError) {
+        console.error("[HobbyFlow] Erreur upload avatar:", uploadError);
+        toast.error("Erreur lors de l'envoi de la photo");
+        return;
+      }
+
+      const storagePath = `avatars/${filePath}`;
+
+      const { error: dbError } = await supabaseClient
+        .from("profiles")
+        .update({ avatar_url: storagePath })
+        .eq("id", authUser.id);
+
+      if (dbError) {
+        console.error("[HobbyFlow] Erreur mise à jour profil avatar:", dbError);
+        toast.error("Erreur lors de la sauvegarde de la photo");
+        return;
+      }
+
+      const publicUrl = getPublicUrl(storagePath, "avatars");
+      setLocalAvatarUrl(publicUrl);
+      toast.success("✅ Photo de profil mise à jour");
+    } catch (error) {
+      console.error("[HobbyFlow] Exception upload avatar:", error);
+      toast.error("Erreur lors de l'envoi de la photo");
+    } finally {
+      // reset input so same file can be selected again if needed
+      if (avatarInputRef.current) {
+        avatarInputRef.current.value = "";
+      }
+    }
+  };
 
   // Build dynamic skill badges for the football DISC card from DISC characteristics
   const skillBadges = buildSkillBadgesForProfile(computedProfile);
@@ -581,6 +657,19 @@ export default function HobbyFlow({ computedProfile, ageRange, userName }) {
                   </p>
                 </div>
               )}
+
+              {/* Open Text Question (free input, like favorite player/team) */}
+              {currentHobbyQuestion.question_type === "open_text" && (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={currentHobbyAnswer || ""}
+                    onChange={(e) => setCurrentHobbyAnswer(e.target.value)}
+                    className="w-full px-4 py-2 bg-slate-900/80 border border-slate-500/60 rounded-lg text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="Ta réponse..."
+                  />
+                </div>
+              )}
             </div>
 
             {/* Submit Button */}
@@ -822,13 +911,34 @@ export default function HobbyFlow({ computedProfile, ageRange, userName }) {
               {computedProfile && (
                 <div className="rounded-xl border-[4px] border-teal-500/80 p-3 space-y-3">
                   <div className="flex gap-3 items-start justify-evenly">
-                    {/* Left: player photo placeholder */}
+                    {/* Left: player photo placeholder / real photo */}
                     <div className="shrink-0 flex flex-col items-center">
-                      <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-slate-600/90 border-2 border-white/40 flex items-center justify-center overflow-hidden ring-2 ring-white/20">
-                        <svg className="w-7 h-7 sm:w-8 sm:h-8 text-white/70" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
-                          <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                        </svg>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAvatarClick}
+                        className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-slate-600/90 border-2 border-white/40 flex items-center justify-center overflow-hidden ring-2 ring-white/20 ${
+                          !localAvatarUrl ? "cursor-pointer hover:ring-teal-400/60" : ""
+                        }`}
+                      >
+                        {localAvatarUrl ? (
+                          <img
+                            src={localAvatarUrl}
+                            alt={userName || "Photo joueur"}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <svg className="w-7 h-7 sm:w-8 sm:h-8 text-white/70" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+                            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                          </svg>
+                        )}
+                      </button>
+                      <input
+                        ref={avatarInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleAvatarFileChange}
+                      />
                       <p className="text-[10px] sm:text-xs font-semibold text-white mt-1 uppercase truncate max-w-[72px] sm:max-w-[80px] text-center">
                         {userName ? String(userName).trim() : "—"}
                       </p>
@@ -844,9 +954,18 @@ export default function HobbyFlow({ computedProfile, ageRange, userName }) {
                         secondaryColor={computedProfile.secondary_color}
                       />
                       <div className="mt-1 text-[10px] text-white/90">
-                        <p>Joueur: -</p>
-                        <p>Équipe: —</p>
-                        {/* <p><span className="text-teal-400 font-semibold">No: 10</span></p> */}
+                        <p>
+                          Joueur:{" "}
+                          <span className="font-semibold">
+                            {favoritePlayer || "-"}
+                          </span>
+                        </p>
+                        <p>
+                          Équipe:{" "}
+                          <span className="font-semibold">
+                            {favoriteTeam || "—"}
+                          </span>
+                        </p>
                       </div>
                     </div>
                   </div>
