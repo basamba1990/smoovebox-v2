@@ -122,7 +122,10 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
   // ✅ ARRÊT STREAM
   const stopStream = useCallback(() => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+        track.enabled = false;
+      });
       streamRef.current = null;
       setCameraAccess(false);
     }
@@ -132,11 +135,13 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
     }
   }, []);
 
-  // ✅ ACCÈS CAMÉRA
+  // ✅ CORRECTION VIDÉO : ACCÈS CAMÉRA AMÉLIORÉ
   const requestCameraAccess = async () => {
     try {
       setError(null);
       stopStream();
+      
+      console.log('📹 Demande d\'accès caméra...');
       
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
@@ -157,14 +162,52 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
       streamRef.current = stream;
       
       if (videoRef.current) {
+        // ✅ CORRECTION CRITIQUE : Attendre que la vidéo soit prête
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setCameraAccess(true);
-        setupAudioAnalysis(stream);
+        
+        // Attendre que la vidéo soit chargée
+        await new Promise((resolve, reject) => {
+          const onLoaded = () => {
+            videoRef.current.removeEventListener('loadedmetadata', onLoaded);
+            videoRef.current.removeEventListener('error', onError);
+            resolve();
+          };
+          
+          const onError = () => {
+            videoRef.current.removeEventListener('loadedmetadata', onLoaded);
+            videoRef.current.removeEventListener('error', onError);
+            reject(new Error('Erreur chargement vidéo'));
+          };
+          
+          videoRef.current.addEventListener('loadedmetadata', onLoaded);
+          videoRef.current.addEventListener('error', onError);
+          
+          // Timeout de sécurité
+          setTimeout(() => {
+            if (videoRef.current?.readyState >= 1) {
+              onLoaded();
+            } else {
+              onError();
+            }
+          }, 3000);
+        });
+        
+        try {
+          await videoRef.current.play();
+          setCameraAccess(true);
+          console.log('✅ Caméra activée avec succès');
+          
+          // Démarrer l'analyse audio
+          setupAudioAnalysis(stream);
+          
+        } catch (playError) {
+          console.error('❌ Erreur lecture vidéo:', playError);
+          throw new Error('Lecture vidéo impossible');
+        }
       }
       
     } catch (err) {
-      console.error('Erreur accès caméra:', err);
+      console.error('❌ Erreur accès caméra:', err);
       setError('Impossible d\'accéder à la caméra. Vérifiez les permissions.');
       setCameraAccess(false);
     }
@@ -252,11 +295,19 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
     recordedChunksRef.current = [];
 
     try {
-      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
-        ? 'video/webm;codecs=vp9,opus' 
-        : MediaRecorder.isTypeSupported('video/webm') 
-          ? 'video/webm'
-          : 'video/mp4';
+      // ✅ CORRECTION VIDÉO : Choisir un format compatible
+      const mimeTypes = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+        'video/mp4;codecs=avc1,aac',
+        'video/mp4'
+      ];
+      
+      const supportedMimeType = mimeTypes.find(m => MediaRecorder.isTypeSupported(m));
+      const mimeType = supportedMimeType || 'video/webm';
+      
+      console.log('🎥 Format sélectionné:', mimeType);
       
       mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
         mimeType,
@@ -272,14 +323,35 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
 
       mediaRecorderRef.current.onstop = () => {
         const chunks = recordedChunksRef.current;
+        
+        // ✅ CORRECTION VIDÉO : Créer le Blob avec le bon type
+        const blobType = chunks.length > 0 && chunks[0].type 
+          ? chunks[0].type 
+          : (mediaRecorderRef.current?.mimeType || 'video/webm');
+        
         const blob = new Blob(chunks, { 
-          type: mediaRecorderRef.current?.mimeType || 'video/webm' 
+          type: blobType 
         });
+        
         const url = URL.createObjectURL(blob);
+        
+        // ✅ CORRECTION VIDÉO : Créer un élément vidéo temporaire pour vérifier
+        const tempVideo = document.createElement('video');
+        tempVideo.src = url;
+        tempVideo.onloadeddata = () => {
+          console.log('✅ Vidéo enregistrée vérifiée, durée:', tempVideo.duration);
+          tempVideo.remove();
+        };
+        tempVideo.onerror = () => {
+          console.warn('⚠️ Problème potentiel avec la vidéo enregistrée');
+          tempVideo.remove();
+        };
+        
         setRecordedVideo({
           blob,
           url,
-          duration: recordingTime
+          duration: recordingTime,
+          type: blobType
         });
         
         analyzeToneWithRealData();
@@ -916,7 +988,7 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
             )}
           </div>
 
-          {/* ZONE PRINCIPALE */}
+          {/* ZONE PRINCIPALE - CORRECTION VIDÉO */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 shadow-xl">
               {/* COMPTE À REBOURS */}
@@ -928,7 +1000,7 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
                 </div>
               )}
 
-              {/* VIDÉO */}
+              {/* ✅ CORRECTION VIDÉO : ZONE VIDÉO AMÉLIORÉE */}
               <div className="relative mb-6">
                 <div className="bg-black rounded-xl overflow-hidden aspect-video relative border border-gray-800">
                   {!recordedVideo ? (
@@ -938,19 +1010,53 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
                       muted
                       playsInline
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        console.error('❌ Erreur vidéo live:', e);
+                        setError('Erreur de flux vidéo. Veuillez réessayer.');
+                      }}
+                      onLoadedData={() => {
+                        console.log('✅ Vidéo live chargée');
+                      }}
                     />
                   ) : (
                     <video
+                      key={recordedVideo.url} // ✅ Force le re-render
                       src={recordedVideo.url}
                       controls
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        console.error('❌ Erreur vidéo enregistrée:', e);
+                        setError('La vidéo enregistrée ne peut pas être lue. Format peut-être incompatible.');
+                      }}
+                      onLoadedData={() => {
+                        console.log('✅ Vidéo enregistrée chargée avec succès');
+                        toast.success('✅ Vidéo prête à être visionnée');
+                      }}
+                      onCanPlay={() => {
+                        console.log('✅ Vidéo peut être lue');
+                      }}
+                      preload="auto"
                     />
+                  )}
+                  
+                  {/* Indicateur caméra */}
+                  {cameraAccess && !recording && !recordedVideo && (
+                    <div className="absolute top-4 left-4 bg-green-600/90 text-white px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-sm">
+                      ✅ Caméra active
+                    </div>
                   )}
                   
                   {recording && (
                     <div className="absolute top-4 right-4 bg-red-600 text-white px-3 py-1.5 rounded-full flex items-center gap-2 animate-pulse shadow-lg">
                       <div className="w-2.5 h-2.5 bg-white rounded-full animate-ping" />
                       <span className="font-semibold text-sm">● {formatTime(recordingTime)}</span>
+                    </div>
+                  )}
+                  
+                  {/* Indicateur vidéo enregistrée */}
+                  {recordedVideo && !recording && (
+                    <div className="absolute top-4 left-4 bg-blue-600/90 text-white px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-sm">
+                      ✅ Vidéo enregistrée
                     </div>
                   )}
                 </div>
@@ -962,6 +1068,10 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
                       className="bg-gradient-to-r from-red-500 to-orange-500 h-2 rounded-full transition-all duration-1000"
                       style={{ width: `${(recordingTime / maxRecordingTime) * 100}%` }}
                     />
+                    <div className="flex justify-between text-xs text-gray-400 mt-1">
+                      <span>0:00</span>
+                      <span>2:00</span>
+                    </div>
                   </div>
                 )}
               </div>
