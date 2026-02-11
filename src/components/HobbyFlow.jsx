@@ -764,268 +764,281 @@ export default function HobbyFlow({ computedProfile, ageRange, userName, avatarU
         </Card>
       )}
 
-      {/* Hobby Results - Ton Rôle Idéal */}
+      {/* Hobby Results + Football DISC card side by side */}
       {hobbyProfile && computedProfile && (
-        <Card className="glass-card border-white/10 shadow-2xl rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-900/60 mt-6">
-          <CardHeader className="pt-4 sm:pt-6 px-4 sm:px-6">
-            <div className="flex items-center gap-3">
-              {selectedHobby &&
-                HOBBIES.find((h) => h.name === selectedHobby)?.emoji && (
-                  <span className="text-3xl">
-                    {HOBBIES.find((h) => h.name === selectedHobby)?.emoji}
-                  </span>
-                )}
-              <div className="flex-1 min-w-0">
-                <CardTitle className="text-xl sm:text-2xl font-bold text-white">
-                  {selectedHobby} - Ton Rôle Idéal
-                </CardTitle>
-                {computedProfile.dominant_color &&
-                  DISC_ELEMENTS[computedProfile.dominant_color] && (
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-lg">
-                        {DISC_ELEMENTS[computedProfile.dominant_color].icon}
+        <div className="mt-6 flex flex-col md:flex-row gap-4 md:items-start items-center justify-center md:justify-between">
+          {/* Left: main \"Ton Rôle Idéal\" card */}
+          <div className="flex-1">
+            <Card className="glass-card border-white/10 shadow-2xl rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-900/60">
+              <CardHeader className="pt-4 sm:pt-6 px-4 sm:px-6">
+                <div className="flex items-center gap-3">
+                  {selectedHobby &&
+                    HOBBIES.find((h) => h.name === selectedHobby)?.emoji && (
+                      <span className="text-3xl">
+                        {HOBBIES.find((h) => h.name === selectedHobby)?.emoji}
                       </span>
-                      <span className="text-sm text-teal-200">
-                        Énergie{" "}
-                        {
-                          DISC_ELEMENTS[computedProfile.dominant_color]
-                            .elementFr
-                        }
-                      </span>
-                    </div>
-                  )}
-              </div>
-            </div>
-            <CardDescription className="text-slate-300 mt-2">
-              Recommandation basée sur ton profil Lumi
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pb-4 sm:pb-6 px-4 sm:px-6 lg:px-8">
-            <div className="space-y-6">
-              {/* Fit Score */}
-              {hobbyProfile.fit_score !== null && (
-                <div className="p-4 rounded-xl border border-white/10 bg-slate-900/60">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm text-slate-300">
-                      Score de compatibilité
-                    </p>
-                    <p className="text-2xl font-bold text-white">
-                      {hobbyProfile.fit_score}%
-                    </p>
-                  </div>
-                  <div className="w-full bg-slate-800 rounded-full h-3">
-                    <div
-                      className={`h-3 rounded-full ${
-                        hobbyProfile.fit_score >= 80
-                          ? "bg-green-400"
-                          : hobbyProfile.fit_score >= 50
-                            ? "bg-yellow-400"
-                            : "bg-red-400"
-                      }`}
-                      style={{ width: `${hobbyProfile.fit_score}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Recommended Role */}
-              {hobbyProfile.recommended_role && (
-                <div className="p-4 rounded-xl border border-teal-500/40 bg-teal-500/10">
-                  <p className="text-sm text-teal-200 mb-2">Rôle recommandé</p>
-                  <p className="text-2xl font-bold text-white">
-                    {hobbyProfile.recommended_role}
-                  </p>
-                </div>
-              )}
-
-              {/* Description */}
-              {hobbyProfile.description && (
-                <div className="p-4 rounded-xl border border-white/10 bg-slate-900/70">
-                  <h4 className="text-lg font-semibold text-white mb-2">
-                    Description
-                  </h4>
-                  <p className="text-slate-200 leading-relaxed whitespace-pre-line">
-                    {hobbyProfile.description}
-                  </p>
-                </div>
-              )}
-
-              {/* Development Tips */}
-              {hobbyProfile.development_tips && (
-                <div className="p-4 rounded-xl border border-white/10 bg-slate-900/70">
-                  <h4 className="text-lg font-semibold text-white mb-3">
-                    💡 Conseils de développement
-                  </h4>
-                  <div className="space-y-2">
-                    {hobbyProfile.development_tips
-                      .split("\n")
-                      .filter((tip) => tip.trim())
-                      .map((tip, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-start gap-2 text-slate-200"
-                        >
-                          <span className="text-teal-400 mt-0.5">•</span>
-                          <span>{tip.trim()}</span>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Decorative football DISC card under hobby results when Football is selected */}
-      {hobbyProfile && selectedHobby === "Football" && (
-        <div className="mt-4 flex justify-center">
-          <Card
-            className="rounded-xl border border-white/10 bg-[rgba(7,24,48,0.9)] overflow-hidden w-full max-w-[360px]"
-            style={{
-              minHeight: "260px",
-            }}
-          >
-            <CardContent className="h-full w-full sm:px-8 py-4 space-y-4 justify-center">
-              {/* Header: title + logo */}
-              <div className="w-full flex  items-center">
-                <div className="rounded-xl relative bg-gradient-to-b from-green-800/45 to-black-500/10 shadow-lg shadow-sky-900/60 px-6 py-2 text-center">
-                  <p className="text-xs sm:text-sm font-semibold tracking-wide text-white uppercase">
-                    Profil du joueur
-                  </p>
-                  <div className="absolute -top-2 -right-12">
-                    <img
-                      src="/Logo-2.png"
-                      alt="SpotBulle"
-                      className="w-19.5 h-auto"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* First section: player photo, radar chart, details, skill badges */}
-              {computedProfile && (
-                <div className="rounded-xl border-[4px] border-teal-500/80 p-3 space-y-3">
-                  <div className="flex gap-3 items-start justify-evenly">
-                    {/* Left: player photo placeholder / real photo */}
-                    <div className="shrink-0 flex flex-col items-center">
-                      <button
-                        type="button"
-                        onClick={handleAvatarClick}
-                        className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-slate-600/90 border-2 border-white/40 flex items-center justify-center overflow-hidden ring-2 ring-white/20 ${
-                          !localAvatarUrl ? "cursor-pointer hover:ring-teal-400/60" : ""
-                        }`}
-                      >
-                        {localAvatarUrl ? (
-                          <img
-                            src={localAvatarUrl}
-                            alt={userName || "Photo joueur"}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <svg className="w-7 h-7 sm:w-8 sm:h-8 text-white/70" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
-                            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                          </svg>
-                        )}
-                      </button>
-                      <input
-                        ref={avatarInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleAvatarFileChange}
-                      />
-                      <p className="text-[10px] sm:text-xs font-semibold text-white mt-1 uppercase truncate max-w-[72px] sm:max-w-[80px] text-center">
-                        {userName ? String(userName).trim() : "—"}
-                      </p>
-                      <div className=" text-white text-xs">
-                        {hobbyProfile?.recommended_role || "—"}
-                      </div>
-                      
-                    </div>
-                    {/* Right: radar chart (Air, Eau, Terre, Feu) */}
-                    <div className=" min-w-0 flex flex-col items-center">
-                      <RadarChartFourElements
-                        dominantColor={computedProfile.dominant_color}
-                        secondaryColor={computedProfile.secondary_color}
-                      />
-                      <div className="mt-1 text-[10px] text-white/90">
-                        <p>
-                          Joueur:{" "}
-                          <span className="font-semibold">
-                            {favoritePlayer || "-"}
-                          </span>
-                        </p>
-                        <p>
-                          Équipe:{" "}
-                          <span className="font-semibold">
-                            {favoriteTeam || "—"}
-                          </span>
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Skill badges row (4 icons, dominant / secondary characteristics) */}
-                  {skillBadges.length > 0 && (
-                    <div className="flex justify-center gap-1.5">
-                      {skillBadges.map((badge) => (
-                        <div
-                          key={badge.key}
-                          className="flex flex-col items-center"
-                          title={badge.label}
-                        >
-                          <img
-                            src={`/football-disc-card/${badge.src}`}
-                            alt=""
-                            className="w-20 h-20 object-contain"
-                          />
-                          <span className="text-[8px] sm:text-[9px] text-white/80 text-center max-w-[72px] leading-tight line-clamp-2">
-                            {badge.label}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Motivational line above second section */}
-              <p className="text-base sm:text-lg font-bold text-teal-400">
-                Ta créativité fait de toi un joueur unique !
-              </p>
-              {/* Second section: text, robot, CTA */}
-              <div className="relative rounded-xl bg-white/10 border border-white/10 p-4 min-h-[200px]">
-                <div className="flex gap-3 items-start">
+                    )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-white mb-1">
-                      Fier de son premier micro ?
-                    </p>
-                    <p className="text-xs text-slate-300 mb-1">
-                      <Link
-                        to="/module-mimetique"
-                        className="text-teal-400 font-medium hover:text-teal-300 underline underline-offset-2"
-                      >
-                        Cliquer ici
-                      </Link>
-                    </p>
-                    <ul className="text-xs text-slate-300 space-y-0.5 list-disc list-inside">
-                      <li>ta vidéo talent</li>
-                      <li>ton profil complet</li>
-                      <li>rejoindre l&apos;association et nos coachs</li>
-                    </ul>
+                    <CardTitle className="text-xl sm:text-2xl font-bold text-white">
+                      {selectedHobby} - Ton Rôle Idéal
+                    </CardTitle>
+                    {computedProfile.dominant_color &&
+                      DISC_ELEMENTS[computedProfile.dominant_color] && (
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-lg">
+                            {DISC_ELEMENTS[computedProfile.dominant_color].icon}
+                          </span>
+                          <span className="text-sm text-teal-200">
+                            Énergie{" "}
+                            {
+                              DISC_ELEMENTS[computedProfile.dominant_color]
+                                .elementFr
+                            }
+                          </span>
+                        </div>
+                      )}
                   </div>
                 </div>
-                <img
-                  src="/football-disc-card/23 Lumi foot.png"
-                  alt="Lumi"
-                  className="absolute bottom-2 -right-20 w-40 h-64 object-contain object-bottom"
-                />
-                <p className="text-sm sm:text-base font-bold text-teal-400 mt-4">
-                  Rejoins l&apos;association et nos coachs !
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+                <CardDescription className="text-slate-300 mt-2">
+                  Recommandation basée sur ton profil Lumi
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pb-4 sm:pb-6 px-4 sm:px-6 lg:px-8">
+                <div className="space-y-6">
+                  {/* Fit Score */}
+                  {hobbyProfile.fit_score !== null && (
+                    <div className="p-4 rounded-xl border border-white/10 bg-slate-900/60">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm text-slate-300">
+                          Score de compatibilité
+                        </p>
+                        <p className="text-2xl font-bold text-white">
+                          {hobbyProfile.fit_score}%
+                        </p>
+                      </div>
+                      <div className="w-full bg-slate-800 rounded-full h-3">
+                        <div
+                          className={`h-3 rounded-full ${
+                            hobbyProfile.fit_score >= 80
+                              ? "bg-green-400"
+                              : hobbyProfile.fit_score >= 50
+                                ? "bg-yellow-400"
+                                : "bg-red-400"
+                          }`}
+                          style={{ width: `${hobbyProfile.fit_score}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Recommended Role */}
+                  {hobbyProfile.recommended_role && (
+                    <div className="p-4 rounded-xl border border-teal-500/40 bg-teal-500/10">
+                      <p className="text-sm text-teal-200 mb-2">
+                        Rôle recommandé
+                      </p>
+                      <p className="text-2xl font-bold text-white">
+                        {hobbyProfile.recommended_role}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Description */}
+                  {hobbyProfile.description && (
+                    <div className="p-4 rounded-xl border border-white/10 bg-slate-900/70">
+                      <h4 className="text-lg font-semibold text-white mb-2">
+                        Description
+                      </h4>
+                      <p className="text-slate-200 leading-relaxed whitespace-pre-line">
+                        {hobbyProfile.description}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Development Tips */}
+                  {hobbyProfile.development_tips && (
+                    <div className="p-4 rounded-xl border border-white/10 bg-slate-900/70">
+                      <h4 className="text-lg font-semibold text-white mb-3">
+                        💡 Conseils de développement
+                      </h4>
+                      <div className="space-y-2">
+                        {hobbyProfile.development_tips
+                          .split("\n")
+                          .filter((tip) => tip.trim())
+                          .map((tip, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-start gap-2 text-slate-200"
+                            >
+                              <span className="text-teal-400 mt-0.5">•</span>
+                              <span>{tip.trim()}</span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right: Decorative football DISC card (only for Football) */}
+          {selectedHobby === "Football" && (
+            <div className="flex-shrink-0">
+              <Card
+                className="rounded-xl border border-white/10 bg-[rgba(7,24,48,0.9)] overflow-hidden w-full max-w-[360px]"
+                style={{
+                  minHeight: "260px",
+                }}
+              >
+                <CardContent className="h-full w-full sm:px-8 py-4 space-y-4 justify-center">
+                  {/* Header: title + logo */}
+                  <div className="w-full flex items-center">
+                    <div className="rounded-xl relative bg-gradient-to-b from-green-800/45 to-black-500/10 shadow-lg shadow-sky-900/60 px-6 py-2 text-center">
+                      <p className="text-xs sm:text-sm font-semibold tracking-wide text-white uppercase">
+                        Profil du joueur
+                      </p>
+                      <div className="absolute -top-2 -right-12">
+                        <img
+                          src="/Logo-2.png"
+                          alt="SpotBulle"
+                          className="w-19.5 h-auto"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* First section: player photo, radar chart, details, skill badges */}
+                  {computedProfile && (
+                    <div className="rounded-xl border-[4px] border-teal-500/80 p-3 space-y-3">
+                      <div className="flex gap-3 items-start justify-evenly">
+                        {/* Left: player photo placeholder / real photo */}
+                        <div className="shrink-0 flex flex-col items-center">
+                          <button
+                            type="button"
+                            onClick={handleAvatarClick}
+                            className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-slate-600/90 border-2 border-white/40 flex items-center justify-center overflow-hidden ring-2 ring-white/20 ${
+                              !localAvatarUrl
+                                ? "cursor-pointer hover:ring-teal-400/60"
+                                : ""
+                            }`}
+                          >
+                            {localAvatarUrl ? (
+                              <img
+                                src={localAvatarUrl}
+                                alt={userName || "Photo joueur"}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <svg
+                                className="w-7 h-7 sm:w-8 sm:h-8 text-white/70"
+                                fill="currentColor"
+                                viewBox="0 0 24 24"
+                                aria-hidden
+                              >
+                                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                              </svg>
+                            )}
+                          </button>
+                          <input
+                            ref={avatarInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleAvatarFileChange}
+                          />
+                          <p className="text-[10px] sm:text-xs font-semibold text-white mt-1 uppercase truncate max-w-[72px] sm:max-w-[80px] text-center">
+                            {userName ? String(userName).trim() : "—"}
+                          </p>
+                          <div className="text-white text-xs">
+                            {hobbyProfile?.recommended_role || "—"}
+                          </div>
+                        </div>
+                        {/* Right: radar chart (Air, Eau, Terre, Feu) */}
+                        <div className="min-w-0 flex flex-col items-center">
+                          <RadarChartFourElements
+                            dominantColor={computedProfile.dominant_color}
+                            secondaryColor={computedProfile.secondary_color}
+                          />
+                          <div className="mt-1 text-[10px] text-white/90">
+                            <p>
+                              Joueur:{" "}
+                              <span className="font-semibold">
+                                {favoritePlayer || "-"}
+                              </span>
+                            </p>
+                            <p>
+                              Équipe:{" "}
+                              <span className="font-semibold">
+                                {favoriteTeam || "—"}
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Skill badges row (4 icons, dominant / secondary characteristics) */}
+                      {skillBadges.length > 0 && (
+                        <div className="flex justify-center gap-1.5">
+                          {skillBadges.map((badge) => (
+                            <div
+                              key={badge.key}
+                              className="flex flex-col items-center"
+                              title={badge.label}
+                            >
+                              <img
+                                src={`/football-disc-card/${badge.src}`}
+                                alt=""
+                                className="w-20 h-20 object-contain"
+                              />
+                              <span className="text-[8px] sm:text-[9px] text-white/80 text-center max-w-[72px] leading-tight line-clamp-2">
+                                {badge.label}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Motivational line above second section */}
+                  <p className="text-base sm:text-lg font-bold text-teal-400">
+                    Ta créativité fait de toi un joueur unique !
+                  </p>
+                  {/* Second section: text, robot, CTA */}
+                  <div className="relative rounded-xl bg-white/10 border border-white/10 p-4 min-h-[200px]">
+                    <div className="flex gap-3 items-start">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white mb-1">
+                          Fier de son premier micro ?
+                        </p>
+                        <p className="text-xs text-slate-300 mb-1">
+                          <Link
+                            to="/module-mimetique"
+                            className="text-teal-400 font-medium hover:text-teal-300 underline underline-offset-2"
+                          >
+                            Cliquer ici
+                          </Link>
+                        </p>
+                        <ul className="text-xs text-slate-300 space-y-0.5 list-disc list-inside">
+                          <li>ta vidéo talent</li>
+                          <li>ton profil complet</li>
+                          <li>rejoindre l&apos;association et nos coachs</li>
+                        </ul>
+                      </div>
+                    </div>
+                    <img
+                      src="/football-disc-card/23 Lumi foot.png"
+                      alt="Lumi"
+                      className="absolute bottom-2 -right-20 w-40 h-64 object-contain object-bottom"
+                    />
+                    <p className="text-sm sm:text-base font-bold text-teal-400 mt-4">
+                      Rejoins l&apos;association et nos coachs !
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
       )}
     </>
