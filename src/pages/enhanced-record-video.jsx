@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '../components/ui/button-enhanced';
 import { supabase } from '../lib/supabase';
 import ProfessionalHeader from '../components/ProfessionalHeader';
+import { Loader2, Video, Mic, CheckCircle2, AlertCircle, RefreshCw, UploadCloud, Play, Square, Sparkles } from 'lucide-react';
 
 const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedInOdyssey = false }) => {
   const [recording, setRecording] = useState(false);
@@ -716,67 +717,55 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
 
   const audioLevelDisplay = toneAnalysis?.averageLevel || getCurrentAudioLevel();
 
-  // ✅ AFFICHAGE SCORE AI
+  // ✅ AFFICHAGE SCORE IA
   const renderAiScore = () => {
     if (!aiScore) return null;
-    
-    const getScoreColor = (score) => {
-      if (score >= 8.5) return 'text-green-400';
-      if (score >= 7.0) return 'text-blue-400';
-      if (score >= 5.5) return 'text-amber-400';
-      return 'text-red-400';
-    };
-    
-    const getScoreText = (score) => {
-      if (score >= 8.5) return 'Excellent';
-      if (score >= 7.0) return 'Bon';
-      if (score >= 5.5) return 'Moyen';
-      return 'À améliorer';
-    };
-    
+    const getScoreColor = (s) => s >= 8.5 ? 'text-teal-400' : s >= 7.0 ? 'text-blue-400' : s >= 5.5 ? 'text-amber-400' : 'text-red-400';
     return (
-      <div className="mt-4 p-4 bg-gradient-to-r from-gray-900 to-gray-800 rounded-xl border border-gray-700">
+      <div className="mt-4 p-4 bg-white/5 rounded-xl border border-white/10 animate-in fade-in zoom-in duration-500">
         <div className="flex items-center justify-between mb-2">
-          <h4 className="font-semibold text-white">🏆 Score IA</h4>
+          <h4 className="font-semibold text-white flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-teal-400" /> Score Lumi
+          </h4>
           <span className={`text-2xl font-bold ${getScoreColor(aiScore)}`}>
             {aiScore.toFixed(1)}/10
           </span>
         </div>
-        <div className="w-full bg-gray-700 rounded-full h-3">
+        <div className="w-full bg-white/10 rounded-full h-2">
           <div 
-            className={`h-3 rounded-full ${getScoreColor(aiScore).replace('text-', 'bg-')}`}
+            className={`h-2 rounded-full transition-all duration-1000 ${getScoreColor(aiScore).replace('text-', 'bg-')}`}
             style={{ width: `${aiScore * 10}%` }}
           />
         </div>
-        <p className="text-sm text-gray-300 mt-2">
-          {getScoreText(aiScore)} - {analysisResult?.summary?.substring(0, 100)}...
-        </p>
       </div>
     );
   };
 
   const content = (
-    <div className={embedInOdyssey ? '' : 'container mx-auto px-4 py-8'}>
+    <div className={`relative z-10 ${embedInOdyssey ? '' : 'container mx-auto px-4 py-8'}`}>
       <div className="max-w-6xl mx-auto">
         {!embedInOdyssey && (
-          <div className="text-center mb-8">
-            <h1 className="text-4xl font-french font-bold text-white mb-4">
-              🎤 Le module mimétique
+          <div className="text-center mb-12 animate-in fade-in slide-in-from-top-4 duration-700">
+            <div className="inline-flex items-center justify-center p-3 bg-teal-500/10 rounded-2xl mb-4 animate-glow-pulse">
+              <Video className="text-teal-400 w-8 h-8" />
+            </div>
+            <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 tracking-tight">
+              Le Module Mimétique
             </h1>
-            <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-              Enregistrement vidéo et miroir de ton étoile
+            <p className="text-xl text-teal-100/60 max-w-2xl mx-auto">
+              Exprimez votre talent face à Lumi et découvrez votre miroir stellaire.
             </p>
           </div>
         )}
 
         {/* SÉLECTION SCÉNARIO */}
         {showScenarioSelection && (
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 mb-8 shadow-2xl">
-            <h2 className="text-2xl font-french font-bold mb-6 text-center text-white">
-              🎬 Choisissez votre thème d'expression
+          <div className="glass-card border-white/10 rounded-[2.5rem] p-8 mb-12 shadow-2xl animate-in zoom-in duration-500">
+            <h2 className="text-2xl font-bold mb-8 text-center text-white flex items-center justify-center gap-3">
+              <Sparkles className="text-teal-400" /> Choisissez votre défi
             </h2>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               {[
                 { id: 'enfants', label: '👦 Enfants (8-12 ans)', emoji: '👦' },
                 { id: 'adolescents', label: '👨‍🎓 Adolescents (13-17 ans)', emoji: '👨‍🎓' },
@@ -785,32 +774,29 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
                 <div
                   key={group.id}
                   onClick={() => setAgeGroup(group.id)}
-                  className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                  className={`p-6 rounded-2xl cursor-pointer transition-all border-2 ${
                     ageGroup === group.id
-                      ? 'border-blue-500 bg-blue-900/30'
-                      : 'border-gray-700 hover:border-gray-600 bg-gray-800/50'
+                      ? 'border-teal-500 bg-teal-500/10 shadow-[0_0_20px_rgba(20,184,166,0.2)]'
+                      : 'border-white/5 hover:border-white/10 bg-white/5'
                   }`}
                 >
-                  <div className="text-2xl mb-2">{group.emoji}</div>
-                  <div className="text-gray-200 font-medium">{group.label}</div>
+                  <div className="text-3xl mb-3">{group.emoji}</div>
+                  <div className="text-teal-50 font-bold uppercase tracking-wider text-xs">{group.label}</div>
                 </div>
               ))}
             </div>
 
-            <div className="space-y-3">
+            <div className="grid gap-4">
               {scenarios[ageGroup]?.map((scenario, index) => (
                 <div
                   key={index}
                   onClick={() => selectScenario(scenario)}
-                  className="p-4 border border-gray-700 rounded-lg cursor-pointer hover:border-blue-500 hover:bg-blue-900/20 transition-all bg-gray-800/30"
+                  className="p-5 rounded-2xl bg-white/5 border border-white/5 hover:border-teal-500/50 hover:bg-teal-500/5 transition-all group cursor-pointer flex items-center justify-between"
                 >
-                  <p className="text-gray-200">{scenario}</p>
-                  <div className="flex items-center justify-between mt-2">
-                    <span className="text-sm text-gray-400">⏱️ 2 minutes maximum</span>
-                    <Button size="sm" variant="outline" className="border-blue-500 text-blue-400">
-                      Sélectionner →
-                    </Button>
-                  </div>
+                  <p className="text-teal-50 group-hover:text-white transition-colors pr-4 italic">"{scenario}"</p>
+                  <Button size="sm" variant="outline" className="border-teal-500/30 text-teal-400 hover:bg-teal-500/10 rounded-xl shrink-0">
+                    Choisir
+                  </Button>
                 </div>
               ))}
             </div>
@@ -819,104 +805,75 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* COLONNE ANALYSE */}
-          <div className="space-y-6">
-            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 shadow-xl">
-              <h4 className="font-semibold text-white mb-4 flex items-center gap-2">
-                <span className="text-xl">🎵</span> Analyse Vocale
+          <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-700 delay-200">
+            <div className="glass-card border-white/10 rounded-3xl p-6 shadow-2xl">
+              <h4 className="font-semibold text-white mb-6 flex items-center gap-2">
+                <Mic className="text-teal-400 w-5 h-5" /> Analyse Vocale
               </h4>
               
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-300">Volume</span>
-                    <span className="text-white font-medium">
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-teal-100/60">Intensité</span>
+                    <span className="text-teal-400 font-medium">
                       {Math.round(audioLevelDisplay * 100)}%
                     </span>
                   </div>
-                  <div className="w-full bg-gray-700 rounded-full h-2.5">
+                  <div className="w-full bg-white/5 rounded-full h-2 overflow-hidden">
                     <div 
-                      className="bg-blue-500 h-2.5 rounded-full transition-all duration-300"
+                      className="bg-gradient-to-r from-teal-500 to-blue-500 h-2 rounded-full transition-all duration-300"
                       style={{ width: `${audioLevelDisplay * 100}%` }}
                     />
                   </div>
                 </div>
                 
-                <div className="text-sm space-y-2.5">
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Émotion</span>
-                    <span className="text-white font-medium">
-                      {toneAnalysis?.emotion || 'serein'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Débit</span>
-                    <span className="text-white font-medium">
-                      {toneAnalysis?.pace || 'calme'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Clarté</span>
-                    <span className={`font-medium ${
-                      toneAnalysis?.clarity === 'excellente' ? 'text-green-400' :
-                      toneAnalysis?.clarity === 'bonne' ? 'text-blue-400' :
-                      'text-amber-400'
-                    }`}>
-                      {toneAnalysis?.clarity || 'à améliorer'}
-                    </span>
-                  </div>
+                <div className="grid grid-cols-1 gap-4">
+                  {[
+                    { label: 'Émotion', value: toneAnalysis?.emotion || 'serein', icon: '✨' },
+                    { label: 'Débit', value: toneAnalysis?.pace || 'calme', icon: '🌊' },
+                    { label: 'Clarté', value: toneAnalysis?.clarity || 'optimale', icon: '💎' }
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+                      <span className="text-sm text-teal-100/60 flex items-center gap-2">
+                        <span>{item.icon}</span> {item.label}
+                      </span>
+                      <span className="text-sm text-white font-medium capitalize">{item.value}</span>
+                    </div>
+                  ))}
                 </div>
 
-                {toneAnalysis?.suggestions && toneAnalysis.suggestions.length > 0 && (
-                  <div className="pt-3 border-t border-gray-800">
-                    <div className="text-xs text-blue-300 bg-blue-900/20 p-3 rounded-lg">
-                      <strong className="text-blue-200">💡 Suggestions :</strong>
-                      <ul className="mt-1.5 space-y-1">
-                        {toneAnalysis.suggestions.map((suggestion, index) => (
-                          <li key={index} className="flex items-start">
-                            <span className="mr-1.5">•</span>
-                            <span>{suggestion}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                )}
+                {renderAiScore()}
               </div>
-              
-              {/* SCORE AI */}
-              {renderAiScore()}
             </div>
 
             {/* TRANSCRIPTION */}
             {transcriptionText && (
-              <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 shadow-xl animate-in fade-in">
-                <div className="flex items-center justify-between mb-3">
+              <div className="glass-card border-white/10 rounded-3xl p-6 shadow-2xl animate-in fade-in zoom-in duration-500">
+                <div className="flex items-center justify-between mb-4">
                   <h4 className="font-semibold text-white flex items-center gap-2">
-                    <span className="text-xl">📝</span> Transcription
+                    <CheckCircle2 className="text-teal-400 w-5 h-5" /> Transcription
                     {transcriptionLanguage && (
-                      <span className="text-xs px-2 py-1 bg-blue-900/30 text-blue-400 rounded-full">
+                      <span className="text-[10px] px-2 py-1 bg-teal-500/20 text-teal-400 rounded-full uppercase tracking-wider font-bold ml-2">
                         {transcriptionLanguage.toUpperCase()}
                       </span>
                     )}
                   </h4>
-                  <span className="text-xs px-2 py-1 bg-green-900/30 text-green-400 rounded-full">
+                  <span className="text-xs px-2 py-1 bg-teal-500/20 text-teal-400 rounded-full">
                     Terminée
                   </span>
                 </div>
-                
-                <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 max-h-60 overflow-y-auto">
-                  <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap">
-                    {transcriptionText}
+                <div className="bg-black/20 border border-white/5 rounded-2xl p-4 max-h-60 overflow-y-auto custom-scrollbar">
+                  <p className="text-sm text-teal-50/80 leading-relaxed italic whitespace-pre-wrap">
+                    "{transcriptionText}"
                   </p>
                 </div>
-                
                 <Button
                   onClick={() => {
                     navigator.clipboard.writeText(transcriptionText);
                     toast.success('Texte copié !');
                   }}
                   size="sm"
-                  className="w-full mt-3 bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-600"
+                  className="w-full mt-3 bg-white/5 hover:bg-white/10 text-teal-100/60 border border-white/10 rounded-xl"
                 >
                   📋 Copier la transcription
                 </Button>
@@ -925,30 +882,30 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
 
             {/* ANALYSE GPT-4 */}
             {analysisResult && (
-              <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 shadow-xl">
+              <div className="glass-card border-white/10 rounded-3xl p-6 shadow-xl animate-in fade-in duration-500">
                 <div className="flex items-center justify-between mb-4">
                   <h4 className="font-semibold text-white flex items-center gap-2">
-                    <span className="text-xl">🧠</span> Analyse IA avancée
+                    <Sparkles className="text-teal-400 w-5 h-5" /> Analyse IA avancée
                   </h4>
-                  <span className="text-xs px-2 py-1 bg-purple-900/30 text-purple-400 rounded-full">
+                  <span className="text-[10px] px-2 py-1 bg-purple-500/20 text-purple-400 rounded-full uppercase tracking-wider font-bold">
                     GPT-4
                   </span>
                 </div>
                 
                 <div className="space-y-4">
-                  <div className="bg-gray-800/50 p-4 rounded-lg">
-                    <h5 className="font-medium text-white mb-2">📊 Résumé</h5>
-                    <p className="text-sm text-gray-300">
+                  <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                    <h5 className="font-medium text-teal-400 text-xs uppercase tracking-widest mb-2">📊 Résumé</h5>
+                    <p className="text-sm text-teal-50/70 leading-relaxed">
                       {analysisResult.summary?.substring(0, 200)}...
                     </p>
                   </div>
                   
-                  <div className="bg-gray-800/50 p-4 rounded-lg">
-                    <h5 className="font-medium text-white mb-2">🎯 Conseils</h5>
-                    <ul className="text-sm text-gray-300 space-y-1">
+                  <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                    <h5 className="font-medium text-teal-400 text-xs uppercase tracking-widest mb-2">🎯 Conseils</h5>
+                    <ul className="text-sm text-teal-50/70 space-y-2">
                       {analysisResult.communication_advice?.slice(0, 3).map((advice, index) => (
-                        <li key={index} className="flex items-start">
-                          <span className="text-green-400 mr-2">•</span>
+                        <li key={index} className="flex items-start gap-2">
+                          <div className="w-1.5 h-1.5 bg-teal-500 rounded-full mt-1.5 shrink-0" />
                           <span>{advice}</span>
                         </li>
                       ))}
@@ -960,27 +917,27 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
 
             {/* STATUT TRANSCRIPTION */}
             {transcribing && (
-              <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 shadow-xl">
+              <div className="glass-card border-white/10 rounded-3xl p-6 shadow-xl">
                 <div className="flex items-center justify-between mb-4">
                   <h4 className="font-semibold text-white flex items-center gap-2">
-                    <span className="text-xl">⚡</span> Traitement IA
+                    <Loader2 className="text-teal-400 w-5 h-5 animate-spin" /> Traitement IA
                   </h4>
-                  <span className="text-xs px-2 py-1 bg-blue-900/30 text-blue-400 rounded-full animate-pulse">
+                  <span className="text-[10px] px-2 py-1 bg-blue-500/20 text-blue-400 rounded-full animate-pulse uppercase tracking-wider font-bold">
                     En cours...
                   </span>
                 </div>
                 
                 <div className="space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">Transcription</span>
-                    <span className="text-blue-400 font-medium">Analyse en cours</span>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-teal-100/40 uppercase tracking-widest">Transcription</span>
+                    <span className="text-teal-400 font-medium">Analyse en cours</span>
                   </div>
                   
-                  <div className="w-full bg-gray-800 rounded-full h-1.5">
-                    <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-1.5 rounded-full animate-pulse w-3/4" />
+                  <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
+                    <div className="bg-gradient-to-r from-teal-500 to-blue-500 h-1.5 rounded-full animate-pulse w-3/4" />
                   </div>
                   
-                  <p className="text-xs text-gray-400 pt-2">
+                  <p className="text-[11px] text-teal-100/40 italic pt-2">
                     L'IA Whisper analyse votre discours et génère la transcription...
                   </p>
                 </div>
@@ -988,21 +945,32 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
             )}
           </div>
 
-          {/* ZONE PRINCIPALE - CORRECTION VIDÉO */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 shadow-xl">
+          {/* ZONE PRINCIPALE - VIDÉO AVEC ANIMATION FLUIDE */}
+          <div className="lg:col-span-2 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-400">
+            <div className="glass-card border-white/10 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+              {/* Animation de fond subtile */}
+              <div className="absolute -top-24 -right-24 w-64 h-64 bg-teal-500/10 rounded-full blur-3xl animate-pulse" />
+              <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl animate-pulse" />
+
               {/* COMPTE À REBOURS */}
               {countdown > 0 && (
-                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-                  <div className="text-white text-8xl font-bold animate-pulse">
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 rounded-3xl">
+                  <div className="text-white text-9xl font-bold animate-ping">
                     {countdown}
                   </div>
                 </div>
               )}
 
-              {/* ✅ CORRECTION VIDÉO : ZONE VIDÉO AMÉLIORÉE */}
-              <div className="relative mb-6">
-                <div className="bg-black rounded-xl overflow-hidden aspect-video relative border border-gray-800">
+              {/* ZONE VIDÉO AVEC CONTOUR ANIMÉ FLUIDE */}
+              <div className="relative mb-8 group">
+                {/* L'animation de contour fluide (style Lumi/VoltFlow) */}
+                <div className={`absolute -inset-1.5 rounded-[2rem] blur-sm opacity-75 transition-all duration-1000 
+                  ${recording ? 'bg-gradient-to-r from-red-500 via-orange-500 to-red-500 animate-gradient-x opacity-100' : 
+                    uploading ? 'bg-gradient-to-r from-teal-400 via-blue-500 to-teal-400 animate-gradient-x opacity-100' : 
+                    'bg-gradient-to-r from-teal-500/30 to-blue-500/30 group-hover:opacity-100'}`} 
+                />
+                
+                <div className="relative bg-black rounded-[1.75rem] overflow-hidden aspect-video shadow-2xl border border-white/10">
                   {!recordedVideo ? (
                     <video
                       ref={videoRef}
@@ -1014,143 +982,131 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
                         console.error('❌ Erreur vidéo live:', e);
                         setError('Erreur de flux vidéo. Veuillez réessayer.');
                       }}
-                      onLoadedData={() => {
-                        console.log('✅ Vidéo live chargée');
-                      }}
                     />
                   ) : (
                     <video
-                      key={recordedVideo.url} // ✅ Force le re-render
+                      key={recordedVideo.url}
                       src={recordedVideo.url}
                       controls
                       className="w-full h-full object-cover"
                       onError={(e) => {
                         console.error('❌ Erreur vidéo enregistrée:', e);
-                        setError('La vidéo enregistrée ne peut pas être lue. Format peut-être incompatible.');
+                        setError('La vidéo enregistrée ne peut pas être lue.');
                       }}
-                      onLoadedData={() => {
-                        console.log('✅ Vidéo enregistrée chargée avec succès');
-                        toast.success('✅ Vidéo prête à être visionnée');
-                      }}
-                      onCanPlay={() => {
-                        console.log('✅ Vidéo peut être lue');
-                      }}
-                      preload="auto"
                     />
                   )}
                   
-                  {/* Indicateur caméra */}
-                  {cameraAccess && !recording && !recordedVideo && (
-                    <div className="absolute top-4 left-4 bg-green-600/90 text-white px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-sm">
-                      ✅ Caméra active
-                    </div>
-                  )}
-                  
-                  {recording && (
-                    <div className="absolute top-4 right-4 bg-red-600 text-white px-3 py-1.5 rounded-full flex items-center gap-2 animate-pulse shadow-lg">
-                      <div className="w-2.5 h-2.5 bg-white rounded-full animate-ping" />
-                      <span className="font-semibold text-sm">● {formatTime(recordingTime)}</span>
-                    </div>
-                  )}
-                  
-                  {/* Indicateur vidéo enregistrée */}
-                  {recordedVideo && !recording && (
-                    <div className="absolute top-4 left-4 bg-blue-600/90 text-white px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-sm">
-                      ✅ Vidéo enregistrée
-                    </div>
-                  )}
+                  {/* Overlays de statut */}
+                  <div className="absolute top-6 left-6 flex gap-3">
+                    {cameraAccess && !recording && !recordedVideo && (
+                      <div className="bg-teal-500/90 text-white px-4 py-1.5 rounded-full text-[10px] font-bold tracking-widest backdrop-blur-md shadow-lg flex items-center gap-2 border border-white/20 uppercase">
+                        <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                        LUMI READY
+                      </div>
+                    )}
+                    {recording && (
+                      <div className="bg-red-600 text-white px-4 py-1.5 rounded-full flex items-center gap-2 animate-pulse shadow-lg border border-white/20">
+                        <div className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
+                        <span className="font-bold text-[10px] tracking-widest uppercase">REC {formatTime(recordingTime)}</span>
+                      </div>
+                    )}
+                    {recordedVideo && !recording && (
+                      <div className="bg-blue-600/90 text-white px-4 py-1.5 rounded-full text-[10px] font-bold tracking-widest backdrop-blur-md shadow-lg flex items-center gap-2 border border-white/20 uppercase">
+                        <CheckCircle2 className="w-3 h-3" />
+                        ENREGISTRÉ
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* BARRE PROGRESSION */}
                 {recording && (
-                  <div className="w-full bg-gray-800 rounded-full h-2 mt-4">
+                  <div className="w-full bg-white/5 rounded-full h-1.5 mt-6 overflow-hidden">
                     <div 
-                      className="bg-gradient-to-r from-red-500 to-orange-500 h-2 rounded-full transition-all duration-1000"
+                      className="bg-gradient-to-r from-red-500 to-orange-500 h-1.5 rounded-full transition-all duration-1000"
                       style={{ width: `${(recordingTime / maxRecordingTime) * 100}%` }}
                     />
-                    <div className="flex justify-between text-xs text-gray-400 mt-1">
-                      <span>0:00</span>
-                      <span>2:00</span>
-                    </div>
                   </div>
                 )}
               </div>
 
-              {/* TAGS */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Mots-clés (séparés par des virgules)
-                </label>
-                <input
-                  type="text"
-                  value={tags}
-                  onChange={(e) => setTags(e.target.value)}
-                  placeholder="ex: football, passion, communauté, France-Maroc"
-                  className="w-full p-3 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-800 text-white placeholder:text-gray-400"
-                  disabled={recording || uploading}
-                />
-              </div>
+              {/* ACTIONS */}
+              <div className="space-y-6">
+                <div className="relative group">
+                  <label className="block text-[10px] font-bold text-teal-400/60 uppercase tracking-widest mb-3 ml-1">
+                    Mots-clés de votre Odyssée
+                  </label>
+                  <input
+                    type="text"
+                    value={tags}
+                    onChange={(e) => setTags(e.target.value)}
+                    placeholder="ex: passion, leadership, innovation..."
+                    className="input-volt w-full p-4 rounded-2xl text-white placeholder:text-white/20 focus:ring-2 focus:ring-teal-500/50 transition-all outline-none border border-white/10"
+                    disabled={recording || uploading}
+                  />
+                </div>
 
-              {/* BOUTONS */}
-              <div className="flex gap-3 flex-wrap">
-                {!recordedVideo && !recording && (
-                  <Button
-                    onClick={startRecording}
-                    disabled={!cameraAccess || countdown > 0}
-                    className="flex-1 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white py-4 text-lg font-semibold shadow-lg"
-                  >
-                    🎤 Commencer l'enregistrement
-                  </Button>
-                )}
-
-                {recording && (
-                  <Button
-                    onClick={stopRecording}
-                    className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-4 text-lg font-semibold border border-gray-600"
-                  >
-                    ⏹️ Arrêter l'enregistrement
-                  </Button>
-                )}
-
-                {recordedVideo && !uploading && (
-                  <>
+                <div className="flex gap-4 flex-wrap">
+                  {!recordedVideo && !recording && (
                     <Button
-                      onClick={uploadVideo}
-                      className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-4 text-lg font-semibold"
+                      onClick={startRecording}
+                      disabled={!cameraAccess || countdown > 0}
+                      className="flex-1 h-16 bg-teal-600 hover:bg-teal-500 text-white rounded-2xl shadow-xl shadow-teal-900/20 transition-all active:scale-[0.98] font-bold text-lg flex items-center justify-center gap-3"
                     >
-                      📤 Uploader la vidéo
+                      <Mic className="w-6 h-6" />
+                      <span>Démarrer l'expérience</span>
                     </Button>
-                    <Button
-                      onClick={retryRecording}
-                      className="flex-1 bg-gray-800 hover:bg-gray-700 text-white py-4 text-lg font-semibold border border-gray-600"
-                    >
-                      🔄 Réessayer
-                    </Button>
-                  </>
-                )}
+                  )}
 
-                {uploading && (
-                  <Button disabled className="flex-1 py-4 text-lg font-semibold bg-gray-800 text-gray-400">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    Upload en cours...
-                  </Button>
-                )}
+                  {recording && (
+                    <Button
+                      onClick={stopRecording}
+                      className="flex-1 h-16 bg-white/10 hover:bg-white/20 text-white rounded-2xl border border-white/10 transition-all active:scale-[0.98] font-bold text-lg flex items-center justify-center gap-3"
+                    >
+                      <Square className="w-6 h-6 fill-current" />
+                      <span>Terminer</span>
+                    </Button>
+                  )}
+
+                  {recordedVideo && !uploading && (
+                    <>
+                      <Button
+                        onClick={uploadVideo}
+                        className="flex-1 h-16 bg-gradient-to-r from-teal-500 to-blue-600 hover:from-teal-400 hover:to-blue-500 text-white rounded-2xl shadow-xl shadow-teal-900/20 transition-all active:scale-[0.98] font-bold text-lg flex items-center justify-center gap-3"
+                      >
+                        <UploadCloud className="w-6 h-6" />
+                        <span>Uploader vers Lumi</span>
+                      </Button>
+                      <Button
+                        onClick={retryRecording}
+                        className="w-16 h-16 bg-white/5 hover:bg-white/10 text-white rounded-2xl border border-white/10 transition-all flex items-center justify-center"
+                        title="Recommencer"
+                      >
+                        <RefreshCw className="w-6 h-6" />
+                      </Button>
+                    </>
+                  )}
+
+                  {uploading && (
+                    <Button disabled className="flex-1 h-16 bg-white/5 text-teal-400/50 rounded-2xl border border-white/5 font-bold text-lg flex items-center justify-center gap-3">
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                      <span>Synchronisation Lumi...</span>
+                    </Button>
+                  )}
+                </div>
               </div>
 
               {/* ERREUR */}
               {error && (
-                <div className="bg-red-900/30 border border-red-800 text-red-200 px-4 py-3 rounded-lg mt-4">
-                  <div className="flex items-center">
-                    <span className="text-lg mr-2">⚠️</span>
-                    <p>{error}</p>
+                <div className="bg-red-500/10 border border-red-500/20 text-red-200 px-4 py-4 rounded-2xl mt-6 flex items-center justify-between animate-in slide-in-from-top-2">
+                  <div className="flex items-center gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-400" />
+                    <p className="text-sm">{error}</p>
                   </div>
                   <Button 
                     onClick={() => setError(null)} 
                     size="sm" 
-                    className="mt-2 bg-red-800 hover:bg-red-700 text-white"
+                    className="bg-red-500/20 hover:bg-red-500/30 text-white rounded-xl border-none"
                   >
                     OK
                   </Button>
@@ -1158,66 +1114,58 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
               )}
             </div>
 
-            {/* OPTIONS */}
-            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 shadow-xl">
-              <h3 className="text-lg font-semibold text-white mb-4">🛠️ Options</h3>
-              
-              <div className="mb-6">
-                <label className="flex items-center justify-between cursor-pointer p-3 border border-gray-700 rounded-lg hover:bg-gray-800/50 bg-gray-800/30 transition-all">
-                  <div>
-                    <div className="font-medium text-white">Utiliser un avatar virtuel</div>
-                    <div className="text-sm text-gray-400">Préserve votre anonymat</div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={useAvatar}
-                    onChange={(e) => setUseAvatar(e.target.checked)}
-                    className="w-5 h-5 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-900"
-                  />
-                </label>
+            {/* OPTIONS & CONSEILS */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="glass-card border-white/10 rounded-3xl p-6 shadow-xl">
+                <h3 className="text-[10px] font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-teal-400" /> Thème Actif
+                </h3>
+                <div className="p-4 bg-teal-500/5 border border-teal-500/10 rounded-2xl">
+                  <p className="text-teal-100/80 text-sm leading-relaxed mb-4 italic">
+                    "{selectedScenario}"
+                  </p>
+                  <Button
+                    onClick={() => setShowScenarioSelection(true)}
+                    variant="outline"
+                    className="w-full border-teal-500/30 text-teal-400 hover:bg-teal-500/10 rounded-xl text-[10px] font-bold uppercase tracking-widest"
+                  >
+                    Changer de thème
+                  </Button>
+                </div>
+                
+                <div className="mt-6">
+                  <label className="flex items-center justify-between cursor-pointer p-4 border border-white/5 rounded-2xl hover:bg-white/5 transition-all">
+                    <div>
+                      <div className="text-sm font-medium text-white">Avatar Virtuel</div>
+                      <div className="text-[10px] text-teal-100/40 uppercase tracking-wider">Mode Anonyme</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={useAvatar}
+                      onChange={(e) => setUseAvatar(e.target.checked)}
+                      className="w-5 h-5 rounded-lg border-white/10 bg-white/5 text-teal-500 focus:ring-teal-500/50"
+                    />
+                  </label>
+                </div>
               </div>
 
-              <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-4">
-                <h4 className="font-semibold text-blue-300 mb-2">🎯 Thème sélectionné</h4>
-                <p className="text-blue-200 text-sm mb-3">{selectedScenario}</p>
-                <Button
-                  onClick={() => setShowScenarioSelection(true)}
-                  className="w-full bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 border border-blue-800"
-                >
-                  Changer de thème
-                </Button>
+              <div className="glass-card border-white/10 rounded-3xl p-6 shadow-xl">
+                <h3 className="text-[10px] font-bold text-white uppercase tracking-widest mb-4">Conseils Lumi</h3>
+                <ul className="space-y-4">
+                  {[
+                    'Parlez avec authenticité et passion',
+                    'Regardez l\'objectif comme un ami',
+                    'Lumi analyse votre miroir stellaire',
+                    '2 minutes pour captiver l\'attention',
+                    'Un bon éclairage sublime l\'analyse'
+                  ].map((tip, i) => (
+                    <li key={i} className="flex items-center gap-3 text-sm text-teal-100/60">
+                      <div className="w-1.5 h-1.5 bg-teal-500 rounded-full shadow-[0_0_8px_rgba(20,184,166,0.8)]" />
+                      {tip}
+                    </li>
+                  ))}
+                </ul>
               </div>
-            </div>
-
-            {/* CONSEILS */}
-            <div className="bg-gray-800/50 border border-gray-700 rounded-2xl p-6">
-              <h3 className="font-semibold text-white mb-3">💡 Conseils pour un bon enregistrement</h3>
-              <ul className="text-sm text-gray-300 space-y-2">
-                <li className="flex items-start">
-                  <span className="text-green-400 mr-2">•</span>
-                  Parlez clairement et à un rythme modéré
-                </li>
-                <li className="flex items-start">
-                  <span className="text-green-400 mr-2">•</span>
-                  Utilisez un fond neutre et un bon éclairage
-                </li>
-                <li className="flex items-start">
-                  <span className="text-green-400 mr-2">•</span>
-                  Souriez et soyez naturel
-                </li>
-                <li className="flex items-start">
-                  <span className="text-green-400 mr-2">•</span>
-                  2 minutes maximum pour garder l'attention
-                </li>
-                <li className="flex items-start">
-                  <span className="text-green-400 mr-2">•</span>
-                  Ajoutez des mots-clés pertinents
-                </li>
-                <li className="flex items-start">
-                  <span className="text-green-400 mr-2">•</span>
-                  Regardez droit dans la caméra
-                </li>
-              </ul>
             </div>
           </div>
         </div>
@@ -1230,9 +1178,55 @@ const EnhancedRecordVideo = ({ user, profile, onSignOut, onVideoUploaded, embedI
   }
   
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-950">
+    <div className="min-h-screen bg-[#3d6b66] relative overflow-hidden"
+      style={{
+        backgroundImage: "url('/Fond-2.png')",
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+      }}
+    >
+      {/* Logo Lumi en haut à gauche */}
+      <div className="absolute top-0 left-0 p-6 z-20 animate-float">
+        <img src="/Logo-2.png" alt="Lumi" className="h-20 md:h-24 w-auto drop-shadow-2xl" />
+      </div>
+
       <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
-      {content}
+      
+      <div className="relative pt-24 pb-12">
+        {content}
+      </div>
+
+      {/* Modale de sélection de scénario */}
+      {showScenarioSelection && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="glass-card border-white/10 rounded-[2.5rem] p-8 max-w-2xl w-full shadow-2xl max-h-[80vh] overflow-y-auto custom-scrollbar">
+            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+              <Sparkles className="text-teal-400" /> Choisissez votre défi
+            </h2>
+            <div className="grid gap-4">
+              {scenarios[ageGroup]?.map((scenario, index) => (
+                <button
+                  key={index}
+                  onClick={() => {
+                    setSelectedScenario(scenario);
+                    setShowScenarioSelection(false);
+                  }}
+                  className="text-left p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-teal-500/50 hover:bg-teal-500/5 transition-all group"
+                >
+                  <p className="text-teal-50 group-hover:text-white transition-colors">{scenario}</p>
+                </button>
+              ))}
+            </div>
+            <Button 
+              onClick={() => setShowScenarioSelection(false)}
+              className="w-full mt-8 bg-white/5 hover:bg-white/10 text-white rounded-xl border border-white/10"
+            >
+              Fermer
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
