@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
 import { toast } from 'sonner';
 import { Button } from './ui/button-enhanced.jsx';
+import { getPublicUrl } from '../lib/storageUtils.js';
 
 const ProfileForm = ({ onProfileUpdated = () => {} }) => {
   const [loading, setLoading] = useState(false);
@@ -10,10 +11,13 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
     sex: '',
     is_major: null,
     passions: [],
-    skills: ''
+    skills: '',
+    avatar_url: null,
   });
   const [validationErrors, setValidationErrors] = useState({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const supabase = useSupabaseClient();
   const currentUser = useUser();
@@ -67,8 +71,14 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
           sex: data.sex || '',
           is_major: data.is_major,
           passions: data.passions || [],
-          skills: Array.isArray(data.skills) ? data.skills.join(', ') : (data.skills || '')
+          skills: Array.isArray(data.skills) ? data.skills.join(', ') : (data.skills || ''),
+          avatar_url: data.avatar_url || null,
         });
+
+        if (data.avatar_url) {
+          const publicUrl = getPublicUrl(data.avatar_url, 'avatars');
+          setAvatarPreview(publicUrl);
+        }
       }
     } catch (error) {
       console.error('❌ Erreur lors du chargement du profil:', error);
@@ -119,6 +129,47 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
     }
   };
 
+  const handleAvatarChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || !currentUser) return;
+
+    try {
+      setUploadingAvatar(true);
+
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${currentUser.id}/${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true,
+        });
+
+      if (uploadError) {
+        console.error('❌ Erreur upload avatar:', uploadError);
+        toast.error("Erreur lors de l'envoi de la photo");
+        return;
+      }
+
+      const storagePath = `avatars/${filePath}`;
+
+      setFormData((prev) => ({
+        ...prev,
+        avatar_url: storagePath,
+      }));
+
+      const publicUrl = getPublicUrl(storagePath, 'avatars');
+      setAvatarPreview(publicUrl);
+      toast.success('✅ Photo de profil mise à jour');
+    } catch (error) {
+      console.error('❌ Erreur upload avatar:', error);
+      toast.error("Erreur lors de l'envoi de la photo");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   // ✅ CORRECTION : Soumission avec validation robuste
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -147,6 +198,7 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
         is_major: formData.is_major,
         passions: formData.passions,
         skills: formData.skills.split(',').map(skill => skill.trim()).filter(skill => skill),
+        avatar_url: formData.avatar_url,
         updated_at: new Date().toISOString()
       };
 
@@ -196,6 +248,40 @@ const ProfileForm = ({ onProfileUpdated = () => {} }) => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Photo de profil */}
+        <div className="space-y-3">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Photo de profil
+          </label>
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-full bg-slate-600/80 border-2 border-teal-500/70 overflow-hidden ring-2 ring-white/10 flex items-center justify-center">
+              {avatarPreview ? (
+                <img
+                  src={avatarPreview}
+                  alt="Photo de profil"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-[11px] text-gray-200 text-center px-1">
+                  Aucune photo
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col gap-1">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                disabled={uploadingAvatar || loading}
+                className="text-xs text-gray-700 dark:text-gray-300"
+              />
+              <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                PNG ou JPG, max 2&nbsp;Mo.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Genre avec validation */}
         <div className="space-y-3">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
