@@ -881,12 +881,8 @@ export default function HobbyFlow({ computedProfile, ageRange, userName, avatarU
       {hobbyProfile && selectedHobby === "Football" && (
         <div className="mt-4 flex justify-center">
           <Card
-            className="rounded-xl border-none bg-transparent overflow-hidden w-full max-w-[360px]"
+            className="rounded-xl border border-white/10 bg-[rgba(7,24,48,0.9)] overflow-hidden w-full max-w-[360px]"
             style={{
-              backgroundImage: "url('/football-disc-card/17 Fond.png')",
-              backgroundSize: "100% 100%",
-              backgroundPosition: "center",
-              backgroundRepeat: "no-repeat",
               minHeight: "260px",
             }}
           >
@@ -897,11 +893,11 @@ export default function HobbyFlow({ computedProfile, ageRange, userName, avatarU
                   <p className="text-xs sm:text-sm font-semibold tracking-wide text-white uppercase">
                     Profil du joueur
                   </p>
-                  <div className="absolute -top-3 -right-17">
+                  <div className="absolute -top-2 -right-12">
                     <img
-                      src="/football-disc-card/Logo-Genup.png"
-                      alt="Genup"
-                      className="w-22"
+                      src="/Logo-2.png"
+                      alt="SpotBulle"
+                      className="w-19.5 h-auto"
                     />
                   </div>
                 </div>
