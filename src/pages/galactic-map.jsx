@@ -1,15 +1,165 @@
 // src/pages/galactic-map.jsx
 // "La carte galactique" - visual map of the community
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSupabaseClient, useUser } from "@supabase/auth-helpers-react";
 import { toast } from "sonner";
 
 import OdysseyLayout from "../components/OdysseyLayout.jsx";
 import { Button } from "../components/ui/button-enhanced.jsx";
-import { useDirectoryUsers, useExistingConnections } from "../hooks/useDirectory.js";
+import {
+  useDirectoryUsers,
+  useExistingConnections,
+} from "../hooks/useDirectory.js";
 import { getPublicUrl } from "../lib/storageUtils.js";
+
+// Lightweight radar chart reused from the HobbyFlow card (only for display)
+function RadarChartFourElements({ dominantColor, secondaryColor }) {
+  const size = 90;
+  const center = size / 2;
+  const maxRadius = 28;
+  const axes = [
+    { label: "Air", angle: -90 },
+    { label: "Eau", angle: 0 },
+    { label: "Terre", angle: 90 },
+    { label: "Feu", angle: 180 },
+  ];
+
+  const ELEMENT_AXIS_INDEX = { jaune: 0, bleu: 1, vert: 2, rouge: 3 };
+
+  // Base values for the 4 elements
+  const values = [0.3, 0.3, 0.3, 0.3];
+  if (dominantColor != null && ELEMENT_AXIS_INDEX[dominantColor] != null) {
+    values[ELEMENT_AXIS_INDEX[dominantColor]] = 0.9;
+  }
+  if (secondaryColor != null && ELEMENT_AXIS_INDEX[secondaryColor] != null) {
+    values[ELEMENT_AXIS_INDEX[secondaryColor]] = 0.6;
+  }
+
+  return (
+    <div className="relative">
+      <svg width={size} height={size} className="text-white">
+        <defs>
+          <radialGradient id="radar-bg-galaxy" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="rgba(15,23,42,0.0)" />
+            <stop offset="100%" stopColor="rgba(15,23,42,0.65)" />
+          </radialGradient>
+        </defs>
+        <circle
+          cx={center}
+          cy={center}
+          r={maxRadius + 4}
+          fill="url(#radar-bg-galaxy)"
+          stroke="rgba(148, 163, 184, 0.6)"
+          strokeWidth={0.6}
+        />
+
+        {[0.33, 0.66, 1].map((ratio) => (
+          <circle
+            key={ratio}
+            cx={center}
+            cy={center}
+            r={maxRadius * ratio}
+            stroke="rgba(148, 163, 184, 0.35)"
+            strokeWidth={0.6}
+            fill="none"
+          />
+        ))}
+
+        {axes.map((ax) => {
+          const rad = (ax.angle * Math.PI) / 180;
+          const x = center + maxRadius * Math.cos(rad);
+          const y = center + maxRadius * Math.sin(rad);
+          return (
+            <line
+              key={ax.label}
+              x1={center}
+              y1={center}
+              x2={x}
+              y2={y}
+              stroke="rgba(148, 163, 184, 0.4)"
+              strokeWidth={0.6}
+            />
+          );
+        })}
+
+        {(() => {
+          const pts = axes.map((ax, i) => {
+            const rad = (ax.angle * Math.PI) / 180;
+            const r = maxRadius * values[i];
+            const x = center + r * Math.cos(rad);
+            const y = center + r * Math.sin(rad);
+            return { x, y, label: ax.label, value: values[i] };
+          });
+
+          const pathD =
+            pts.length > 0
+              ? `M ${pts[0].x} ${pts[0].y} ` +
+                pts
+                  .slice(1)
+                  .map((p) => `L ${p.x} ${p.y}`)
+                  .join(" ") +
+                " Z"
+              : "";
+
+          return (
+            <>
+              {pathD && (
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke="white"
+                  strokeWidth={1}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  strokeOpacity={0.9}
+                />
+              )}
+
+              {pts.map((p) => {
+                const bubbleRadius = 3 + p.value * 3;
+                return (
+                  <circle
+                    key={`${p.label}-bubble`}
+                    cx={p.x}
+                    cy={p.y}
+                    r={bubbleRadius}
+                    fill="white"
+                    fillOpacity={0.9}
+                    stroke="rgba(56, 189, 248, 0.8)"
+                    strokeWidth={0.6}
+                  />
+                );
+              })}
+            </>
+          );
+        })()}
+
+        {axes.map((ax) => {
+          const rad = (ax.angle * Math.PI) / 180;
+          const r = maxRadius + 10;
+          const x = center + r * Math.cos(rad);
+          const y = center + r * Math.sin(rad);
+          return (
+            <text
+              key={ax.label}
+              x={x}
+              y={y}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fill="white"
+              fontSize={8}
+              fontWeight={500}
+            >
+              {ax.label}
+            </text>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
 
 /**
  * Simple helper to map a DISC dominant_color to a Tailwind color class.
@@ -25,7 +175,8 @@ const ELEMENT_COLORS = {
 function getElementClasses(dominantColor) {
   if (!dominantColor) return "border-white/20 bg-white/10";
 
-  const colorClass = ELEMENT_COLORS[dominantColor] || "border-white/20 bg-white/10";
+  const colorClass =
+    ELEMENT_COLORS[dominantColor] || "border-white/20 bg-white/10";
   return `${colorClass}`;
 }
 
@@ -56,14 +207,20 @@ function useGalaxyPositions(users) {
   }, [users]);
 }
 
-function PlayerDetailPanel({ user, status, onConnect }) {
+function PlayerDetailPanel({
+  user,
+  status,
+  onConnect,
+  hobbyProfile,
+  loadingHobby,
+}) {
   if (!user) {
     return (
       <div className="card-spotbulle-dark p-6 text-slate-100">
         <h3 className="text-lg font-semibold mb-2">Choisis une étoile ✨</h3>
         <p className="text-sm text-slate-300">
-          Survole ou clique sur une planète pour découvrir le profil d&apos;un joueur, ses forces et lance une
-          première connexion.
+          Survole ou clique sur une planète pour découvrir le profil d&apos;un
+          joueur, ses forces et lance une première connexion.
         </p>
       </div>
     );
@@ -71,10 +228,10 @@ function PlayerDetailPanel({ user, status, onConnect }) {
 
   const elementClass = getElementClasses(user.dominant_color);
   const avatarSrc = user.avatar_url
-    ? (user.avatar_url.startsWith("http")
-        ? user.avatar_url
-        : getPublicUrl(user.avatar_url, "avatars") ||
-          "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?w=200&h=200&fit=crop&crop=faces")
+    ? user.avatar_url.startsWith("http")
+      ? user.avatar_url
+      : getPublicUrl(user.avatar_url, "avatars") ||
+        "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?w=200&h=200&fit=crop&crop=faces"
     : "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?w=200&h=200&fit=crop&crop=faces";
 
   return (
@@ -92,12 +249,16 @@ function PlayerDetailPanel({ user, status, onConnect }) {
           />
         </div>
         <div>
-          <h3 className="text-xl font-semibold">{user.full_name || "Joueur mystérieux"}</h3>
+          <h3 className="text-xl font-semibold">
+            {user.full_name || "Joueur mystérieux"}
+          </h3>
           {user.location && (
             <p className="text-sm text-slate-300">📍 {user.location}</p>
           )}
           {user.football_interest && (
-            <p className="text-sm text-teal-300 mt-1">⚽ Passionné de football</p>
+            <p className="text-sm text-teal-300 mt-1">
+              ⚽ Passionné de football
+            </p>
           )}
         </div>
       </div>
@@ -119,14 +280,6 @@ function PlayerDetailPanel({ user, status, onConnect }) {
       )}
 
       <div className="pt-2">
-        {status === "can_connect" && (
-          <Button
-            onClick={() => onConnect(user.id)}
-            className="w-full bg-teal-500 hover:bg-teal-400 text-white"
-          >
-            🤝 Se connecter
-          </Button>
-        )}
         {status === "pending_or_friend" && (
           <Button
             disabled
@@ -135,6 +288,74 @@ function PlayerDetailPanel({ user, status, onConnect }) {
             ✅ Demande envoyée / déjà ami
           </Button>
         )}
+      </div>
+      {/* Football hobby profile (half card) + connect CTA below */}
+      <div className="mt-4 space-y-3">
+        <div>
+          {loadingHobby && (
+            <p className="text-xs text-slate-300">
+              Chargement du profil football...
+            </p>
+          )}
+          {!loadingHobby && hobbyProfile && (
+            <div className="mt-1 rounded-xl border-[3px] border-teal-500/80 p-3 bg-slate-900/60 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-300">
+                    Football - Rôle idéal
+                  </p>
+                  <p className="text-sm font-semibold text-slate-50 truncate">
+                    {hobbyProfile.recommended_role ||
+                      "Profil en cours de calcul"}
+                  </p>
+                </div>
+                <div className="shrink-0">
+                  <RadarChartFourElements
+                    dominantColor={hobbyProfile.dominant_color}
+                    secondaryColor={hobbyProfile.secondary_color}
+                  />
+                </div>
+              </div>
+              <div className="text-[11px] text-slate-200 space-y-1">
+                {hobbyProfile.favoritePlayer && (
+                  <p>
+                    Joueur préféré :{" "}
+                    <span className="font-semibold">
+                      {hobbyProfile.favoritePlayer}
+                    </span>
+                  </p>
+                )}
+                {hobbyProfile.favoriteTeam && (
+                  <p>
+                    Équipe préférée :{" "}
+                    <span className="font-semibold">
+                      {hobbyProfile.favoriteTeam}
+                    </span>
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="pt-1">
+          {status === "can_connect" && (
+            <Button
+              onClick={() => onConnect(user.id)}
+              className="w-full bg-teal-500 hover:bg-teal-400 text-white"
+            >
+              🤝 Se connecter
+            </Button>
+          )}
+          {status === "pending_or_friend" && (
+            <Button
+              disabled
+              className="w-full bg-gray-300 text-gray-600 cursor-not-allowed"
+            >
+              ✅ Demande envoyée / déjà ami
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -146,12 +367,12 @@ export default function GalacticMap({ user, profile, onSignOut }) {
   const navigate = useNavigate();
 
   const { data: users = [], isLoading, error } = useDirectoryUsers("all", "");
-  const {
-    data: existingConnections = new Set(),
-    refetch: refetchConnections,
-  } = useExistingConnections();
+  const { data: existingConnections = new Set(), refetch: refetchConnections } =
+    useExistingConnections();
 
   const [selectedUserId, setSelectedUserId] = useState(null);
+  const [selectedUserHobby, setSelectedUserHobby] = useState(null);
+  const [loadingHobby, setLoadingHobby] = useState(false);
 
   const positionedUsers = useGalaxyPositions(users);
 
@@ -163,7 +384,9 @@ export default function GalacticMap({ user, profile, onSignOut }) {
 
   const handleConnect = async (targetUserId) => {
     if (!currentUser) {
-      toast.error("Veuillez vous connecter pour te connecter à d'autres joueurs.");
+      toast.error(
+        "Veuillez vous connecter pour te connecter à d'autres joueurs.",
+      );
       navigate("/login");
       return;
     }
@@ -191,9 +414,7 @@ export default function GalacticMap({ user, profile, onSignOut }) {
       await refetchConnections();
 
       toast.success(
-        `Demande d'ami envoyée à ${
-          targetUser?.full_name || "ce joueur"
-        } !`
+        `Demande d'ami envoyée à ${targetUser?.full_name || "ce joueur"} !`,
       );
     } catch (err) {
       console.error("❌ Erreur handleConnect:", err);
@@ -202,8 +423,70 @@ export default function GalacticMap({ user, profile, onSignOut }) {
   };
 
   const selectedUser = positionedUsers.find(
-    (item) => item.user.id === selectedUserId
+    (item) => item.user.id === selectedUserId,
   )?.user;
+
+  // Load football hobby profile for the selected user (if any)
+  useEffect(() => {
+    if (!selectedUserId) {
+      setSelectedUserHobby(null);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadHobby = async () => {
+      try {
+        setLoadingHobby(true);
+        const { data, error } = await supabase
+          .from("lumi_hobby_profiles")
+          .select(
+            "dominant_color, secondary_color, recommended_role, gpt_response",
+          )
+          .eq("user_id", selectedUserId)
+          .eq("hobby_name", "Football")
+          .maybeSingle();
+
+        if (error) {
+          console.error(
+            "[GalacticMap] Erreur chargement hobby profile:",
+            error,
+          );
+          if (!isCancelled) {
+            setSelectedUserHobby(null);
+          }
+          return;
+        }
+
+        if (!isCancelled && data) {
+          const gpt = data.gpt_response || {};
+          const favoritePlayer =
+            gpt.favorite_player || gpt.favoritePlayer || null;
+          const favoriteTeam = gpt.favorite_team || gpt.favoriteTeam || null;
+
+          setSelectedUserHobby({
+            dominant_color: data.dominant_color,
+            secondary_color: data.secondary_color,
+            recommended_role: data.recommended_role,
+            favoritePlayer,
+            favoriteTeam,
+          });
+        } else if (!isCancelled) {
+          setSelectedUserHobby(null);
+        }
+      } finally {
+        if (!isCancelled) {
+          setLoadingHobby(false);
+        }
+      }
+    };
+
+    loadHobby();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedUserId, supabase]);
 
   return (
     <OdysseyLayout
@@ -287,12 +570,11 @@ export default function GalacticMap({ user, profile, onSignOut }) {
               {positionedUsers.map(({ user: u, x, y }) => {
                 const isSelected = selectedUserId === u.id;
                 const elementClass = getElementClasses(u.dominant_color);
-                const avatarSrc =
-                  u.avatar_url
-                    ? (u.avatar_url.startsWith("http")
-                        ? u.avatar_url
-                        : getPublicUrl(u.avatar_url, "avatars"))
-                    : null;
+                const avatarSrc = u.avatar_url
+                  ? u.avatar_url.startsWith("http")
+                    ? u.avatar_url
+                    : getPublicUrl(u.avatar_url, "avatars")
+                  : null;
                 return (
                   <button
                     key={u.id}
@@ -308,14 +590,14 @@ export default function GalacticMap({ user, profile, onSignOut }) {
                     }}
                     onClick={() => setSelectedUserId(u.id)}
                     aria-label={u.full_name || "Joueur"}
-                    >
+                  >
                     <div
                       className={`
                         w-12 h-12 rounded-full border-2 ${elementClass} 
                         flex items-center justify-center overflow-hidden
                         shadow-[0_0_10px_rgba(148,163,184,0.6)]
                       `}
-                      >
+                    >
                       {avatarSrc ? (
                         <img
                           src={avatarSrc}
@@ -364,11 +646,14 @@ export default function GalacticMap({ user, profile, onSignOut }) {
         {/* Panneau de détail joueur */}
         <PlayerDetailPanel
           user={selectedUser}
-          status={selectedUser ? getConnectionStatus(selectedUser.id) : "can_connect"}
+          status={
+            selectedUser ? getConnectionStatus(selectedUser.id) : "can_connect"
+          }
           onConnect={handleConnect}
+          hobbyProfile={selectedUserHobby}
+          loadingHobby={loadingHobby}
         />
       </div>
     </OdysseyLayout>
   );
 }
-
