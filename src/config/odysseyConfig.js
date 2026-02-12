@@ -38,7 +38,7 @@ export const ODYSSEY_STEPS = [
     id: 5,
     key: 'carte-galactique',
     title: 'La carte galactique',
-    path: null,
+    path: '/carte-galactique',
     Icon: Handshake,
   },
   {

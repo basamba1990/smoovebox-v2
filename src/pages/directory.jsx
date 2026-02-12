@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '../components/ui/button-enhanced.jsx';
 import VideoPicker from '../components/VideoPicker.jsx';
 import { useDirectoryUsers, useExistingConnections, useUserVideos } from '../hooks/useDirectory.js';
+import { getPublicUrl } from '../lib/storageUtils.js';
 
 const Directory = () => {
   const [filter, setFilter] = useState('all');
@@ -58,24 +59,15 @@ const Directory = () => {
     setConnecting(true);
 
     try {
-      const videoId = selectedVideos[targetUserId] || null;
       const targetUser = users.find(u => u.id === targetUserId);
 
-      console.log('📤 Envoi demande connexion:', {
-        requester_id: user.id,
-        target_id: targetUserId,
-        target_name: targetUser?.full_name,
-        video_id: videoId
-      });
 
       const { data, error } = await supabase
-        .from('connections')
+        .from('friend_requests')
         .insert({
           requester_id: user.id,
-          target_id: targetUserId,
-          video_id: videoId,
+          receiver_id: targetUserId,
           status: 'pending',
-          created_at: new Date().toISOString(),
         })
         .select();
 
@@ -99,15 +91,8 @@ const Directory = () => {
 
       // Invalidate connections cache to refetch
       queryClient.invalidateQueries({ queryKey: ['directory-connections', user.id] });
-      
-      // Réinitialiser la sélection vidéo pour cet utilisateur
-      setSelectedVideos(prev => {
-        const newSelection = { ...prev };
-        delete newSelection[targetUserId];
-        return newSelection;
-      });
 
-      toast.success(`Demande de connexion envoyée à ${targetUser?.full_name || 'l\'utilisateur'} !`);
+      toast.success(`Demande d'ami envoyée à ${targetUser?.full_name || 'l utilisateur'} !`);
       
     } catch (err) {
       console.error('❌ Erreur handleConnect:', err);
@@ -119,7 +104,7 @@ const Directory = () => {
 
   const getConnectionStatus = (targetUserId) => {
     if (!user) return 'not_connected';
-    if (existingConnections.has(targetUserId)) return 'pending';
+    if (existingConnections.has(targetUserId)) return 'pending_or_friend';
     return 'can_connect';
   };
 
@@ -275,13 +260,21 @@ const Directory = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {users.map((profile) => {
             const connectionStatus = getConnectionStatus(profile.id);
+            const avatarSrc =
+              profile.avatar_url
+                ? (profile.avatar_url.startsWith('http')
+                    ? profile.avatar_url
+                    : getPublicUrl(profile.avatar_url, 'avatars') || getDefaultAvatar(profile.sex)
+                  )
+                : getDefaultAvatar(profile.sex);
+
             return (
               <div key={profile.id} className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-200 hover:shadow-lg transition-all duration-300 hover:translate-y-[-2px]">
                 <div className="p-6">
                   {/* En-tête profil */}
                   <div className="flex items-start mb-4">
                     <img
-                      src={profile.avatar_url || getDefaultAvatar(profile.sex)}
+                      src={avatarSrc}
                       alt={profile.full_name}
                       className="w-14 h-14 rounded-full object-cover mr-4 border-2 border-blue-200"
                       onError={(e) => {
@@ -370,7 +363,7 @@ const Directory = () => {
                     )}
                   </div>
 
-                  {/* Actions de connexion */}
+                  {/* Actions de connexion / amitié */}
                   <div className="flex flex-col gap-3 pt-4 border-t border-gray-200">
                     {connectionStatus === 'can_connect' && (
                       <>
@@ -395,12 +388,12 @@ const Directory = () => {
                         </Button>
                       </>
                     )}
-                    {connectionStatus === 'pending' && (
+                    {connectionStatus === 'pending_or_friend' && (
                       <Button
                         disabled
                         className="bg-gray-300 text-gray-600 cursor-not-allowed py-2"
                       >
-                        ✅ Demande envoyée
+                        ✅ Demande envoyée / déjà ami
                       </Button>
                     )}
                     {connectionStatus === 'not_connected' && (
