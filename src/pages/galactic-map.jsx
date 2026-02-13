@@ -662,6 +662,7 @@ export default function GalacticMap({ user, profile, onSignOut }) {
       }
 
       await refetchConnections();
+      await queryClient.invalidateQueries(["friend-requests"]);
 
       toast.success(
         `Demande d'ami envoyée à ${targetUser?.full_name || "ce joueur"} !`,
