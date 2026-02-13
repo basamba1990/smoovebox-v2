@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSupabaseClient, useUser } from "@supabase/auth-helpers-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import OdysseyLayout from "../components/OdysseyLayout.jsx";
@@ -13,6 +14,114 @@ import {
   useExistingConnections,
 } from "../hooks/useDirectory.js";
 import { getPublicUrl } from "../lib/storageUtils.js";
+
+function Avatar({ profile, size = 48 }) {
+  const fallback =
+    profile?.sex === "female"
+      ? "/default-avatars/female.png"
+      : profile?.sex === "male"
+        ? "/default-avatars/male.png"
+        : "/default-avatars/neutral.png";
+
+  const src = React.useMemo(() => {
+    if (!profile?.avatar_url) return fallback;
+    if (profile.avatar_url.startsWith("http")) return profile.avatar_url;
+    return getPublicUrl(profile.avatar_url, "avatars") || fallback;
+  }, [profile?.avatar_url, fallback]);
+
+  return (
+    <img
+      src={src}
+      alt={profile?.full_name || "Utilisateur"}
+      className="rounded-full object-cover border-2 border-blue-200"
+      style={{ width: size, height: size }}
+      onError={(e) => {
+        e.currentTarget.src = fallback;
+      }}
+    />
+  );
+}
+
+function useFriendRequests() {
+  const supabase = useSupabaseClient();
+  const user = useUser();
+
+  return useQuery({
+    queryKey: ["friend-requests", user?.id],
+    enabled: !!user,
+    queryFn: async () => {
+      if (!user) return { incoming: [], outgoing: [] };
+
+      const { data: incoming, error: incError } = await supabase
+        .from("friend_requests")
+        .select("id, requester_id, created_at")
+        .eq("receiver_id", user.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+
+      if (incError) {
+        console.error(
+          "[GalacticMap] Erreur chargement demandes entrantes:",
+          incError,
+        );
+        throw incError;
+      }
+
+      const { data: outgoing, error: outError } = await supabase
+        .from("friend_requests")
+        .select("id, receiver_id, created_at")
+        .eq("requester_id", user.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+
+      if (outError) {
+        console.error(
+          "[GalacticMap] Erreur chargement demandes sortantes:",
+          outError,
+        );
+        throw outError;
+      }
+
+      const requesterIds = (incoming || []).map((r) => r.requester_id);
+      const receiverIds = (outgoing || []).map((r) => r.receiver_id);
+      const allIds = Array.from(new Set([...requesterIds, ...receiverIds]));
+
+      let profiles = [];
+      if (allIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from("profiles")
+          .select("id, full_name, avatar_url, sex, location")
+          .in("id", allIds);
+
+        if (profilesError) {
+          console.error(
+            "[GalacticMap] Erreur chargement profils connexions:",
+            profilesError,
+          );
+          throw profilesError;
+        }
+
+        profiles = profilesData || [];
+      }
+
+      const profileById = profiles.reduce((acc, p) => {
+        acc[p.id] = p;
+        return acc;
+      }, {});
+
+      return {
+        incoming: (incoming || []).map((req) => ({
+          ...req,
+          profile: profileById[req.requester_id] || null,
+        })),
+        outgoing: (outgoing || []).map((req) => ({
+          ...req,
+          profile: profileById[req.receiver_id] || null,
+        })),
+      };
+    },
+  });
+}
 
 // Lightweight radar chart reused from the HobbyFlow card (only for display)
 function RadarChartFourElements({ dominantColor, secondaryColor }) {
@@ -279,16 +388,6 @@ function PlayerDetailPanel({
         </div>
       )}
 
-      <div className="pt-2">
-        {status === "pending_or_friend" && (
-          <Button
-            disabled
-            className="w-full bg-gray-300 text-gray-600 cursor-not-allowed"
-          >
-            ✅ Demande envoyée / déjà ami
-          </Button>
-        )}
-      </div>
       {/* Football hobby profile (half card) + connect CTA below */}
       <div className="mt-4 space-y-3">
         <div>
@@ -365,6 +464,7 @@ export default function GalacticMap({ user, profile, onSignOut }) {
   const supabase = useSupabaseClient();
   const currentUser = useUser();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const { data: users = [], isLoading, error } = useDirectoryUsers("all", "");
   const { data: existingConnections = new Set(), refetch: refetchConnections } =
@@ -373,8 +473,158 @@ export default function GalacticMap({ user, profile, onSignOut }) {
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [selectedUserHobby, setSelectedUserHobby] = useState(null);
   const [loadingHobby, setLoadingHobby] = useState(false);
+  const [activeMainTab, setActiveMainTab] = useState("map"); // "map" | "connections"
+  const [activeSubTab, setActiveSubTab] = useState("incoming"); // "incoming" | "outgoing" | "friends"
 
   const positionedUsers = useGalaxyPositions(users);
+
+  const {
+    data: requests = { incoming: [], outgoing: [] },
+    isLoading: loadingRequests,
+    error: requestsError,
+  } = useFriendRequests();
+
+  const {
+    data: friends = [],
+    isLoading: loadingFriends,
+    error: friendsError,
+  } = useQuery({
+    queryKey: ["friends", currentUser?.id],
+    enabled: !!currentUser,
+    queryFn: async () => {
+      if (!currentUser) return [];
+
+      const { data, error } = await supabase
+        .from("friends")
+        .select("user_id_1, user_id_2")
+        .or(
+          `user_id_1.eq.${currentUser.id},user_id_2.eq.${currentUser.id}`,
+        );
+
+      if (error) {
+        console.error("[GalacticMap] Erreur chargement amis:", error);
+        throw error;
+      }
+
+      const otherIds = (data || []).map((row) =>
+        row.user_id_1 === currentUser.id ? row.user_id_2 : row.user_id_1,
+      );
+
+      if (!otherIds.length) return [];
+
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url, sex, location")
+        .in("id", otherIds);
+
+      if (profilesError) {
+        console.error(
+          "[GalacticMap] Erreur chargement profils amis:",
+          profilesError,
+        );
+        throw profilesError;
+      }
+
+      return profiles || [];
+    },
+  });
+
+  useEffect(() => {
+    if (requestsError) {
+      toast.error(
+        "Erreur lors du chargement de tes demandes de connexion.",
+      );
+    }
+    if (friendsError) {
+      toast.error("Erreur lors du chargement de tes amis.");
+    }
+  }, [requestsError, friendsError]);
+
+  const acceptMutation = useMutation({
+    mutationFn: async ({ requestId, otherUserId }) => {
+      if (!currentUser) throw new Error("Non authentifié");
+
+      const { error: updateError } = await supabase
+        .from("friend_requests")
+        .update({ status: "accepted" })
+        .eq("id", requestId)
+        .eq("receiver_id", currentUser.id);
+
+      if (updateError) {
+        console.error(
+          "[GalacticMap] Erreur update friend_requests:",
+          updateError,
+        );
+        throw updateError;
+      }
+
+      const userId1 = currentUser.id < otherUserId ? currentUser.id : otherUserId;
+      const userId2 = currentUser.id < otherUserId ? otherUserId : currentUser.id;
+
+      const { error: insertError } = await supabase
+        .from("friends")
+        .insert({ user_id_1: userId1, user_id_2: userId2 });
+
+      if (insertError && insertError.code !== "23505") {
+        console.error(
+          "[GalacticMap] Erreur insertion friends:",
+          insertError,
+        );
+        throw insertError;
+      }
+    },
+    onSuccess: () => {
+      toast.success("Demande acceptée, vous êtes maintenant amis.");
+      queryClient.invalidateQueries(["friend-requests"]);
+    },
+    onError: () => {
+      toast.error("Impossible d'accepter la demande pour le moment.");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async ({ requestId, isIncoming }) => {
+      if (!currentUser) throw new Error("Non authentifié");
+
+      const column = isIncoming ? "receiver_id" : "requester_id";
+
+      const { error: deleteError } = await supabase
+        .from("friend_requests")
+        .delete()
+        .eq("id", requestId)
+        .eq(column, currentUser.id);
+
+      if (deleteError) {
+        console.error(
+          "[GalacticMap] Erreur suppression friend_requests:",
+          deleteError,
+        );
+        throw deleteError;
+      }
+    },
+    onSuccess: () => {
+      toast.success("Demande mise à jour.");
+      queryClient.invalidateQueries(["friend-requests"]);
+    },
+    onError: () => {
+      toast.error("Impossible de modifier la demande pour le moment.");
+    },
+  });
+
+  const handleAcceptRequest = (req) => {
+    acceptMutation.mutate({
+      requestId: req.id,
+      otherUserId: req.requester_id,
+    });
+  };
+
+  const handleRejectRequest = (req) => {
+    deleteMutation.mutate({ requestId: req.id, isIncoming: true });
+  };
+
+  const handleCancelOutgoing = (req) => {
+    deleteMutation.mutate({ requestId: req.id, isIncoming: false });
+  };
 
   const getConnectionStatus = (targetUserId) => {
     if (!currentUser) return "not_connected";
@@ -496,7 +746,78 @@ export default function GalacticMap({ user, profile, onSignOut }) {
       maxWidthClass="max-w-6xl"
       onSignOut={onSignOut}
     >
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1.5fr)_320px] gap-6 items-start">
+      {/* Main tabs */}
+      <div className="flex items-center justify-between mb-5">
+        <div className="inline-flex rounded-lg border border-slate-700 overflow-hidden bg-slate-900/80">
+          <button
+            type="button"
+            className={`px-4 py-2 text-sm font-medium ${
+              activeMainTab === "map"
+                ? "bg-teal-500 text-white"
+                : "bg-slate-900 text-slate-200"
+            }`}
+            onClick={() => setActiveMainTab("map")}
+          >
+            Carte galactique
+          </button>
+          <button
+            type="button"
+            className={`px-4 py-2 text-sm font-medium border-l border-slate-700 ${
+              activeMainTab === "connections"
+                ? "bg-teal-500 text-white"
+                : "bg-slate-900 text-slate-200"
+            }`}
+            onClick={() => setActiveMainTab("connections")}
+          >
+            Connexions (
+            {requests.incoming.length + requests.outgoing.length})
+          </button>
+        </div>
+      </div>
+
+      {/* Sub-tabs inside Connexions */}
+      {activeMainTab === "connections" && (
+        <div className="max-w-3xl mx-auto mb-4">
+          <div className="inline-flex rounded-lg border border-slate-700 overflow-hidden bg-slate-900/80">
+            <button
+              type="button"
+              className={`px-4 py-2 text-xs sm:text-sm font-medium ${
+                activeSubTab === "incoming"
+                  ? "bg-slate-700 text-white"
+                  : "bg-slate-900 text-slate-200"
+              }`}
+              onClick={() => setActiveSubTab("incoming")}
+            >
+              Invitations reçues ({requests.incoming.length})
+            </button>
+            <button
+              type="button"
+              className={`px-4 py-2 text-xs sm:text-sm font-medium border-l border-slate-700 ${
+                activeSubTab === "outgoing"
+                  ? "bg-slate-700 text-white"
+                  : "bg-slate-900 text-slate-200"
+              }`}
+              onClick={() => setActiveSubTab("outgoing")}
+            >
+              Invitations envoyées ({requests.outgoing.length})
+            </button>
+            <button
+              type="button"
+              className={`px-4 py-2 text-xs sm:text-sm font-medium border-l border-slate-700 ${
+                activeSubTab === "friends"
+                  ? "bg-slate-700 text-white"
+                  : "bg-slate-900 text-slate-200"
+              }`}
+              onClick={() => setActiveSubTab("friends")}
+            >
+              Amis ({friends.length})
+            </button>
+          </div>
+        </div>
+      )}
+
+      {activeMainTab === "map" && (
+        <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1.5fr)_320px] gap-6 items-start">
         {/* Filtres & légende */}
         <div className="card-spotbulle-dark p-4 space-y-4">
           <h2 className="text-lg font-french font-bold text-white">
@@ -643,17 +964,162 @@ export default function GalacticMap({ user, profile, onSignOut }) {
           </div>
         </div>
 
-        {/* Panneau de détail joueur */}
-        <PlayerDetailPanel
-          user={selectedUser}
-          status={
-            selectedUser ? getConnectionStatus(selectedUser.id) : "can_connect"
-          }
-          onConnect={handleConnect}
-          hobbyProfile={selectedUserHobby}
-          loadingHobby={loadingHobby}
-        />
-      </div>
+          {/* Panneau de détail joueur */}
+          <PlayerDetailPanel
+            user={selectedUser}
+            status={
+              selectedUser ? getConnectionStatus(selectedUser.id) : "can_connect"
+            }
+            onConnect={handleConnect}
+            hobbyProfile={selectedUserHobby}
+            loadingHobby={loadingHobby}
+          />
+        </div>
+      )}
+
+      {activeMainTab === "connections" && activeSubTab === "incoming" && (
+        <div className="max-w-3xl mx-auto space-y-4">
+          {loadingRequests ? (
+            <div className="flex items-center justify-center py-10">
+              <div className="flex items-center gap-3 text-slate-200">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-teal-400 border-t-transparent" />
+                <span>Chargement de tes demandes reçues...</span>
+              </div>
+            </div>
+          ) : requests.incoming.length === 0 ? (
+            <p className="text-sm text-slate-400">
+              Tu n&apos;as pas encore de demandes d&apos;amis en attente.
+            </p>
+          ) : (
+            requests.incoming.map((req) => (
+              <div
+                key={req.id}
+                className="flex items-center justify-between gap-4 p-4 rounded-lg border border-slate-700 bg-slate-900/80"
+              >
+                <div className="flex items-center gap-3">
+                  <Avatar profile={req.profile} size={48} />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-50">
+                      {req.profile?.full_name || "Utilisateur"}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {req.profile?.location || "Localisation non précisée"}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Demande reçue le{" "}
+                      {new Date(req.created_at).toLocaleDateString("fr-FR")}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    onClick={() => handleAcceptRequest(req)}
+                    disabled={acceptMutation.isLoading}
+                    className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 text-sm"
+                  >
+                    Accepter
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleRejectRequest(req)}
+                    disabled={deleteMutation.isLoading}
+                    className="border-slate-600 text-slate-200 hover:bg-slate-800 px-3 py-2 text-sm"
+                  >
+                    Refuser
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {activeMainTab === "connections" && activeSubTab === "outgoing" && (
+        <div className="max-w-3xl mx-auto space-y-4">
+          {loadingRequests ? (
+            <div className="flex items-center justify-center py-10">
+              <div className="flex items-center gap-3 text-slate-200">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-teal-400 border-t-transparent" />
+                <span>Chargement de tes demandes envoyées...</span>
+              </div>
+            </div>
+          ) : requests.outgoing.length === 0 ? (
+            <p className="text-sm text-slate-400">
+              Tu n&apos;as pas encore envoyé de demande d&apos;ami.
+            </p>
+          ) : (
+            requests.outgoing.map((req) => (
+              <div
+                key={req.id}
+                className="flex items-center justify-between gap-4 p-4 rounded-lg border border-slate-700 bg-slate-900/80"
+              >
+                <div className="flex items-center gap-3">
+                  <Avatar profile={req.profile} size={48} />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-50">
+                      {req.profile?.full_name || "Utilisateur"}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {req.profile?.location || "Localisation non précisée"}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Demande envoyée le{" "}
+                      {new Date(req.created_at).toLocaleDateString("fr-FR")}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    variant="outline"
+                    onClick={() => handleCancelOutgoing(req)}
+                    disabled={deleteMutation.isLoading}
+                    className="border-slate-600 text-slate-200 hover:bg-slate-800 px-3 py-2 text-sm"
+                  >
+                    Annuler la demande
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {activeMainTab === "connections" && activeSubTab === "friends" && (
+        <div className="max-w-3xl mx-auto space-y-4">
+          {loadingFriends ? (
+            <div className="flex items-center justify-center py-10">
+              <div className="flex items-center gap-3 text-slate-200">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-teal-400 border-t-transparent" />
+                <span>Chargement de tes amis...</span>
+              </div>
+            </div>
+          ) : friends.length === 0 ? (
+            <p className="text-sm text-slate-400">
+              Tu n&apos;as pas encore d&apos;amis dans le réseau.
+            </p>
+          ) : (
+            friends.map((f) => (
+              <div
+                key={f.id}
+                className="flex items-center justify-between gap-4 p-4 rounded-lg border border-slate-700 bg-slate-900/80"
+              >
+                <div className="flex items-center gap-3">
+                  <Avatar profile={f} size={48} />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-50">
+                      {f.full_name || "Utilisateur"}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {f.location || "Localisation non précisée"}
+                    </p>
+                  </div>
+                </div>
+                {/* Placeholder pour actions futures (chat, profil, etc.) */}
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </OdysseyLayout>
   );
 }
