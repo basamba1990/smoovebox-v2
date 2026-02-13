@@ -475,14 +475,90 @@ export default function GalacticMap({ user, profile, onSignOut }) {
   const [loadingHobby, setLoadingHobby] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState("map"); // "map" | "connections"
   const [activeSubTab, setActiveSubTab] = useState("incoming"); // "incoming" | "outgoing" | "friends"
-
-  const positionedUsers = useGalaxyPositions(users);
+  const [elementFilter, setElementFilter] = useState(null); // "rouge" | "jaune" | "vert" | "bleu" | null
+  const [hasClubFilter, setHasClubFilter] = useState(false); // filter on users who have a club in their hobby profile
 
   const {
     data: requests = { incoming: [], outgoing: [] },
     isLoading: loadingRequests,
     error: requestsError,
   } = useFriendRequests();
+
+  const {
+    data: hobbyProfiles = [],
+    isLoading: loadingHobbyProfiles,
+    error: hobbyProfilesError,
+  } = useQuery({
+    queryKey: ["hobby-profiles-football", currentUser?.id],
+    enabled: !!currentUser,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("lumi_hobby_profiles")
+        .select(
+          "user_id, hobby_name, dominant_color, secondary_color, gpt_response",
+        )
+        .eq("hobby_name", "Football");
+
+      if (error) {
+        console.error(
+          "[GalacticMap] Erreur chargement hobby profiles:",
+          error,
+        );
+        throw error;
+      }
+
+      return data || [];
+    },
+  });
+
+  const hobbyByUserId = useMemo(
+    () =>
+      hobbyProfiles.reduce((acc, hp) => {
+        acc[hp.user_id] = hp;
+        return acc;
+      }, {}),
+    [hobbyProfiles],
+  );
+
+  const filteredUsers = useMemo(
+    () =>
+      users.filter((u) => {
+        const hobby = hobbyByUserId[u.id];
+
+        // No filters -> show everyone
+        if (!elementFilter && !hasClubFilter) {
+          return true;
+        }
+
+        // With filters -> must have a football hobby profile
+        if (!hobby) {
+          return false;
+        }
+
+        if (elementFilter && hobby.dominant_color !== elementFilter) {
+          return false;
+        }
+
+        if (hasClubFilter) {
+          const gpt = hobby.gpt_response || {};
+          const favoriteTeam =
+            gpt.favorite_team || gpt.favoriteTeam || null;
+
+          if (
+            !favoriteTeam ||
+            (typeof favoriteTeam === "string" &&
+              favoriteTeam.trim().length === 0)
+          ) {
+            return false;
+          }
+        }
+
+        return true;
+      }),
+    [users, hobbyByUserId, elementFilter, hasClubFilter],
+  );
+
+  const positionedUsers = useGalaxyPositions(filteredUsers);
 
   const {
     data: friends = [],
@@ -538,7 +614,10 @@ export default function GalacticMap({ user, profile, onSignOut }) {
     if (friendsError) {
       toast.error("Erreur lors du chargement de tes amis.");
     }
-  }, [requestsError, friendsError]);
+    if (hobbyProfilesError) {
+      toast.error("Erreur lors du chargement des profils hobby.");
+    }
+  }, [requestsError, friendsError, hobbyProfilesError]);
 
   const acceptMutation = useMutation({
     mutationFn: async ({ requestId, otherUserId }) => {
@@ -819,62 +898,101 @@ export default function GalacticMap({ user, profile, onSignOut }) {
 
       {activeMainTab === "map" && (
         <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1.5fr)_320px] gap-6 items-start">
-        {/* Filtres & légende */}
-        <div className="card-spotbulle-dark p-4 space-y-4">
-          <h2 className="text-lg font-french font-bold text-white">
-            🔍 Explorer les joueurs
-          </h2>
-          <p className="text-xs text-slate-300">
-            Utilise les filtres pour découvrir des joueurs qui te ressemblent.
-          </p>
-
-          {/* Placeholder filters for now */}
-          <div className="space-y-3">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
-              Filtres (à venir)
+          {/* Filtres & légende */}
+          <div className="card-spotbulle-dark p-4 space-y-4">
+            <h2 className="text-lg font-french font-bold text-white">
+              🔍 Explorer les joueurs
+            </h2>
+            <p className="text-xs text-slate-300">
+              Utilise les filtres pour explorer la galaxie.
             </p>
-            <div className="flex flex-wrap gap-2">
-              <span className="px-2 py-1 rounded-full bg-slate-800/80 text-slate-300 text-xs">
-                Position
-              </span>
-              <span className="px-2 py-1 rounded-full bg-slate-800/80 text-slate-300 text-xs">
-                Élément
-              </span>
-              <span className="px-2 py-1 rounded-full bg-slate-800/80 text-slate-300 text-xs">
-                Club
-              </span>
+
+            {/* Filtres */}
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                Filtres
+              </p>
+              <div className="space-y-2">
+                {/* Élément */}
+                <div className="flex flex-wrap gap-2 items-center">
+                  <span className="text-[11px] text-slate-400 mr-1">
+                    Élément :
+                  </span>
+                  {[
+                    { key: null, label: "Tous" },
+                    { key: "rouge", label: "Feu" },
+                    { key: "jaune", label: "Air" },
+                    { key: "vert", label: "Terre" },
+                    { key: "bleu", label: "Eau" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.label}
+                      type="button"
+                      className={`px-2 py-1 rounded-full text-[11px] border ${
+                        elementFilter === opt.key
+                          ? "bg-teal-500 text-white border-teal-400"
+                          : "bg-slate-800/80 text-slate-200 border-slate-600"
+                      }`}
+                      onClick={() =>
+                        setElementFilter((current) =>
+                          current === opt.key ? null : opt.key,
+                        )
+                      }
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Club */}
+                <div className="flex flex-wrap gap-2 items-center">
+                  <span className="text-[11px] text-slate-400 mr-1">
+                    Club :
+                  </span>
+                  <button
+                    type="button"
+                    className={`px-2 py-1 rounded-full text-[11px] border ${
+                      hasClubFilter
+                        ? "bg-teal-500 text-white border-teal-400"
+                        : "bg-slate-800/80 text-slate-200 border-slate-600"
+                    }`}
+                    onClick={() => setHasClubFilter((v) => !v)}
+                  >
+                    {hasClubFilter ? "Avec club uniquement" : "Tous les joueurs"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Légende */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                Légende
+              </p>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="flex items-center gap-1 text-red-300">
+                  <span className="w-3 h-3 rounded-full bg-red-500/60 border border-red-400" />
+                  Feu
+                </span>
+                <span className="flex items-center gap-1 text-yellow-300">
+                  <span className="w-3 h-3 rounded-full bg-yellow-400/60 border border-yellow-400" />
+                  Air
+                </span>
+                <span className="flex items-center gap-1 text-emerald-300">
+                  <span className="w-3 h-3 rounded-full bg-emerald-400/60 border border-emerald-400" />
+                  Terre
+                </span>
+                <span className="flex items-center gap-1 text-sky-300">
+                  <span className="w-3 h-3 rounded-full bg-sky-400/60 border border-sky-400" />
+                  Eau
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Les couleurs représentent l&apos;énergie principale (Feu, Air,
+                Terre, Eau). Clique sur une étoile pour voir son profil.
+              </p>
             </div>
           </div>
-
-          {/* Légende */}
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
-              Légende
-            </p>
-            <div className="flex flex-wrap gap-2 text-xs">
-              <span className="flex items-center gap-1 text-red-300">
-                <span className="w-3 h-3 rounded-full bg-red-500/60 border border-red-400" />
-                Feu
-              </span>
-              <span className="flex items-center gap-1 text-yellow-300">
-                <span className="w-3 h-3 rounded-full bg-yellow-400/60 border border-yellow-400" />
-                Air
-              </span>
-              <span className="flex items-center gap-1 text-emerald-300">
-                <span className="w-3 h-3 rounded-full bg-emerald-400/60 border border-emerald-400" />
-                Terre
-              </span>
-              <span className="flex items-center gap-1 text-sky-300">
-                <span className="w-3 h-3 rounded-full bg-sky-400/60 border border-sky-400" />
-                Eau
-              </span>
-            </div>
-            <p className="text-xs text-slate-400">
-              Les couleurs représentent l&apos;énergie principale (Feu, Air,
-              Terre, Eau). Clique sur une étoile pour voir son profil.
-            </p>
-          </div>
-        </div>
 
         {/* Carte galactique */}
         <div className="relative">
