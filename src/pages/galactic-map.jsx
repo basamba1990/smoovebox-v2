@@ -1440,115 +1440,134 @@ export default function GalacticMap({ user, profile, onSignOut }) {
       )}
 
       {activeMainTab === "messages" && (
-        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4 min-h-[420px] border border-slate-700 rounded-lg overflow-hidden bg-slate-900/80">
-          {/* Thread list */}
-          <div className="border-r border-slate-700 flex flex-col bg-slate-900/90">
-            <h3 className="p-3 text-sm font-semibold text-slate-200 border-b border-slate-700">
-              Conversations
-            </h3>
-            {loadingThreads ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-2 border-teal-400 border-t-transparent" />
+        <div className="max-w-2xl mx-auto min-h-[420px]">
+          {!selectedThreadId ? (
+            /* View 1: Conversation list only */
+            <div className="card-spotbulle-dark overflow-hidden">
+              <h3 className="p-4 text-base font-french font-bold text-white border-b border-slate-700">
+                Conversations
+              </h3>
+              {loadingThreads ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-teal-400 border-t-transparent" />
+                </div>
+              ) : threads.length === 0 ? (
+                <div className="p-8 text-center">
+                  <p className="text-slate-400 text-sm mb-2">
+                    Aucune conversation.
+                  </p>
+                  <p className="text-slate-500 text-xs">
+                    Ouvre un chat depuis l’onglet Connexions → Amis.
+                  </p>
+                </div>
+              ) : (
+                <ul className="divide-y divide-slate-700">
+                  {threads.map((t) => (
+                    <li key={t.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedThreadId(t.id)}
+                        className="w-full flex items-center gap-3 p-4 text-left text-slate-200 hover:bg-slate-800/60 transition-colors"
+                      >
+                        <Avatar profile={t.other} size={48} />
+                        <span className="text-sm font-medium truncate">
+                          {t.other?.full_name || "Utilisateur"}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : (
+            /* View 2: Open conversation only (with back to list) */
+            <div className="card-spotbulle-dark flex flex-col h-[520px]">
+              <div className="flex items-center gap-3 p-3 border-b border-slate-700 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setSelectedThreadId(null)}
+                  className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/80 transition-colors"
+                  aria-label="Retour aux conversations"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                {(() => {
+                  const t = threads.find((x) => x.id === selectedThreadId);
+                  return t?.other ? (
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Avatar profile={t.other} size={40} />
+                      <span className="text-sm font-semibold text-white truncate">
+                        {t.other.full_name || "Utilisateur"}
+                      </span>
+                    </div>
+                  ) : null;
+                })()}
               </div>
-            ) : threads.length === 0 ? (
-              <p className="p-4 text-sm text-slate-400">
-                Aucune conversation. Ouvre un chat depuis l’onglet Amis.
-              </p>
-            ) : (
-              <ul className="overflow-y-auto flex-1">
-                {threads.map((t) => (
-                  <li key={t.id}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedThreadId(t.id)}
-                      className={`w-full flex items-center gap-3 p-3 text-left border-b border-slate-700/80 ${
-                        selectedThreadId === t.id
-                          ? "bg-teal-900/50 text-white"
-                          : "text-slate-200 hover:bg-slate-800/80"
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+                {loadingMessages ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-teal-400 border-t-transparent" />
+                  </div>
+                ) : (
+                  threadMessages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`flex ${
+                        msg.sender_id === currentUser?.id
+                          ? "justify-end"
+                          : "justify-start"
                       }`}
                     >
-                      <Avatar profile={t.other} size={40} />
-                      <span className="text-sm font-medium truncate">
-                        {t.other?.full_name || "Utilisateur"}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          {/* Chat area */}
-          <div className="flex flex-col min-h-0">
-            {!selectedThreadId ? (
-              <div className="flex-1 flex items-center justify-center text-slate-400 text-sm p-6">
-                Choisis une conversation ou ouvre un chat depuis l’onglet Amis.
-              </div>
-            ) : (
-              <>
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {loadingMessages ? (
-                    <div className="flex justify-center py-6">
-                      <div className="animate-spin rounded-full h-6 w-6 border-2 border-teal-400 border-t-transparent" />
-                    </div>
-                  ) : (
-                    threadMessages.map((msg) => (
                       <div
-                        key={msg.id}
-                        className={`flex ${
+                        className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
                           msg.sender_id === currentUser?.id
-                            ? "justify-end"
-                            : "justify-start"
+                            ? "bg-teal-600 text-white"
+                            : "bg-slate-700 text-slate-100"
                         }`}
                       >
-                        <div
-                          className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-                            msg.sender_id === currentUser?.id
-                              ? "bg-teal-600 text-white"
-                              : "bg-slate-700 text-slate-100"
-                          }`}
-                        >
-                          {msg.content}
-                          <div className="text-[10px] opacity-80 mt-1">
-                            {new Date(msg.created_at).toLocaleString("fr-FR", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </div>
+                        {msg.content}
+                        <div className="text-[10px] opacity-80 mt-1">
+                          {new Date(msg.created_at).toLocaleString("fr-FR", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
                         </div>
                       </div>
-                    ))
-                  )}
-                </div>
-                <div className="p-3 border-t border-slate-700 flex gap-2">
-                  <Textarea
-                    placeholder="Écris ton message..."
-                    value={messageDraft}
-                    onChange={(e) => setMessageDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                      }
-                    }}
-                    className="min-h-[44px] max-h-32 resize-none bg-slate-800 border-slate-600 text-slate-100 placeholder:text-slate-500"
-                    rows={2}
-                  />
-                  <Button
-                    onClick={handleSendMessage}
-                    disabled={
-                      !(messageDraft || "").trim() ||
-                      sendMessageMutation.isLoading
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="p-3 border-t border-slate-700 flex gap-2 shrink-0">
+                <Textarea
+                  placeholder="Écris ton message..."
+                  value={messageDraft}
+                  onChange={(e) => setMessageDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
                     }
-                    className="self-end bg-teal-600 hover:bg-teal-700 text-white px-4"
-                  >
-                    Envoyer
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
+                  }}
+                  className="min-h-[44px] max-h-32 resize-none bg-slate-800 border-slate-600 text-slate-100 placeholder:text-slate-500"
+                  rows={2}
+                />
+                <Button
+                  onClick={handleSendMessage}
+                  disabled={
+                    !(messageDraft || "").trim() ||
+                    sendMessageMutation.isLoading
+                  }
+                  className="self-end bg-teal-600 hover:bg-teal-700 text-white px-4"
+                >
+                  Envoyer
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </OdysseyLayout>
