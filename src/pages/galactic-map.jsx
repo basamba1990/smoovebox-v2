@@ -17,6 +17,7 @@ import {
   ConnectionsFriends,
   DirectMessageThreadList,
   DirectMessageChat,
+  FootballAgentChatPanel,
 } from "../components/galactic";
 import { useFriendRequests } from "../hooks/useFriendRequests.js";
 import { useGalaxyPositions } from "../hooks/useGalaxyPositions.js";
@@ -30,6 +31,8 @@ export default function GalacticMap({ user, profile, onSignOut }) {
   const currentUser = useUser();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const FOOTBALL_AGENT_THREAD_ID = "football-agent";
 
   const { data: users = [], isLoading, error } = useDirectoryUsers("all", "");
   const { data: existingConnections = new Set(), refetch: refetchConnections } =
@@ -175,7 +178,7 @@ export default function GalacticMap({ user, profile, onSignOut }) {
 
   // Direct message threads (user_id_1 < user_id_2)
   const {
-    data: threads = [],
+    data: threadsRaw = [],
     isLoading: loadingThreads,
     refetch: refetchThreads,
   } = useQuery({
@@ -209,7 +212,11 @@ export default function GalacticMap({ user, profile, onSignOut }) {
 
       if (profilesError) {
         console.error("[GalacticMap] Erreur profils threads:", profilesError);
-        return rows.map((r) => ({ ...r, other: null }));
+        const baseThreads = rows.map((r) => ({
+          ...r,
+          other: null,
+        }));
+        return baseThreads;
       }
 
       const byId = (profiles || []).reduce((acc, p) => {
@@ -217,12 +224,31 @@ export default function GalacticMap({ user, profile, onSignOut }) {
         return acc;
       }, {});
 
-      return rows.map((r) => ({
+      const baseThreads = rows.map((r) => ({
         ...r,
         other: byId[r.user_id_1 === currentUser.id ? r.user_id_2 : r.user_id_1] || null,
       }));
+
+      return baseThreads;
     },
   });
+
+  // Inject a synthetic "Assistant Football" thread at the top of the list
+  const threads = useMemo(() => {
+    const base = threadsRaw || [];
+    const agentThread = {
+      id: FOOTBALL_AGENT_THREAD_ID,
+      other: {
+        id: FOOTBALL_AGENT_THREAD_ID,
+        full_name: "Assistant Football",
+        avatar_url: null,
+        sex: null,
+        location: null,
+      },
+      isAgent: true,
+    };
+    return [agentThread, ...base];
+  }, [threadsRaw, FOOTBALL_AGENT_THREAD_ID]);
 
   const {
     data: threadMessages = [],
@@ -230,9 +256,11 @@ export default function GalacticMap({ user, profile, onSignOut }) {
     refetch: refetchThreadMessages,
   } = useQuery({
     queryKey: ["direct-messages", selectedThreadId],
-    enabled: !!selectedThreadId,
+    enabled: !!selectedThreadId && selectedThreadId !== FOOTBALL_AGENT_THREAD_ID,
     queryFn: async () => {
-      if (!selectedThreadId) return [];
+      if (!selectedThreadId || selectedThreadId === FOOTBALL_AGENT_THREAD_ID) {
+        return [];
+      }
       const { data, error } = await supabase
         .from("direct_messages")
         .select("id, thread_id, sender_id, content, created_at")
@@ -715,6 +743,11 @@ export default function GalacticMap({ user, profile, onSignOut }) {
               threads={threads}
               loading={loadingThreads}
               onSelectThread={setSelectedThreadId}
+            />
+          ) : selectedThreadId === FOOTBALL_AGENT_THREAD_ID ? (
+            <FootballAgentChatPanel
+              onBack={() => setSelectedThreadId(null)}
+              height={520}
             />
           ) : (
             <DirectMessageChat
