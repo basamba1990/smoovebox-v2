@@ -1,7 +1,7 @@
 // src/pages/galactic-map.jsx
 // "La carte galactique" - visual map of the community
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSupabaseClient, useUser } from "@supabase/auth-helpers-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -9,6 +9,8 @@ import { toast } from "sonner";
 
 import OdysseyLayout from "../components/OdysseyLayout.jsx";
 import { Button } from "../components/ui/button-enhanced.jsx";
+import { Input } from "../components/ui/input.jsx";
+import { Textarea } from "../components/ui/textarea.jsx";
 import {
   useDirectoryUsers,
   useExistingConnections,
@@ -473,8 +475,11 @@ export default function GalacticMap({ user, profile, onSignOut }) {
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [selectedUserHobby, setSelectedUserHobby] = useState(null);
   const [loadingHobby, setLoadingHobby] = useState(false);
-  const [activeMainTab, setActiveMainTab] = useState("map"); // "map" | "connections"
+  const [activeMainTab, setActiveMainTab] = useState("map"); // "map" | "connections" | "messages"
   const [activeSubTab, setActiveSubTab] = useState("incoming"); // "incoming" | "outgoing" | "friends"
+  const [selectedThreadId, setSelectedThreadId] = useState(null);
+  const [messageDraft, setMessageDraft] = useState("");
+  const realtimeChannelRef = useRef(null);
   const [elementFilter, setElementFilter] = useState(null); // "rouge" | "jaune" | "vert" | "bleu" | null
   const [hasClubFilter, setHasClubFilter] = useState(false); // filter on users who have a club in their hobby profile
 
@@ -604,6 +609,182 @@ export default function GalacticMap({ user, profile, onSignOut }) {
       return profiles || [];
     },
   });
+
+  // Direct message threads (user_id_1 < user_id_2)
+  const {
+    data: threads = [],
+    isLoading: loadingThreads,
+    refetch: refetchThreads,
+  } = useQuery({
+    queryKey: ["direct-threads", currentUser?.id],
+    enabled: !!currentUser,
+    queryFn: async () => {
+      if (!currentUser) return [];
+      const { data, error } = await supabase
+        .from("direct_threads")
+        .select("id, user_id_1, user_id_2, created_at")
+        .or(
+          `user_id_1.eq.${currentUser.id},user_id_2.eq.${currentUser.id}`,
+        )
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("[GalacticMap] Erreur chargement threads:", error);
+        throw error;
+      }
+
+      const rows = data || [];
+      const otherIds = rows.map((r) =>
+        r.user_id_1 === currentUser.id ? r.user_id_2 : r.user_id_1,
+      );
+      if (otherIds.length === 0) return rows.map((r) => ({ ...r, other: null }));
+
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url, sex")
+        .in("id", otherIds);
+
+      if (profilesError) {
+        console.error("[GalacticMap] Erreur profils threads:", profilesError);
+        return rows.map((r) => ({ ...r, other: null }));
+      }
+
+      const byId = (profiles || []).reduce((acc, p) => {
+        acc[p.id] = p;
+        return acc;
+      }, {});
+
+      return rows.map((r) => ({
+        ...r,
+        other: byId[r.user_id_1 === currentUser.id ? r.user_id_2 : r.user_id_1] || null,
+      }));
+    },
+  });
+
+  const {
+    data: threadMessages = [],
+    isLoading: loadingMessages,
+    refetch: refetchThreadMessages,
+  } = useQuery({
+    queryKey: ["direct-messages", selectedThreadId],
+    enabled: !!selectedThreadId,
+    queryFn: async () => {
+      if (!selectedThreadId) return [];
+      const { data, error } = await supabase
+        .from("direct_messages")
+        .select("id, thread_id, sender_id, content, created_at")
+        .eq("thread_id", selectedThreadId)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.error("[GalacticMap] Erreur chargement messages:", error);
+        throw error;
+      }
+      return data || [];
+    },
+  });
+
+  const openOrCreateThreadMutation = useMutation({
+    mutationFn: async (otherUserId) => {
+      if (!currentUser) throw new Error("Non authentifié");
+      const uid1 = currentUser.id < otherUserId ? currentUser.id : otherUserId;
+      const uid2 = currentUser.id < otherUserId ? otherUserId : currentUser.id;
+
+      const { data: existing } = await supabase
+        .from("direct_threads")
+        .select("id")
+        .eq("user_id_1", uid1)
+        .eq("user_id_2", uid2)
+        .maybeSingle();
+
+      if (existing) return existing.id;
+
+      const { data: inserted, error } = await supabase
+        .from("direct_threads")
+        .insert({ user_id_1: uid1, user_id_2: uid2 })
+        .select("id")
+        .single();
+
+      if (error) {
+        console.error("[GalacticMap] Erreur création thread:", error);
+        throw error;
+      }
+      return inserted.id;
+    },
+    onSuccess: (threadId) => {
+      setSelectedThreadId(threadId);
+      setActiveMainTab("messages");
+      queryClient.invalidateQueries(["direct-threads"]);
+    },
+    onError: () => {
+      toast.error("Impossible d'ouvrir la conversation.");
+    },
+  });
+
+  const sendMessageMutation = useMutation({
+    mutationFn: async ({ threadId, content }) => {
+      if (!currentUser) throw new Error("Non authentifié");
+      const { error } = await supabase.from("direct_messages").insert({
+        thread_id: threadId,
+        sender_id: currentUser.id,
+        content: (content || "").trim(),
+      });
+      if (error) throw error;
+    },
+    onSuccess: (_, { threadId }) => {
+      setMessageDraft("");
+      queryClient.invalidateQueries(["direct-messages", threadId]);
+    },
+    onError: () => {
+      toast.error("Impossible d'envoyer le message.");
+    },
+  });
+
+  const openOrCreateThread = (otherUserId) => {
+    openOrCreateThreadMutation.mutate(otherUserId);
+  };
+
+  const handleSendMessage = () => {
+    const text = (messageDraft || "").trim();
+    if (!text || !selectedThreadId) return;
+    sendMessageMutation.mutate({ threadId: selectedThreadId, content: text });
+  };
+
+  // Realtime: subscribe to new direct messages so the UI updates without refresh
+  useEffect(() => {
+    if (!currentUser || !supabase || !queryClient) return;
+
+    if (realtimeChannelRef.current) {
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+    }
+
+    realtimeChannelRef.current = supabase
+      .channel("direct_messages_live")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "direct_messages",
+        },
+        (payload) => {
+          const threadId = payload.new?.thread_id;
+          if (threadId) {
+            queryClient.invalidateQueries(["direct-messages", threadId]);
+            queryClient.invalidateQueries(["direct-threads"]);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
+  }, [currentUser?.id, supabase, queryClient]);
 
   useEffect(() => {
     if (requestsError) {
@@ -851,6 +1032,17 @@ export default function GalacticMap({ user, profile, onSignOut }) {
           >
             Connexions (
             {requests.incoming.length + requests.outgoing.length})
+          </button>
+          <button
+            type="button"
+            className={`px-4 py-2 text-sm font-medium border-l border-slate-700 ${
+              activeMainTab === "messages"
+                ? "bg-teal-500 text-white"
+                : "bg-slate-900 text-slate-200"
+            }`}
+            onClick={() => setActiveMainTab("messages")}
+          >
+            Messages ({threads.length})
           </button>
         </div>
       </div>
@@ -1233,10 +1425,130 @@ export default function GalacticMap({ user, profile, onSignOut }) {
                     </p>
                   </div>
                 </div>
-                {/* Placeholder pour actions futures (chat, profil, etc.) */}
+                <Button
+                  variant="outline"
+                  onClick={() => openOrCreateThread(f.id)}
+                  disabled={openOrCreateThreadMutation.isLoading}
+                  className="border-teal-600 text-teal-200 hover:bg-teal-900/50 px-3 py-2 text-sm"
+                >
+                  Ouvrir le chat
+                </Button>
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {activeMainTab === "messages" && (
+        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4 min-h-[420px] border border-slate-700 rounded-lg overflow-hidden bg-slate-900/80">
+          {/* Thread list */}
+          <div className="border-r border-slate-700 flex flex-col bg-slate-900/90">
+            <h3 className="p-3 text-sm font-semibold text-slate-200 border-b border-slate-700">
+              Conversations
+            </h3>
+            {loadingThreads ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-2 border-teal-400 border-t-transparent" />
+              </div>
+            ) : threads.length === 0 ? (
+              <p className="p-4 text-sm text-slate-400">
+                Aucune conversation. Ouvre un chat depuis l’onglet Amis.
+              </p>
+            ) : (
+              <ul className="overflow-y-auto flex-1">
+                {threads.map((t) => (
+                  <li key={t.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedThreadId(t.id)}
+                      className={`w-full flex items-center gap-3 p-3 text-left border-b border-slate-700/80 ${
+                        selectedThreadId === t.id
+                          ? "bg-teal-900/50 text-white"
+                          : "text-slate-200 hover:bg-slate-800/80"
+                      }`}
+                    >
+                      <Avatar profile={t.other} size={40} />
+                      <span className="text-sm font-medium truncate">
+                        {t.other?.full_name || "Utilisateur"}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {/* Chat area */}
+          <div className="flex flex-col min-h-0">
+            {!selectedThreadId ? (
+              <div className="flex-1 flex items-center justify-center text-slate-400 text-sm p-6">
+                Choisis une conversation ou ouvre un chat depuis l’onglet Amis.
+              </div>
+            ) : (
+              <>
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {loadingMessages ? (
+                    <div className="flex justify-center py-6">
+                      <div className="animate-spin rounded-full h-6 w-6 border-2 border-teal-400 border-t-transparent" />
+                    </div>
+                  ) : (
+                    threadMessages.map((msg) => (
+                      <div
+                        key={msg.id}
+                        className={`flex ${
+                          msg.sender_id === currentUser?.id
+                            ? "justify-end"
+                            : "justify-start"
+                        }`}
+                      >
+                        <div
+                          className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                            msg.sender_id === currentUser?.id
+                              ? "bg-teal-600 text-white"
+                              : "bg-slate-700 text-slate-100"
+                          }`}
+                        >
+                          {msg.content}
+                          <div className="text-[10px] opacity-80 mt-1">
+                            {new Date(msg.created_at).toLocaleString("fr-FR", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="p-3 border-t border-slate-700 flex gap-2">
+                  <Textarea
+                    placeholder="Écris ton message..."
+                    value={messageDraft}
+                    onChange={(e) => setMessageDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    className="min-h-[44px] max-h-32 resize-none bg-slate-800 border-slate-600 text-slate-100 placeholder:text-slate-500"
+                    rows={2}
+                  />
+                  <Button
+                    onClick={handleSendMessage}
+                    disabled={
+                      !(messageDraft || "").trim() ||
+                      sendMessageMutation.isLoading
+                    }
+                    className="self-end bg-teal-600 hover:bg-teal-700 text-white px-4"
+                  >
+                    Envoyer
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </OdysseyLayout>
