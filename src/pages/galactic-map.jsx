@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import OdysseyLayout from "../components/OdysseyLayout.jsx";
 import {
+  ProfileAvatar,
   GalacticMapFilters,
   GalaxyMap,
   PlayerDetailPanel,
@@ -49,6 +50,8 @@ export default function GalacticMap({ user, profile, onSignOut }) {
   const [messageDraft, setMessageDraft] = useState("");
   const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [groupMessageDraft, setGroupMessageDraft] = useState("");
+  const [friendIdsToAdd, setFriendIdsToAdd] = useState([]);
+  const [isFriendPickerOpen, setIsFriendPickerOpen] = useState(false);
   const realtimeChannelRef = useRef(null);
   const realtimeGroupChannelRef = useRef(null);
   const [elementFilter, setElementFilter] = useState(null); // "rouge" | "jaune" | "vert" | "bleu" | null
@@ -311,6 +314,13 @@ export default function GalacticMap({ user, profile, onSignOut }) {
     },
   });
 
+  const selectedGroup = useMemo(
+    () => myGroups.find((g) => g.id === selectedGroupId) || null,
+    [myGroups, selectedGroupId],
+  );
+  const isSelectedGroupOwner =
+    !!selectedGroup && selectedGroup.owner_id === currentUser?.id;
+
   // Group messages for selected group
   const {
     data: groupMessages = [],
@@ -326,6 +336,26 @@ export default function GalacticMap({ user, profile, onSignOut }) {
         .order("created_at", { ascending: true });
       if (error) {
         console.error("[GalacticMap] Erreur group_messages:", error);
+        throw error;
+      }
+      return data || [];
+    },
+  });
+
+  // Group members for selected group
+  const {
+    data: groupMembers = [],
+    isLoading: loadingGroupMembers,
+  } = useQuery({
+    queryKey: ["group-members", selectedGroupId],
+    enabled: !!selectedGroupId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("group_members")
+        .select("id, group_id, user_id")
+        .eq("group_id", selectedGroupId);
+      if (error) {
+        console.error("[GalacticMap] Erreur group_members (membres):", error);
         throw error;
       }
       return data || [];
@@ -356,6 +386,35 @@ export default function GalacticMap({ user, profile, onSignOut }) {
         return acc;
       }, {}),
     [groupSenderProfiles],
+  );
+
+  // Profiles for group members (to display and to filter available friends)
+  const groupMemberUserIds = useMemo(
+    () => [...new Set((groupMembers || []).map((m) => m.user_id).filter(Boolean))],
+    [groupMembers],
+  );
+  const { data: groupMemberProfiles = [] } = useQuery({
+    queryKey: ["group-member-profiles", selectedGroupId],
+    enabled: !!selectedGroupId && groupMemberUserIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url")
+        .in("id", groupMemberUserIds);
+      if (error) {
+        console.error("[GalacticMap] Erreur profils membres de groupe:", error);
+        throw error;
+      }
+      return data || [];
+    },
+  });
+  const groupMemberProfileMap = useMemo(
+    () =>
+      (groupMemberProfiles || []).reduce((acc, p) => {
+        acc[p.id] = p;
+        return acc;
+      }, {}),
+    [groupMemberProfiles],
   );
 
   const openOrCreateThreadMutation = useMutation({
@@ -466,10 +525,39 @@ export default function GalacticMap({ user, profile, onSignOut }) {
     createGroupMutation.mutate(name, { context: { onSuccess } });
   };
 
+  const addGroupMemberMutation = useMutation({
+    mutationFn: async ({ groupId, userIds }) => {
+      if (!currentUser) throw new Error("Non authentifié");
+      const ids = userIds || [];
+      if (!ids.length) return;
+      const rows = ids.map((id) => ({ group_id: groupId, user_id: id }));
+      const { error } = await supabase.from("group_members").insert(rows);
+      if (error) throw error;
+    },
+    onSuccess: (_, { groupId }) => {
+      setFriendIdsToAdd([]);
+      setIsFriendPickerOpen(false);
+      queryClient.invalidateQueries(["group-members", groupId]);
+      queryClient.invalidateQueries(["my-groups", currentUser?.id]);
+    },
+    onError: () => {
+      toast.error("Impossible d'ajouter cet ami au groupe.");
+    },
+  });
+
   const handleSendGroupMessage = () => {
     const text = (groupMessageDraft || "").trim();
     if (!text || !selectedGroupId) return;
     sendGroupMessageMutation.mutate({ groupId: selectedGroupId, content: text });
+  };
+
+  const handleAddFriendToGroup = () => {
+    if (!selectedGroupId || !friendIdsToAdd.length || !isSelectedGroupOwner)
+      return;
+    addGroupMemberMutation.mutate({
+      groupId: selectedGroupId,
+      userIds: friendIdsToAdd,
+    });
   };
 
   const handleSendMessage = () => {
@@ -948,7 +1036,136 @@ export default function GalacticMap({ user, profile, onSignOut }) {
       )}
 
       {activeMainTab === "groups" && (
-        <div className="max-w-2xl mx-auto min-h-[420px]">
+        <div className="max-w-2xl mx-auto min-h-[420px] space-y-4">
+          {selectedGroupId && (
+            <div className="card-spotbulle-dark p-3 border border-slate-700">
+              <div className="flex flex-col gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-slate-300 mb-1">
+                    Membres du groupe
+                  </p>
+                  {loadingGroupMembers ? (
+                    <p className="text-xs text-slate-500">
+                      Chargement des membres...
+                    </p>
+                  ) : groupMemberUserIds.length === 0 ? (
+                    <p className="text-xs text-slate-500">
+                      Aucun membre pour le moment.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {groupMemberUserIds
+                        .filter((uid) => uid !== currentUser?.id)
+                        .map((uid) => {
+                        const m = groupMemberProfileMap[uid];
+                        return (
+                          <div key={uid} className="flex items-center">
+                            <ProfileAvatar
+                              profile={m}
+                              size={28}
+                              title={m?.full_name || "Utilisateur"}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {(() => {
+                  if (!isSelectedGroupOwner) return null;
+                  const memberIdSet = new Set(groupMemberUserIds);
+                  const availableFriends =
+                    friends?.filter(
+                      (f) =>
+                        !memberIdSet.has(f.id) && f.id !== currentUser?.id,
+                    ) || [];
+                  if (!availableFriends.length) return null;
+                  return (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-xs text-slate-400">
+                        Ajouter des amis au groupe :
+                      </p>
+                      <div className="relative inline-block">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setIsFriendPickerOpen((open) => !open)
+                          }
+                          className="inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-md bg-slate-800 border border-slate-600 text-xs text-slate-100 min-w-[200px]"
+                        >
+                          <span className="truncate">
+                            {friendIdsToAdd.length === 0
+                              ? "Ajouter des amis"
+                              : `${friendIdsToAdd.length} ami(s) sélectionné(s)`}
+                          </span>
+                          <svg
+                            className="w-3 h-3 text-slate-300"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.25a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </button>
+                        {isFriendPickerOpen && (
+                          <div className="absolute z-20 mt-1 w-56 rounded-md bg-slate-900 border border-slate-700 shadow-lg max-h-56 overflow-y-auto">
+                            {availableFriends.map((f) => {
+                              const checked = friendIdsToAdd.includes(f.id);
+                              return (
+                                <label
+                                  key={f.id}
+                                  className="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-100 hover:bg-slate-800 cursor-pointer"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    className="rounded border-slate-600 bg-slate-800"
+                                    checked={checked}
+                                    onChange={(e) => {
+                                      setFriendIdsToAdd((prev) => {
+                                        if (e.target.checked) {
+                                          return prev.includes(f.id)
+                                            ? prev
+                                            : [...prev, f.id];
+                                        }
+                                        return prev.filter((id) => id !== f.id);
+                                      });
+                                    }}
+                                  />
+                                  <span className="truncate">
+                                    {f.full_name || "Utilisateur"}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                            {availableFriends.length === 0 && (
+                              <div className="px-3 py-2 text-xs text-slate-500">
+                                Aucun ami disponible.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAddFriendToGroup}
+                        disabled={
+                          !friendIdsToAdd.length ||
+                          addGroupMemberMutation.isLoading
+                        }
+                        className="px-3 py-1.5 text-xs rounded-md bg-teal-600 hover:bg-teal-700 text-white disabled:opacity-50"
+                      >
+                        Ajouter
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
           {!selectedGroupId ? (
             <GroupList
               groups={myGroups}
