@@ -18,6 +18,8 @@ import {
   DirectMessageThreadList,
   DirectMessageChat,
   FootballAgentChatPanel,
+  GroupList,
+  GroupChatPanel,
 } from "../components/galactic";
 import { useFriendRequests } from "../hooks/useFriendRequests.js";
 import { useGalaxyPositions } from "../hooks/useGalaxyPositions.js";
@@ -41,11 +43,14 @@ export default function GalacticMap({ user, profile, onSignOut }) {
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [selectedUserHobby, setSelectedUserHobby] = useState(null);
   const [loadingHobby, setLoadingHobby] = useState(false);
-  const [activeMainTab, setActiveMainTab] = useState("map"); // "map" | "connections" | "messages"
+  const [activeMainTab, setActiveMainTab] = useState("map"); // "map" | "connections" | "messages" | "groups"
   const [activeSubTab, setActiveSubTab] = useState("incoming"); // "incoming" | "outgoing" | "friends"
   const [selectedThreadId, setSelectedThreadId] = useState(null);
   const [messageDraft, setMessageDraft] = useState("");
+  const [selectedGroupId, setSelectedGroupId] = useState(null);
+  const [groupMessageDraft, setGroupMessageDraft] = useState("");
   const realtimeChannelRef = useRef(null);
+  const realtimeGroupChannelRef = useRef(null);
   const [elementFilter, setElementFilter] = useState(null); // "rouge" | "jaune" | "vert" | "bleu" | null
   const [hasClubFilter, setHasClubFilter] = useState(false); // filter on users who have a club in their hobby profile
 
@@ -275,6 +280,84 @@ export default function GalacticMap({ user, profile, onSignOut }) {
     },
   });
 
+  // Groups: my groups
+  const {
+    data: myGroups = [],
+    isLoading: loadingMyGroups,
+  } = useQuery({
+    queryKey: ["my-groups", currentUser?.id],
+    enabled: !!currentUser,
+    queryFn: async () => {
+      const { data: memberRows, error: memberError } = await supabase
+        .from("group_members")
+        .select("group_id")
+        .eq("user_id", currentUser.id);
+      if (memberError) {
+        console.error("[GalacticMap] Erreur group_members:", memberError);
+        throw memberError;
+      }
+      const groupIds = (memberRows || []).map((r) => r.group_id).filter(Boolean);
+      if (groupIds.length === 0) return [];
+      const { data: groupsData, error: groupsError } = await supabase
+        .from("groups")
+        .select("id, name, owner_id, created_at")
+        .in("id", groupIds)
+        .order("created_at", { ascending: false });
+      if (groupsError) {
+        console.error("[GalacticMap] Erreur groups:", groupsError);
+        throw groupsError;
+      }
+      return groupsData || [];
+    },
+  });
+
+  // Group messages for selected group
+  const {
+    data: groupMessages = [],
+    isLoading: loadingGroupMessages,
+  } = useQuery({
+    queryKey: ["group-messages", selectedGroupId],
+    enabled: !!selectedGroupId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("group_messages")
+        .select("id, group_id, sender_id, content, created_at")
+        .eq("group_id", selectedGroupId)
+        .order("created_at", { ascending: true });
+      if (error) {
+        console.error("[GalacticMap] Erreur group_messages:", error);
+        throw error;
+      }
+      return data || [];
+    },
+  });
+
+  // Sender profiles for group messages (to show names)
+  const groupMessageSenderIds = useMemo(
+    () => [...new Set((groupMessages || []).map((m) => m.sender_id).filter(Boolean))],
+    [groupMessages],
+  );
+  const { data: groupSenderProfiles = [] } = useQuery({
+    queryKey: ["profiles", groupMessageSenderIds],
+    enabled: groupMessageSenderIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url")
+        .in("id", groupMessageSenderIds);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+  const groupSenderProfileMap = useMemo(
+    () =>
+      (groupSenderProfiles || []).reduce((acc, p) => {
+        acc[p.id] = p;
+        return acc;
+      }, {}),
+    [groupSenderProfiles],
+  );
+
   const openOrCreateThreadMutation = useMutation({
     mutationFn: async (otherUserId) => {
       if (!currentUser) throw new Error("Non authentifié");
@@ -335,6 +418,60 @@ export default function GalacticMap({ user, profile, onSignOut }) {
     openOrCreateThreadMutation.mutate(otherUserId);
   };
 
+  const createGroupMutation = useMutation({
+    mutationFn: async (name) => {
+      if (!currentUser) throw new Error("Non authentifié");
+      const { data: group, error: groupError } = await supabase
+        .from("groups")
+        .insert({ name: (name || "").trim(), owner_id: currentUser.id })
+        .select("id")
+        .single();
+      if (groupError) throw groupError;
+      const { error: memberError } = await supabase
+        .from("group_members")
+        .insert({ group_id: group.id, user_id: currentUser.id });
+      if (memberError) throw memberError;
+      return group.id;
+    },
+    onSuccess: (groupId, name, context) => {
+      queryClient.invalidateQueries(["my-groups"]);
+      const onSuccess = context?.onSuccess;
+      if (typeof onSuccess === "function") onSuccess();
+    },
+    onError: () => {
+      toast.error("Impossible de créer le groupe.");
+    },
+  });
+
+  const sendGroupMessageMutation = useMutation({
+    mutationFn: async ({ groupId, content }) => {
+      if (!currentUser) throw new Error("Non authentifié");
+      const { error } = await supabase.from("group_messages").insert({
+        group_id: groupId,
+        sender_id: currentUser.id,
+        content: (content || "").trim(),
+      });
+      if (error) throw error;
+    },
+    onSuccess: (_, { groupId }) => {
+      setGroupMessageDraft("");
+      queryClient.invalidateQueries(["group-messages", groupId]);
+    },
+    onError: () => {
+      toast.error("Impossible d'envoyer le message.");
+    },
+  });
+
+  const handleCreateGroup = (name, onSuccess) => {
+    createGroupMutation.mutate(name, { context: { onSuccess } });
+  };
+
+  const handleSendGroupMessage = () => {
+    const text = (groupMessageDraft || "").trim();
+    if (!text || !selectedGroupId) return;
+    sendGroupMessageMutation.mutate({ groupId: selectedGroupId, content: text });
+  };
+
   const handleSendMessage = () => {
     const text = (messageDraft || "").trim();
     if (!text || !selectedThreadId) return;
@@ -373,6 +510,38 @@ export default function GalacticMap({ user, profile, onSignOut }) {
       if (realtimeChannelRef.current) {
         supabase.removeChannel(realtimeChannelRef.current);
         realtimeChannelRef.current = null;
+      }
+    };
+  }, [currentUser?.id, supabase, queryClient]);
+
+  // Realtime: group_messages
+  useEffect(() => {
+    if (!currentUser || !supabase || !queryClient) return;
+    if (realtimeGroupChannelRef.current) {
+      supabase.removeChannel(realtimeGroupChannelRef.current);
+      realtimeGroupChannelRef.current = null;
+    }
+    realtimeGroupChannelRef.current = supabase
+      .channel("group_messages_live")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "group_messages",
+        },
+        (payload) => {
+          const groupId = payload.new?.group_id;
+          if (groupId) {
+            queryClient.invalidateQueries(["group-messages", groupId]);
+          }
+        },
+      )
+      .subscribe();
+    return () => {
+      if (realtimeGroupChannelRef.current) {
+        supabase.removeChannel(realtimeGroupChannelRef.current);
+        realtimeGroupChannelRef.current = null;
       }
     };
   }, [currentUser?.id, supabase, queryClient]);
@@ -633,7 +802,18 @@ export default function GalacticMap({ user, profile, onSignOut }) {
             }`}
             onClick={() => setActiveMainTab("messages")}
           >
-            Messages ({threads.length})
+            Conversations ({threads.length})
+          </button>
+          <button
+            type="button"
+            className={`px-4 py-2 text-sm font-medium border-l border-slate-700 ${
+              activeMainTab === "groups"
+                ? "bg-teal-500 text-white"
+                : "bg-slate-900 text-slate-200"
+            }`}
+            onClick={() => setActiveMainTab("groups")}
+          >
+            Groupes ({myGroups.length})
           </button>
         </div>
       </div>
@@ -761,6 +941,35 @@ export default function GalacticMap({ user, profile, onSignOut }) {
               onSendMessage={handleSendMessage}
               sendLoading={sendMessageMutation.isLoading}
               onBack={() => setSelectedThreadId(null)}
+              containerHeight="520px"
+            />
+          )}
+        </div>
+      )}
+
+      {activeMainTab === "groups" && (
+        <div className="max-w-2xl mx-auto min-h-[420px]">
+          {!selectedGroupId ? (
+            <GroupList
+              groups={myGroups}
+              loading={loadingMyGroups}
+              onSelectGroup={setSelectedGroupId}
+              onCreateGroup={handleCreateGroup}
+              createLoading={createGroupMutation.isLoading}
+            />
+          ) : (
+            <GroupChatPanel
+              groupId={selectedGroupId}
+              groupName={myGroups.find((g) => g.id === selectedGroupId)?.name}
+              messages={groupMessages}
+              loadingMessages={loadingGroupMessages}
+              currentUserId={currentUser?.id}
+              senderProfiles={groupSenderProfileMap}
+              messageDraft={groupMessageDraft}
+              onMessageDraftChange={setGroupMessageDraft}
+              onSendMessage={handleSendGroupMessage}
+              sendLoading={sendGroupMessageMutation.isLoading}
+              onBack={() => setSelectedGroupId(null)}
               containerHeight="520px"
             />
           )}

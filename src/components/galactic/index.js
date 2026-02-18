@@ -11,5 +11,7 @@ export { default as ConnectionsFriends } from "./ConnectionsFriends.jsx";
 export { default as DirectMessageThreadList } from "./DirectMessageThreadList.jsx";
 export { default as DirectMessageChat } from "./DirectMessageChat.jsx";
 export { default as FootballAgentChatPanel } from "./FootballAgentChatPanel.jsx";
+export { default as GroupList } from "./GroupList.jsx";
+export { default as GroupChatPanel } from "./GroupChatPanel.jsx";
 
 export { getElementClasses, ELEMENT_COLORS } from "./galacticUtils.js";
