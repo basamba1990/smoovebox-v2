@@ -1568,7 +1568,7 @@ export default function GalacticMap({ user, profile, onSignOut }) {
                               const isClickable = isSelectedGroupOwner;
                               return (
                                 <button
-                                  key={slot.id}
+                                  key={slot.index}
                                   type="button"
                                   className={`absolute -translate-x-1/2 translate-y-1/2 flex items-center justify-center rounded-full border-2 ${
                                     assignedProfile
@@ -1587,6 +1587,8 @@ export default function GalacticMap({ user, profile, onSignOut }) {
                                     backgroundColor: assignedProfile
                                       ? "rgba(15, 23, 42, 0.9)"
                                       : "rgba(16, 185, 129, 0.85)",
+                                    transition:
+                                      "left 320ms ease, bottom 320ms ease, transform 180ms ease",
                                   }}
                                   onClick={() => {
                                     if (!isClickable) return;
