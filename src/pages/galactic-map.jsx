@@ -709,6 +709,25 @@ export default function GalacticMap({ user, profile, onSignOut }) {
     },
   });
 
+  const deleteTeamMutation = useMutation({
+    mutationFn: async ({ teamId }) => {
+      if (!currentUser) throw new Error("Non authentifié");
+      const { error } = await supabase
+        .from("group_teams")
+        .delete()
+        .eq("id", teamId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setSlotAssigningId(null);
+      queryClient.invalidateQueries(["group-team", selectedGroupId]);
+      queryClient.invalidateQueries(["group-team-slots"]);
+    },
+    onError: () => {
+      toast.error("Impossible de supprimer l'équipe.");
+    },
+  });
+
   const handleSendGroupMessage = () => {
     const text = (groupMessageDraft || "").trim();
     if (!text || !selectedGroupId) return;
@@ -747,6 +766,15 @@ export default function GalacticMap({ user, profile, onSignOut }) {
   const handleAssignSlot = (slotId, userId) => {
     if (!slotId || !userId || !isSelectedGroupOwner) return;
     assignSlotMutation.mutate({ slotId, userId });
+  };
+
+  const handleDeleteTeam = () => {
+    if (!groupTeam || !isSelectedGroupOwner) return;
+    const ok = window.confirm(
+      "Es-tu sûr de vouloir supprimer cette équipe ? Les postes et la composition seront perdus.",
+    );
+    if (!ok) return;
+    deleteTeamMutation.mutate({ teamId: groupTeam.id });
   };
 
   const handleRemoveMemberFromGroup = () => {
@@ -1466,16 +1494,28 @@ export default function GalacticMap({ user, profile, onSignOut }) {
             <div className="card-spotbulle-dark p-3 border border-slate-700">
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-slate-300">
-                    Équipe du groupe
-                  </p>
-                  {groupTeam && (
-                    <p className="text-[11px] text-slate-400">
-                      {groupTeam.starters_count} joueurs
-                      {groupTeam.formation
-                        ? ` · ${groupTeam.formation}`
-                        : " · formation à définir"}
+                  <div>
+                    <p className="text-xs font-semibold text-slate-300">
+                      Équipe du groupe
                     </p>
+                    {groupTeam && (
+                      <p className="text-[11px] text-slate-400">
+                        {groupTeam.starters_count} joueurs
+                        {groupTeam.formation
+                          ? ` · ${groupTeam.formation}`
+                          : " · formation à définir"}
+                      </p>
+                    )}
+                  </div>
+                  {groupTeam && isSelectedGroupOwner && (
+                    <button
+                      type="button"
+                      onClick={handleDeleteTeam}
+                      disabled={deleteTeamMutation.isLoading}
+                      className="text-[11px] text-rose-400 hover:text-rose-300"
+                    >
+                      Supprimer l&apos;équipe
+                    </button>
                   )}
                 </div>
 
