@@ -1312,11 +1312,40 @@ export default function GalacticMap({ user, profile, onSignOut }) {
       )}
 
       {activeMainTab === "groups" && (
-        <div className="max-w-2xl mx-auto min-h-[420px] space-y-4">
-          {selectedGroupId && (
-            <div className="card-spotbulle-dark p-3 border border-slate-700">
-              <div className="flex flex-col gap-3">
-                <div>
+        <div className="max-w-5xl mx-auto min-h-[420px] space-y-4 lg:space-y-0 lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-4">
+          <div>
+            {!selectedGroupId ? (
+              <GroupList
+                groups={myGroups}
+                loading={loadingMyGroups}
+                onSelectGroup={setSelectedGroupId}
+                onCreateGroup={handleCreateGroup}
+                createLoading={createGroupMutation.isLoading}
+              />
+            ) : (
+              <GroupChatPanel
+                groupId={selectedGroupId}
+                groupName={selectedGroup?.name}
+                messages={groupMessages}
+                loadingMessages={loadingGroupMessages}
+                currentUserId={currentUser?.id}
+                senderProfiles={groupSenderProfileMap}
+                messageDraft={groupMessageDraft}
+                onMessageDraftChange={setGroupMessageDraft}
+                onSendMessage={handleSendGroupMessage}
+                sendLoading={sendGroupMessageMutation.isLoading}
+                onBack={() => setSelectedGroupId(null)}
+                containerHeight="520px"
+                memberCount={groupMemberUserIds.length}
+                isOwner={isSelectedGroupOwner}
+              />
+            )}
+          </div>
+          <div className="space-y-4">
+            {selectedGroupId && (
+              <div className="card-spotbulle-dark p-3 border border-slate-700">
+                <div className="flex flex-col gap-3">
+                  <div>
                   <p className="text-xs font-semibold text-slate-300 mb-1">
                     Membres du groupe
                   </p>
@@ -1487,14 +1516,14 @@ export default function GalacticMap({ user, profile, onSignOut }) {
                     </div>
                   );
                 })()}
+                </div>
               </div>
-            </div>
-          )}
-          {selectedGroupId && (
-            <div className="card-spotbulle-dark p-3 border border-slate-700">
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <div>
+            )}
+            {selectedGroupId && (
+              <div className="card-spotbulle-dark p-3 border border-slate-700">
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <div>
                     <p className="text-xs font-semibold text-slate-300">
                       Équipe du groupe
                     </p>
@@ -1506,18 +1535,18 @@ export default function GalacticMap({ user, profile, onSignOut }) {
                           : " · formation à définir"}
                       </p>
                     )}
+                    </div>
+                    {groupTeam && isSelectedGroupOwner && (
+                      <button
+                        type="button"
+                        onClick={handleDeleteTeam}
+                        disabled={deleteTeamMutation.isLoading}
+                        className="text-[11px] text-rose-400 hover:text-rose-300"
+                      >
+                        Supprimer l&apos;équipe
+                      </button>
+                    )}
                   </div>
-                  {groupTeam && isSelectedGroupOwner && (
-                    <button
-                      type="button"
-                      onClick={handleDeleteTeam}
-                      disabled={deleteTeamMutation.isLoading}
-                      className="text-[11px] text-rose-400 hover:text-rose-300"
-                    >
-                      Supprimer l&apos;équipe
-                    </button>
-                  )}
-                </div>
 
                 {loadingGroupTeam ? (
                   <p className="text-xs text-slate-500">
@@ -1640,6 +1669,8 @@ export default function GalacticMap({ user, profile, onSignOut }) {
                               const left = `${slot.x * 100}%`;
                               const bottom = `${slot.y * 100}%`;
                               const isClickable = isSelectedGroupOwner;
+                              const isSelectedSlot =
+                                slotAssigningId === slot.id;
                               return (
                                 <button
                                   key={slot.index}
@@ -1652,6 +1683,10 @@ export default function GalacticMap({ user, profile, onSignOut }) {
                                     isClickable
                                       ? "cursor-pointer hover:scale-105 transition-transform"
                                       : "cursor-default"
+                                  } ${
+                                    isSelectedSlot
+                                      ? "ring-2 ring-cyan-400 ring-offset-2 ring-offset-emerald-900"
+                                      : ""
                                   }`}
                                   style={{
                                     left,
@@ -1707,6 +1742,21 @@ export default function GalacticMap({ user, profile, onSignOut }) {
                             <p className="text-[11px] text-slate-400 mb-1">
                               Remplaçants
                             </p>
+                            {isSelectedGroupOwner && slotAssigningId && (
+                              <p className="text-[11px] text-slate-400 mb-1">
+                                Poste sélectionné :{" "}
+                                <span className="font-semibold text-slate-200">
+                                  {(() => {
+                                    const s = teamSlots.find(
+                                      (x) => x.id === slotAssigningId,
+                                    );
+                                    return s?.role || `#${(s?.index || 0) + 1}`;
+                                  })()}
+                                </span>
+                                . Choisis un joueur ci-dessous ou via le
+                                sélecteur.
+                              </p>
+                            )}
                             <div className="flex flex-wrap gap-2">
                               {benchPlayers.map((p) => (
                                 <button
@@ -1793,44 +1843,21 @@ export default function GalacticMap({ user, profile, onSignOut }) {
                     )}
                   </>
                 )}
+                </div>
               </div>
-            </div>
-          )}
-          {!selectedGroupId ? (
-            <GroupList
-              groups={myGroups}
-              loading={loadingMyGroups}
-              onSelectGroup={setSelectedGroupId}
-              onCreateGroup={handleCreateGroup}
-              createLoading={createGroupMutation.isLoading}
-            />
-          ) : (
-            <GroupChatPanel
-              groupId={selectedGroupId}
-              groupName={selectedGroup?.name}
-              messages={groupMessages}
-              loadingMessages={loadingGroupMessages}
-              currentUserId={currentUser?.id}
-              senderProfiles={groupSenderProfileMap}
-              messageDraft={groupMessageDraft}
-              onMessageDraftChange={setGroupMessageDraft}
-              onSendMessage={handleSendGroupMessage}
-              sendLoading={sendGroupMessageMutation.isLoading}
-              onBack={() => setSelectedGroupId(null)}
-              containerHeight="520px"
-            />
-          )}
-          {selectedGroupId && !isSelectedGroupOwner && (
-            <div className="max-w-2xl mx-auto">
-              <button
-                type="button"
-                onClick={handleLeaveGroup}
-                className="text-xs text-rose-400 hover:text-rose-300 underline"
-              >
-                Quitter ce groupe
-              </button>
-            </div>
-          )}
+            )}
+            {selectedGroupId && !isSelectedGroupOwner && (
+              <div>
+                <button
+                  type="button"
+                  onClick={handleLeaveGroup}
+                  className="text-xs text-rose-400 hover:text-rose-300 underline"
+                >
+                  Quitter ce groupe
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </OdysseyLayout>
