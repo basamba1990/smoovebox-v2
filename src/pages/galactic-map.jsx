@@ -59,6 +59,7 @@ export default function GalacticMap({ user, profile, onSignOut }) {
   const [slotAssigningId, setSlotAssigningId] = useState(null);
   const realtimeChannelRef = useRef(null);
   const realtimeGroupChannelRef = useRef(null);
+  const realtimeTeamSlotsChannelRef = useRef(null);
   const [elementFilter, setElementFilter] = useState(null); // "rouge" | "jaune" | "vert" | "bleu" | null
   const [hasClubFilter, setHasClubFilter] = useState(false); // filter on users who have a club in their hobby profile
 
@@ -848,6 +849,39 @@ export default function GalacticMap({ user, profile, onSignOut }) {
     };
   }, [currentUser?.id, supabase, queryClient]);
 
+  // Realtime: group_team_slots (team composition updates live)
+  useEffect(() => {
+    if (!currentUser || !supabase || !queryClient) return;
+    if (realtimeTeamSlotsChannelRef.current) {
+      supabase.removeChannel(realtimeTeamSlotsChannelRef.current);
+      realtimeTeamSlotsChannelRef.current = null;
+    }
+    realtimeTeamSlotsChannelRef.current = supabase
+      .channel("group_team_slots_live")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "group_team_slots",
+        },
+        (payload) => {
+          const teamId =
+            payload.new?.team_id || payload.old?.team_id || null;
+          if (teamId) {
+            queryClient.invalidateQueries(["group-team-slots", teamId]);
+          }
+        },
+      )
+      .subscribe();
+    return () => {
+      if (realtimeTeamSlotsChannelRef.current) {
+        supabase.removeChannel(realtimeTeamSlotsChannelRef.current);
+        realtimeTeamSlotsChannelRef.current = null;
+      }
+    };
+  }, [currentUser?.id, supabase, queryClient]);
+
   useEffect(() => {
     if (requestsError) {
       toast.error(
@@ -1614,6 +1648,50 @@ export default function GalacticMap({ user, profile, onSignOut }) {
                           </div>
                         )}
                       </div>
+                    )}
+
+                    {/* Bench / substitutes */}
+                    {groupTeam.formation && (
+                      (() => {
+                        const assignedIds = new Set(
+                          teamSlots
+                            .map((s) => s.user_id)
+                            .filter(Boolean),
+                        );
+                        const benchPlayers = (groupMemberProfiles || []).filter(
+                          (p) => !assignedIds.has(p.id),
+                        );
+                        if (!benchPlayers.length) return null;
+                        return (
+                          <div className="mt-3">
+                            <p className="text-[11px] text-slate-400 mb-1">
+                              Remplaçants
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {benchPlayers.map((p) => (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  className={`flex items-center justify-center rounded-full border-2 border-slate-500/70 bg-slate-800 hover:bg-slate-700/90 transition-colors ${
+                                    isSelectedGroupOwner
+                                      ? "cursor-pointer"
+                                      : "cursor-default"
+                                  }`}
+                                  style={{ width: 32, height: 32 }}
+                                  onClick={() => {
+                                    if (!isSelectedGroupOwner) return;
+                                    if (!slotAssigningId) return;
+                                    handleAssignSlot(slotAssigningId, p.id);
+                                  }}
+                                  title={p.full_name || "Remplaçant"}
+                                >
+                                  <ProfileAvatar profile={p} size={24} />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()
                     )}
 
                     {/* Assign player to slot (owner only) */}
