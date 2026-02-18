@@ -19,6 +19,8 @@ function GroupChatPanel({
   onBack,
   className = "",
   containerHeight = "520px",
+  memberCount,
+  isOwner,
 }) {
   const getSenderName = (senderId) => {
     if (senderId === currentUserId) return "Toi";
@@ -52,10 +54,22 @@ function GroupChatPanel({
             />
           </svg>
         </button>
-        <div className="min-w-0">
-          <span className="text-sm font-semibold text-white truncate block">
-            {groupName || "Groupe"}
-          </span>
+        <div className="min-w-0 flex-1 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white truncate">
+              {groupName || "Groupe"}
+            </p>
+            {typeof memberCount === "number" && (
+              <p className="text-[11px] text-slate-400">
+                {memberCount} membre{memberCount > 1 ? "s" : ""}
+              </p>
+            )}
+          </div>
+          {isOwner && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/15 text-amber-300 border border-amber-500/40">
+              Admin
+            </span>
+          )}
         </div>
       </div>
 

@@ -15,3 +15,4 @@ export { default as GroupList } from "./GroupList.jsx";
 export { default as GroupChatPanel } from "./GroupChatPanel.jsx";
 
 export { getElementClasses, ELEMENT_COLORS } from "./galacticUtils.js";
+export { FOOTBALL_FORMATIONS_BY_COUNT } from "./footballFormations.js";
