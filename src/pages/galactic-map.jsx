@@ -21,6 +21,7 @@ import {
   FootballAgentChatPanel,
   GroupList,
   GroupChatPanel,
+  FOOTBALL_FORMATIONS_BY_COUNT,
 } from "../components/galactic";
 import { useFriendRequests } from "../hooks/useFriendRequests.js";
 import { useGalaxyPositions } from "../hooks/useGalaxyPositions.js";
@@ -53,6 +54,9 @@ export default function GalacticMap({ user, profile, onSignOut }) {
   const [friendIdsToAdd, setFriendIdsToAdd] = useState([]);
   const [isFriendPickerOpen, setIsFriendPickerOpen] = useState(false);
   const [memberToRemoveId, setMemberToRemoveId] = useState(null);
+  const [newTeamName, setNewTeamName] = useState("");
+  const [newTeamStarters, setNewTeamStarters] = useState(11);
+  const [slotAssigningId, setSlotAssigningId] = useState(null);
   const realtimeChannelRef = useRef(null);
   const realtimeGroupChannelRef = useRef(null);
   const [elementFilter, setElementFilter] = useState(null); // "rouge" | "jaune" | "vert" | "bleu" | null
@@ -322,6 +326,48 @@ export default function GalacticMap({ user, profile, onSignOut }) {
   const isSelectedGroupOwner =
     !!selectedGroup && selectedGroup.owner_id === currentUser?.id;
 
+  // Team for selected group (one team per group)
+  const {
+    data: groupTeam = null,
+    isLoading: loadingGroupTeam,
+  } = useQuery({
+    queryKey: ["group-team", selectedGroupId],
+    enabled: !!selectedGroupId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("group_teams")
+        .select("id, group_id, name, starters_count, formation, owner_id")
+        .eq("group_id", selectedGroupId)
+        .maybeSingle();
+      if (error && error.code !== "PGRST116") {
+        console.error("[GalacticMap] Erreur group_teams:", error);
+        throw error;
+      }
+      return data || null;
+    },
+  });
+
+  // Team slots for selected group's team
+  const {
+    data: teamSlots = [],
+    isLoading: loadingTeamSlots,
+  } = useQuery({
+    queryKey: ["group-team-slots", groupTeam?.id],
+    enabled: !!groupTeam?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("group_team_slots")
+        .select("id, team_id, index, role, x, y, user_id")
+        .eq("team_id", groupTeam.id)
+        .order("index", { ascending: true });
+      if (error) {
+        console.error("[GalacticMap] Erreur group_team_slots:", error);
+        throw error;
+      }
+      return data || [];
+    },
+  });
+
   // Group messages for selected group
   const {
     data: groupMessages = [],
@@ -569,6 +615,99 @@ export default function GalacticMap({ user, profile, onSignOut }) {
     },
   });
 
+  const createTeamMutation = useMutation({
+    mutationFn: async ({ groupId, name, startersCount }) => {
+      if (!currentUser) throw new Error("Non authentifié");
+      const payload = {
+        group_id: groupId,
+        name: (name || "").trim(),
+        starters_count: startersCount,
+        owner_id: currentUser.id,
+      };
+      const { data, error } = await supabase
+        .from("group_teams")
+        .insert(payload)
+        .select("id, starters_count, formation")
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      setNewTeamName("");
+      setNewTeamStarters(11);
+      queryClient.invalidateQueries(["group-team", selectedGroupId]);
+    },
+    onError: () => {
+      toast.error("Impossible de créer l'équipe.");
+    },
+  });
+
+  const setFormationMutation = useMutation({
+    mutationFn: async ({ teamId, formation, startersCount }) => {
+      if (!currentUser) throw new Error("Non authentifié");
+      const formationsForCount =
+        FOOTBALL_FORMATIONS_BY_COUNT[String(startersCount)] ||
+        FOOTBALL_FORMATIONS_BY_COUNT[startersCount] ||
+        {};
+      const def = formationsForCount[formation];
+      if (!def) {
+        throw new Error("Formation inconnue pour ce nombre de joueurs.");
+      }
+
+      const { error: updateError } = await supabase
+        .from("group_teams")
+        .update({ formation })
+        .eq("id", teamId);
+      if (updateError) throw updateError;
+
+      const { error: deleteError } = await supabase
+        .from("group_team_slots")
+        .delete()
+        .eq("team_id", teamId);
+      if (deleteError) throw deleteError;
+
+      const rows = (def.slots || []).map((slot) => ({
+        team_id: teamId,
+        index: slot.index,
+        role: slot.role || null,
+        x: slot.x,
+        y: slot.y,
+        user_id: null,
+      }));
+      if (rows.length) {
+        const { error: insertError } = await supabase
+          .from("group_team_slots")
+          .insert(rows);
+        if (insertError) throw insertError;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["group-team", selectedGroupId]);
+      queryClient.invalidateQueries(["group-team-slots", groupTeam?.id]);
+    },
+    onError: () => {
+      toast.error("Impossible de mettre à jour la formation.");
+    },
+  });
+
+  const assignSlotMutation = useMutation({
+    mutationFn: async ({ slotId, userId }) => {
+      if (!currentUser) throw new Error("Non authentifié");
+      const { error } = await supabase
+        .from("group_team_slots")
+        .update({ user_id: userId })
+        .eq("id", slotId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setSlotAssigningId(null);
+      queryClient.invalidateQueries(["group-team-slots", groupTeam?.id]);
+    },
+    onError: () => {
+      toast.error("Impossible d'assigner le joueur à ce poste.");
+    },
+  });
+
   const handleSendGroupMessage = () => {
     const text = (groupMessageDraft || "").trim();
     if (!text || !selectedGroupId) return;
@@ -582,6 +721,31 @@ export default function GalacticMap({ user, profile, onSignOut }) {
       groupId: selectedGroupId,
       userIds: friendIdsToAdd,
     });
+  };
+
+  const handleCreateTeam = () => {
+    const name = (newTeamName || "").trim();
+    const starters = Number(newTeamStarters) || 0;
+    if (!selectedGroupId || !name || starters <= 0 || starters > 11) return;
+    createTeamMutation.mutate({
+      groupId: selectedGroupId,
+      name,
+      startersCount: starters,
+    });
+  };
+
+  const handleSetFormation = (formation) => {
+    if (!groupTeam || !formation) return;
+    setFormationMutation.mutate({
+      teamId: groupTeam.id,
+      formation,
+      startersCount: groupTeam.starters_count,
+    });
+  };
+
+  const handleAssignSlot = (slotId, userId) => {
+    if (!slotId || !userId || !isSelectedGroupOwner) return;
+    assignSlotMutation.mutate({ slotId, userId });
   };
 
   const handleRemoveMemberFromGroup = () => {
@@ -1261,6 +1425,254 @@ export default function GalacticMap({ user, profile, onSignOut }) {
                     </div>
                   );
                 })()}
+              </div>
+            </div>
+          )}
+          {selectedGroupId && (
+            <div className="card-spotbulle-dark p-3 border border-slate-700">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-slate-300">
+                    Équipe du groupe
+                  </p>
+                  {groupTeam && (
+                    <p className="text-[11px] text-slate-400">
+                      {groupTeam.starters_count} joueurs
+                      {groupTeam.formation
+                        ? ` · ${groupTeam.formation}`
+                        : " · formation à définir"}
+                    </p>
+                  )}
+                </div>
+
+                {loadingGroupTeam ? (
+                  <p className="text-xs text-slate-500">
+                    Chargement de l&apos;équipe...
+                  </p>
+                ) : !groupTeam ? (
+                  isSelectedGroupOwner ? (
+                    <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                      <div className="flex-1">
+                        <label className="block text-[11px] text-slate-400 mb-1">
+                          Nom de l&apos;équipe
+                        </label>
+                        <input
+                          type="text"
+                          value={newTeamName}
+                          onChange={(e) => setNewTeamName(e.target.value)}
+                          placeholder="Equipe du groupe"
+                          className="w-full px-3 py-1.5 rounded-md bg-slate-800 border border-slate-600 text-xs text-slate-100 placeholder:text-slate-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-slate-400 mb-1">
+                          Nombre de joueurs
+                        </label>
+                        <select
+                          value={newTeamStarters}
+                          onChange={(e) =>
+                            setNewTeamStarters(Number(e.target.value) || 11)
+                          }
+                          className="px-2 py-1.5 rounded-md bg-slate-800 border border-slate-600 text-xs text-slate-100"
+                        >
+                          <option value={5}>5</option>
+                          <option value={7}>7</option>
+                          <option value={11}>11</option>
+                        </select>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCreateTeam}
+                        disabled={createTeamMutation.isLoading}
+                        className="px-3 py-1.5 text-xs rounded-md bg-teal-600 hover:bg-teal-700 text-white disabled:opacity-50"
+                      >
+                        Créer l&apos;équipe
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500">
+                      Aucune équipe n&apos;a encore été créée pour ce groupe.
+                    </p>
+                  )
+                ) : (
+                  <>
+                    {/* Formation selector (owner only) */}
+                    {isSelectedGroupOwner && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs text-slate-400">
+                          Formation :
+                        </p>
+                        {(() => {
+                          const formationsForCount =
+                            FOOTBALL_FORMATIONS_BY_COUNT[
+                              groupTeam.starters_count
+                            ] ||
+                            FOOTBALL_FORMATIONS_BY_COUNT[
+                              String(groupTeam.starters_count)
+                            ] ||
+                            {};
+                          const formationNames = Object.keys(formationsForCount);
+                          if (!formationNames.length) {
+                            return (
+                              <span className="text-xs text-slate-500">
+                                Aucune formation définie pour{" "}
+                                {groupTeam.starters_count} joueurs.
+                              </span>
+                            );
+                          }
+                          return (
+                            <select
+                              value={groupTeam.formation || ""}
+                              onChange={(e) =>
+                                handleSetFormation(e.target.value || null)
+                              }
+                              className="px-2 py-1.5 rounded-md bg-slate-800 border border-slate-600 text-xs text-slate-100"
+                            >
+                              <option value="">
+                                Choisir une formation
+                              </option>
+                              {formationNames.map((name) => (
+                                <option key={name} value={name}>
+                                  {name}
+                                </option>
+                              ))}
+                            </select>
+                          );
+                        })()}
+                      </div>
+                    )}
+
+                    {/* Field + slots */}
+                    {groupTeam.formation && (
+                      <div className="mt-2">
+                        {loadingTeamSlots ? (
+                          <p className="text-xs text-slate-500">
+                            Chargement des postes...
+                          </p>
+                        ) : !teamSlots.length ? (
+                          <p className="text-xs text-slate-500">
+                            Aucune position définie pour cette formation.
+                          </p>
+                        ) : (
+                          <div className="relative w-full aspect-[3/2] bg-gradient-to-b from-emerald-900 to-emerald-800 rounded-xl border border-emerald-500/60 overflow-hidden">
+                            <div className="absolute inset-x-4 inset-y-4 border border-emerald-500/40 rounded-xl" />
+                            <div className="absolute inset-x-1/2 top-0 bottom-0 border-l border-emerald-500/40" />
+                            <div className="absolute inset-x-8 top-1/2 border-t border-emerald-500/40" />
+                            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full border border-emerald-500/50" />
+                            {teamSlots.map((slot) => {
+                              const assignedProfile =
+                                slot.user_id &&
+                                groupMemberProfileMap[slot.user_id];
+                              const left = `${slot.x * 100}%`;
+                              const bottom = `${slot.y * 100}%`;
+                              const isClickable = isSelectedGroupOwner;
+                              return (
+                                <button
+                                  key={slot.id}
+                                  type="button"
+                                  className={`absolute -translate-x-1/2 translate-y-1/2 flex items-center justify-center rounded-full border-2 ${
+                                    assignedProfile
+                                      ? "border-white"
+                                      : "border-emerald-300/80"
+                                  } ${
+                                    isClickable
+                                      ? "cursor-pointer hover:scale-105 transition-transform"
+                                      : "cursor-default"
+                                  }`}
+                                  style={{
+                                    left,
+                                    bottom,
+                                    width: 40,
+                                    height: 40,
+                                    backgroundColor: assignedProfile
+                                      ? "rgba(15, 23, 42, 0.9)"
+                                      : "rgba(16, 185, 129, 0.85)",
+                                  }}
+                                  onClick={() => {
+                                    if (!isClickable) return;
+                                    setSlotAssigningId(slot.id);
+                                  }}
+                                >
+                                  {assignedProfile ? (
+                                    <ProfileAvatar
+                                      profile={assignedProfile}
+                                      size={32}
+                                      title={
+                                        assignedProfile.full_name || "Joueur"
+                                      }
+                                    />
+                                  ) : (
+                                    <span className="text-[11px] font-semibold text-slate-900">
+                                      {slot.role || slot.index + 1}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Assign player to slot (owner only) */}
+                    {isSelectedGroupOwner && slotAssigningId && (
+                      (() => {
+                        const slot = teamSlots.find(
+                          (s) => s.id === slotAssigningId,
+                        );
+                        if (!slot) return null;
+                        const assignedIds = new Set(
+                          teamSlots
+                            .map((s) => s.user_id)
+                            .filter(
+                              (id) => id && id !== slot.user_id,
+                            ),
+                        );
+                        const availablePlayers =
+                          (groupMemberProfiles || []).filter(
+                            (p) => !assignedIds.has(p.id),
+                          );
+                        if (!availablePlayers.length) {
+                          return (
+                            <p className="mt-2 text-[11px] text-slate-500">
+                              Aucun membre disponible à assigner à ce poste.
+                            </p>
+                          );
+                        }
+                        return (
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <p className="text-[11px] text-slate-400">
+                              Choisir un joueur pour ce poste :
+                            </p>
+                            <select
+                              className="px-2 py-1 rounded-md bg-slate-800 border border-slate-600 text-xs text-slate-100 min-w-[200px]"
+                              defaultValue=""
+                              onChange={(e) => {
+                                if (!e.target.value) return;
+                                handleAssignSlot(slot.id, e.target.value);
+                                e.target.value = "";
+                              }}
+                            >
+                              <option value="">Sélectionner un joueur</option>
+                              {availablePlayers.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.full_name || "Utilisateur"}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => setSlotAssigningId(null)}
+                              className="text-[11px] text-slate-400 hover:text-slate-200"
+                            >
+                              Annuler
+                            </button>
+                          </div>
+                        );
+                      })()
+                    )}
+                  </>
+                )}
               </div>
             </div>
           )}
