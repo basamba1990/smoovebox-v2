@@ -41,6 +41,7 @@ import ComplementaryMatches from "../components/ComplementaryMatches.jsx";
 import Questionnaire from "../components/Questionnaire.jsx";
 import FootballChatModal from "../components/FootballChatModal.jsx";
 import QuickActions from "../components/QuickActions.jsx";
+import GalacticMap from "../pages/galactic-map.jsx";
 
 export default function AppRoutes({
   user,
@@ -191,6 +192,14 @@ export default function AppRoutes({
         element={
           <RequireAuth>
             <LaboTransformation onSignOut={onSignOut} />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/carte-galactique"
+        element={
+          <RequireAuth>
+            <GalacticMap user={user} profile={profile} onSignOut={onSignOut} />
           </RequireAuth>
         }
       />

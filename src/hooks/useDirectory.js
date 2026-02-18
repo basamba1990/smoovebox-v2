@@ -19,7 +19,7 @@ export function useDirectoryUsers(filter = 'all', searchTerm = '') {
     queryFn: async () => {
       let query = supabase
         .from('profiles')
-        .select('id, full_name, bio, location, skills, avatar_url, is_creator, football_interest, is_major, passions, clubs, sex, created_at')
+        .select('id, full_name, bio, location, skills, avatar_url, is_creator, football_interest, is_major, passions, clubs, sex, created_at, dominant_color')
         .neq('id', user?.id) // Exclude current user
         .order('created_at', { ascending: false });
 
@@ -65,16 +65,39 @@ export function useExistingConnections() {
         return new Set();
       }
 
-      const { data, error } = await supabase
-        .from('connections')
-        .select('target_id, status')
+      // 1) Outgoing friend requests (pending or accepted)
+      const { data: requests, error: reqError } = await supabase
+        .from('friend_requests')
+        .select('receiver_id, status')
         .eq('requester_id', user.id);
 
-      if (error) {
-        throw error;
+      if (reqError) {
+        throw reqError;
       }
 
-      const ids = new Set(data?.map(connection => connection.target_id) || []);
+      // 2) Existing friendships
+      const { data: friends, error: friendsError } = await supabase
+        .from('friends')
+        .select('user_id_1, user_id_2')
+        .or(`user_id_1.eq.${user.id},user_id_2.eq.${user.id}`);
+
+      if (friendsError) {
+        throw friendsError;
+      }
+
+      const ids = new Set();
+
+      // Mark all outgoing requests (pending or accepted) as "existing connection"
+      (requests || []).forEach((row) => {
+        ids.add(row.receiver_id);
+      });
+
+      // Add all friends (the "other" user in each pair)
+      (friends || []).forEach((row) => {
+        const otherId = row.user_id_1 === user.id ? row.user_id_2 : row.user_id_1;
+        ids.add(otherId);
+      });
+
       return ids;
     },
     enabled: !!user,

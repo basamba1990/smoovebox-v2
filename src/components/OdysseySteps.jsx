@@ -18,7 +18,7 @@ export default function OdysseySteps({ currentStep, steps = ODYSSEY_STEPS, class
         {steps.map((step, index) => {
           const Icon = step.Icon;
           const isActive = currentStep != null && step.id === currentStep;
-          const isClickable = step.id <= 4 && Boolean(step.path);
+          const isClickable = step.id <= 5 && Boolean(step.path);
 
           const StepInner = (
             <>
