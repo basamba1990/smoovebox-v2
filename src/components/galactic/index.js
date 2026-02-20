@@ -13,6 +13,7 @@ export { default as DirectMessageChat } from "./DirectMessageChat.jsx";
 export { default as FootballAgentChatPanel } from "./FootballAgentChatPanel.jsx";
 export { default as GroupList } from "./GroupList.jsx";
 export { default as GroupChatPanel } from "./GroupChatPanel.jsx";
+export { default as GroupsTabContent } from "./GroupsTabContent.jsx";
 
 export { getElementClasses, ELEMENT_COLORS } from "./galacticUtils.js";
 export { FOOTBALL_FORMATIONS_BY_COUNT } from "./footballFormations.js";

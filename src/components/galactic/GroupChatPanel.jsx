@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Button } from "../ui/button-enhanced.jsx";
 import { Textarea } from "../ui/textarea.jsx";
 
@@ -22,6 +22,14 @@ function GroupChatPanel({
   memberCount,
   isOwner,
 }) {
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    if (!loadingMessages && messages?.length) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [loadingMessages, messages?.length]);
+
   const getSenderName = (senderId) => {
     if (senderId === currentUserId) return "Toi";
     const p = senderProfiles[senderId];
@@ -111,6 +119,7 @@ function GroupChatPanel({
             </div>
           ))
         )}
+        <div ref={messagesEndRef} />
       </div>
 
       <div className="p-3 border-t border-slate-700 flex gap-2 shrink-0">
