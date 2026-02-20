@@ -243,8 +243,8 @@ export default function GroupsTabContent({
           </div>
         </div>
       )}
-      <div className=" min-h-[420px] space-y-4 lg:space-y-0 lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-4">
-        <div>
+      <div className="min-h-[420px] space-y-4 lg:space-y-0 lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-4 lg:items-stretch">
+        <div className="lg:h-full lg:flex lg:flex-col lg:min-h-0">
           {!selectedGroupId ? (
             <GroupList
               groups={myGroups}
@@ -266,7 +266,8 @@ export default function GroupsTabContent({
               onSendMessage={handleSendGroupMessage}
               sendLoading={sendGroupMessageMutation.isLoading}
               onBack={() => setSelectedGroupId(null)}
-              containerHeight="520px"
+              containerHeight="100%"
+              className="lg:min-h-0 lg:flex-1"
               memberCount={groupMemberUserIds.length}
               isOwner={isSelectedGroupOwner}
             />
