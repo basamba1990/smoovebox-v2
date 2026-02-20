@@ -2,6 +2,7 @@ import React, { useState } from "react";
 
 /**
  * List of groups the user belongs to, with "Créer un groupe" and create form.
+ * unreadCountByGroupId: { [groupId]: number } for badge.
  */
 function GroupList({
   groups,
@@ -9,6 +10,7 @@ function GroupList({
   onSelectGroup,
   onCreateGroup,
   createLoading,
+  unreadCountByGroupId = {},
 }) {
   const [showCreate, setShowCreate] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
@@ -78,22 +80,30 @@ function GroupList({
         </div>
       ) : (
         <ul className="divide-y divide-slate-700">
-          {groups.map((g) => (
-            <li key={g.id}>
-              <button
-                type="button"
-                onClick={() => onSelectGroup(g.id)}
-                className="w-full flex items-center gap-3 p-4 text-left text-slate-200 hover:bg-slate-800/60 transition-colors"
-              >
-                <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-slate-400 text-sm font-medium shrink-0">
-                  {g.name?.charAt(0)?.toUpperCase() || "G"}
-                </div>
-                <span className="text-sm font-medium truncate">
-                  {g.name || "Sans nom"}
-                </span>
-              </button>
-            </li>
-          ))}
+          {groups.map((g) => {
+            const unread = unreadCountByGroupId[g.id] || 0;
+            return (
+              <li key={g.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelectGroup(g.id)}
+                  className="w-full flex items-center gap-3 p-4 text-left text-slate-200 hover:bg-slate-800/60 transition-colors"
+                >
+                  <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-slate-400 text-sm font-medium shrink-0">
+                    {g.name?.charAt(0)?.toUpperCase() || "G"}
+                  </div>
+                  <span className="text-sm font-medium truncate flex-1 min-w-0">
+                    {g.name || "Sans nom"}
+                  </span>
+                  {unread > 0 && (
+                    <span className="shrink-0 inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-xs font-medium bg-rose-500 text-white">
+                      {unread > 99 ? "99+" : unread}
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Button } from "../ui/button-enhanced.jsx";
 import { Textarea } from "../ui/textarea.jsx";
 import ProfileAvatar from "./ProfileAvatar.jsx";
@@ -21,6 +21,14 @@ function DirectMessageChat({
   className = "",
   containerHeight = "520px",
 }) {
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    if (!loadingMessages && messages?.length) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [loadingMessages, messages?.length]);
+
   return (
     <div
       className={`card-spotbulle-dark flex flex-col ${className}`}
@@ -90,6 +98,7 @@ function DirectMessageChat({
             </div>
           ))
         )}
+        <div ref={messagesEndRef} />
       </div>
 
       <div className="p-3 border-t border-slate-700 flex gap-2 shrink-0">
