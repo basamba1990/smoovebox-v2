@@ -721,6 +721,11 @@ export default function GalacticMap({ user, profile, onSignOut }) {
             onClick={() => setActiveMainTab("groups")}
           >
             Groupes ({groupsApi.myGroups.length})
+            {groupsApi.totalUnreadGroups > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-xs font-medium bg-rose-500 text-white">
+                {groupsApi.totalUnreadGroups}
+              </span>
+            )}
           </button>
         </div>
       </div>

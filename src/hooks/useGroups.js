@@ -70,6 +70,36 @@ export function useGroups(supabase, currentUser, queryClient) {
   const isSelectedGroupOwner =
     !!selectedGroup && selectedGroup.owner_id === currentUser?.id;
 
+  const { data: groupUnreadCountsRaw = [] } = useQuery({
+    queryKey: ["group-unread-counts", currentUser?.id],
+    enabled: !!currentUser,
+    queryFn: async () => {
+      if (!currentUser) return [];
+      const { data, error } = await supabase.rpc("get_group_unread_counts", {
+        p_user_id: currentUser.id,
+      });
+      if (error) {
+        console.error("[useGroups] Erreur unread counts:", error);
+        return [];
+      }
+      return data || [];
+    },
+  });
+  const unreadCountByGroupId = useMemo(
+    () =>
+      (groupUnreadCountsRaw || []).reduce((acc, row) => {
+        if (row.group_id && Number(row.unread_count) > 0) {
+          acc[row.group_id] = Number(row.unread_count);
+        }
+        return acc;
+      }, {}),
+    [groupUnreadCountsRaw],
+  );
+  const totalUnreadGroups = useMemo(
+    () => Object.values(unreadCountByGroupId).reduce((s, n) => s + n, 0),
+    [unreadCountByGroupId],
+  );
+
   const { data: groupTeam = null, isLoading: loadingGroupTeam } = useQuery({
     queryKey: ["group-team", selectedGroupId],
     enabled: !!selectedGroupId,
@@ -435,6 +465,30 @@ export function useGroups(supabase, currentUser, queryClient) {
     });
   };
 
+  // Mark group as read when user opens it
+  useEffect(() => {
+    if (!currentUser || !selectedGroupId) return;
+    const run = async () => {
+      const { error } = await supabase.from("group_reads").upsert(
+        {
+          group_id: selectedGroupId,
+          user_id: currentUser.id,
+          last_read_at: new Date().toISOString(),
+        },
+        { onConflict: "group_id,user_id" },
+      );
+      if (error) {
+        console.error("[useGroups] Mark group read error:", error);
+        return;
+      }
+      queryClient.invalidateQueries(["group-unread-counts", currentUser.id]);
+      await queryClient.refetchQueries({
+        queryKey: ["group-unread-counts", currentUser.id],
+      });
+    };
+    run();
+  }, [currentUser?.id, selectedGroupId, supabase, queryClient]);
+
   useEffect(() => {
     if (!currentUser || !supabase || !queryClient) return;
     if (realtimeGroupChannelRef.current) {
@@ -450,10 +504,26 @@ export function useGroups(supabase, currentUser, queryClient) {
           schema: "public",
           table: "group_messages",
         },
-        (payload) => {
+        async (payload) => {
           const groupId = payload.new?.group_id;
-          if (groupId)
-            queryClient.invalidateQueries(["group-messages", groupId]);
+          if (!groupId) return;
+          queryClient.invalidateQueries(["group-messages", groupId]);
+          queryClient.invalidateQueries(["group-unread-counts", currentUser?.id]);
+          if (groupId === selectedGroupId) {
+            const { error } = await supabase.from("group_reads").upsert(
+              {
+                group_id: groupId,
+                user_id: currentUser.id,
+                last_read_at: new Date().toISOString(),
+              },
+              { onConflict: "group_id,user_id" },
+            );
+            if (!error) {
+              await queryClient.refetchQueries({
+                queryKey: ["group-unread-counts", currentUser.id],
+              });
+            }
+          }
         },
       )
       .subscribe();
@@ -463,7 +533,7 @@ export function useGroups(supabase, currentUser, queryClient) {
         realtimeGroupChannelRef.current = null;
       }
     };
-  }, [currentUser?.id, supabase, queryClient]);
+  }, [currentUser?.id, selectedGroupId, supabase, queryClient]);
 
   useEffect(() => {
     if (!currentUser || !supabase || !queryClient) return;
@@ -496,6 +566,8 @@ export function useGroups(supabase, currentUser, queryClient) {
     currentUser,
     myGroups,
     loadingMyGroups,
+    unreadCountByGroupId,
+    totalUnreadGroups,
     selectedGroupId,
     setSelectedGroupId,
     selectedGroup,

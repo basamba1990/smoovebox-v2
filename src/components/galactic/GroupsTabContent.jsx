@@ -12,6 +12,7 @@ export default function GroupsTabContent({
   currentUser,
   myGroups,
   loadingMyGroups,
+  unreadCountByGroupId,
   selectedGroupId,
   setSelectedGroupId,
   selectedGroup,
@@ -252,6 +253,7 @@ export default function GroupsTabContent({
               onSelectGroup={setSelectedGroupId}
               onCreateGroup={handleCreateGroup}
               createLoading={createGroupMutation.isLoading}
+              unreadCountByGroupId={unreadCountByGroupId}
             />
           ) : (
             <GroupChatPanel
