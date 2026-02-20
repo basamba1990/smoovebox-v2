@@ -268,8 +268,7 @@ export default function GroupsTabContent({
               onSendMessage={handleSendGroupMessage}
               sendLoading={sendGroupMessageMutation.isLoading}
               onBack={() => setSelectedGroupId(null)}
-              containerHeight="100%"
-              className="lg:min-h-0 lg:flex-1"
+              containerHeight="520px"
               memberCount={groupMemberUserIds.length}
               isOwner={isSelectedGroupOwner}
             />
@@ -277,8 +276,8 @@ export default function GroupsTabContent({
         </div>
         <div className="space-y-4">
           {selectedGroupId && (
-            <div className="card-spotbulle-dark p-3 border border-slate-700">
-              <div className="flex flex-col gap-3">
+            <div className="card-spotbulle-dark p-3 border border-slate-700 flex flex-col h-[520px]">
+              <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-semibold text-slate-300">
