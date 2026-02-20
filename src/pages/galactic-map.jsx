@@ -250,6 +250,37 @@ export default function GalacticMap({ user, profile, onSignOut }) {
     return [agentThread, ...base];
   }, [threadsRaw, FOOTBALL_AGENT_THREAD_ID]);
 
+  // Unread counts per thread (for badges)
+  const { data: unreadCountsRaw = [] } = useQuery({
+    queryKey: ["direct-thread-unread-counts", currentUser?.id],
+    enabled: !!currentUser,
+    queryFn: async () => {
+      if (!currentUser) return [];
+      const { data, error } = await supabase.rpc("get_direct_thread_unread_counts", {
+        p_user_id: currentUser.id,
+      });
+      if (error) {
+        console.error("[GalacticMap] Erreur unread counts:", error);
+        return [];
+      }
+      return data || [];
+    },
+  });
+  const unreadCountByThreadId = useMemo(
+    () =>
+      (unreadCountsRaw || []).reduce((acc, row) => {
+        if (row.thread_id && Number(row.unread_count) > 0) {
+          acc[row.thread_id] = Number(row.unread_count);
+        }
+        return acc;
+      }, {}),
+    [unreadCountsRaw],
+  );
+  const totalUnread = useMemo(
+    () => Object.values(unreadCountByThreadId).reduce((s, n) => s + n, 0),
+    [unreadCountByThreadId],
+  );
+
   const {
     data: threadMessages = [],
     isLoading: loadingMessages,
@@ -342,6 +373,33 @@ export default function GalacticMap({ user, profile, onSignOut }) {
     sendMessageMutation.mutate({ threadId: selectedThreadId, content: text });
   };
 
+  // Mark thread as read when user opens it (real threads only, not agent)
+  useEffect(() => {
+    if (
+      !currentUser ||
+      !selectedThreadId ||
+      selectedThreadId === FOOTBALL_AGENT_THREAD_ID
+    )
+      return;
+    const run = async () => {
+      const { error } = await supabase.from("direct_thread_reads").upsert(
+        {
+          thread_id: selectedThreadId,
+          user_id: currentUser.id,
+          last_read_at: new Date().toISOString(),
+        },
+        { onConflict: "thread_id,user_id" },
+      );
+      if (error) {
+        console.error("[GalacticMap] Mark read error:", error);
+        return;
+      }
+      queryClient.invalidateQueries(["direct-thread-unread-counts", currentUser.id]);
+      await queryClient.refetchQueries({ queryKey: ["direct-thread-unread-counts", currentUser.id] });
+    };
+    run();
+  }, [currentUser?.id, selectedThreadId, supabase, queryClient]);
+
   // Realtime: subscribe to new direct messages so the UI updates without refresh
   useEffect(() => {
     if (!currentUser || !supabase || !queryClient) return;
@@ -360,11 +418,27 @@ export default function GalacticMap({ user, profile, onSignOut }) {
           schema: "public",
           table: "direct_messages",
         },
-        (payload) => {
+        async (payload) => {
           const threadId = payload.new?.thread_id;
-          if (threadId) {
-            queryClient.invalidateQueries(["direct-messages", threadId]);
-            queryClient.invalidateQueries(["direct-threads"]);
+          if (!threadId) return;
+          queryClient.invalidateQueries(["direct-messages", threadId]);
+          queryClient.invalidateQueries(["direct-threads"]);
+          queryClient.invalidateQueries(["direct-thread-unread-counts", currentUser?.id]);
+          // If user is viewing this thread, mark it as read so the badge disappears
+          if (threadId === selectedThreadId) {
+            const { error } = await supabase.from("direct_thread_reads").upsert(
+              {
+                thread_id: threadId,
+                user_id: currentUser.id,
+                last_read_at: new Date().toISOString(),
+              },
+              { onConflict: "thread_id,user_id" },
+            );
+            if (!error) {
+              await queryClient.refetchQueries({
+                queryKey: ["direct-thread-unread-counts", currentUser.id],
+              });
+            }
           }
         },
       )
@@ -376,7 +450,7 @@ export default function GalacticMap({ user, profile, onSignOut }) {
         realtimeChannelRef.current = null;
       }
     };
-  }, [currentUser?.id, supabase, queryClient]);
+  }, [currentUser?.id, selectedThreadId, supabase, queryClient]);
 
   useEffect(() => {
     if (requestsError) {
@@ -631,6 +705,11 @@ export default function GalacticMap({ user, profile, onSignOut }) {
             onClick={() => setActiveMainTab("messages")}
           >
             Conversations ({threads.length})
+            {totalUnread > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-medium bg-rose-500 text-white">
+                {totalUnread}
+              </span>
+            )}
           </button>
           <button
             type="button"
@@ -753,6 +832,7 @@ export default function GalacticMap({ user, profile, onSignOut }) {
               threads={threads}
               loading={loadingThreads}
               onSelectThread={setSelectedThreadId}
+              unreadCountByThreadId={unreadCountByThreadId}
             />
           ) : selectedThreadId === FOOTBALL_AGENT_THREAD_ID ? (
             <FootballAgentChatPanel
