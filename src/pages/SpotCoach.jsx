@@ -77,6 +77,8 @@ export default function SpotCoach({ onSignOut }) {
   const [loadingExisting, setLoadingExisting] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [longerMessage, setLongerMessage] = useState(false);
+  const [expandedSign, setExpandedSign] = useState(null); // 'soleil' | 'lune' | 'ascendant' | null
+  const [showFullProfile, setShowFullProfile] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -141,6 +143,22 @@ export default function SpotCoach({ onSignOut }) {
 
     return sections;
   }, [result]);
+
+  // Extract per-sign description from profile_text (Soleil / Lune / Ascendant sections)
+  const signDescriptions = useMemo(() => {
+    const text = result?.profile?.profile_text;
+    if (!text) return { soleil: null, lune: null, ascendant: null };
+    const sections = text.split(/\n(?=### )/);
+    const out = { soleil: null, lune: null, ascendant: null };
+    sections.forEach((block) => {
+      const firstLine = block.split('\n')[0] || '';
+      const rest = block.replace(/^###[^\n]*\n?/, '').trim();
+      if (/☀️|Soleil en/i.test(firstLine)) out.soleil = rest || null;
+      else if (/🌙|Lune en/i.test(firstLine)) out.lune = rest || null;
+      else if (/⬆️|Ascendant en/i.test(firstLine)) out.ascendant = rest || null;
+    });
+    return out;
+  }, [result?.profile?.profile_text]);
 
   const inputClass =
     'bg-slate-900/60 border-white/15 text-slate-100 placeholder:text-slate-400 focus:border-teal-400 focus:ring-teal-500/40';
@@ -260,12 +278,10 @@ export default function SpotCoach({ onSignOut }) {
       onSignOut={onSignOut}
     >
       <h1 className="text-2xl sm:text-3xl font-semibold text-white text-center mt-2">
-        le sas d'accueil : Radar de naissance
+        {result?.profile ? '✨ Ton Radar est Activé' : 'Symbolic profile'}
       </h1>
       <p className="text-white/90 text-center mt-3 mb-6 max-w-2xl mx-auto">
-        {result?.profile
-          ? 'Ton Radar de naissance est enregistré. Consulte ton profil ci-dessous.'
-          : 'Renseigne ta date, heure et lieu de naissance pour calculer ton Radar de naissance.'}
+        Ton énergie de départ est révélée. Ton évolution dépend maintenant de tes actions.
       </p>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {showForm && (
@@ -431,6 +447,7 @@ export default function SpotCoach({ onSignOut }) {
 
               {result && result.profile && (
                 <div className="space-y-6 text-sm text-slate-200">
+                  {/* Main results always visible */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
                       <p className="text-slate-100">
@@ -452,66 +469,111 @@ export default function SpotCoach({ onSignOut }) {
                     </div>
                     <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
                       <p className="font-medium text-slate-100">{result.profile.signe_soleil}</p>
+                      {signDescriptions.soleil && ((
+                        expandedSign === 'soleil' ? (
+                          <button
+                            type="button"
+                            className="mt-1 text-[11px] text-slate-400 hover:text-slate-200 underline"
+                            onClick={() => setExpandedSign(null)}
+                          >
+                            Voir moins
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="mt-1 text-[11px] text-teal-300 hover:text-teal-200 underline"
+                            onClick={() => setExpandedSign('soleil')}
+                          >
+                            Voir plus
+                          </button>
+                        )
+                      ))}
+                      {expandedSign === 'soleil' && signDescriptions.soleil && (
+                        <div className="mt-2 pt-2 border-t border-white/10 text-slate-100 text-sm leading-relaxed whitespace-pre-wrap">
+                          {signDescriptions.soleil}
+                        </div>
+                      )}
                     </div>
                     <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
                       <p className="font-medium text-slate-100">{result.profile.signe_lune}</p>
+                      {signDescriptions.lune && ((
+                        expandedSign === 'lune' ? (
+                          <button
+                            type="button"
+                            className="mt-1 text-[11px] text-slate-400 hover:text-slate-200 underline"
+                            onClick={() => setExpandedSign(null)}
+                          >
+                            Voir moins
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="mt-1 text-[11px] text-teal-300 hover:text-teal-200 underline"
+                            onClick={() => setExpandedSign('lune')}
+                          >
+                            Voir plus
+                          </button>
+                        )
+                      ))}
+                      {expandedSign === 'lune' && signDescriptions.lune && (
+                        <div className="mt-2 pt-2 border-t border-white/10 text-slate-100 text-sm leading-relaxed whitespace-pre-wrap">
+                          {signDescriptions.lune}
+                        </div>
+                      )}
                     </div>
                     <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
                       <p className="font-medium text-slate-100">{result.profile.signe_ascendant}</p>
+                      {signDescriptions.ascendant && ((
+                        expandedSign === 'ascendant' ? (
+                          <button
+                            type="button"
+                            className="mt-1 text-[11px] text-slate-400 hover:text-slate-200 underline"
+                            onClick={() => setExpandedSign(null)}
+                          >
+                            Voir moins
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="mt-1 text-[11px] text-teal-300 hover:text-teal-200 underline"
+                            onClick={() => setExpandedSign('ascendant')}
+                          >
+                            Voir plus
+                          </button>
+                        )
+                      ))}
+                      {expandedSign === 'ascendant' && signDescriptions.ascendant && (
+                        <div className="mt-2 pt-2 border-t border-white/10 text-slate-100 text-sm leading-relaxed whitespace-pre-wrap">
+                          {signDescriptions.ascendant}
+                        </div>
+                      )}
                     </div>
                   </div>
 
                   {result.profile.profile_text && (
-                    <div className="border border-white/10 rounded-xl px-4 py-4 bg-slate-900/70">
-                      <p className="text-[11px] uppercase tracking-wide text-slate-400 mb-3">
-                        Profil symbolique
-                      </p>
-                      <div className="text-slate-100 leading-relaxed whitespace-pre-wrap max-h-96 overflow-y-auto">
-                        {result.profile.profile_text}
+                    <div className="mt-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                          Profil complet
+                        </p>
+                        <button
+                          type="button"
+                          className="text-[11px] text-teal-300 hover:text-teal-200 underline"
+                          onClick={() => setShowFullProfile((prev) => !prev)}
+                        >
+                          {showFullProfile ? 'Masquer' : 'Voir le profil complet'}
+                        </button>
                       </div>
+                      {showFullProfile && (
+                        <div className="border border-white/10 rounded-xl px-4 py-4 bg-slate-900/70 text-slate-100 leading-relaxed whitespace-pre-wrap max-h-96 overflow-y-auto">
+                          {result.profile.profile_text
+                            .split('\n')
+                            .filter((line) => !/^\s*#+\s*Profil astrologique complet\s*$/i.test(line.trim()))
+                            .join('\n')}
+                        </div>
+                      )}
                     </div>
                   )}
-
-                  {Array.isArray(result.profile.passions) && result.profile.passions.length > 0 && (
-                    <div className="border border-white/10 rounded-xl px-4 py-3 bg-slate-900/70">
-                      <p className="text-[11px] uppercase tracking-wide text-slate-400 mb-2">
-                        Passions clés
-                      </p>
-                      <ul className="list-disc list-inside text-slate-100 space-y-1">
-                        {result.profile.passions.map((passion, index) => (
-                          <li key={`${passion}-${index}`}>{passion}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {narrativeSections.map((section) => {
-                    const isPointsForts = /^points forts$/i.test(section.title);
-                    const isConclusion = /^conclusion$/i.test(section.title);
-                    return (
-                      <div
-                        key={section.title}
-                        className="border border-white/10 rounded-xl px-4 py-3 bg-slate-900/70 space-y-2"
-                      >
-                        <h3 className="text-sm font-semibold text-teal-300">{section.title}</h3>
-                        {isPointsForts ? (
-                          <ul className="list-disc list-inside space-y-1 text-slate-100">
-                            {section.rows.map((row, idx) => (
-                              <li key={idx}>{row.replace(/^[-•]\s*/, '')}</li>
-                            ))}
-                          </ul>
-                        ) : isConclusion ? (
-                          <p className="text-slate-100">{section.rows.join(' ')}</p>
-                        ) : (
-                          section.rows.map((row, idx) => (
-                            <p key={idx} className="text-slate-100 leading-relaxed">
-                              {row}
-                            </p>
-                          ))
-                        )}
-                      </div>
-                    );
-                  })}
 
                   {result.stored && (
                     <div className="text-xs text-slate-400 border-t border-white/10 pt-3">
