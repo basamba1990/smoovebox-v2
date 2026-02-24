@@ -278,12 +278,10 @@ export default function SpotCoach({ onSignOut }) {
       onSignOut={onSignOut}
     >
       <h1 className="text-2xl sm:text-3xl font-semibold text-white text-center mt-2">
-        le sas d'accueil : Radar de naissance
+        {result?.profile ? '✨ Ton Radar est Activé' : 'Symbolic profile'}
       </h1>
       <p className="text-white/90 text-center mt-3 mb-6 max-w-2xl mx-auto">
-        {result?.profile
-          ? 'Ton Radar de naissance est enregistré. Consulte ton profil ci-dessous.'
-          : 'Renseigne ta date, heure et lieu de naissance pour calculer ton Radar de naissance.'}
+        Ton énergie de départ est révélée. Ton évolution dépend maintenant de tes actions.
       </p>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {showForm && (
