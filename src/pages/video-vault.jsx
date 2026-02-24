@@ -2,9 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { supabase, invokeEdgeFunctionWithRetry } from "../lib/supabase";
 import { Button } from "../components/ui/button-enhanced.jsx";
 import { toast } from "sonner";
-import ProfessionalHeader from "../components/ProfessionalHeader.jsx";
-
-const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
+const VideoVault = ({ user, profile, onSignOut, onVideoAdded, embedInOdyssey }) => {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -593,28 +591,19 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <ProfessionalHeader
-          user={user}
-          profile={profile}
-          onSignOut={onSignOut}
-        />
-        <div className="container mx-auto px-4 py-8">
-          <div className="text-center py-12">
+      <div className={embedInOdyssey ? "space-y-6" : "min-h-screen bg-slate-900"}>
+        <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">
+            <p className="mt-4 text-slate-300">
               Chargement de votre coffre-fort...
             </p>
-          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <ProfessionalHeader user={user} profile={profile} onSignOut={onSignOut} />
-
+    <div className={embedInOdyssey ? "space-y-6" : "min-h-screen bg-slate-900"}>
       <input
         ref={fileInputRef}
         type="file"
@@ -634,87 +623,80 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
         disabled={uploading}
       />
 
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                📁 Mon Coffre-fort Vidéo
-              </h1>
-              <p className="text-gray-600">
+      <div className="mb-8 glass-card border-white/10 rounded-3xl p-6 shadow-xl">
+          <h3 className="text-[10px] font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2">
+            📁 Mon Coffre-fort Vidéo
+          </h3>
+          <div className="p-4 bg-teal-500/5 border border-teal-500/10 rounded-2xl mb-6">
+            <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
+              <p className="text-teal-100/80 text-sm leading-relaxed italic flex-1">
                 Gère toutes tes vidéos SpotBulle en un seul endroit
               </p>
-            </div>
-
-            <div className="flex items-center space-x-4">
               <Button
                 onClick={() => triggerFileInput(false)}
                 disabled={uploading}
-                className={`bg-green-600 hover:bg-green-700 px-6 py-3 text-white font-semibold transition-all ${
-                  uploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
-                }`}
+                className="border border-teal-500/30 text-teal-400 bg-transparent hover:bg-teal-500/10 hover:text-teal-200 rounded-xl text-[10px] font-bold uppercase tracking-widest px-4 py-2"
               >
                 {uploading ? (
                   <span className="flex items-center gap-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    📤 Upload en cours...
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-teal-400"></div>
+                    Upload en cours...
                   </span>
                 ) : (
                   "📱 Importer une vidéo"
                 )}
               </Button>
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white p-4 rounded-lg shadow-sm border">
-              <div className="text-2xl font-bold text-primary-600">
-                {stats.totalVideos}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="p-4 bg-slate-900/40 border border-teal-500/10 rounded-2xl">
+                <div className="text-2xl font-bold text-white">
+                  {stats.totalVideos}
+                </div>
+                <div className="text-teal-100/60 text-sm">Total vidéos</div>
               </div>
-              <div className="text-gray-600">Total vidéos</div>
-            </div>
-            <div className="bg-white p-4 rounded-lg shadow-sm border">
-              <div className="text-2xl font-bold text-blue-600">
-                {stats.analyzedCount}
+              <div className="p-4 bg-slate-900/40 border border-teal-500/10 rounded-2xl">
+                <div className="text-2xl font-bold text-blue-400">
+                  {stats.analyzedCount}
+                </div>
+                <div className="text-teal-100/60 text-sm">Vidéos analysées</div>
               </div>
-              <div className="text-gray-600">Vidéos analysées</div>
-            </div>
-            <div className="bg-white p-4 rounded-lg border">
-              <div className="text-2xl font-bold text-green-600">
-                {stats.transcribedCount}
+              <div className="p-4 bg-slate-900/40 border border-teal-500/10 rounded-2xl">
+                <div className="text-2xl font-bold text-green-400">
+                  {stats.transcribedCount}
+                </div>
+                <div className="text-teal-100/60 text-sm">Transcriptions</div>
               </div>
-              <div className="text-gray-600">Transcriptions</div>
-            </div>
-            <div className="bg-white p-4 rounded-lg border">
-              <div className="text-2xl font-bold text-purple-600">
-                {Math.round(stats.totalDuration / 60)}min
+              <div className="p-4 bg-slate-900/40 border border-teal-500/10 rounded-2xl">
+                <div className="text-2xl font-bold text-purple-400">
+                  {Math.round(stats.totalDuration / 60)}min
+                </div>
+                <div className="text-teal-100/60 text-sm">Durée totale</div>
               </div>
-              <div className="text-gray-600">Durée totale</div>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm border p-4 mb-6">
+        <div className="glass-card border-white/10 rounded-xl p-4 mb-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center space-x-4">
               <select
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
-                className="border rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                className="border border-white/20 rounded-lg px-3 py-2 bg-slate-800 text-white focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               >
-                <option value="all">Toutes les vidéos</option>
-                <option value="spotbulle">Vidéos SpotBulle</option>
-                <option value="analyzed">Vidéos analysées</option>
-                <option value="transcribed">Vidéos transcrites</option>
+                <option value="all" className="bg-slate-800 text-white">Toutes les vidéos</option>
+                <option value="spotbulle" className="bg-slate-800 text-white">Vidéos SpotBulle</option>
+                <option value="analyzed" className="bg-slate-800 text-white">Vidéos analysées</option>
+                <option value="transcribed" className="bg-slate-800 text-white">Vidéos transcrites</option>
               </select>
 
-              <div className="flex border rounded-lg overflow-hidden">
+              <div className="flex border border-white/20 rounded-lg overflow-hidden">
                 <button
                   onClick={() => setViewMode("grid")}
                   className={`p-2 px-4 text-sm font-medium ${
                     viewMode === "grid"
-                      ? "bg-primary-600 text-white"
-                      : "bg-white text-gray-700 hover:bg-gray-50"
+                      ? "bg-teal-600 text-white"
+                      : "text-slate-300 hover:bg-white/5"
                   } transition-colors`}
                 >
                   ⬜ Grille
@@ -723,8 +705,8 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                   onClick={() => setViewMode("list")}
                   className={`p-2 px-4 text-sm font-medium ${
                     viewMode === "list"
-                      ? "bg-primary-600 text-white"
-                      : "bg-white text-gray-700 hover:bg-gray-50"
+                      ? "bg-teal-600 text-white"
+                      : "text-slate-300 hover:bg-white/5"
                   } transition-colors`}
                 >
                   ☰ Liste
@@ -734,7 +716,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
 
             {selectedVideos.length > 0 && (
               <div className="flex items-center space-x-3">
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-slate-300">
                   {selectedVideos.length} vidéo(s) sélectionnée(s)
                 </span>
                 {/* ✅ CORRECTION : Commentaire déplacé avant le bouton */}
@@ -745,14 +727,14 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                     actionLoading === "comparison"
                   }
                   variant="outline"
-                  className="border-blue-500 text-blue-600 hover:bg-blue-50"
+                  className="border-teal-500/50 text-teal-300 hover:bg-teal-500/10 bg-transparent"
                 >
                   {actionLoading === "comparison" ? "🔄..." : "📊 Comparer"}
                 </Button>
                 <Button
                   onClick={clearSelection}
                   variant="outline"
-                  className="border-gray-500 text-gray-600 hover:bg-gray-50"
+                  className="border-white/20 text-slate-300 hover:bg-white/5"
                 >
                   ✕ Annuler
                 </Button>
@@ -762,12 +744,12 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
         </div>
 
         {filteredVideos.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-sm border p-12 text-center">
+          <div className="glass-card border-white/10 rounded-xl p-12 text-center">
             <div className="text-6xl mb-4">🎥</div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+            <h3 className="text-xl font-semibold text-white mb-2">
               Votre coffre-fort est vide
             </h3>
-            <p className="text-gray-600 mb-6">
+            <p className="text-slate-300 mb-6">
               {filter === "all"
                 ? "Commencez par enregistrer votre première vidéo ou importer des vidéos existantes"
                 : "Aucune vidéo ne correspond à ce filtre"}
@@ -784,70 +766,22 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
             {filteredVideos.map((video) => (
               <div
                 key={video.id}
-                className={`bg-white rounded-lg shadow-sm border overflow-hidden transition-all duration-200 ${
+                className={`glass-card border-white/10 rounded-xl overflow-hidden transition-all duration-200 ${
                   selectedVideos.includes(video.id)
-                    ? "ring-2 ring-primary-500 shadow-md"
+                    ? "ring-2 ring-teal-500 shadow-md"
                     : "hover:shadow-md"
                 }`}
               >
-                <div className="aspect-video bg-gray-200 relative">
-                  {video.thumbnail_url ? (
-                    <img
-                      src={video.thumbnail_url}
-                      alt={video.title}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.target.style.display = "none";
-                      }}
-                    />
-                  ) : null}
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
-                    <span className="text-4xl">🎬</span>
-                  </div>
-
-                  <div
-                    className={`absolute top-2 left-2 px-2 py-1 rounded-full text-xs font-medium ${
-                      video.status === "analyzed"
-                        ? "bg-green-500 text-white"
-                        : video.status === "analyzing"
-                        ? "bg-yellow-500 text-white"
-                        : "bg-blue-500 text-white"
-                    }`}
-                  >
-                    {video.status === "analyzed"
-                      ? "Analysée"
-                      : video.status === "analyzing"
-                      ? "En analyse"
-                      : "Uploadée"}
-                  </div>
-
-                  <div className="absolute top-2 right-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedVideos.includes(video.id)}
-                      onChange={() => toggleVideoSelection(video.id)}
-                      className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
-                    />
-                  </div>
-
-                  {video.duration && (
-                    <div className="absolute bottom-2 right-2 bg-black/80 text-white px-2 py-1 rounded text-sm">
-                      {Math.floor(video.duration / 60)}:
-                      {(video.duration % 60).toString().padStart(2, "0")}
-                    </div>
-                  )}
-                </div>
-
                 <div className="p-4">
-                  <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">
+                  <h3 className="font-semibold text-white mb-2 line-clamp-2">
                     {video.title}
                   </h3>
 
-                  <p className="text-sm text-gray-600 mb-2 line-clamp-2">
+                  <p className="text-sm text-slate-300 mb-2 line-clamp-2">
                     {video.description}
                   </p>
 
-                  <div className="flex items-center justify-between text-sm text-gray-600 mb-3">
+                  <div className="flex items-center justify-between text-sm text-slate-400 mb-3">
                     <span>
                       {new Date(video.created_at).toLocaleDateString("fr-FR")}
                     </span>
@@ -855,10 +789,10 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                       <span
                         className={`px-2 py-1 rounded-full text-xs font-medium ${
                           video.performance_score >= 80
-                            ? "bg-green-100 text-green-800"
+                            ? "bg-green-500/20 text-green-300"
                             : video.performance_score >= 60
-                            ? "bg-yellow-100 text-yellow-800"
-                            : "bg-red-100 text-red-800"
+                            ? "bg-yellow-500/20 text-yellow-300"
+                            : "bg-red-500/20 text-red-300"
                         }`}
                       >
                         Score: {video.performance_score}%
@@ -871,7 +805,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                       {video.tags.slice(0, 3).map((tag, index) => (
                         <span
                           key={index}
-                          className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs"
+                          className="text-slate-300 px-2 py-1 rounded text-xs"
                         >
                           #{tag}
                         </span>
@@ -883,7 +817,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="flex-1"
+                      className="flex-1 border-white/20 text-slate-300 hover:bg-white/5"
                       onClick={() => handleViewVideo(video)}
                       disabled={actionLoading === video.id}
                     >
@@ -892,7 +826,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="flex-1"
+                      className="flex-1 border-white/20 text-slate-300 hover:bg-white/5"
                       onClick={() => handleAnalyzeVideo(video)}
                       disabled={
                         actionLoading === video.id ||
@@ -911,6 +845,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                     <Button
                       size="sm"
                       variant="outline"
+                      className="border-white/20 text-slate-300 hover:bg-white/5"
                       onClick={() => handleTestProfile(video)}
                       disabled={actionLoading === video.id}
                     >
@@ -919,7 +854,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="text-red-600 border-red-300 hover:bg-red-50"
+                      className="text-red-400 border-red-500/50 hover:bg-red-500/10"
                       onClick={() => handleDeleteVideo(video)}
                       disabled={actionLoading === video.id}
                     >
@@ -931,59 +866,59 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
             ))}
           </div>
         ) : (
-          <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+          <div className="glass-card border-white/10 rounded-xl overflow-hidden">
             {profileMessage && (
-              <div className="px-6 py-3 bg-blue-50 border-b border-blue-200 text-sm text-blue-800">
+              <div className="px-6 py-3 bg-teal-500/10 border-b border-white/10 text-sm text-teal-300">
                 {profileMessage}
               </div>
             )}
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                     Sélection
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                     Vidéo
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                     Statut
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                     Durée
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                     Score
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                     Date
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-white/10">
                 {filteredVideos.map((video) => (
-                  <tr key={video.id} className="hover:bg-gray-50">
+                  <tr key={video.id} className="hover:bg-white/5">
                     <td className="px-6 py-4">
                       <input
                         type="checkbox"
                         checked={selectedVideos.includes(video.id)}
                         onChange={() => toggleVideoSelection(video.id)}
-                        className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                        className="w-4 h-4 rounded border-white/30 bg-slate-800 text-teal-500 focus:ring-teal-500 cursor-pointer"
                       />
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-3">
-                        <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center">
+                        <div className="w-12 h-12 rounded flex items-center justify-center">
                           🎬
                         </div>
                         <div>
-                          <div className="font-medium text-gray-900">
+                          <div className="font-medium text-white">
                             {video.title}
                           </div>
-                          <div className="text-sm text-gray-500 mt-1">
+                          <div className="text-sm text-slate-400 mt-1">
                             {video.description}
                           </div>
                           {video.tags && (
@@ -991,7 +926,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                               {video.tags.slice(0, 2).map((tag, index) => (
                                 <span
                                   key={index}
-                                  className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs"
+                                  className="bg-white/5 text-slate-300 px-2 py-0.5 rounded text-xs"
                                 >
                                   #{tag}
                                 </span>
@@ -1005,10 +940,10 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                       <span
                         className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
                           video.status === "analyzed"
-                            ? "bg-green-100 text-green-800"
+                            ? "bg-green-500/20 text-green-300"
                             : video.status === "analyzing"
-                            ? "bg-yellow-100 text-yellow-800"
-                            : "bg-blue-100 text-blue-800"
+                            ? "bg-yellow-500/20 text-yellow-300"
+                            : "bg-blue-500/20 text-blue-300"
                         }`}
                       >
                         {video.status === "analyzed"
@@ -1018,7 +953,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                           : "Uploadée"}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
+                    <td className="px-6 py-4 text-sm text-white">
                       {video.duration
                         ? `${Math.floor(video.duration / 60)}:${(
                             video.duration % 60
@@ -1032,19 +967,19 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                         <div
                           className={`w-16 text-center px-2 py-1 rounded-full text-xs font-medium ${
                             video.performance_score >= 80
-                              ? "bg-green-100 text-green-800"
+                              ? "bg-green-500/20 text-green-300"
                               : video.performance_score >= 60
-                              ? "bg-yellow-100 text-yellow-800"
-                              : "bg-red-100 text-red-800"
+                              ? "bg-yellow-500/20 text-yellow-300"
+                              : "bg-red-500/20 text-red-300"
                           }`}
                         >
                           {video.performance_score}%
                         </div>
                       ) : (
-                        <span className="text-gray-400 text-sm">-</span>
+                        <span className="text-slate-400 text-sm">-</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
+                    <td className="px-6 py-4 text-sm text-white">
                       {new Date(video.created_at).toLocaleDateString("fr-FR")}
                     </td>
                     <td className="px-6 py-4">
@@ -1052,6 +987,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                         <Button
                           size="sm"
                           variant="outline"
+                          className="border-white/20 text-slate-300 hover:bg-white/5"
                           onClick={() => handleViewVideo(video)}
                           disabled={actionLoading === video.id}
                         >
@@ -1060,6 +996,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                         <Button
                           size="sm"
                           variant="outline"
+                          className="border-white/20 text-slate-300 hover:bg-white/5"
                           onClick={() => handleAnalyzeVideo(video)}
                           disabled={
                             actionLoading === video.id ||
@@ -1072,6 +1009,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                         <Button
                           size="sm"
                           variant="outline"
+                          className="border-white/20 text-slate-300 hover:bg-white/5"
                           onClick={() => handleTestProfile(video)}
                           disabled={actionLoading === video.id}
                         >
@@ -1080,7 +1018,7 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="text-red-600 border-red-300 hover:bg-red-50"
+                          className="text-red-400 border-red-500/50 hover:bg-red-500/10"
                           onClick={() => handleDeleteVideo(video)}
                           disabled={actionLoading === video.id}
                         >
@@ -1094,39 +1032,6 @@ const VideoVault = ({ user, profile, onSignOut, onVideoAdded }) => {
             </table>
           </div>
         )}
-
-        <div className="mt-12 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
-          <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
-            <span className="text-2xl mr-3">💡</span>
-            Comment utiliser votre coffre-fort ?
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white/80 p-4 rounded-lg border">
-              <div className="text-2xl mb-2">📱</div>
-              <h4 className="font-semibold mb-2">Importez vos vidéos</h4>
-              <p className="text-sm text-gray-600">
-                Téléchargez vos vidéos depuis votre téléphone ou votre
-                ordinateur
-              </p>
-            </div>
-            <div className="bg-white/80 p-4 rounded-lg border">
-              <div className="text-2xl mb-2">📊</div>
-              <h4 className="font-semibold mb-2">Analyse automatique</h4>
-              <p className="text-sm text-gray-600">
-                Chaque vidéo est automatiquement analysée pour évaluer votre
-                performance
-              </p>
-            </div>
-            <div className="bg-white/80 p-4 rounded-lg border">
-              <div className="text-2xl mb-2">🔄</div>
-              <h4 className="font-semibold mb-2">Suivez votre progression</h4>
-              <p className="text-sm text-gray-600">
-                Comparez vos performances et identifiez vos axes d'amélioration
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
