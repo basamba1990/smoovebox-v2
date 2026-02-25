@@ -891,8 +891,8 @@ export default function HobbyFlow({ computedProfile, ageRange, userName, avatarU
             </Card>
           </div>
 
-          {/* Right: Decorative football DISC card (only for Football) */}
-          {selectedHobby === "Football" && (
+          {/* Right: Hobby DISC profile card (for any selected hobby) */}
+          {selectedHobby && (
             <div className="flex-shrink-0">
               <Card
                 className="rounded-xl border border-white/10 bg-[rgba(7,24,48,0.9)] overflow-hidden w-full max-w-[360px]"
@@ -905,7 +905,7 @@ export default function HobbyFlow({ computedProfile, ageRange, userName, avatarU
                   <div className="w-full flex items-center">
                     <div className="rounded-xl relative bg-gradient-to-b from-green-800/45 to-black-500/10 shadow-lg shadow-sky-900/60 px-6 py-2 text-center">
                       <p className="text-xs sm:text-sm font-semibold tracking-wide text-white uppercase">
-                        Profil du joueur
+                        Profil {selectedHobby}
                       </p>
                       <div className="absolute -top-2 -right-12">
                         <img
@@ -976,12 +976,14 @@ export default function HobbyFlow({ computedProfile, ageRange, userName, avatarU
                                 {favoritePlayer || "-"}
                               </span>
                             </p>
-                            <p>
-                              Équipe:{" "}
-                              <span className="font-semibold">
-                                {favoriteTeam || "—"}
-                              </span>
-                            </p>
+                            {favoriteTeam && (
+                              <p>
+                                Équipe:{" "}
+                                <span className="font-semibold">
+                                  {favoriteTeam}
+                                </span>
+                              </p>
+                            )}
                           </div>
                         </div>
                       </div>
