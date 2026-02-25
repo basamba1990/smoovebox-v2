@@ -28,6 +28,15 @@ const HOBBIES = [
   { name: "Football", emoji: "⚽", color: "green" },
   { name: "Handball", emoji: "🤾", color: "blue" },
   { name: "Basketball", emoji: "🏀", color: "orange" },
+  { name: "Danse", emoji: "🩰", color: "pink" },
+  { name: "Chant", emoji: "🎤", color: "purple" },
+  { name: "Golf", emoji: "⛳", color: "lime" },
+  { name: "Formule 1", emoji: "🏎️", color: "red" },
+  { name: "Tennis", emoji: "🎾", color: "yellow" },
+  { name: "Padel", emoji: "🎾", color: "teal" },
+  { name: "Équitation", emoji: "🐎", color: "amber" },
+  { name: "Arts martiaux", emoji: "🥋", color: "indigo" },
+  { name: "Gymnastique", emoji: "🤸", color: "cyan" },
 ];
 
 // DISC Color to Element mapping (same as in lumi-onboarding.jsx, without animals)
@@ -460,7 +469,7 @@ export default function HobbyFlow({ computedProfile, ageRange, userName, avatarU
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-row justify-center gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4">
               {HOBBIES.map((hobby) => (
                 <button
                   key={hobby.name}
@@ -567,7 +576,7 @@ export default function HobbyFlow({ computedProfile, ageRange, userName, avatarU
                       setShowHobbySelection(true);
                     }
                   }}
-                  className="p-6 rounded-2xl border border-white/10 bg-slate-900/60 hover:border-teal-500/70 hover:bg-slate-900/80 transition-all text-center space-y-3 shadow-lg"
+                  className="w-full h-28 sm:h-32 flex flex-col items-center justify-center p-4 sm:p-6 rounded-2xl border border-white/10 bg-slate-900/60 hover:border-teal-500/70 hover:bg-slate-900/80 transition-all text-center space-y-2 sm:space-y-3 shadow-lg"
                 >
                   <div className="text-5xl">{hobby.emoji}</div>
                   <div className="text-lg sm:text-xl font-semibold text-white">
