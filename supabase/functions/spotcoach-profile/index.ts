@@ -257,10 +257,8 @@ function buildOpenAiPrompt(
   const birth = payload.birth;
 
   const baseInfo = `
-Nom: ${name}
 Date de naissance: ${birth.date}
-Heure de naissance: ${birth.time ?? "Non fournie"}
-Ville: ${birth.city ?? "Non fournie"}
+Ville de naissance: ${birth.city ?? "Non fournie"}
 Latitude: ${birth.latitude}
 Longitude: ${birth.longitude}
 Fuseau horaire: ${birth.timezone ?? "Non fourni"}
@@ -570,7 +568,8 @@ async function handleRequest(request: Request): Promise<Response> {
 
     const profileData = {
       user_id: user_id,
-      name: payload.name || null,
+      // Name is now optional on the frontend; store a neutral placeholder if missing
+      name: payload.name || "Profil symbolique",
       date: payload.birth.date,
       time: payload.birth.time || null,
       lat: payload.birth.latitude || null,

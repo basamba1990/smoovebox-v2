@@ -164,11 +164,11 @@ export default function SpotCoach({ onSignOut }) {
     'bg-slate-900/60 border-white/15 text-slate-100 placeholder:text-slate-400 focus:border-teal-400 focus:ring-teal-500/40';
 
   const isSubmitDisabled = useMemo(() => {
-    if (!form.name || !form.birthDate || !form.birthTime || !form.latitude || !form.longitude || !form.timezone) {
+    if (!form.birthDate || !form.latitude || !form.longitude || !form.timezone) {
       return true;
     }
     return loading;
-  }, [form.name, form.birthDate, form.birthTime, form.latitude, form.longitude, form.timezone, loading]);
+  }, [form.birthDate, form.latitude, form.longitude, form.timezone, loading]);
 
   const handleChange = (field) => (event) => {
     const value = event?.target ? event.target.value : event;
@@ -303,17 +303,6 @@ export default function SpotCoach({ onSignOut }) {
                       <h2 className="text-lg font-semibold text-slate-800">Identité &amp; Naissance</h2>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="coach-name" className="text-white font-medium">Nom *</Label>
-                          <Input
-                            id="coach-name"
-                            placeholder="Ex: Alex Dupont"
-                            value={form.name}
-                            onChange={handleChange('name')}
-                            className={inputClass}
-                            required
-                          />
-                        </div>
-                        <div className="space-y-2">
                           <Label htmlFor="coach-date" className="text-white font-medium">Date de naissance *</Label>
                           <DatePicker
                             value={form.birthDate}
@@ -321,17 +310,6 @@ export default function SpotCoach({ onSignOut }) {
                             placeholder="Sélectionner votre date de naissance"
                             required
                             maxDate={new Date()} // Can't select future dates
-                            className="bg-slate-900/60 border-white/15 text-slate-100 hover:bg-slate-900/80"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="coach-time" className="text-white font-medium">Heure de naissance *</Label>
-                          <TimePicker
-                            value={form.birthTime}
-                            onChange={handleChange('birthTime')}
-                            placeholder="Sélectionner l'heure de naissance"
-                            step={1}
-                            required
                             className="bg-slate-900/60 border-white/15 text-slate-100 hover:bg-slate-900/80"
                           />
                         </div>
