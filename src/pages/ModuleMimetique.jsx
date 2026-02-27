@@ -1,20 +1,18 @@
 // src/pages/ModuleMimetique.jsx
 // Step 3 – Le module mimétique (vidéo / miroir de ton étoile)
 
-import React, { useState } from "react";
+import React from "react";
 import { useNavigate } from "react-router-dom";
 import OdysseyLayout from "../components/OdysseyLayout.jsx";
 import { Button } from "../components/ui/button.jsx";
 import EnhancedRecordVideo from "./enhanced-record-video.jsx";
 import { getOdysseyStepById } from "../config/odysseyConfig.js";
-import VideoVault from "./video-vault.jsx";
 
 const STEP_4 = getOdysseyStepById(4);
 const STEP_4_PATH = STEP_4?.path ?? "/labo-transformation";
 
 export default function ModuleMimetique({ user, profile, onSignOut, onVideoUploaded, cameraChecked }) {
   const navigate = useNavigate();
-  const [showVault, setShowVault] = useState(false);
 
   return (
     <OdysseyLayout
@@ -38,40 +36,6 @@ export default function ModuleMimetique({ user, profile, onSignOut, onVideoUploa
         cameraChecked={cameraChecked}
         embedInOdyssey
       />
-      
-      {/* Coffre-fort vidéo – même fond que Thème Actif / Conseils Lumi */}
-      <div className="mt-8">
-        <div className="glass-card border-white/10 rounded-3xl p-6 shadow-xl">
-          <h3 className="text-[10px] font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2">
-            📁 Mon Coffre-fort Vidéo
-          </h3>
-          <div className="p-4 bg-teal-500/5 border border-teal-500/10 rounded-2xl">
-            <p className="text-teal-100/80 text-sm leading-relaxed mb-4 italic">
-              Retrouve et rejoue toutes tes vidéos enregistrées dans ton coffre-fort personnel.
-            </p>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setShowVault((prev) => !prev)}
-              className="w-full border border-teal-500/30 text-teal-400 bg-transparent hover:bg-teal-500/10 hover:text-teal-200 rounded-xl text-[10px] font-bold uppercase tracking-widest"
-            >
-              {showVault ? "Masquer le Coffre-fort" : "Ouvrir mon Coffre-fort vidéo"}
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {showVault && (
-        <div className="mt-6">
-          <VideoVault
-            user={user}
-            profile={profile}
-            onSignOut={onSignOut}
-            onVideoAdded={onVideoUploaded}
-            embedInOdyssey
-          />
-        </div>
-      )}
 
       <div className="mt-8 flex justify-between items-center">
         <Button
