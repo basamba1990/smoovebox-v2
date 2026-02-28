@@ -243,6 +243,9 @@ export default function AstroEnginePlayground() {
                 <h2 className="text-sm font-medium text-slate-900">
                   Résultat brut de la fonction
                 </h2>
+                <p className="text-xs text-slate-500">
+                  Les données ci-dessous représentent les degrés et signes calculés à partir de la date, heure, latitude, longitude et fuseau horaire fournis (soleil, lune, ascendant, etc.).
+                </p>
                 {!result && !loading && (
                   <div className="text-sm text-slate-500">
                     Lance un calcul pour voir les données renvoyées par la fonction distante.
@@ -254,10 +257,45 @@ export default function AstroEnginePlayground() {
                   </div>
                 )}
                 {result && (
-                  <div className="min-h-[120px] bg-slate-950/80 text-slate-50 rounded-xl p-3 text-xs font-mono overflow-auto">
-                    <pre className="whitespace-pre-wrap">
-                      {JSON.stringify(result, null, 2)}
-                    </pre>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="border border-slate-200 rounded-lg px-4 py-3 bg-slate-50">
+                        <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">Soleil</p>
+                        <p className="text-sm font-medium text-slate-900">
+                          {result.sun_sign ?? "—"} {result.sun_deg != null ? `${Number(result.sun_deg).toFixed(1)}°` : ""}
+                        </p>
+                      </div>
+                      <div className="border border-slate-200 rounded-lg px-4 py-3 bg-slate-50">
+                        <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">Lune</p>
+                        <p className="text-sm font-medium text-slate-900">
+                          {result.moon_sign ?? "—"} {result.moon_deg != null ? `${Number(result.moon_deg).toFixed(1)}°` : ""}
+                        </p>
+                      </div>
+                      <div className="border border-slate-200 rounded-lg px-4 py-3 bg-slate-50">
+                        <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">Ascendant</p>
+                        <p className="text-sm font-medium text-slate-900">
+                          {result.asc_sign ?? "—"} {result.asc_deg != null ? `${Number(result.asc_deg).toFixed(1)}°` : ""}
+                        </p>
+                      </div>
+                      {(result.tz_used || result.ephe_mode) && (
+                        <div className="border border-slate-200 rounded-lg px-4 py-3 bg-slate-50 sm:col-span-2">
+                          <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">Détails</p>
+                          <p className="text-sm text-slate-700">
+                            {result.tz_used && <>Fuseau: {result.tz_used}</>}
+                            {result.tz_used && result.ephe_mode && " · "}
+                            {result.ephe_mode && <>Mode: {result.ephe_mode}</>}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    <details>
+                      <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-700">
+                        Voir le JSON brut
+                      </summary>
+                      <div className="mt-2 min-h-[80px] bg-slate-950/80 text-slate-50 rounded-xl p-3 text-xs font-mono overflow-auto">
+                        <pre className="whitespace-pre-wrap">{JSON.stringify(result, null, 2)}</pre>
+                      </div>
+                    </details>
                   </div>
                 )}
               </div>
