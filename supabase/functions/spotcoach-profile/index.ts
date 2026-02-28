@@ -87,9 +87,6 @@ const AI_RESPONSE_SCHEMA = [
   "archetype",
   "couleur_dominante",
   "element",
-  "signe_soleil",
-  "signe_lune",
-  "signe_ascendant",
   "passions",
 ] as const;
 
@@ -284,8 +281,8 @@ Fuseau horaire: ${birth.timezone ?? "Non fourni"}
       : `${Number(deg).toFixed(1)}°`;
 
   const astroFacts = astro
-    ? `Données astro calculées (Swiss Ephemeris) :\n- Soleil : ${formatDegree(astro.sun_deg)} (${astro.sun_sign ?? "signe inconnu"})\n- Lune : ${formatDegree(astro.moon_deg)} (${astro.moon_sign ?? "signe inconnu"})\n- Ascendant : ${formatDegree(astro.asc_deg)} (${astro.asc_sign ?? "signe inconnu"})\n- Mode de calcul : ${astro.ephe_mode ?? "inconnu"}`
-    : "Données astro indisponibles : déduis les tendances au mieux.";
+    ? `Données calculées (degrés uniquement, pas de noms de signes à utiliser dans le texte) :\n- Énergie centrale : ${formatDegree(astro.sun_deg)}\n- Monde émotionnel : ${formatDegree(astro.moon_deg)}\n- Image sociale : ${formatDegree(astro.asc_deg)}\n- Mode : ${astro.ephe_mode ?? "inconnu"}`
+    : "Données indisponibles : déduis les tendances au mieux.";
 
   return `Tu es SpotCoach, un coach symbolique et stratégique francophone.
 Tu combines:
@@ -301,9 +298,6 @@ OBJECTIF: Générer un profil symbolique structuré en JSON respectant stricteme
   "archetype": string,
   "couleur_dominante": string,
   "element": string,
-  "signe_soleil": string,
-  "signe_lune": string,
-  "signe_ascendant": string,
   "passions": string[],
   "soleil_degre": number | null,
   "lune_degre": number | null,
@@ -313,26 +307,26 @@ OBJECTIF: Générer un profil symbolique structuré en JSON respectant stricteme
 Contraintes impératives :
 - Renvoie uniquement ce JSON (aucun autre texte).
 - Langue: français naturel, avec emojis pour enrichir le texte.
-- Utilise les faits astro pour renseigner signes et degrés (arrondis à une décimale avec ~xx.x°).
 - "phrase_synchronie": slogan positif, max 140 caractères.
 - "archetype", "couleur_dominante", "element": termes courts et cohérents.
 - "passions": 3 à 5 éléments (phrases courtes) dérivés des informations fournies.
+- INTERDIT ABSOLU : Ne JAMAIS mentionner de noms de signes du zodiaque (Bélier, Taureau, Gémeaux, Cancer, Lion, Vierge, Balance, Scorpion, Sagittaire, Capricorne, Verseau, Poissons) ni utiliser "Soleil en X", "Lune en X", "Ascendant en X". Utilise les faits astro en interne pour déduire tempérament/émotions/image sociale, mais décris uniquement en langage courant, sans jargon.
 - "profile_text" doit suivre EXACTEMENT cette structure avec emojis et formatage :
 
-# Profil astrologique complet
+# Profil personnel complet
 
 ## 🧬 Synthèse générale
 
-Un paragraphe de 2-3 phrases qui résume la personnalité globale créée par le trio Soleil/Lune/Ascendant. Style direct, personnel (tu/vous), chaleureux.
+Un paragraphe de 2-3 phrases qui résume la personnalité globale. Style direct, personnel (tu/vous), chaleureux. Aucun nom de signe.
 
 ## 🌟 Interprétation détaillée
 
-### ☀️ Soleil en [Signe] — [Titre évocateur]
+### ☀️ Énergie centrale — [Titre évocateur]
 
 Paragraphe de 3-4 phrases sur le tempérament et la motivation centrale.
-Style personnel, direct.
+Style personnel, direct. Pas de signe ni terme technique.
 
-**Forces du [Signe] Soleil :**
+**Forces :**
 - Force 1
 - Force 2
 - Force 3
@@ -342,12 +336,12 @@ Style personnel, direct.
 - Défi 2
 - Défi 3
 
-### 🌙 Lune en [Signe] — [Titre évocateur]
+### 🌙 Monde émotionnel — [Titre évocateur]
 
-Paragraphe de 3-4 phrases sur le monde émotionnel et les besoins affectifs.
-Style personnel, direct.
+Paragraphe de 3-4 phrases sur les émotions et les besoins affectifs.
+Style personnel, direct. Pas de signe ni terme technique.
 
-**Forces de la Lune en [Signe] :**
+**Forces :**
 - Force 1
 - Force 2
 - Force 3
@@ -357,10 +351,10 @@ Style personnel, direct.
 - Défi 2
 - Défi 3
 
-### ⬆️ Ascendant en [Signe] — [Titre évocateur]
+### ⬆️ Image sociale — [Titre évocateur]
 
-Paragraphe de 3-4 phrases sur l'image sociale et la manière d'aborder la vie.
-Style personnel, direct.
+Paragraphe de 3-4 phrases sur la manière d'aborder la vie et l'image projetée.
+Style personnel, direct. Pas de signe ni terme technique.
 
 **Traits dominants :**
 - Trait 1
@@ -372,11 +366,11 @@ Style personnel, direct.
 
 [Titre de l'archétype]
 
-Un paragraphe court (2-3 phrases) expliquant l'archétype unique créé par la combinaison.
+Un paragraphe court (2-3 phrases) expliquant l'archétype unique. Aucun nom de signe.
 
 ### ✨ Résumé narratif (style SpotCoach)
 
-Un paragraphe narratif de 5-7 phrases, style poétique mais accessible, qui raconte la personnalité comme une histoire. Utilise "tu/vous" pour créer une connexion personnelle.
+Un paragraphe narratif de 5-7 phrases, style poétique mais accessible, qui raconte la personnalité comme une histoire. Utilise "tu/vous". Pas de signe.
 
 ### 💪 Forces
 
@@ -398,7 +392,6 @@ Un conseil pratique et personnel en 1-2 phrases, qui guide vers l'équilibre et 
 
 - Utilise les emojis exactement comme indiqué dans la structure.
 - Le texte doit être chaleureux, personnel, accessible (style conversationnel).
-- Adapte les titres évocateurs selon les signes (ex: "Le Cœur Protecteur" pour Cancer, "L'Esprit Agile" pour Gémeaux).
 - Utilise le format Markdown standard (## pour les titres, ### pour les sous-titres, ** pour le gras, - pour les listes).
 
 DONNÉES UTILISATEUR:
@@ -425,11 +418,15 @@ ${astroFacts}
  * Tâche A3: Ajout d'une post-validation simple du format Markdown.
  */
 function validateProfileText(text: string): boolean {
-  const requiredSections = ["🧬 Synthèse générale", "🌟 Interprétation détaillée", "☀️ Soleil", "🌙 Lune", "⬆️ Ascendant", "🔥 Archetype", "✨ Résumé narratif", "💪 Forces", "⚠️ Défis", "🧭 Conseil"];
+  const requiredSections = ["🧬 Synthèse générale", "🌟 Interprétation détaillée", "☀️ Énergie centrale", "🌙 Monde émotionnel", "⬆️ Image sociale", "🔥 Archetype", "✨ Résumé narratif", "💪 Forces", "⚠️ Défis", "🧭 Conseil"];
   return requiredSections.every(section => text.includes(section));
 }
 
-async function callOpenAi(prompt: string, signal?: AbortSignal): Promise<AiSymbolicProfile> {
+async function callOpenAi(
+  prompt: string,
+  astroData: AstroEngineResponse | null,
+  signal?: AbortSignal
+): Promise<AiSymbolicProfile> {
   const apiKey = ensureEnv("OPENAI_API_KEY");
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -490,9 +487,9 @@ async function callOpenAi(prompt: string, signal?: AbortSignal): Promise<AiSymbo
     archetype: String(result.archetype ?? ""),
     couleur_dominante: String(result.couleur_dominante ?? ""),
     element: String(result.element ?? ""),
-    signe_soleil: String(result.signe_soleil ?? ""),
-    signe_lune: String(result.signe_lune ?? ""),
-    signe_ascendant: String(result.signe_ascendant ?? ""),
+    signe_soleil: String(astroData?.sun_sign ?? result.signe_soleil ?? ""),
+    signe_lune: String(astroData?.moon_sign ?? result.signe_lune ?? ""),
+    signe_ascendant: String(astroData?.asc_sign ?? result.signe_ascendant ?? ""),
     passions: Array.isArray(result.passions) ? result.passions.map((p) => String(p)) : [],
     soleil_degre: sanitizeNumber(result.soleil_degre),
     lune_degre: sanitizeNumber(result.lune_degre),
@@ -556,7 +553,7 @@ async function handleRequest(request: Request): Promise<Response> {
 
     // 3. Build Prompt and Call OpenAI
     const prompt = buildOpenAiPrompt(userName, payload, astroData);
-    const symbolicProfile = await callOpenAi(prompt);
+    const symbolicProfile = await callOpenAi(prompt, astroData);
 
     // 4. Store Profile in Database
     // Check if profile exists, then update or insert

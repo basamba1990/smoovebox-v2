@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 
 const FUNCTION_NAME = 'spotcoach-profile';
 const PREVIEW_FUNCTION_NAME = 'spotcoach-preview';
+const SYNTHESIS_FUNCTION_NAME = 'spotcoach-synthesis';
 
 function formatServiceError(error, fallbackMessage = 'Une erreur est survenue lors de la génération du profil symbolique.') {
   if (!error) {
@@ -177,6 +178,29 @@ export const spotCoachService = {
         cause: err?.cause,
       }); } catch {}
       try { console.dir(err); } catch {}
+      throw formatServiceError(err);
+    }
+  },
+
+  /**
+   * Calls spotcoach-synthesis to get a 3–4 line synthesis from birth data.
+   * Does not save to DB.
+   */
+  async generateSynthesis(payload) {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('Payload invalide pour la synthèse.');
+    }
+    try {
+      const { data, error } = await supabase.functions.invoke(SYNTHESIS_FUNCTION_NAME, {
+        body: { ...payload },
+      });
+      if (error) throw formatServiceError(error);
+      if (!data?.success) {
+        throw formatServiceError(data?.error || 'La synthèse a échoué.');
+      }
+      return data;
+    } catch (err) {
+      console.error('[SpotCoach] generateSynthesis error:', err);
       throw formatServiceError(err);
     }
   },
