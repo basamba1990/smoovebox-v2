@@ -1,5 +1,5 @@
 // src/routes/AppRoutes.jsx
-// Version mise à jour complète avec corrections Cockpit SPOT
+// Version corrigée avec routes échangées
 
 import { Routes, Route, Navigate } from "react-router-dom";
 import RequireAuth from "../components/RequireAuth.jsx";
@@ -191,19 +191,9 @@ export default function AppRoutes({
       
       <Route path="/lumi/onboarding" element={<Navigate to="/scan-elements" replace />} />
       
-      {/* ✅ COCKPIT SPOT - Module Mimétique Dashboard */}
+      {/* ✅ MODULE MIMÉTIQUE - Vrai composant */}
       <Route
         path="/module-mimetique"
-        element={
-          <RequireAuth>
-            <CockpitPage onSignOut={onSignOut} />
-          </RequireAuth>
-        }
-      />
-      
-      {/* ✅ Enregistrement vidéo - Miroir de l'étoile */}
-      <Route
-        path="/record-pitch"
         element={
           <RequireAuth>
             <ModuleMimetique
@@ -216,6 +206,19 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+      
+      {/* ✅ COCKPIT SPOT - Dashboard accessible via /cockpit */}
+      <Route
+        path="/cockpit"
+        element={
+          <RequireAuth>
+            <CockpitPage onSignOut={onSignOut} />
+          </RequireAuth>
+        }
+      />
+      
+      {/* Redirection de l'ancienne route /record-pitch vers /module-mimetique */}
+      <Route path="/record-pitch" element={<Navigate to="/module-mimetique" replace />} />
       
       <Route
         path="/labo-transformation"
