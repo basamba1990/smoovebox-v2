@@ -1,13 +1,16 @@
+/**
+ * Composant Cockpit SPOT - FIXED VERSION
+ * Dashboard énergétique LUMIA en temps réel
+ * Intégration complète avec tous les styles et composants
+ */
+
 import React from 'react';
 import { motion } from 'framer-motion';
 import LumiaRadar from './LumiaRadar.jsx';
 import { useLumia } from '../hooks/useLumia.js';
 import RobotIO from './RobotIO.jsx';
+import '../styles/lumia-cockpit.css';
 
-/**
- * Composant Cockpit SPOT
- * Dashboard énergétique LUMIA en temps réel
- */
 export default function CockpitSPOT() {
   const { userProfile, calculateBalance, territories, getTerritoryInfo } = useLumia();
   const balance = calculateBalance();
@@ -52,12 +55,13 @@ export default function CockpitSPOT() {
                 <div key={zone} className="space-y-1">
                   <div className="flex justify-between text-xs">
                     <span>{zone}</span>
-                    <span className="text-cyan-400">75%</span>
+                    <span className="text-cyan-400">{userProfile.scores[zone.toLowerCase()]}%</span>
                   </div>
                   <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
                     <motion.div 
                       initial={{ width: 0 }}
-                      animate={{ width: '75%' }}
+                      animate={{ width: `${userProfile.scores[zone.toLowerCase()]}%` }}
+                      transition={{ duration: 1, delay: 0.2 }}
                       className="h-full bg-gradient-to-r from-cyan-500 to-blue-500"
                     />
                   </div>
@@ -78,16 +82,22 @@ export default function CockpitSPOT() {
 
           {/* Missions Recommandées */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 rounded-2xl border border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/10 transition-colors cursor-pointer">
+            <motion.div 
+              whileHover={{ scale: 1.05 }}
+              className="p-4 rounded-2xl border border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/10 transition-colors cursor-pointer"
+            >
               <div className="text-orange-400 text-xs font-bold mb-1">MISSION FEU</div>
               <div className="font-semibold">Pitch de Leadership</div>
               <p className="text-xs text-slate-400 mt-1">Renforce l'action sur ton territoire.</p>
-            </div>
-            <div className="p-4 rounded-2xl border border-blue-500/20 bg-blue-500/5 hover:bg-blue-500/10 transition-colors cursor-pointer">
+            </motion.div>
+            <motion.div 
+              whileHover={{ scale: 1.05 }}
+              className="p-4 rounded-2xl border border-blue-500/20 bg-blue-500/5 hover:bg-blue-500/10 transition-colors cursor-pointer"
+            >
               <div className="text-blue-400 text-xs font-bold mb-1">MISSION EAU</div>
               <div className="font-semibold">Atelier de Cohésion</div>
               <p className="text-xs text-slate-400 mt-1">Améliore l'impact social local.</p>
-            </div>
+            </motion.div>
           </div>
         </div>
       </div>

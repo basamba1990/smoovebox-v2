@@ -1,63 +1,55 @@
-import React from 'react';
-import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend, Tooltip, ResponsiveContainer } from 'recharts';
-import { ENERGIES } from '../config/catalogue-interne.config';
-
 /**
- * Affiche un radar chart pour les 4 énergies.
- * @param {Object} props
- * @param {Object} props.scores - { feu: number, air: number, terre: number, eau: number }
+ * Composant LumiaRadar - FIXED VERSION
+ * Affiche le radar des 4 éléments avec styles CSS appropriés
  */
-export default function LumiaRadar({ scores = { feu: 50, air: 50, terre: 50, eau: 50 } }) {
-  // Préparer les données pour Recharts
-  const data = [
-    { name: ENERGIES.feu.label, value: scores.feu, fill: ENERGIES.feu.color },
-    { name: ENERGIES.air.label, value: scores.air, fill: ENERGIES.air.color },
-    { name: ENERGIES.terre.label, value: scores.terre, fill: ENERGIES.terre.color },
-    { name: ENERGIES.eau.label, value: scores.eau, fill: ENERGIES.eau.color },
+
+import React from 'react';
+import '../styles/lumia-cockpit.css';
+
+export default function LumiaRadar({ scores = { feu: 75, air: 75, terre: 75, eau: 75 } }) {
+  const zones = [
+    { id: 'feu', label: 'FEU', icon: '🔥', color: '#F97316', colorRgb: '249, 115, 22', desc: 'Leadership & Action' },
+    { id: 'air', label: 'AIR', icon: '🌬', color: '#0EA5E9', colorRgb: '14, 165, 233', desc: 'Innovation & Vision' },
+    { id: 'terre', label: 'TERRE', icon: '🌍', color: '#22C55E', colorRgb: '34, 197, 94', desc: 'Structure & Organisation' },
+    { id: 'eau', label: 'EAU', icon: '💧', color: '#06B6D4', colorRgb: '6, 182, 212', desc: 'Cohésion & Impact social' },
   ];
+
+  const balance = Math.round((scores.feu + scores.air + scores.terre + scores.eau) / 4);
 
   return (
     <div className="lumia-radar">
-      <h3>Radar de Compétences</h3>
-      <ResponsiveContainer width="100%" height={400}>
-        <RadarChart data={data}>
-          <PolarGrid stroke="rgba(255, 255, 255, 0.1)" />
-          <PolarAngleAxis dataKey="name" stroke="#94a3b8" />
-          <PolarRadiusAxis angle={90} domain={[0, 100]} stroke="#64748b" />
-          <Radar
-            name="Scores"
-            dataKey="value"
-            stroke="#06b6d4"
-            fill="#06b6d4"
-            fillOpacity={0.6}
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: '#0f172a',
-              border: '1px solid #06b6d4',
-              borderRadius: '8px',
-              color: '#fff',
+      <div className="radar-center">
+        <div className="balance-score">
+          <span className="balance-value">{balance}%</span>
+          <span className="balance-label">ÉQUILIBRE</span>
+        </div>
+      </div>
+      <div className="radar-zones">
+        {zones.map((zone) => (
+          <div 
+            key={zone.id} 
+            className="zone" 
+            style={{ 
+              '--zone-color': zone.color,
+              '--zone-color-rgb': zone.colorRgb
             }}
-            formatter={(value) => `${value}/100`}
-          />
-          <Legend wrapperStyle={{ color: '#fff' }} />
-        </RadarChart>
-      </ResponsiveContainer>
-
-      <style jsx>{`
-        .lumia-radar {
-          padding: 1.5rem;
-          background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-          border-radius: 12px;
-          color: #fff;
-        }
-
-        .lumia-radar h3 {
-          margin: 0 0 1rem 0;
-          color: #06b6d4;
-          font-size: 1.25rem;
-        }
-      `}</style>
+          >
+            <div className="zone-icon">{zone.icon}</div>
+            <div className="zone-label">{zone.label}</div>
+            <div className="zone-score">{scores[zone.id]}%</div>
+            <div className="zone-desc">{zone.desc}</div>
+            <div className="zone-bar">
+              <div 
+                className="zone-fill" 
+                style={{ 
+                  width: `${scores[zone.id]}%`, 
+                  backgroundColor: zone.color 
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

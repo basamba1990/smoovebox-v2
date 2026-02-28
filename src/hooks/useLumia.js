@@ -1,11 +1,16 @@
+/**
+ * Hook useLumia - FIXED VERSION
+ * Gère l'état LUMIA et les calculs d'équilibre énergétique
+ */
+
 import { useState, useCallback } from 'react';
 import { LUMIA_CONFIG } from '../config/lumia.config.js';
 
 export function useLumia() {
   const [userProfile, setUserProfile] = useState({
-    territory: null,
-    dominantZone: null,
-    scores: { feu: 50, air: 50, terre: 50, eau: 50 },
+    territory: 'casablanca',
+    dominantZone: 'feu',
+    scores: { feu: 75, air: 75, terre: 75, eau: 75 },
   });
 
   const setTerritory = useCallback((territoryId) => {
