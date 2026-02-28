@@ -86,9 +86,6 @@ const AI_RESPONSE_SCHEMA = [
   "archetype",
   "couleur_dominante",
   "element",
-  "signe_soleil",
-  "signe_lune",
-  "signe_ascendant",
   "passions",
 ] as const;
 
@@ -265,9 +262,6 @@ OBJECTIF: Générer un profil symbolique structuré en JSON respectant stricteme
   "archetype": string,
   "couleur_dominante": string,
   "element": string,
-  "signe_soleil": string,
-  "signe_lune": string,
-  "signe_ascendant": string,
   "passions": string[],
   "soleil_degre": number | null,
   "lune_degre": number | null,
@@ -293,7 +287,11 @@ function validateProfileText(text: string): boolean {
   return requiredSections.every(section => text.includes(section));
 }
 
-async function callOpenAi(prompt: string, signal?: AbortSignal): Promise<AiSymbolicProfile> {
+async function callOpenAi(
+  prompt: string,
+  astroData: AstroEngineResponse | null,
+  signal?: AbortSignal
+): Promise<AiSymbolicProfile> {
   const apiKey = ensureEnv("OPENAI_API_KEY");
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -352,9 +350,9 @@ async function callOpenAi(prompt: string, signal?: AbortSignal): Promise<AiSymbo
     archetype: String(result.archetype ?? ""),
     couleur_dominante: String(result.couleur_dominante ?? ""),
     element: String(result.element ?? ""),
-    signe_soleil: String(result.signe_soleil ?? ""),
-    signe_lune: String(result.signe_lune ?? ""),
-    signe_ascendant: String(result.signe_ascendant ?? ""),
+    signe_soleil: String(astroData?.sun_sign ?? result.signe_soleil ?? ""),
+    signe_lune: String(astroData?.moon_sign ?? result.signe_lune ?? ""),
+    signe_ascendant: String(astroData?.asc_sign ?? result.signe_ascendant ?? ""),
     passions: Array.isArray(result.passions) ? result.passions.map((p) => String(p)) : [],
     soleil_degre: sanitizeNumber(result.soleil_degre),
     lune_degre: sanitizeNumber(result.lune_degre),
@@ -411,7 +409,7 @@ async function handleRequest(request: Request): Promise<Response> {
     const userName = userData?.full_name;
 
     const prompt = buildOpenAiPrompt(userName, payload, astroData);
-    const symbolicProfile = await callOpenAi(prompt);
+    const symbolicProfile = await callOpenAi(prompt, astroData);
 
     return new Response(JSON.stringify({
       success: true,
