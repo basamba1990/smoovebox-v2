@@ -50,18 +50,20 @@ export default function ModuleMimetique({
       onSignOut={onSignOut}
     >
       {/* Header Section */}
-      <motion.div
+      <motion.header
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="mb-8"
+        className="flex justify-between items-center mb-8 border-b border-teal-900/30 pb-4"
       >
-        <h1 className="text-2xl sm:text-3xl font-semibold text-white text-center mt-2">
-          Le Module Mimétique
-        </h1>
-        <p className="text-white/90 text-center mt-3 mb-6 max-w-2xl mx-auto">
-          Enregistrement vidéo et miroir de ton étoile.
-        </p>
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tighter bg-gradient-to-r from-teal-400 to-blue-500 bg-clip-text text-transparent">
+            Le Module Mimétique
+          </h1>
+          <p className="text-slate-400 text-sm uppercase tracking-widest">
+            Enregistrement vidéo et miroir de ton étoile.
+          </p>
+        </div>
         <div className="flex justify-center">
           <div className="inline-block px-4 py-2 bg-teal-500/10 border border-teal-500/30 rounded-full">
             <p className="text-teal-300 text-xs font-semibold uppercase tracking-widest">
@@ -69,7 +71,7 @@ export default function ModuleMimetique({
             </p>
           </div>
         </div>
-      </motion.div>
+      </motion.header>
 
       {/* Video Recording Section */}
       <motion.div
@@ -108,7 +110,7 @@ export default function ModuleMimetique({
         transition={{ duration: 0.6, delay: 0.2 }}
         className="mt-8"
       >
-        <div className="glass-card border-white/10 rounded-3xl p-6 shadow-xl">
+          <div className="glass-card p-6 rounded-3xl border border-teal-500/20 bg-slate-900/40 backdrop-blur-xl">
           <h3 className="text-[10px] font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2">
             📁 Mon Coffre-fort Vidéo
           </h3>
@@ -184,7 +186,7 @@ export default function ModuleMimetique({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.4 }}
-        className="mt-8 p-4 bg-blue-500/5 border border-blue-500/20 rounded-2xl"
+        className="mt-8 p-4 rounded-2xl border border-blue-500/20 bg-blue-500/5"
       >
         <p className="text-blue-200/80 text-xs leading-relaxed">
           💡 <span className="font-semibold">Conseil :</span> Enregistre plusieurs versions de toi-même pour trouver celle qui te représente le mieux. Chaque vidéo est une opportunité de te découvrir et de progresser.
