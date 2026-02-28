@@ -1,0 +1,415 @@
+// src/pages/SpotCoachPreview.jsx
+// Variante de SpotCoach qui génère un profil symbolique SANS sauvegarde en base.
+
+import React, { useMemo, useState } from 'react';
+import { Button } from '../components/ui/button.jsx';
+import { Input } from '../components/ui/input.jsx';
+import { Label } from '../components/ui/label.jsx';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card.jsx';
+import { DatePicker } from '../components/ui/date-picker.jsx';
+import { TimePicker } from '../components/ui/time-picker.jsx';
+import { CityAutocomplete } from '../components/ui/city-autocomplete.jsx';
+import { spotCoachService } from '../services/spotCoachService.js';
+import OdysseyLayout from '../components/OdysseyLayout.jsx';
+
+const initialState = {
+  name: '',
+  birthDate: '',
+  birthTime: '',
+  birthCity: '',
+  latitude: '',
+  longitude: '',
+  timezone: '',
+};
+
+function parseNarrativeSections(profileText) {
+  if (!profileText) return [];
+
+  const lines = profileText
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const sections = [];
+  let current = null;
+
+  const isTitle = (line) =>
+    line.includes('—') || /^points forts$/i.test(line) || /^conclusion$/i.test(line);
+
+  lines.forEach((line) => {
+    if (isTitle(line)) {
+      current = { title: line, rows: [] };
+      sections.push(current);
+    } else if (current) {
+      current.rows.push(line);
+    }
+  });
+
+  return sections;
+}
+
+export default function SpotCoachPreview({ onSignOut }) {
+  const [form, setForm] = useState(initialState);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
+  const [expandedSign, setExpandedSign] = useState(null);
+  const [showFullProfile, setShowFullProfile] = useState(false);
+
+  const inputClass =
+    'bg-slate-900/60 border-white/15 text-slate-100 placeholder:text-slate-400 focus:border-teal-400 focus:ring-teal-500/40';
+
+  const isSubmitDisabled = useMemo(() => {
+    if (!form.birthDate || !form.latitude || !form.longitude || !form.timezone) {
+      return true;
+    }
+    return loading;
+  }, [form.birthDate, form.latitude, form.longitude, form.timezone, loading]);
+
+  const handleChange = (field) => (event) => {
+    const value = event?.target ? event.target.value : event;
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleCityCoordinates = ({ latitude, longitude }) => {
+    setForm((prev) => ({
+      ...prev,
+      latitude: latitude?.toString() || prev.latitude,
+      longitude: longitude?.toString() || prev.longitude
+    }));
+  };
+
+  const handleTimezoneChange = (timezone) => {
+    if (timezone) {
+      setForm((prev) => ({
+        ...prev,
+        timezone: timezone
+      }));
+    }
+  };
+
+  const buildPayload = () => {
+    const latitude = Number(form.latitude);
+    const longitude = Number(form.longitude);
+
+    return {
+      name: form.name || undefined,
+      birth: {
+        date: form.birthDate,
+        time: form.birthTime || null,
+        city: form.birthCity || undefined,
+        latitude: Number.isFinite(latitude) ? latitude : undefined,
+        longitude: Number.isFinite(longitude) ? longitude : undefined,
+        timezone: form.timezone || undefined,
+      },
+    };
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError(null);
+    setResult(null);
+
+    try {
+      setLoading(true);
+      const payload = buildPayload();
+      const response = await spotCoachService.generateSymbolicProfilePreview(payload);
+      setResult(response);
+    } catch (err) {
+      const message = err?.message || err?.error || 'Impossible de générer le profil symbolique (preview).';
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signDescriptions = useMemo(() => {
+    const text = result?.profile?.profile_text;
+    if (!text) return { soleil: null, lune: null, ascendant: null };
+    const sections = text.split(/\n(?=### )/);
+    const out = { soleil: null, lune: null, ascendant: null };
+    sections.forEach((block) => {
+      const firstLine = block.split('\n')[0] || '';
+      const rest = block.replace(/^###[^\n]*\n?/, '').trim();
+      if (/☀️|Soleil en/i.test(firstLine)) out.soleil = rest || null;
+      else if (/🌙|Lune en/i.test(firstLine)) out.lune = rest || null;
+      else if (/⬆️|Ascendant en/i.test(firstLine)) out.ascendant = rest || null;
+    });
+    return out;
+  }, [result?.profile?.profile_text]);
+
+  const narrativeSections = useMemo(
+    () => parseNarrativeSections(result?.profile?.profile_text),
+    [result]
+  );
+
+  return (
+    <OdysseyLayout
+      currentStep={1}
+      title=""
+      maxWidthClass="max-w-6xl"
+      onSignOut={onSignOut}
+    >
+      <h1 className="text-2xl sm:text-3xl font-semibold text-white text-center mt-2">
+        {result?.profile ? '✨ Ton Radar est Activé' : 'Symbolic profile'}
+      </h1>
+      <p className="text-white/90 text-center mt-3 mb-6 max-w-2xl mx-auto">
+        Ton énergie de départ est révélée. Ton évolution dépend maintenant de tes actions.
+      </p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <Card className="lg:col-span-2 glass-card border-white/10 shadow-2xl rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-900/70">
+          <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6">
+            <CardTitle className="text-xl sm:text-2xl font-bold text-white">
+              Questionnaire &amp; Informations
+            </CardTitle>
+            <CardDescription className="text-slate-300">
+              Fournis des données précises pour une lecture symbolique pertinente. Les champs latitude / longitude sont requis.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-4 sm:px-6 pb-5">
+            <form className="space-y-6" onSubmit={handleSubmit}>
+              <section className="space-y-4">
+                <h2 className="text-lg font-semibold text-slate-800">Identité &amp; Naissance</h2>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="coach-date" className="text-white font-medium">Date de naissance *</Label>
+                    <DatePicker
+                      value={form.birthDate}
+                      onChange={handleChange('birthDate')}
+                      placeholder="Sélectionner votre date de naissance"
+                      required
+                      maxDate={new Date()}
+                      className="bg-slate-900/60 border-white/15 text-slate-100 hover:bg-slate-900/80"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="coach-city" className="text-white font-medium">Ville de naissance</Label>
+                    <CityAutocomplete
+                      value={form.birthCity}
+                      onChange={handleChange('birthCity')}
+                      onCoordinatesChange={handleCityCoordinates}
+                      onTimezoneChange={handleTimezoneChange}
+                      placeholder="Ex: Paris, France"
+                      className={inputClass}
+                    />
+                  </div>
+                  <div className="hidden md:col-span-2 md:grid md:grid-cols-3 md:gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="coach-lat" className="text-white font-medium">Latitude *</Label>
+                      <Input
+                        id="coach-lat"
+                        type="number"
+                        step="0.000001"
+                        placeholder="48.856613"
+                        value={form.latitude}
+                        onChange={handleChange('latitude')}
+                        required
+                        disabled
+                        className={inputClass}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="coach-lon" className="text-white font-medium">Longitude *</Label>
+                      <Input
+                        id="coach-lon"
+                        type="number"
+                        step="0.000001"
+                        placeholder="2.352222"
+                        value={form.longitude}
+                        onChange={handleChange('longitude')}
+                        required
+                        disabled
+                        className={inputClass}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="coach-timezone" className="text-white font-medium">Fuseau horaire *</Label>
+                      <Input
+                        id="coach-timezone"
+                        placeholder="Sélectionnez une ville pour détecter automatiquement"
+                        value={form.timezone}
+                        onChange={handleChange('timezone')}
+                        required
+                        disabled
+                        className={inputClass}
+                      />
+                      {form.timezone && (
+                        <p className="text-xs text-slate-600">Détecté automatiquement depuis la ville sélectionnée</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <div className="flex items-center gap-3">
+                <Button type="submit" disabled={isSubmitDisabled} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold">
+                  {loading ? 'Génération en cours…' : 'Générer (preview seulement)'}
+                </Button>
+                <Button type="button" variant="outline" className="border-slate-300 text-slate-700 hover:bg-slate-100" onClick={() => setForm(initialState)} disabled={loading}>
+                  Réinitialiser
+                </Button>
+              </div>
+
+              {error && (
+                <div className="rounded-lg border border-red-300 bg-red-50 text-red-800 px-4 py-3 text-sm">
+                  {error}
+                </div>
+              )}
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card border-white/10 shadow-2xl rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-900/70">
+          <CardHeader className="px-4 sm:px-6 pt-4 sm:pt-6">
+            <CardTitle className="text-xl sm:text-2xl font-bold text-white">
+              Résultat SpotCoach
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 px-4 sm:px-6 pb-5">
+            {!result && !loading && (
+              <div className="text-sm text-slate-600">
+                Complète le formulaire et lance la génération pour découvrir un profil symbolique éphémère.
+              </div>
+            )}
+
+            {loading && (
+              <div className="text-sm text-teal-700 animate-pulse">
+                Analyse symbolique en cours… SpotCoach fusionne les données et tes intentions.
+              </div>
+            )}
+
+            {result && result.profile && (
+              <div className="space-y-6 text-sm text-slate-200">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
+                    <p className="text-slate-100">
+                      Prévisualisation (non sauvegardée)
+                    </p>
+                  </div>
+                  <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
+                    <p className="font-medium text-slate-100">{result.profile.element}</p>
+                  </div>
+                  <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
+                    <p className="font-medium text-teal-300 italic">
+                      {result.profile.phrase_synchronie}
+                    </p>
+                  </div>
+                  <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
+                    <p className="font-medium text-slate-100">{result.profile.archetype}</p>
+                  </div>
+                  <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
+                    <p className="font-medium text-slate-100">{result.profile.signe_soleil}</p>
+                    {signDescriptions.soleil && ((
+                      expandedSign === 'soleil' ? (
+                        <button
+                          type="button"
+                          className="mt-1 text-[11px] text-slate-400 hover:text-slate-200 underline"
+                          onClick={() => setExpandedSign(null)}
+                        >
+                          Voir moins
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="mt-1 text-[11px] text-teal-300 hover:text-teal-200 underline"
+                          onClick={() => setExpandedSign('soleil')}
+                        >
+                          Voir plus
+                        </button>
+                      )
+                    ))}
+                    {expandedSign === 'soleil' && signDescriptions.soleil && (
+                      <div className="mt-2 pt-2 border-t border-white/10 text-slate-100 text-sm leading-relaxed whitespace-pre-wrap">
+                        {signDescriptions.soleil}
+                      </div>
+                    )}
+                  </div>
+                  <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
+                    <p className="font-medium text-slate-100">{result.profile.signe_lune}</p>
+                    {signDescriptions.lune && ((
+                      expandedSign === 'lune' ? (
+                        <button
+                          type="button"
+                          className="mt-1 text-[11px] text-slate-400 hover:text-slate-200 underline"
+                          onClick={() => setExpandedSign(null)}
+                        >
+                          Voir moins
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="mt-1 text-[11px] text-teal-300 hover:text-teal-200 underline"
+                          onClick={() => setExpandedSign('lune')}
+                        >
+                          Voir plus
+                        </button>
+                      )
+                    ))}
+                    {expandedSign === 'lune' && signDescriptions.lune && (
+                      <div className="mt-2 pt-2 border-t border-white/10 text-slate-100 text-sm leading-relaxed whitespace-pre-wrap">
+                        {signDescriptions.lune}
+                      </div>
+                    )}
+                  </div>
+                  <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
+                    <p className="font-medium text-slate-100">{result.profile.signe_ascendant}</p>
+                    {signDescriptions.ascendant && ((
+                      expandedSign === 'ascendant' ? (
+                        <button
+                          type="button"
+                          className="mt-1 text-[11px] text-slate-400 hover:text-slate-200 underline"
+                          onClick={() => setExpandedSign(null)}
+                        >
+                          Voir moins
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="mt-1 text-[11px] text-teal-300 hover:text-teal-200 underline"
+                          onClick={() => setExpandedSign('ascendant')}
+                        >
+                          Voir plus
+                        </button>
+                      )
+                    ))}
+                    {expandedSign === 'ascendant' && signDescriptions.ascendant && (
+                      <div className="mt-2 pt-2 border-t border-white/10 text-slate-100 text-sm leading-relaxed whitespace-pre-wrap">
+                        {signDescriptions.ascendant}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {result.profile.profile_text && (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                        Profil complet
+                      </p>
+                      <button
+                        type="button"
+                        className="text-[11px] text-teal-300 hover:text-teal-200 underline"
+                        onClick={() => setShowFullProfile((prev) => !prev)}
+                      >
+                        {showFullProfile ? 'Masquer' : 'Voir le profil complet'}
+                      </button>
+                    </div>
+                    {showFullProfile && (
+                      <div className="border border-white/10 rounded-xl px-4 py-4 bg-slate-900/70 text-slate-100 leading-relaxed whitespace-pre-wrap max-h-96 overflow-y-auto">
+                        {result.profile.profile_text
+                          .split('\n')
+                          .filter((line) => !/^\s*#+\s*Profil astrologique complet\s*$/i.test(line.trim()))
+                          .join('\n')}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </OdysseyLayout>
+  );
+}
+

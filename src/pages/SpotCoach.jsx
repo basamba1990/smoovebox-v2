@@ -77,8 +77,9 @@ export default function SpotCoach({ onSignOut }) {
   const [loadingExisting, setLoadingExisting] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [longerMessage, setLongerMessage] = useState(false);
-  const [expandedSign, setExpandedSign] = useState(null); // 'soleil' | 'lune' | 'ascendant' | null
   const [showFullProfile, setShowFullProfile] = useState(false);
+  const [synthesis, setSynthesis] = useState(null);
+  const [synthesisLoading, setSynthesisLoading] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -117,6 +118,50 @@ export default function SpotCoach({ onSignOut }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!result?.profile) {
+      setSynthesis(null);
+      return;
+    }
+    const stored = result.stored;
+    const birth = stored
+      ? {
+          date: stored.date,
+          time: stored.time ?? null,
+          city: stored.city,
+          latitude: stored.lat,
+          longitude: stored.lon,
+          timezone: stored.timezone,
+        }
+      : {
+          date: form.birthDate,
+          time: form.birthTime || null,
+          city: form.birthCity,
+          latitude: Number(form.latitude),
+          longitude: Number(form.longitude),
+          timezone: form.timezone,
+        };
+    if (!birth.date || birth.latitude == null || birth.longitude == null) return;
+    let mounted = true;
+    setSynthesisLoading(true);
+    setSynthesis(null);
+    spotCoachService
+      .generateSynthesis({ birth })
+      .then((data) => {
+        if (mounted) setSynthesis(data.synthesis ?? null);
+      })
+      .catch((err) => {
+        if (mounted) setSynthesis(null);
+        console.error('[SpotCoach] generateSynthesis error:', err);
+      })
+      .finally(() => {
+        if (mounted) setSynthesisLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [result, form.birthDate, form.birthTime, form.birthCity, form.latitude, form.longitude, form.timezone]);
+
   const narrativeSections = useMemo(() => {
     const text = result?.profile?.profile_text;
     if (!text) return [];
@@ -144,31 +189,15 @@ export default function SpotCoach({ onSignOut }) {
     return sections;
   }, [result]);
 
-  // Extract per-sign description from profile_text (Soleil / Lune / Ascendant sections)
-  const signDescriptions = useMemo(() => {
-    const text = result?.profile?.profile_text;
-    if (!text) return { soleil: null, lune: null, ascendant: null };
-    const sections = text.split(/\n(?=### )/);
-    const out = { soleil: null, lune: null, ascendant: null };
-    sections.forEach((block) => {
-      const firstLine = block.split('\n')[0] || '';
-      const rest = block.replace(/^###[^\n]*\n?/, '').trim();
-      if (/☀️|Soleil en/i.test(firstLine)) out.soleil = rest || null;
-      else if (/🌙|Lune en/i.test(firstLine)) out.lune = rest || null;
-      else if (/⬆️|Ascendant en/i.test(firstLine)) out.ascendant = rest || null;
-    });
-    return out;
-  }, [result?.profile?.profile_text]);
-
   const inputClass =
     'bg-slate-900/60 border-white/15 text-slate-100 placeholder:text-slate-400 focus:border-teal-400 focus:ring-teal-500/40';
 
   const isSubmitDisabled = useMemo(() => {
-    if (!form.name || !form.birthDate || !form.birthTime || !form.latitude || !form.longitude || !form.timezone) {
+    if (!form.birthDate || !form.latitude || !form.longitude || !form.timezone) {
       return true;
     }
     return loading;
-  }, [form.name, form.birthDate, form.birthTime, form.latitude, form.longitude, form.timezone, loading]);
+  }, [form.birthDate, form.latitude, form.longitude, form.timezone, loading]);
 
   const handleChange = (field) => (event) => {
     const value = event?.target ? event.target.value : event;
@@ -301,18 +330,7 @@ export default function SpotCoach({ onSignOut }) {
                 <form className="space-y-6" onSubmit={handleSubmit}>
                     <section className="space-y-4">
                       <h2 className="text-lg font-semibold text-slate-800">Identité &amp; Naissance</h2>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="coach-name" className="text-white font-medium">Nom *</Label>
-                          <Input
-                            id="coach-name"
-                            placeholder="Ex: Alex Dupont"
-                            value={form.name}
-                            onChange={handleChange('name')}
-                            className={inputClass}
-                            required
-                          />
-                        </div>
+                      <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="coach-date" className="text-white font-medium">Date de naissance *</Label>
                           <DatePicker
@@ -321,17 +339,6 @@ export default function SpotCoach({ onSignOut }) {
                             placeholder="Sélectionner votre date de naissance"
                             required
                             maxDate={new Date()} // Can't select future dates
-                            className="bg-slate-900/60 border-white/15 text-slate-100 hover:bg-slate-900/80"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="coach-time" className="text-white font-medium">Heure de naissance *</Label>
-                          <TimePicker
-                            value={form.birthTime}
-                            onChange={handleChange('birthTime')}
-                            placeholder="Sélectionner l'heure de naissance"
-                            step={1}
-                            required
                             className="bg-slate-900/60 border-white/15 text-slate-100 hover:bg-slate-900/80"
                           />
                         </div>
@@ -346,48 +353,50 @@ export default function SpotCoach({ onSignOut }) {
                             className={inputClass}
                           />
                         </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="coach-lat" className="text-white font-medium">Latitude *</Label>
-                          <Input
-                            id="coach-lat"
-                            type="number"
-                            step="0.000001"
-                            placeholder="48.856613"
-                            value={form.latitude}
-                            onChange={handleChange('latitude')}
-                            required
-                            disabled
-                            className={inputClass}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="coach-lon" className="text-white font-medium">Longitude *</Label>
-                          <Input
-                            id="coach-lon"
-                            type="number"
-                            step="0.000001"
-                            placeholder="2.352222"
-                            value={form.longitude}
-                            onChange={handleChange('longitude')}
-                            required
-                            disabled
-                            className={inputClass}
-                          />
-                        </div>
-                        <div className="space-y-2 md:col-span-2">
-                          <Label htmlFor="coach-timezone" className="text-white font-medium">Fuseau horaire *</Label>
-                          <Input
-                            id="coach-timezone"
-                            placeholder="Sélectionnez une ville pour détecter automatiquement"
-                            value={form.timezone}
-                            onChange={handleChange('timezone')}
-                            required
-                            disabled
-                            className={inputClass}
-                          />
-                          {form.timezone && (
-                            <p className="text-xs text-slate-600">Détecté automatiquement depuis la ville sélectionnée</p>
-                          )}
+                        <div className="hidden md:col-span-2 md:grid md:grid-cols-3 md:gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="coach-lat" className="text-white font-medium">Latitude *</Label>
+                            <Input
+                              id="coach-lat"
+                              type="number"
+                              step="0.000001"
+                              placeholder="48.856613"
+                              value={form.latitude}
+                              onChange={handleChange('latitude')}
+                              required
+                              disabled
+                              className={inputClass}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="coach-lon" className="text-white font-medium">Longitude *</Label>
+                            <Input
+                              id="coach-lon"
+                              type="number"
+                              step="0.000001"
+                              placeholder="2.352222"
+                              value={form.longitude}
+                              onChange={handleChange('longitude')}
+                              required
+                              disabled
+                              className={inputClass}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="coach-timezone" className="text-white font-medium">Fuseau horaire *</Label>
+                            <Input
+                              id="coach-timezone"
+                              placeholder="Sélectionnez une ville pour détecter automatiquement"
+                              value={form.timezone}
+                              onChange={handleChange('timezone')}
+                              required
+                              disabled
+                              className={inputClass}
+                            />
+                            {form.timezone && (
+                              <p className="text-xs text-slate-600">Détecté automatiquement depuis la ville sélectionnée</p>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </section>
@@ -467,85 +476,13 @@ export default function SpotCoach({ onSignOut }) {
                     <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
                       <p className="font-medium text-slate-100">{result.profile.archetype}</p>
                     </div>
-                    <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
-                      <p className="font-medium text-slate-100">{result.profile.signe_soleil}</p>
-                      {signDescriptions.soleil && ((
-                        expandedSign === 'soleil' ? (
-                          <button
-                            type="button"
-                            className="mt-1 text-[11px] text-slate-400 hover:text-slate-200 underline"
-                            onClick={() => setExpandedSign(null)}
-                          >
-                            Voir moins
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className="mt-1 text-[11px] text-teal-300 hover:text-teal-200 underline"
-                            onClick={() => setExpandedSign('soleil')}
-                          >
-                            Voir plus
-                          </button>
-                        )
-                      ))}
-                      {expandedSign === 'soleil' && signDescriptions.soleil && (
-                        <div className="mt-2 pt-2 border-t border-white/10 text-slate-100 text-sm leading-relaxed whitespace-pre-wrap">
-                          {signDescriptions.soleil}
-                        </div>
-                      )}
-                    </div>
-                    <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
-                      <p className="font-medium text-slate-100">{result.profile.signe_lune}</p>
-                      {signDescriptions.lune && ((
-                        expandedSign === 'lune' ? (
-                          <button
-                            type="button"
-                            className="mt-1 text-[11px] text-slate-400 hover:text-slate-200 underline"
-                            onClick={() => setExpandedSign(null)}
-                          >
-                            Voir moins
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className="mt-1 text-[11px] text-teal-300 hover:text-teal-200 underline"
-                            onClick={() => setExpandedSign('lune')}
-                          >
-                            Voir plus
-                          </button>
-                        )
-                      ))}
-                      {expandedSign === 'lune' && signDescriptions.lune && (
-                        <div className="mt-2 pt-2 border-t border-white/10 text-slate-100 text-sm leading-relaxed whitespace-pre-wrap">
-                          {signDescriptions.lune}
-                        </div>
-                      )}
-                    </div>
-                    <div className="border border-white/10 rounded-xl px-3 py-2 bg-slate-900/70">
-                      <p className="font-medium text-slate-100">{result.profile.signe_ascendant}</p>
-                      {signDescriptions.ascendant && ((
-                        expandedSign === 'ascendant' ? (
-                          <button
-                            type="button"
-                            className="mt-1 text-[11px] text-slate-400 hover:text-slate-200 underline"
-                            onClick={() => setExpandedSign(null)}
-                          >
-                            Voir moins
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className="mt-1 text-[11px] text-teal-300 hover:text-teal-200 underline"
-                            onClick={() => setExpandedSign('ascendant')}
-                          >
-                            Voir plus
-                          </button>
-                        )
-                      ))}
-                      {expandedSign === 'ascendant' && signDescriptions.ascendant && (
-                        <div className="mt-2 pt-2 border-t border-white/10 text-slate-100 text-sm leading-relaxed whitespace-pre-wrap">
-                          {signDescriptions.ascendant}
-                        </div>
+                    <div className="border border-white/10 rounded-xl px-4 py-3 bg-slate-900/70 sm:col-span-2">
+                      {synthesisLoading ? (
+                        <p className="text-slate-400 text-sm animate-pulse">Synthèse en cours…</p>
+                      ) : synthesis ? (
+                        <p className="text-slate-100 text-sm leading-relaxed whitespace-pre-wrap">{synthesis}</p>
+                      ) : (
+                        <p className="text-slate-500 text-sm">Synthèse non disponible.</p>
                       )}
                     </div>
                   </div>
