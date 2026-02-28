@@ -43,6 +43,8 @@ import Questionnaire from "../components/Questionnaire.jsx";
 import FootballChatModal from "../components/FootballChatModal.jsx";
 import QuickActions from "../components/QuickActions.jsx";
 import GalacticMap from "../pages/galactic-map.jsx";
+import AstroEnginePlayground from "../pages/AstroEnginePlayground.jsx";
+import SpotCoachPreview from "../pages/SpotCoachPreview.jsx";
 
 export default function AppRoutes({
   user,
@@ -165,6 +167,22 @@ export default function AppRoutes({
       />
       {/* Optional backward compatibility for old /spotcoach URL */}
       <Route path="/spotcoach" element={<Navigate to="/embark" replace />} />
+      <Route
+        path="/spotcoach-preview"
+        element={
+          <RequireAuth>
+            <SpotCoachPreview onSignOut={onSignOut} />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/astro-test"
+        element={
+          <RequireAuth>
+            <AstroEnginePlayground />
+          </RequireAuth>
+        }
+      />
       <Route
         path="/scan-elements"
         element={
