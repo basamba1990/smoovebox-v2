@@ -1,47 +1,14 @@
 /**
- * Configuration du Catalogue Interne
- * Définit les 10 étapes du parcours élève, les 4 énergies et le mapping modules -> étapes.
+ * CATALOGUE INTERNE - Configuration des 10 Étapes
+ * Mapping des modules existants aux étapes du parcours élève
  */
 
-// ==================== ÉNERGIES ====================
-export const ENERGIES = {
-  feu: {
-    label: 'FEU',
-    icon: '🔥',
-    color: '#F97316',
-    description: 'Leadership & Impact',
-    attributes: ['Leadership', 'Action', 'Pitch'],
-  },
-  air: {
-    label: 'AIR',
-    icon: '🌬',
-    color: '#0EA5E9',
-    description: 'Innovation & Vision',
-    attributes: ['Innovation', 'Vision', 'Créativité'],
-  },
-  terre: {
-    label: 'TERRE',
-    icon: '🌍',
-    color: '#22C55E',
-    description: 'Structure & Organisation',
-    attributes: ['Organisation', 'Structure', 'Économie'],
-  },
-  eau: {
-    label: 'EAU',
-    icon: '💧',
-    color: '#06B6D4',
-    description: 'Cohésion & Impact Social',
-    attributes: ['Cohésion', 'Inclusion', 'Impact social'],
-  },
-};
-
-// ==================== ÉTAPES DU CATALOGUE ====================
 export const CATALOGUE_ETAPES = [
   {
     id: 1,
     label: '🎤 Le Pitch',
     subtitle: 'Capsule physique',
-    description: "L'élève s'enregistre et reçoit sa Carte Talent",
+    description: 'L\'élève s\'enregistre et reçoit sa Carte Talent',
     objectif: 'Confiance + visibilité',
     modules: ['SimplifiedHome', 'record-video', 'enhanced-record-video', 'VideoManagement'],
     outputs: ['Carte Talent', 'Profil énergétique', 'User ID'],
@@ -82,7 +49,7 @@ export const CATALOGUE_ETAPES = [
     label: '📂 Portfolio',
     subtitle: 'Dossier vivant',
     description: 'Import des preuves et valorisation des compétences',
-    objectif: "Construction d'un dossier vivant",
+    objectif: 'Construction d\'un dossier vivant',
     modules: ['genupPortfolioPage', 'video-vault'],
     outputs: ['Portfolio complet', 'Historique évolution', 'Badge mission'],
     energies: ['terre', 'eau'],
@@ -102,7 +69,7 @@ export const CATALOGUE_ETAPES = [
     label: '⚡ Transfert Lumia',
     subtitle: 'Planète territoriale',
     description: 'Les points alimentent la planète locale',
-    objectif: "L'individuel nourrit le collectif",
+    objectif: 'L\'individuel nourrit le collectif',
     modules: ['LumiUnifiedProfile', 'lumi-onboarding', 'CockpitPage'],
     outputs: ['Agrégation territoriale', 'Dashboard admin', 'Leaderboard'],
     energies: ['feu', 'air', 'terre', 'eau'],
@@ -132,78 +99,86 @@ export const CATALOGUE_ETAPES = [
     label: '🔟 SpotBulle Executive',
     subtitle: 'Incubateur premium',
     description: 'Rendez-vous, pitch devant jury, accompagnement réel',
-    objectif: "Passage à l'impact concret",
+    objectif: 'Passage à l\'impact concret',
     modules: ['SpotBullePremium', 'company-record', 'company-signin'],
     outputs: ['Rendez-vous agendé', 'Accompagnement', 'Déploiement'],
     energies: ['feu', 'air'],
   },
 ];
 
-// ==================== MAPPING MODULES → ÉTAPES ====================
+export const ENERGIES = {
+  feu: {
+    label: 'FEU',
+    icon: '🔥',
+    color: '#F97316',
+    description: 'Leadership & Impact',
+    attributes: ['Leadership', 'Action', 'Pitch'],
+  },
+  air: {
+    label: 'AIR',
+    icon: '🌬',
+    color: '#0EA5E9',
+    description: 'Innovation & Vision',
+    attributes: ['Innovation', 'Vision', 'Créativité'],
+  },
+  terre: {
+    label: 'TERRE',
+    icon: '🌍',
+    color: '#22C55E',
+    description: 'Structure & Organisation',
+    attributes: ['Organisation', 'Structure', 'Économie'],
+  },
+  eau: {
+    label: 'EAU',
+    icon: '💧',
+    color: '#06B6D4',
+    description: 'Cohésion & Impact Social',
+    attributes: ['Cohésion', 'Inclusion', 'Impact social'],
+  },
+};
+
 export const MODULES_MAP = {
-  SimplifiedHome: { etape: 1, label: 'Accueil' },
+  'SimplifiedHome': { etape: 1, label: 'Accueil' },
   'record-video': { etape: 1, label: 'Enregistrement vidéo' },
   'enhanced-record-video': { etape: 1, label: 'Enregistrement amélioré' },
-  VideoManagement: { etape: 1, label: 'Gestion vidéos' },
-  SpotCoach: { etape: 2, label: 'Coach IA' },
-  PitchAnalysisPage: { etape: 2, label: 'Analyse pitch' },
-  UpdateDISC: { etape: 2, label: 'Mise à jour DISC' },
+  'VideoManagement': { etape: 1, label: 'Gestion vidéos' },
+  'SpotCoach': { etape: 2, label: 'Coach IA' },
+  'PitchAnalysisPage': { etape: 2, label: 'Analyse pitch' },
+  'UpdateDISC': { etape: 2, label: 'Mise à jour DISC' },
   'future-jobs-generator': { etape: 3, label: 'Générateur métiers' },
   'galactic-map': { etape: 4, label: 'Carte galactique' },
-  LaboTransformation: { etape: 4, label: 'Labo transformation' },
-  genupPortfolioPage: { etape: 5, label: 'Portfolio' },
+  'LaboTransformation': { etape: 4, label: 'Labo transformation' },
+  'genupPortfolioPage': { etape: 5, label: 'Portfolio' },
   'video-vault': { etape: 5, label: 'Coffre vidéos' },
   'video-analysis': { etape: 6, label: 'Analyse vidéo' },
   'video-status': { etape: 6, label: 'Statut vidéo' },
   'video-success': { etape: 6, label: 'Succès vidéo' },
-  LumiUnifiedProfile: { etape: 7, label: 'Profil LUMIA' },
+  'LumiUnifiedProfile': { etape: 7, label: 'Profil LUMIA' },
   'lumi-onboarding': { etape: 7, label: 'Onboarding LUMIA' },
-  CockpitPage: { etape: 7, label: 'Cockpit SPOT' },
-  ModuleMimetique: { etape: 8, label: 'Module mimétique' },
-  TrendsDashboard: { etape: 9, label: 'Dashboard tendances' },
-  SpotBullePremium: { etape: 10, label: 'Premium' },
+  'CockpitPage': { etape: 7, label: 'Cockpit SPOT' },
+  'ModuleMimetique': { etape: 8, label: 'Module mimétique' },
+  'TrendsDashboard': { etape: 9, label: 'Dashboard tendances' },
+  'SpotBullePremium': { etape: 10, label: 'Premium' },
   'company-record': { etape: 10, label: 'Enregistrement entreprise' },
   'company-signin': { etape: 10, label: 'Connexion entreprise' },
 };
 
-// ==================== FONCTIONS UTILITAIRES ====================
-
-/**
- * Retourne l'étape correspondant à un module donné.
- * @param {string} moduleName - Nom du module.
- * @returns {object|null} Objet de l'étape ou null si non trouvé.
- */
 export const getEtapeByModule = (moduleName) => {
   const moduleInfo = MODULES_MAP[moduleName];
   if (!moduleInfo) return null;
   return CATALOGUE_ETAPES.find(e => e.id === moduleInfo.etape);
 };
 
-/**
- * Retourne la liste des informations des modules appartenant à une étape.
- * @param {number} etapeId - Identifiant de l'étape (1-10).
- * @returns {Array} Liste d'objets {etape, label} pour chaque module.
- */
 export const getModulesByEtape = (etapeId) => {
   const etape = CATALOGUE_ETAPES.find(e => e.id === etapeId);
   if (!etape) return [];
   return etape.modules.map(m => MODULES_MAP[m]);
 };
 
-/**
- * Retourne l'étape suivante.
- * @param {number} currentEtapeId - Identifiant de l'étape actuelle.
- * @returns {object|undefined} Étape suivante ou undefined si dernière.
- */
 export const getNextEtape = (currentEtapeId) => {
   return CATALOGUE_ETAPES.find(e => e.id === currentEtapeId + 1);
 };
 
-/**
- * Retourne l'étape précédente.
- * @param {number} currentEtapeId - Identifiant de l'étape actuelle.
- * @returns {object|undefined} Étape précédente ou undefined si première.
- */
 export const getPreviousEtape = (currentEtapeId) => {
   return CATALOGUE_ETAPES.find(e => e.id === currentEtapeId - 1);
 };

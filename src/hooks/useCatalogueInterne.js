@@ -1,141 +1,119 @@
 import { useState, useCallback, useEffect } from 'react';
-import {
-  CATALOGUE_ETAPES,
-  getNextEtape,
-  getPreviousEtape,
-} from '../config/catalogue-interne.config';
-
-const STORAGE_KEY = 'catalogue_progress';
+import { CATALOGUE_ETAPES, getNextEtape, getPreviousEtape } from '../config/catalogue-interne.config';
 
 /**
- * Hook personnalisé pour gérer la progression dans le Catalogue Interne.
- * @returns {object} État et fonctions de gestion du catalogue.
+ * Hook pour gérer la progression à travers le catalogue interne
+ * Suivi des 10 étapes du parcours élève
  */
+
 export function useCatalogueInterne() {
-  const [currentEtapeId, setCurrentEtapeId] = useState(1);
+  const [currentEtape, setCurrentEtape] = useState(1);
   const [completedEtapes, setCompletedEtapes] = useState([]);
   const [etapeData, setEtapeData] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  // Chargement depuis localStorage
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setCurrentEtapeId(parsed.etape || 1);
-        setCompletedEtapes(parsed.completed || []);
-        setEtapeData(parsed.data || {});
-      }
-    } catch (error) {
-      console.error('Erreur lors du chargement du catalogue depuis localStorage:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Sauvegarde dans localStorage
-  useEffect(() => {
-    if (!loading) {
-      try {
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({
-            etape: currentEtapeId,
-            completed: completedEtapes,
-            data: etapeData,
-          })
-        );
-      } catch (error) {
-        console.error('Erreur lors de la sauvegarde du catalogue:', error);
-      }
-    }
-  }, [currentEtapeId, completedEtapes, etapeData, loading]);
-
-  // Récupération de l'objet étape actuelle
+  // Récupérer l'étape actuelle
   const getCurrentEtape = useCallback(() => {
-    return CATALOGUE_ETAPES.find(e => e.id === currentEtapeId) || CATALOGUE_ETAPES[0];
-  }, [currentEtapeId]);
+    return CATALOGUE_ETAPES.find(e => e.id === currentEtape);
+  }, [currentEtape]);
 
-  // Navigation
+  // Avancer à l'étape suivante
   const goToNextEtape = useCallback(() => {
-    const next = getNextEtape(currentEtapeId);
-    if (next) {
-      setCurrentEtapeId(next.id);
-      // Marquer l'étape précédente comme complétée si ce n'est pas déjà fait
-      setCompletedEtapes(prev => {
-        if (!prev.includes(currentEtapeId)) {
-          return [...prev, currentEtapeId];
-        }
-        return prev;
-      });
+    const nextEtape = getNextEtape(currentEtape);
+    if (nextEtape) {
+      setCurrentEtape(nextEtape.id);
+      if (!completedEtapes.includes(currentEtape)) {
+        setCompletedEtapes([...completedEtapes, currentEtape]);
+      }
       return true;
     }
     return false;
-  }, [currentEtapeId]);
+  }, [currentEtape, completedEtapes]);
 
+  // Revenir à l'étape précédente
   const goToPreviousEtape = useCallback(() => {
-    const prev = getPreviousEtape(currentEtapeId);
-    if (prev) {
-      setCurrentEtapeId(prev.id);
+    const prevEtape = getPreviousEtape(currentEtape);
+    if (prevEtape) {
+      setCurrentEtape(prevEtape.id);
       return true;
     }
     return false;
-  }, [currentEtapeId]);
+  }, [currentEtape]);
 
+  // Aller à une étape spécifique
   const goToEtape = useCallback((etapeId) => {
-    if (etapeId >= 1 && etapeId <= 10) {
-      setCurrentEtapeId(etapeId);
+    if (etapeId >= 1 && etapeId <= CATALOGUE_ETAPES.length) {
+      setCurrentEtape(etapeId);
       return true;
     }
     return false;
   }, []);
 
-  // Gestion des données
-  const completeEtape = useCallback((etapeId = currentEtapeId) => {
-    setCompletedEtapes(prev => {
-      if (prev.includes(etapeId)) return prev;
-      return [...prev, etapeId];
-    });
-  }, [currentEtapeId]);
+  // Marquer une étape comme complétée
+  const completeEtape = useCallback((etapeId = currentEtape) => {
+    if (!completedEtapes.includes(etapeId)) {
+      setCompletedEtapes([...completedEtapes, etapeId]);
+    }
+  }, [currentEtape, completedEtapes]);
 
+  // Sauvegarder les données d'une étape
   const saveEtapeData = useCallback((etapeId, data) => {
     setEtapeData(prev => ({
       ...prev,
-      [etapeId]: {
-        ...(prev[etapeId] || {}),
-        ...data,
-        lastUpdated: new Date().toISOString(),
-      },
+      [etapeId]: { ...prev[etapeId], ...data },
     }));
   }, []);
 
-  const getEtapeData = useCallback((etapeId = currentEtapeId) => {
+  // Récupérer les données d'une étape
+  const getEtapeData = useCallback((etapeId = currentEtape) => {
     return etapeData[etapeId] || {};
-  }, [etapeData, currentEtapeId]);
+  }, [currentEtape, etapeData]);
 
+  // Calculer la progression
   const getProgress = useCallback(() => {
-    const total = 10;
-    const completed = completedEtapes.length;
     return {
-      current: currentEtapeId,
-      total,
-      percentage: Math.round((currentEtapeId / total) * 100),
-      completed,
-      remaining: total - completed,
+      current: currentEtape,
+      total: CATALOGUE_ETAPES.length,
+      percentage: Math.round((currentEtape / CATALOGUE_ETAPES.length) * 100),
+      completed: completedEtapes.length,
+      remaining: CATALOGUE_ETAPES.length - completedEtapes.length,
     };
-  }, [currentEtapeId, completedEtapes]);
+  }, [currentEtape, completedEtapes]);
 
+  // Réinitialiser le catalogue
   const reset = useCallback(() => {
-    setCurrentEtapeId(1);
+    setCurrentEtape(1);
     setCompletedEtapes([]);
     setEtapeData({});
   }, []);
 
-  const isEtapeCompleted = useCallback(
-    (etapeId) => completedEtapes.includes(etapeId),
-    [completedEtapes]
-  );
+  // Charger depuis le localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('catalogue_progress');
+      if (saved) {
+        const { etape, completed, data } = JSON.parse(saved);
+        setCurrentEtape(etape || 1);
+        setCompletedEtapes(completed || []);
+        setEtapeData(data || {});
+      }
+    } catch (error) {
+      console.error('Erreur chargement progression:', error);
+    }
+  }, []);
+
+  // Sauvegarder dans le localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('catalogue_progress', JSON.stringify({
+        etape: currentEtape,
+        completed: completedEtapes,
+        data: etapeData,
+      }));
+    } catch (error) {
+      console.error('Erreur sauvegarde progression:', error);
+    }
+  }, [currentEtape, completedEtapes, etapeData]);
 
   return {
     // État
@@ -143,24 +121,24 @@ export function useCatalogueInterne() {
     completedEtapes,
     etapeData,
     loading,
-
+    
     // Navigation
     goToNextEtape,
     goToPreviousEtape,
     goToEtape,
-
+    
     // Gestion
     completeEtape,
     saveEtapeData,
     getEtapeData,
     getProgress,
     reset,
-
+    
     // Utilitaires
-    isFirstEtape: currentEtapeId === 1,
-    isLastEtape: currentEtapeId === 10,
-    isEtapeCompleted,
-    canGoNext: currentEtapeId < 10,
-    canGoPrev: currentEtapeId > 1,
+    isFirstEtape: currentEtape === 1,
+    isLastEtape: currentEtape === CATALOGUE_ETAPES.length,
+    isEtapeCompleted: (etapeId) => completedEtapes.includes(etapeId),
+    canGoNext: currentEtape < CATALOGUE_ETAPES.length,
+    canGoPrev: currentEtape > 1,
   };
 }
