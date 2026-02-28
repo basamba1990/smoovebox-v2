@@ -1,5 +1,5 @@
 // src/routes/AppRoutes.jsx
-// Version corrigée avec routes échangées
+// Version finale corrigée avec ModuleMimetiqueComplet
 
 import { Routes, Route, Navigate } from "react-router-dom";
 import RequireAuth from "../components/RequireAuth.jsx";
@@ -27,7 +27,7 @@ import VideoSuccess from "../pages/video-success.jsx";
 import Directory from "../pages/directory.jsx";
 import LumiOnboarding from "../pages/lumi-onboarding.jsx";
 import LumiUnifiedProfile from "../pages/LumiUnifiedProfile.jsx";
-import ModuleMimetique from "../pages/ModuleMimetique.jsx";
+import ModuleMimetiqueComplet from "../pages/ModuleMimetiqueComplet"; // ✅ Nouveau composant
 import CockpitPage from "../pages/CockpitPage.jsx";
 import LaboTransformation from "../pages/LaboTransformation.jsx";
 import UpdateDISC from "../pages/UpdateDISC.jsx";
@@ -191,12 +191,12 @@ export default function AppRoutes({
       
       <Route path="/lumi/onboarding" element={<Navigate to="/scan-elements" replace />} />
       
-      {/* ✅ MODULE MIMÉTIQUE - Vrai composant */}
+      {/* ✅ MODULE MIMÉTIQUE COMPLET - avec onglets Cockpit + Évaluation + Parcours + Écosystème + Enregistrement */}
       <Route
         path="/module-mimetique"
         element={
           <RequireAuth>
-            <ModuleMimetique
+            <ModuleMimetiqueComplet
               user={user}
               profile={profile}
               onSignOut={onSignOut}
@@ -207,7 +207,7 @@ export default function AppRoutes({
         }
       />
       
-      {/* ✅ COCKPIT SPOT - Dashboard accessible via /cockpit */}
+      {/* ✅ COCKPIT SPOT - Dashboard accessible via /cockpit (optionnel) */}
       <Route
         path="/cockpit"
         element={
