@@ -1,11 +1,11 @@
 import { useState, useCallback, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
 /**
- * Hook gérant le flux complet : Profil -> Mission -> Constellation -> Pitch -> Mise à jour LUMIA.
+ * Hook pour gérer le flux de projet LUMIA (mission, constellation, pitch, mise à jour)
  */
 export function useLumiaFlow() {
   const [currentStep, setCurrentStep] = useState(1); // 1-5
-  const [userData, setUserData] = useState(null);
   const [missionData, setMissionData] = useState(null);
   const [constellationData, setConstellationData] = useState(null);
   const [pitchData, setPitchData] = useState(null);
@@ -13,78 +13,90 @@ export function useLumiaFlow() {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
-  // Étape 1 : Profil utilisateur
-  const setUserProfile = useCallback((data) => {
+  // Étape 2 : Sélectionner une mission
+  const selectMission = useCallback(async (missionId) => {
     try {
-      if (!data.dominantZone) throw new Error('Zone dominante requise');
-      setUserData(data);
-      setErrors(prev => ({ ...prev, user: null }));
-      return true;
-    } catch (error) {
-      setErrors(prev => ({ ...prev, user: error.message }));
-      return false;
-    }
-  }, []);
-
-  // Étape 2 : Sélection mission
-  const selectMission = useCallback((missionId) => {
-    try {
-      if (!missionId) throw new Error('Mission requise');
-      setMissionData({ id: missionId });
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('missions')
+        .select('*')
+        .eq('id', missionId)
+        .single();
+      if (error) throw error;
+      setMissionData(data);
       setErrors(prev => ({ ...prev, mission: null }));
       return true;
     } catch (error) {
       setErrors(prev => ({ ...prev, mission: error.message }));
       return false;
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  // Étape 3 : Formation constellation
-  const formConstellation = useCallback((members) => {
+  // Étape 3 : Former une constellation
+  const formConstellation = useCallback(async (members, mentorId = null) => {
     try {
-      if (!members || members.length !== 4) throw new Error('Constellation doit avoir 4 membres');
-      setConstellationData({ members });
+      if (!members || members.length !== 4) {
+        throw new Error('Une constellation doit avoir exactement 4 membres');
+      }
+      setLoading(true);
+      // Ici on pourrait créer la constellation en base
+      setConstellationData({ members, mentor_id: mentorId, status: 'active' });
       setErrors(prev => ({ ...prev, constellation: null }));
       return true;
     } catch (error) {
       setErrors(prev => ({ ...prev, constellation: error.message }));
       return false;
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  // Étape 4 : Soumission pitch
-  const submitPitch = useCallback((videoUrl) => {
+  // Étape 4 : Soumettre un pitch
+  const submitPitch = useCallback(async (videoUrl, constellationId) => {
     try {
-      if (!videoUrl) throw new Error('Vidéo requise');
-      setPitchData({ videoUrl });
+      if (!videoUrl) throw new Error('URL vidéo requise');
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('pitch')
+        .insert({
+          constellation_id: constellationId,
+          video_url: videoUrl,
+          validation_status: 'pending',
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      setPitchData(data);
       setErrors(prev => ({ ...prev, pitch: null }));
       return true;
     } catch (error) {
       setErrors(prev => ({ ...prev, pitch: error.message }));
       return false;
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  // Étape 5 : Mise à jour LUMIA
-  const updateLumia = useCallback(async () => {
+  // Étape 5 : Mettre à jour LUMIA (créer un log de mise à jour)
+  const updateLumia = useCallback(async (lumiaId, scores) => {
     try {
       setLoading(true);
-      // Appel API pour mettre à jour LUMIA
-      const response = await fetch('/api/lumia/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userData,
-          missionData,
-          constellationData,
-          pitchData,
-        }),
-      });
-
-      if (!response.ok) throw new Error('Erreur mise à jour LUMIA');
-
-      const result = await response.json();
-      setLumiaUpdate(result);
+      const { data, error } = await supabase
+        .from('lumia_update_logs')
+        .insert({
+          lumia_id: lumiaId,
+          feu_delta: scores.feu || 0,
+          air_delta: scores.air || 0,
+          terre_delta: scores.terre || 0,
+          eau_delta: scores.eau || 0,
+          pitch_id: pitchData?.id,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      setLumiaUpdate(data);
       setErrors(prev => ({ ...prev, lumia: null }));
       return true;
     } catch (error) {
@@ -93,7 +105,7 @@ export function useLumiaFlow() {
     } finally {
       setLoading(false);
     }
-  }, [userData, missionData, constellationData, pitchData]);
+  }, [pitchData]);
 
   // Navigation
   const goToNextStep = useCallback(() => {
@@ -120,10 +132,8 @@ export function useLumiaFlow() {
     return false;
   }, []);
 
-  // Réinitialiser
   const reset = useCallback(() => {
     setCurrentStep(1);
-    setUserData(null);
     setMissionData(null);
     setConstellationData(null);
     setPitchData(null);
@@ -131,48 +141,12 @@ export function useLumiaFlow() {
     setErrors({});
   }, []);
 
-  // Persistance localStorage
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('lumia_flow');
-      if (saved) {
-        const { step, user, mission, constellation, pitch, lumia } = JSON.parse(saved);
-        setCurrentStep(step || 1);
-        if (user) setUserData(user);
-        if (mission) setMissionData(mission);
-        if (constellation) setConstellationData(constellation);
-        if (pitch) setPitchData(pitch);
-        if (lumia) setLumiaUpdate(lumia);
-      }
-    } catch (error) {
-      console.error('Erreur chargement flux:', error);
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        'lumia_flow',
-        JSON.stringify({
-          step: currentStep,
-          user: userData,
-          mission: missionData,
-          constellation: constellationData,
-          pitch: pitchData,
-          lumia: lumiaUpdate,
-        })
-      );
-    } catch (error) {
-      console.error('Erreur sauvegarde flux:', error);
-    }
-  }, [currentStep, userData, missionData, constellationData, pitchData, lumiaUpdate]);
-
-  // Vérification de validité d'une étape
+  // Validation d'étape
   const isStepValid = useCallback(
     (step) => {
       switch (step) {
         case 1:
-          return !!userData;
+          return true; // Profil déjà chargé via useLumia
         case 2:
           return !!missionData;
         case 3:
@@ -185,33 +159,24 @@ export function useLumiaFlow() {
           return false;
       }
     },
-    [userData, missionData, constellationData, pitchData, lumiaUpdate]
+    [missionData, constellationData, pitchData, lumiaUpdate]
   );
 
   return {
-    // État
     currentStep,
-    userData,
     missionData,
     constellationData,
     pitchData,
     lumiaUpdate,
     errors,
     loading,
-
-    // Étapes
-    setUserProfile,
     selectMission,
     formConstellation,
     submitPitch,
     updateLumia,
-
-    // Navigation
     goToNextStep,
     goToPreviousStep,
     goToStep,
-
-    // Utilitaires
     reset,
     isFirstStep: currentStep === 1,
     isLastStep: currentStep === 5,
