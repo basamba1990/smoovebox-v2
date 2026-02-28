@@ -1,4 +1,6 @@
 // src/routes/AppRoutes.jsx
+// Version mise à jour complète avec corrections Cockpit SPOT
+
 import { Routes, Route, Navigate } from "react-router-dom";
 import RequireAuth from "../components/RequireAuth.jsx";
 import WelcomeAgent from "../components/WelcomeAgent.jsx";
@@ -43,8 +45,6 @@ import Questionnaire from "../components/Questionnaire.jsx";
 import FootballChatModal from "../components/FootballChatModal.jsx";
 import QuickActions from "../components/QuickActions.jsx";
 import GalacticMap from "../pages/galactic-map.jsx";
-import AstroEnginePlayground from "../pages/AstroEnginePlayground.jsx";
-import SpotCoachPreview from "../pages/SpotCoachPreview.jsx";
 
 export default function AppRoutes({
   user,
@@ -76,12 +76,15 @@ export default function AppRoutes({
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/transformation-demo" element={<TransformationDemo />} />
+      
       {/* Company authentication routes */}
       <Route path="/company-signup" element={<CompanySignup />} />
       <Route path="/company-signin" element={<CompanySignin />} />
+      
       {/* Legacy PSG routes - redirect to company routes */}
       <Route path="/psg-signup" element={<CompanySignup />} />
       <Route path="/psg-signin" element={<CompanySignin />} />
+      
       {/* Company recording page - only for company users */}
       <Route
         path="/company-record"
@@ -91,6 +94,7 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+      
       <Route path="/test-chat" element={<FootballChatTest />} />
       
       {/* ✅ ROUTES POUR LES NOUVELLES FONCTIONNALITÉS */}
@@ -102,6 +106,7 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+      
       <Route
         path="/pitch-recording"
         element={
@@ -110,6 +115,7 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+      
       <Route
         path="/pitch-analysis"
         element={
@@ -118,6 +124,7 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+      
       <Route
         path="/personas-selector"
         element={
@@ -126,6 +133,7 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+      
       <Route
         path="/immersion-simulator"
         element={
@@ -134,6 +142,7 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+      
       <Route
         path="/complementary-matches"
         element={
@@ -142,6 +151,7 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+      
       <Route
         path="/questionnaire"
         element={
@@ -157,6 +167,7 @@ export default function AppRoutes({
 
       {/* Routes Premium & Coaching */}
       <Route path="/premium" element={<SpotBullePremium />} />
+      
       <Route
         path="/embark"
         element={
@@ -165,24 +176,10 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+      
       {/* Optional backward compatibility for old /spotcoach URL */}
       <Route path="/spotcoach" element={<Navigate to="/embark" replace />} />
-      <Route
-        path="/spotcoach-preview"
-        element={
-          <RequireAuth>
-            <SpotCoachPreview onSignOut={onSignOut} />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/astro-test"
-        element={
-          <RequireAuth>
-            <AstroEnginePlayground />
-          </RequireAuth>
-        }
-      />
+      
       <Route
         path="/scan-elements"
         element={
@@ -191,7 +188,10 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+      
       <Route path="/lumi/onboarding" element={<Navigate to="/scan-elements" replace />} />
+      
+      {/* ✅ COCKPIT SPOT - Module Mimétique Dashboard */}
       <Route
         path="/module-mimetique"
         element={
@@ -200,6 +200,8 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+      
+      {/* ✅ Enregistrement vidéo - Miroir de l'étoile */}
       <Route
         path="/record-pitch"
         element={
@@ -214,6 +216,7 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+      
       <Route
         path="/labo-transformation"
         element={
@@ -222,6 +225,7 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+      
       <Route
         path="/carte-galactique"
         element={
@@ -230,6 +234,7 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+      
       <Route
         path="/lumi/profile"
         element={
@@ -249,7 +254,7 @@ export default function AppRoutes({
         }
       />
 
-      {/* Routes principales */}
+      {/* Routes principales - Vidéo */}
       <Route
         path="/record-video"
         element={
@@ -264,7 +269,6 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
-
 
       <Route
         path="/video-vault"
@@ -380,6 +384,7 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+      
       <Route
         path="/trends-dashboard"
         element={
@@ -388,6 +393,7 @@ export default function AppRoutes({
           </RequireAuth>
         }
       />
+      
       <Route
         path="/genup-portfolio"
         element={
