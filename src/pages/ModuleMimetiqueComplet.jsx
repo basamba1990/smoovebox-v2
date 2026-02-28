@@ -19,7 +19,7 @@ export default function ModuleMimetiqueComplet({
 }) {
   const { userProfile } = useLumia();
   const { getProgress } = useCatalogueInterne();
-  const { evaluations } = useSpotBulleSkills(user?.id);
+  const { evaluations, loading: skillsLoading } = useSpotBulleSkills(user?.id);
 
   const [activeTab, setActiveTab] = useState('cockpit');
 
@@ -34,6 +34,7 @@ export default function ModuleMimetiqueComplet({
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 text-white">
       <main className="container mx-auto px-4 py-8">
+        {/* Header sans menu latéral (déjà présent dans le layout global) */}
         <header className="mb-8">
           <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
             Module Mimétique – Cockpit SPOT
@@ -61,6 +62,7 @@ export default function ModuleMimetiqueComplet({
           ))}
         </div>
 
+        {/* Contenu des onglets */}
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
