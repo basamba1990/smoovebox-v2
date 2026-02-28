@@ -1,6 +1,5 @@
-// supabase/functions/spotcoach-profile/index.ts
-// Edge Function responsible for generating and storing symbolic coaching profiles (SpotCoach).
-// AMÉLIORATIONS: Intégration AstroEngine (A1) et Prompt plus robuste (A3).
+// supabase/functions/spotcoach-preview/index.ts
+// Variante de SpotCoach qui génère un profil symbolique SANS l'enregistrer en base.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // @ts-ignore - npm specifier supported by Supabase Edge Runtime (Deno)
@@ -45,8 +44,8 @@ type QuizAnswer = {
 };
 
 interface BirthData {
-  date: string; // ISO date (YYYY-MM-DD)
-  time?: string | null; // Optional time (HH:mm)
+  date: string;
+  time?: string | null;
   city?: string;
   latitude?: number;
   longitude?: number;
@@ -143,35 +142,29 @@ function validatePayload(payload: GenerateProfilePayload) {
   }
 
   if (!payload.birth.time) {
-    console.warn("[SpotCoach] Birth time not provided. Ascendant/House calculations will be approximate or omitted.");
+    console.warn("[SpotCoachPreview] Birth time not provided. Ascendant/House calculations will be approximate or omitted.");
   }
 }
 
-/**
- * Tâche A1: Intégration de l'appel à l'API AstroEngine.
- * Récupère les données astrologiques brutes.
- */
 async function fetchAstroData(birth: BirthData): Promise<AstroEngineResponse | null> {
   const startTime = Date.now();
   try {
-    console.log("[SpotCoach] fetchAstroData START", { birth });
-    
+    console.log("[SpotCoachPreview] fetchAstroData START", { birth });
+
     let apiUrl: string;
     let apiKey: string;
-    
+
     try {
       apiUrl = ensureEnv("ASTRO_ENGINE_URL");
-      console.log("[SpotCoach] ASTRO_ENGINE_URL found:", apiUrl);
     } catch (err) {
-      console.error("[SpotCoach] Missing ASTRO_ENGINE_URL:", err);
+      console.error("[SpotCoachPreview] Missing ASTRO_ENGINE_URL:", err);
       return null;
     }
-    
+
     try {
       apiKey = ensureEnv("ASTRO_ENGINE_API_KEY");
-      console.log("[SpotCoach] ASTRO_ENGINE_API_KEY found:", apiKey ? "***" : "MISSING");
     } catch (err) {
-      console.error("[SpotCoach] Missing ASTRO_ENGINE_API_KEY:", err);
+      console.error("[SpotCoachPreview] Missing ASTRO_ENGINE_API_KEY:", err);
       return null;
     }
 
@@ -182,14 +175,7 @@ async function fetchAstroData(birth: BirthData): Promise<AstroEngineResponse | n
       longitude: birth.longitude,
       timezone: birth.timezone,
     };
-    
-    console.log("[SpotCoach] Calling Astro Engine:", { 
-      url: apiUrl, 
-      hasKey: !!apiKey,
-      requestBody
-    });
 
-    const fetchStart = Date.now();
     const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
@@ -199,52 +185,30 @@ async function fetchAstroData(birth: BirthData): Promise<AstroEngineResponse | n
       body: JSON.stringify(requestBody),
     });
 
-    const fetchTime = Date.now() - fetchStart;
-    console.log("[SpotCoach] Astro Engine response received:", {
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok,
-      fetchTimeMs: fetchTime
-    });
-
     if (!response.ok) {
       const details = await response.text();
-      console.error(`[SpotCoach] AstroEngine API error (${response.status}):`, details);
+      console.error(`[SpotCoachPreview] AstroEngine API error (${response.status}):`, details);
       return null;
     }
 
     const responseText = await response.text();
-    console.log("[SpotCoach] Astro Engine response text:", responseText.substring(0, 200));
-    
+
     let astroResult: AstroEngineResponse;
     try {
       astroResult = JSON.parse(responseText) as AstroEngineResponse;
-      console.log("[SpotCoach] Astro Engine parsed successfully:", astroResult);
     } catch (parseError) {
-      console.error("[SpotCoach] Failed to parse Astro response:", parseError, "Response:", responseText);
+      console.error("[SpotCoachPreview] Failed to parse Astro response:", parseError, "Response:", responseText);
       return null;
     }
 
-    const totalTime = Date.now() - startTime;
-    console.log("[SpotCoach] Astro Engine success (total time:", totalTime, "ms):", astroResult);
+    console.log("[SpotCoachPreview] Astro Engine success:", astroResult);
     return astroResult;
   } catch (error) {
-    const totalTime = Date.now() - startTime;
-    console.error("[SpotCoach] Failed to fetch Astro data (time:", totalTime, "ms):", error);
-    if (error instanceof Error) {
-      console.error("[SpotCoach] Error name:", error.name);
-      console.error("[SpotCoach] Error message:", error.message);
-      console.error("[SpotCoach] Error stack:", error.stack);
-    } else {
-      console.error("[SpotCoach] Error (unknown type):", String(error));
-    }
+    console.error("[SpotCoachPreview] Failed to fetch Astro data:", error);
     return null;
   }
 }
 
-/**
- * Tâche A3: Mise à jour du prompt pour une structure plus robuste (Markdown).
- */
 function buildOpenAiPrompt(
   userName: string | undefined,
   payload: GenerateProfilePayload,
@@ -281,8 +245,8 @@ Fuseau horaire: ${birth.timezone ?? "Non fourni"}
       : `${Number(deg).toFixed(1)}°`;
 
   const astroFacts = astro
-    ? `Données calculées (degrés uniquement, pas de noms de signes à utiliser dans le texte) :\n- Énergie centrale : ${formatDegree(astro.sun_deg)}\n- Monde émotionnel : ${formatDegree(astro.moon_deg)}\n- Image sociale : ${formatDegree(astro.asc_deg)}\n- Mode : ${astro.ephe_mode ?? "inconnu"}`
-    : "Données indisponibles : déduis les tendances au mieux.";
+    ? `Données astro calculées (Swiss Ephemeris) :\n- Soleil : ${formatDegree(astro.sun_deg)} (${astro.sun_sign ?? "signe inconnu"})\n- Lune : ${formatDegree(astro.moon_deg)} (${astro.moon_sign ?? "signe inconnu"})\n- Ascendant : ${formatDegree(astro.asc_deg)} (${astro.asc_sign ?? "signe inconnu"})\n- Mode de calcul : ${astro.ephe_mode ?? "inconnu"}`
+    : "Données astro indisponibles : déduis les tendances au mieux.";
 
   return `Tu es SpotCoach, un coach symbolique et stratégique francophone.
 Tu combines:
@@ -307,118 +271,19 @@ OBJECTIF: Générer un profil symbolique structuré en JSON respectant stricteme
 Contraintes impératives :
 - Renvoie uniquement ce JSON (aucun autre texte).
 - Langue: français naturel, avec emojis pour enrichir le texte.
+- Utilise les faits astro pour renseigner signes et degrés (arrondis à une décimale avec ~xx.x°).
 - "phrase_synchronie": slogan positif, max 140 caractères.
 - "archetype", "couleur_dominante", "element": termes courts et cohérents.
 - "passions": 3 à 5 éléments (phrases courtes) dérivés des informations fournies.
-- INTERDIT ABSOLU : Ne JAMAIS mentionner de noms de signes du zodiaque (Bélier, Taureau, Gémeaux, Cancer, Lion, Vierge, Balance, Scorpion, Sagittaire, Capricorne, Verseau, Poissons) ni utiliser "Soleil en X", "Lune en X", "Ascendant en X". Utilise les faits astro en interne pour déduire tempérament/émotions/image sociale, mais décris uniquement en langage courant, sans jargon.
 - "profile_text" doit suivre EXACTEMENT cette structure avec emojis et formatage :
 
-# Profil personnel complet
-
 ## 🧬 Synthèse générale
-
-Un paragraphe de 2-3 phrases qui résume la personnalité globale. Style direct, personnel (tu/vous), chaleureux. Aucun nom de signe.
-
-## 🌟 Interprétation détaillée
-
-### ☀️ Énergie centrale — [Titre évocateur]
-
-Paragraphe de 3-4 phrases sur le tempérament et la motivation centrale.
-Style personnel, direct. Pas de signe ni terme technique.
-
-**Forces :**
-- Force 1
-- Force 2
-- Force 3
-
-**Défis :**
-- Défi 1
-- Défi 2
-- Défi 3
-
-### 🌙 Monde émotionnel — [Titre évocateur]
-
-Paragraphe de 3-4 phrases sur les émotions et les besoins affectifs.
-Style personnel, direct. Pas de signe ni terme technique.
-
-**Forces :**
-- Force 1
-- Force 2
-- Force 3
-
-**Défis :**
-- Défi 1
-- Défi 2
-- Défi 3
-
-### ⬆️ Image sociale — [Titre évocateur]
-
-Paragraphe de 3-4 phrases sur la manière d'aborder la vie et l'image projetée.
-Style personnel, direct. Pas de signe ni terme technique.
-
-**Traits dominants :**
-- Trait 1
-- Trait 2
-- Trait 3
-- Trait 4
-
-### 🔥 Archetype
-
-[Titre de l'archétype]
-
-Un paragraphe court (2-3 phrases) expliquant l'archétype unique. Aucun nom de signe.
-
-### ✨ Résumé narratif (style SpotCoach)
-
-Un paragraphe narratif de 5-7 phrases, style poétique mais accessible, qui raconte la personnalité comme une histoire. Utilise "tu/vous". Pas de signe.
-
-### 💪 Forces
-
-- Force 1
-- Force 2
-- Force 3
-- Force 4
-- Force 5
-
-### ⚠️ Défis
-
-- Défi 1
-- Défi 2
-- Défi 3
-
-### 🧭 Conseil
-
-Un conseil pratique et personnel en 1-2 phrases, qui guide vers l'équilibre et l'épanouissement.
-
-- Utilise les emojis exactement comme indiqué dans la structure.
-- Le texte doit être chaleureux, personnel, accessible (style conversationnel).
-- Utilise le format Markdown standard (## pour les titres, ### pour les sous-titres, ** pour le gras, - pour les listes).
-
-DONNÉES UTILISATEUR:
-${baseInfo}
-
-Questionnaire passions:
-${passionsBlock}
-
-Questionnaire talents:
-${talentBlock}
-
-Intentions / objectifs:
-${intentionsBlock}
-
-Profil DISC:
-${discBlock}
-
-Faits astro:
-${astroFacts}
+...
 `;
 }
 
-/**
- * Tâche A3: Ajout d'une post-validation simple du format Markdown.
- */
 function validateProfileText(text: string): boolean {
-  const requiredSections = ["🧬 Synthèse générale", "🌟 Interprétation détaillée", "☀️ Énergie centrale", "🌙 Monde émotionnel", "⬆️ Image sociale", "🔥 Archetype", "✨ Résumé narratif", "💪 Forces", "⚠️ Défis", "🧭 Conseil"];
+  const requiredSections = ["🧬 Synthèse générale", "🌟 Interprétation détaillée", "☀️ Soleil", "🌙 Lune", "⬆️ Ascendant", "🔥 Archetype", "✨ Résumé narratif", "💪 Forces", "⚠️ Défis", "🧭 Conseil"];
   return requiredSections.every(section => text.includes(section));
 }
 
@@ -437,7 +302,7 @@ async function callOpenAi(
     },
     body: JSON.stringify({
       model: OPENAI_MODEL,
-      response_format: { type: "json_object" }, // Enforce JSON output
+      response_format: { type: "json_object" },
       messages: [
         { role: "system", content: "Tu es SpotCoach, un coach symbolique expert. Réponds en JSON strict." },
         { role: "user", content: prompt },
@@ -464,7 +329,7 @@ async function callOpenAi(
   try {
     parsed = JSON.parse(content);
   } catch (err) {
-    console.error("Failed to parse OpenAI JSON content:", content);
+    console.error("[SpotCoachPreview] Failed to parse OpenAI JSON content:", content);
     throw new Error(`Unable to parse OpenAI response as JSON: ${(err as Error).message}`);
   }
 
@@ -474,11 +339,9 @@ async function callOpenAi(
       throw new Error(`OpenAI response missing required field: ${key}`);
     }
   }
-  
-  // Post-validation check for profile_text structure
+
   if (!validateProfileText(result.profile_text as string)) {
-      console.warn("Profile text failed Markdown structure validation. Using raw output.");
-      // NOTE: In a production environment, this should trigger a retry or a fallback.
+    console.warn("[SpotCoachPreview] Profile text failed Markdown structure validation. Using raw output.");
   }
 
   return {
@@ -503,7 +366,6 @@ async function handleRequest(request: Request): Promise<Response> {
   }
 
   try {
-    // Get auth token and user
     const authHeader = request.headers.get("authorization");
     if (!authHeader) {
       return new Response(
@@ -528,94 +390,38 @@ async function handleRequest(request: Request): Promise<Response> {
       );
     }
 
-    const user_id = user.id;
-
-    // Get payload from request body (frontend sends payload directly, not wrapped)
     const requestBody = await request.json();
     const payload = (requestBody.payload || requestBody) as GenerateProfilePayload;
 
     validatePayload(payload);
 
-    // 1. Fetch Astro Data (Tâche A1)
     const astroData = await fetchAstroData(payload.birth);
-    
-    // 2. Fetch User Name from Supabase (reuse supabase client created above)
+
     const { data: userData, error: userError } = await supabase
       .from("profiles")
       .select("full_name")
-      .eq("id", user_id)
+      .eq("id", user.id)
       .single();
 
     if (userError) {
-      console.warn(`Could not fetch user name for ${user_id}:`, userError.message);
+      console.warn(`[SpotCoachPreview] Could not fetch user name for ${user.id}:`, userError.message);
     }
     const userName = userData?.full_name;
 
-    // 3. Build Prompt and Call OpenAI
     const prompt = buildOpenAiPrompt(userName, payload, astroData);
     const symbolicProfile = await callOpenAi(prompt, astroData);
 
-    // 4. Store Profile in Database
-    // Check if profile exists, then update or insert
-    const { data: existingProfile } = await supabase
-      .from("profiles_symboliques")
-      .select("id")
-      .eq("user_id", user_id)
-      .maybeSingle();
-
-    const profileData = {
-      user_id: user_id,
-      // Name is now optional on the frontend; store a neutral placeholder if missing
-      name: payload.name || "Profil symbolique",
-      date: payload.birth.date,
-      time: payload.birth.time || null,
-      lat: payload.birth.latitude || null,
-      lon: payload.birth.longitude || null,
-      soleil: symbolicProfile.soleil_degre || null,
-      lune: symbolicProfile.lune_degre || null,
-      ascendant: symbolicProfile.ascendant_degre || null,
-      profile_text: symbolicProfile.profile_text,
-      phrase_synchronie: symbolicProfile.phrase_synchronie,
-      archetype: symbolicProfile.archetype,
-      couleur_dominante: symbolicProfile.couleur_dominante,
-      element: symbolicProfile.element,
-      signe_soleil: symbolicProfile.signe_soleil,
-      signe_lune: symbolicProfile.signe_lune,
-      signe_ascendant: symbolicProfile.signe_ascendant,
-      passions: symbolicProfile.passions || [],
-      updated_at: new Date().toISOString(),
-    };
-
-    let insertError;
-    if (existingProfile) {
-      // Update existing profile
-      const { error } = await supabase
-        .from("profiles_symboliques")
-        .update(profileData)
-        .eq("user_id", user_id);
-      insertError = error;
-    } else {
-      // Insert new profile
-      const { error } = await supabase
-        .from("profiles_symboliques")
-        .insert(profileData);
-      insertError = error;
-    }
-
-    if (insertError) {
-      throw new Error(`Failed to store symbolic profile: ${insertError.message}`);
-    }
-
-    return new Response(JSON.stringify({ 
-      success: true, 
+    return new Response(JSON.stringify({
+      success: true,
+      mode: "preview",
       profile: symbolicProfile,
-      astro: astroData // Include astro engine result for testing
+      astro: astroData,
     }), {
       headers: corsHeaders,
       status: 200,
     });
   } catch (error) {
-    console.error("SpotCoach Error:", error);
+    console.error("[SpotCoachPreview] Error:", error);
     return new Response(JSON.stringify({ error: (error as Error).message }), {
       headers: corsHeaders,
       status: 500,
@@ -624,3 +430,4 @@ async function handleRequest(request: Request): Promise<Response> {
 }
 
 DENO.serve(handleRequest);
+

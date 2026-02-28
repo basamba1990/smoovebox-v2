@@ -527,7 +527,7 @@ const Questionnaire = ({ onComplete, showSkip = true, isModal = false }) => {
               {[
                 { key: 'currentTalent', label: '11. Mon plus grand talent aujourd\'hui est :', placeholder: 'Décris ce que tu fais le mieux naturellement...', emoji: '💎' },
                 { key: 'improvementAreas', label: '12. Ce que je voudrais améliorer chez moi :', placeholder: 'Quelles compétences souhaiterais-tu développer ?', emoji: '📈' },
-                { key: 'dreamDescription', label: '13. Si je devais décrire mon rêve en une phrase :', placeholder: 'Ton plus grand rêve, même le plus fou...', emoji: '🌈' },
+                { key: 'dreamDescription', label: '13. Si je devais décrire mon rêve en une phrase :', placeholder: 'Ton plus grand rêve, même le plus fou...', emoji: '' },
                 { key: 'fiveYearVision', label: '14. Dans 5 ans, je voudrais que les gens disent de moi :', placeholder: 'Comment aimerais-tu être perçu dans 5 ans ?', emoji: '🔮' },
                 { key: 'inspirationPerson', label: '15. La personne qui m\'inspire le plus est :', placeholder: 'Qui t\'inspire dans la vie, le sport ou ailleurs ?', emoji: '👑' }
               ].map(field => (

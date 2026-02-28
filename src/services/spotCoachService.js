@@ -4,6 +4,8 @@
 import { supabase } from '../lib/supabase';
 
 const FUNCTION_NAME = 'spotcoach-profile';
+const PREVIEW_FUNCTION_NAME = 'spotcoach-preview';
+const SYNTHESIS_FUNCTION_NAME = 'spotcoach-synthesis';
 
 function formatServiceError(error, fallbackMessage = 'Une erreur est survenue lors de la génération du profil symbolique.') {
   if (!error) {
@@ -104,6 +106,101 @@ export const spotCoachService = {
         cause: err?.cause,
       }); } catch {}
       try { console.dir(err); } catch {}
+      throw formatServiceError(err);
+    }
+  },
+
+  /**
+   * Calls an alternative SpotCoach Edge Function that runs the full Astro + IA
+   * pipeline but DOES NOT persist anything in the database.
+   *
+   * Useful for previews / tests.
+   */
+  async generateSymbolicProfilePreview(payload) {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('Payload invalide pour la génération du profil symbolique (preview).');
+    }
+
+    try {
+      const startedAt = Date.now();
+      const payloadSize = (() => {
+        try { return JSON.stringify(payload).length; } catch { return undefined; }
+      })();
+
+      console.log('[SpotCoachService] invoke spotcoach-preview start', {
+        birth: {
+          date: payload?.birth?.date,
+          time: payload?.birth?.time,
+          latitude: payload?.birth?.latitude,
+          longitude: payload?.birth?.longitude,
+          timezone: payload?.birth?.timezone,
+        },
+        payloadSize,
+      });
+
+      const invokePromise = supabase.functions.invoke(PREVIEW_FUNCTION_NAME, {
+        body: {
+          ...payload,
+        },
+      });
+
+      const timeoutMs = 90000;
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout after 90s calling spotcoach-preview')), timeoutMs)
+      );
+
+      const { data, error } = await Promise.race([invokePromise, timeoutPromise]);
+
+      if (error) {
+        const elapsed = Date.now() - startedAt;
+        console.error('[SpotCoachService] spotcoach-preview error', { ms: elapsed, error });
+        throw formatServiceError(error);
+      }
+
+      if (!data?.success) {
+        console.error('[SpotCoachService] spotcoach-preview non-success', { ms: Date.now() - startedAt, data });
+        throw formatServiceError(data?.error || 'La génération du profil symbolique (preview) a échoué.');
+      }
+
+      console.log('[SpotCoachService] spotcoach-preview success', {
+        ms: Date.now() - startedAt,
+        mode: data?.mode,
+      });
+      return data;
+    } catch (err) {
+      console.error('[SpotCoach] generateSymbolicProfilePreview error:', err);
+      try { console.error('[SpotCoach] generateSymbolicProfilePreview error (json):', JSON.stringify(err)); } catch {}
+      try { console.error('[SpotCoach] generateSymbolicProfilePreview error (toString):', String(err)); } catch {}
+      try { console.error('[SpotCoach] generateSymbolicProfilePreview error (props):', {
+        name: err?.name,
+        message: err?.message,
+        status: err?.status,
+        cause: err?.cause,
+      }); } catch {}
+      try { console.dir(err); } catch {}
+      throw formatServiceError(err);
+    }
+  },
+
+  /**
+   * Calls spotcoach-synthesis to get a 3–4 line synthesis from birth data.
+   * Does not save to DB.
+   */
+  async generateSynthesis(payload) {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('Payload invalide pour la synthèse.');
+    }
+    try {
+      const { data, error } = await supabase.functions.invoke(SYNTHESIS_FUNCTION_NAME, {
+        body: { ...payload },
+      });
+      if (error) throw formatServiceError(error);
+      if (!data?.success) {
+        throw formatServiceError(data?.error || 'La synthèse a échoué.');
+      }
+      return data;
+    } catch (err) {
+      console.error('[SpotCoach] generateSynthesis error:', err);
       throw formatServiceError(err);
     }
   },

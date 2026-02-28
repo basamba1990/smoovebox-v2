@@ -237,7 +237,7 @@ export const DISC_QUESTIONS = [
         id: 'D', 
         text: "Tu relativises et cherches le côté positif", 
         type: 'yellow',
-        emoji: '🌈'
+        emoji: ''
       }
     ]
   }
