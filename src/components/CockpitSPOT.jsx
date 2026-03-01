@@ -9,9 +9,15 @@ import RobotIO from './RobotIO.jsx';
  * Avec RobotIO Joueur Numéro 10
  */
 export default function CockpitSPOT() {
-  const { userProfile, calculateBalance, territories, getTerritoryInfo } = useLumia();
+  const { userLumiaProfile, calculateBalance, territories, getTerritoryInfo, loading } = useLumia();
+  
+  if (loading) {
+    return <div className="p-10 text-center text-cyan-400">Chargement du cockpit...</div>;
+  }
+
   const balance = calculateBalance();
-  const territory = getTerritoryInfo(userProfile.territory) || territories[0];
+  const territory = (userLumiaProfile?.lumia?.territoire && territories.find(t => t.name === userLumiaProfile.lumia.territoire)) || territories[0];
+  const scores = userLumiaProfile?.lumia || { feu_score: 50, air_score: 50, terre_score: 50, eau_score: 50 };
 
   return (
     <div className="bg-[#020617] text-white p-6 font-sans">
@@ -43,7 +49,7 @@ export default function CockpitSPOT() {
             <RobotIO 
               size="md"
               interactive={true}
-              message={`Bonjour ! Nous sommes à ${territory.name}. L'état énergétique est stable à ${balance}%. Prêt pour ta prochaine mission ?`} 
+              message={`Bonjour ! Nous sommes à ${territory?.name || 'Casablanca'}. L'état énergétique est stable à ${balance}%. Prêt pour ta prochaine mission ?`} 
             />
           </div>
           
@@ -74,7 +80,12 @@ export default function CockpitSPOT() {
           <div className="glass-card p-8 rounded-3xl border border-cyan-500/30 bg-gradient-to-br from-slate-900/60 to-cyan-900/10 backdrop-blur-2xl min-h-[400px] flex flex-col items-center justify-center">
             <h2 className="text-xl font-bold mb-8 text-cyan-100">Radar Énergétique Territorial</h2>
             <div className="w-full max-w-md">
-              <LumiaRadar scores={userProfile.scores} />
+              <LumiaRadar scores={{
+                feu: scores.feu_score,
+                air: scores.air_score,
+                terre: scores.terre_score,
+                eau: scores.eau_score
+              }} />
             </div>
           </div>
 

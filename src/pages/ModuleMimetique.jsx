@@ -9,10 +9,10 @@ import OdysseyLayout from "../components/OdysseyLayout.jsx";
 import { Button } from "../components/ui/button.jsx";
 
 // Import des composants pour chaque onglet
-import CockpitSPOT from "../components/CockpitSPOT";
-import AISkillsEvaluator from "../components/AISkillsEvaluator";
-import DevelopmentPathways from "../components/DevelopmentPathways";
-import TalentEcosystem from "../components/TalentEcosystem";
+import CockpitSPOT from "../components/CockpitSPOT.jsx";
+import AISkillsEvaluator from "../components/AISkillsEvaluator.jsx";
+import DevelopmentPathways from "../components/DevelopmentPathways.jsx";
+import TalentEcosystem from "../components/TalentEcosystem.jsx";
 import EnhancedRecordVideo from "./enhanced-record-video.jsx";
 import VideoVault from "./video-vault.jsx";
 import { getOdysseyStepById } from "../config/odysseyConfig.js";
@@ -84,6 +84,9 @@ export default function ModuleMimetique({
   const handleNavigateNext = useCallback(() => {
     navigate(STEP_4_PATH);
   }, [navigate, STEP_4_PATH]);
+
+  // Sécurité : Si l'utilisateur n'est pas chargé, on peut afficher un état de chargement
+  // ou laisser OdysseyLayout gérer la redirection via RequireAuth (déjà fait dans AppRoutes)
 
   return (
     <OdysseyLayout
@@ -167,7 +170,13 @@ export default function ModuleMimetique({
               transition={{ delay: 0.1 }}
               className="space-y-6"
             >
-              <AISkillsEvaluator userId={user?.id} />
+              {user?.id ? (
+                <AISkillsEvaluator userId={user.id} />
+              ) : (
+                <div className="text-center py-10 text-slate-400 italic">
+                  Veuillez vous connecter pour accéder à l'évaluation.
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -187,7 +196,13 @@ export default function ModuleMimetique({
                   Suivi de votre progression dans l'Odyssée
                 </p>
               </div>
-              <DevelopmentPathways userId={user?.id} />
+              {user?.id ? (
+                <DevelopmentPathways userId={user.id} />
+              ) : (
+                <div className="text-center py-10 text-slate-400 italic">
+                  Veuillez vous connecter pour accéder à vos parcours.
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -207,7 +222,13 @@ export default function ModuleMimetique({
                   Visualisation de votre impact global
                 </p>
               </div>
-              <TalentEcosystem userId={user?.id} />
+              {user?.id ? (
+                <TalentEcosystem userId={user.id} />
+              ) : (
+                <div className="text-center py-10 text-slate-400 italic">
+                  Veuillez vous connecter pour accéder à l'écosystème.
+                </div>
+              )}
             </motion.div>
           )}
 
