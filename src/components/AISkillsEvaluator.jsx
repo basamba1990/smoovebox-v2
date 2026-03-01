@@ -26,7 +26,7 @@ export default function AISkillsEvaluator({ userId }) {
       try {
         const { data, error: fetchError } = await supabase
           .from('videos')
-          .select('id, title, url, created_at, status')
+          .select('id, title, created_at, status')
           .eq('user_id', userId)
           .order('created_at', { ascending: false });
 
@@ -42,7 +42,7 @@ export default function AISkillsEvaluator({ userId }) {
         }
       } catch (err) {
         console.error('Erreur fetch vidéos:', err);
-        setError('Erreur technique lors du chargement');
+        setError('Erreur lors de la récupération des vidéos');
         toast.error('Erreur technique lors du chargement');
       } finally {
         setFetchingVideos(false);
@@ -55,13 +55,6 @@ export default function AISkillsEvaluator({ userId }) {
   const analyzeVideo = async () => {
     if (!selectedVideo) {
       toast.error('Veuillez sélectionner une vidéo');
-      return;
-    }
-
-    // Récupérer l'URL de la vidéo
-    const videoUrl = selectedVideo.url || selectedVideo.video_url;
-    if (!videoUrl) {
-      toast.error('Cette vidéo n\'a pas d\'URL valide');
       return;
     }
 
@@ -82,7 +75,7 @@ export default function AISkillsEvaluator({ userId }) {
       }
 
       const requestBody = {
-        videoUrl, // ← utilisation de l'URL
+        videoId: selectedVideo.id,
         context: 'lumia_skills_evaluation',
         elements: ['FEU', 'AIR', 'TERRE', 'EAU'],
         softPromptTask: 'skills-evaluation',
@@ -127,24 +120,22 @@ export default function AISkillsEvaluator({ userId }) {
       const data = await response.json();
       console.log('Données d\'analyse reçues:', data);
 
-      // Adapter selon la structure réelle de la réponse
       const scores = {
-        feu: data.analysis?.elements?.FEU || data.analysis?.feu || data.feu || 0,
-        air: data.analysis?.elements?.AIR || data.analysis?.air || data.air || 0,
-        terre: data.analysis?.elements?.TERRE || data.analysis?.terre || data.terre || 0,
-        eau: data.analysis?.elements?.EAU || data.analysis?.eau || data.eau || 0,
+        feu: data.analysis?.elements?.FEU || data.analysis?.feu || 0,
+        air: data.analysis?.elements?.AIR || data.analysis?.air || 0,
+        terre: data.analysis?.elements?.TERRE || data.analysis?.terre || 0,
+        eau: data.analysis?.elements?.EAU || data.analysis?.eau || 0,
       };
 
       const analysisResult = {
         ...data.analysis,
         scores,
-        feedback: data.analysis?.feedback || data.feedback || 'Analyse complétée',
-        recommendations: data.analysis?.recommendations || data.recommendations || 'Continuez vos enregistrements',
+        feedback: data.analysis?.feedback || 'Analyse complétée',
+        recommendations: data.analysis?.recommendations || 'Continuez vos enregistrements',
       };
 
       setAnalysis(analysisResult);
 
-      // Sauvegarder l'évaluation dans skills_evaluations
       try {
         await supabase.from('skills_evaluations').insert({
           user_id: userId,
@@ -306,6 +297,31 @@ export default function AISkillsEvaluator({ userId }) {
                   </p>
                 </div>
               )}
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="flex gap-3 pt-2"
+            >
+              <button
+                onClick={() => {
+                  setAnalysis(null);
+                  setSelectedVideo(null);
+                }}
+                className="flex-1 px-4 py-2 bg-slate-700/50 hover:bg-slate-700 rounded-lg font-medium text-white transition-colors"
+              >
+                ← Nouvelle analyse
+              </button>
+              <button
+                onClick={() => {
+                  toast.success('Résultats sauvegardés !');
+                }}
+                className="flex-1 px-4 py-2 bg-teal-600 hover:bg-teal-500 rounded-lg font-medium text-white transition-colors"
+              >
+                ✓ Confirmer
+              </button>
             </motion.div>
           </motion.div>
         )}
