@@ -9,8 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import OdysseyLayout from '../components/OdysseyLayout.jsx';
 import { Button } from '../components/ui/button.jsx';
-import RobotIONaturel from '../components/RobotIO-NATUREL.jsx';
-
+import RobotIONaturel from '../components/RobotIO.jsx';
 // Import des composants d'onglets
 import CockpitSPOT from '../components/CockpitSPOT.jsx';
 import AISkillsEvaluator from '../components/AISkillsEvaluator.jsx';
