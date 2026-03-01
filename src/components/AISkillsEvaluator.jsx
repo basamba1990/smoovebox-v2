@@ -12,7 +12,6 @@ export default function AISkillsEvaluator({ userId }) {
   const [fetchingVideos, setFetchingVideos] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fetch videos on component mount
   useEffect(() => {
     const fetchVideos = async () => {
       if (!userId) {
@@ -53,7 +52,6 @@ export default function AISkillsEvaluator({ userId }) {
     fetchVideos();
   }, [userId]);
 
-  // Analyze selected video with robust error handling
   const analyzeVideo = async () => {
     if (!selectedVideo) {
       toast.error('Veuillez sélectionner une vidéo');
@@ -65,14 +63,12 @@ export default function AISkillsEvaluator({ userId }) {
     setError(null);
 
     try {
-      // Get session
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
       if (sessionError || !session?.access_token) {
         throw new Error('Session expirée. Veuillez vous reconnecter.');
       }
 
-      // Call the analyze function with proper error handling
       const apiUrl = import.meta.env.VITE_SUPABASE_URL;
       if (!apiUrl) {
         throw new Error('Configuration manquante');
@@ -82,6 +78,7 @@ export default function AISkillsEvaluator({ userId }) {
         videoId: selectedVideo.id,
         context: 'lumia_skills_evaluation',
         elements: ['FEU', 'AIR', 'TERRE', 'EAU'],
+        softPromptTask: 'skills-evaluation',
       };
 
       console.log('Envoi de la requête d\'analyse:', requestBody);
@@ -98,7 +95,6 @@ export default function AISkillsEvaluator({ userId }) {
         }
       );
 
-      // Log response status
       console.log('Réponse API status:', response.status);
 
       if (!response.ok) {
@@ -114,7 +110,6 @@ export default function AISkillsEvaluator({ userId }) {
           console.error('Réponse brute:', textError);
         }
 
-        // Si erreur 400, proposer une solution
         if (response.status === 400) {
           errorMessage = 'Erreur de validation : Vérifiez que la vidéo est valide et complète.';
         }
@@ -125,7 +120,6 @@ export default function AISkillsEvaluator({ userId }) {
       const data = await response.json();
       console.log('Données d\'analyse reçues:', data);
 
-      // Extract scores with fallback
       const scores = {
         feu: data.analysis?.elements?.FEU || data.analysis?.feu || 0,
         air: data.analysis?.elements?.AIR || data.analysis?.air || 0,
@@ -142,7 +136,6 @@ export default function AISkillsEvaluator({ userId }) {
 
       setAnalysis(analysisResult);
 
-      // Save to database
       try {
         await supabase.from('skills_evaluations').insert({
           user_id: userId,
@@ -154,7 +147,6 @@ export default function AISkillsEvaluator({ userId }) {
         });
       } catch (dbError) {
         console.warn('Erreur sauvegarde en base:', dbError);
-        // Don't fail the whole operation if DB save fails
       }
 
       toast.success('✅ Évaluation LUMIA terminée !');
@@ -170,7 +162,6 @@ export default function AISkillsEvaluator({ userId }) {
 
   return (
     <div className="space-y-6">
-      {/* Title */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -185,7 +176,6 @@ export default function AISkillsEvaluator({ userId }) {
         </p>
       </motion.div>
 
-      {/* Error Message */}
       {error && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
@@ -197,7 +187,6 @@ export default function AISkillsEvaluator({ userId }) {
         </motion.div>
       )}
 
-      {/* Video Selection */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -245,7 +234,6 @@ export default function AISkillsEvaluator({ userId }) {
         </motion.button>
       </motion.div>
 
-      {/* Analysis Results */}
       <AnimatePresence mode="wait">
         {analysis && (
           <motion.div
@@ -256,7 +244,6 @@ export default function AISkillsEvaluator({ userId }) {
             transition={{ duration: 0.3 }}
             className="space-y-4"
           >
-            {/* Scores Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {Object.entries(analysis.scores).map(([key, value], index) => (
                 <motion.div
@@ -283,7 +270,6 @@ export default function AISkillsEvaluator({ userId }) {
               ))}
             </div>
 
-            {/* Feedback & Recommendations */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -313,7 +299,6 @@ export default function AISkillsEvaluator({ userId }) {
               )}
             </motion.div>
 
-            {/* Action Buttons */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -342,7 +327,6 @@ export default function AISkillsEvaluator({ userId }) {
         )}
       </AnimatePresence>
 
-      {/* Empty State */}
       {!analysis && videos.length === 0 && !fetchingVideos && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}

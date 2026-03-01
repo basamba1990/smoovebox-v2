@@ -7,55 +7,62 @@ export default function TalentEcosystem({ userId }) {
   const [matches, setMatches] = useState([]);
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetchMatches();
+    if (userId) {
+      fetchMatches();
+    }
   }, [userId]);
 
   const fetchMatches = async () => {
     setLoading(true);
-    // Ici, on suppose que la table talent_matches existe et contient des correspondances
-    // Si elle n'existe pas, on peut appeler une fonction RPC pour calculer les correspondances
-    const { data, error } = await supabase
-      .from('talent_matches')
-      .select('*, talent2:profiles!talent2_id(*)')
-      .eq('talent1_id', userId);
-    if (error) {
-      console.error('Erreur chargement correspondances:', error);
-      // Fallback : données mockées pour la démo
-      setMatches([
-        {
-          id: 'mock1',
-          talent2: { id: '2', full_name: 'Alex D.', avatar: null },
-          compatibility_score: 85,
-          reason: 'Complémentarité FEU/AIR',
-          complementarity_analysis: 'Votre énergie FEU complète son AIR pour l’innovation.',
-        },
-        {
-          id: 'mock2',
-          talent2: { id: '3', full_name: 'Marie L.', avatar: null },
-          compatibility_score: 72,
-          reason: 'Équilibre TERRE/EAU',
-          complementarity_analysis: 'Votre structure renforce son impact social.',
-        },
-      ]);
-    } else {
-      setMatches(data || []);
+    setError(null);
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('talent_matches')
+        .select('*, talent2:profiles!talent2_id(*)')
+        .eq('talent1_id', userId);
+      
+      if (fetchError) {
+        console.error('Erreur chargement correspondances:', fetchError);
+        setError('Impossible de charger les correspondances');
+        setMatches([]);
+      } else {
+        setMatches(data || []);
+      }
+    } catch (err) {
+      console.error('Erreur:', err);
+      setError('Erreur lors du chargement des correspondances');
+      setMatches([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const sendRequest = async (matchId) => {
-    const match = matches.find(m => m.id === matchId);
-    await supabase.from('collaboration_requests').insert({
-      sender_id: userId,
-      receiver_id: match.talent2_id,
-      match_id: matchId,
-      project: 'Projet commun',
-      description: 'Proposition de collaboration',
-      required_skills: match.complementarity_analysis,
-    });
-    alert('Demande envoyée !');
+    try {
+      const match = matches.find(m => m.id === matchId);
+      if (!match) return;
+
+      const { error: insertError } = await supabase
+        .from('collaboration_requests')
+        .insert({
+          sender_id: userId,
+          receiver_id: match.talent2_id,
+          match_id: matchId,
+          project: 'Projet commun',
+          description: 'Proposition de collaboration',
+          required_skills: match.complementarity_analysis,
+        });
+
+      if (insertError) throw insertError;
+      alert('Demande envoyée !');
+      setSelectedMatch(null);
+    } catch (err) {
+      console.error('Erreur envoi demande:', err);
+      alert('Erreur lors de l\'envoi de la demande');
+    }
   };
 
   const getScoreColor = (score) => {
@@ -65,11 +72,17 @@ export default function TalentEcosystem({ userId }) {
     return 'text-slate-400';
   };
 
-  if (loading) return <div className="text-center py-8">Chargement des correspondances...</div>;
+  if (loading) return <div className="text-center py-8 text-cyan-400">Chargement des correspondances...</div>;
 
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-cyan-400">Écosystème de Talents</h2>
+
+      {error && (
+        <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-red-300 text-sm">
+          ⚠️ {error}
+        </div>
+      )}
 
       {matches.length === 0 ? (
         <p className="text-slate-400 italic">Aucune correspondance trouvée pour le moment.</p>

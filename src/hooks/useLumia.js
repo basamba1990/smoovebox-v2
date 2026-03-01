@@ -1,18 +1,6 @@
-/**
- * Hook useLumia - VERSION CORRIGÉE
- * Gestion complète du profil LUMIA avec initialisation et fallbacks
- * 
- * Corrections:
- * - Initialisation automatique du profil si absent
- * - Fallbacks pour toutes les données manquantes
- * - Gestion d'erreurs robuste
- * - localStorage pour persistance
- * - Supabase integration ready
- */
-
 import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '../lib/supabase';
 
-// Configuration par défaut
 const DEFAULT_LUMIA_PROFILE = {
   user: {
     id: null,
@@ -50,33 +38,51 @@ export function useLumia() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Charger le profil LUMIA
   useEffect(() => {
     const loadProfile = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        // Essayer de charger depuis localStorage
-        const storedProfile = localStorage.getItem('userLumiaProfile');
-        
-        if (storedProfile) {
-          const parsedProfile = JSON.parse(storedProfile);
-          setUserLumiaProfile(parsedProfile);
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError || !user) {
+          throw new Error('Utilisateur non authentifié');
+        }
+
+        const { data, error: fetchError } = await supabase
+          .from('user_lumia_profiles')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
+
+        if (fetchError && fetchError.code !== 'PGRST116') {
+          throw fetchError;
+        }
+
+        if (data) {
+          setUserLumiaProfile({
+            user: {
+              id: user.id,
+              name: user.user_metadata?.name || 'Joueur',
+              email: user.email,
+            },
+            lumia: {
+              id: data.id,
+              territoire: data.territoire,
+              feu_score: data.feu_score,
+              air_score: data.air_score,
+              terre_score: data.terre_score,
+              eau_score: data.eau_score,
+              created_at: data.created_at,
+              updated_at: data.updated_at,
+            },
+          });
         } else {
-          // En production, charger depuis Supabase
-          // const { data, error } = await supabase
-          //   .from('user_lumia_profiles')
-          //   .select('*')
-          //   .single();
-          
-          // Pour l'instant, utiliser le profil par défaut
           setUserLumiaProfile(DEFAULT_LUMIA_PROFILE);
         }
       } catch (err) {
         console.error('Erreur lors du chargement du profil LUMIA:', err);
         setError('Impossible de charger votre profil LUMIA');
-        // Fallback au profil par défaut
         setUserLumiaProfile(DEFAULT_LUMIA_PROFILE);
       } finally {
         setLoading(false);
@@ -86,37 +92,50 @@ export function useLumia() {
     loadProfile();
   }, []);
 
-  // Initialiser le profil LUMIA
   const initializeProfile = useCallback(async (userData) => {
     try {
       setLoading(true);
       setError(null);
 
-      const newProfile = {
-        user: {
-          id: userData.id || null,
-          name: userData.name || 'Joueur',
-          email: userData.email || null,
-        },
-        lumia: {
-          id: Math.random().toString(36).substr(2, 9),
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        throw new Error('Utilisateur non authentifié');
+      }
+
+      const { data, error: insertError } = await supabase
+        .from('user_lumia_profiles')
+        .insert([{
+          user_id: user.id,
           territoire: userData.territoire || 'Casablanca',
           feu_score: userData.feu_score || 50,
           air_score: userData.air_score || 50,
           terre_score: userData.terre_score || 50,
           eau_score: userData.eau_score || 50,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+        }])
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      const newProfile = {
+        user: {
+          id: user.id,
+          name: user.user_metadata?.name || 'Joueur',
+          email: user.email,
+        },
+        lumia: {
+          id: data.id,
+          territoire: data.territoire,
+          feu_score: data.feu_score,
+          air_score: data.air_score,
+          terre_score: data.terre_score,
+          eau_score: data.eau_score,
+          created_at: data.created_at,
+          updated_at: data.updated_at,
         },
       };
 
-      // Sauvegarder dans localStorage
-      localStorage.setItem('userLumiaProfile', JSON.stringify(newProfile));
       setUserLumiaProfile(newProfile);
-
-      // En production, sauvegarder dans Supabase
-      // await supabase.from('user_lumia_profiles').insert([newProfile]);
-
       return newProfile;
     } catch (err) {
       console.error('Erreur lors de l\'initialisation du profil:', err);
@@ -127,37 +146,42 @@ export function useLumia() {
     }
   }, []);
 
-  // Mettre à jour les scores énergétiques
   const updateEnergyScores = useCallback(async (scores) => {
     try {
       setLoading(true);
       setError(null);
 
-      if (!userLumiaProfile) {
+      if (!userLumiaProfile?.lumia?.id) {
         throw new Error('Profil LUMIA non trouvé');
       }
+
+      const { data, error: updateError } = await supabase
+        .from('user_lumia_profiles')
+        .update({
+          feu_score: Math.max(0, Math.min(100, scores.feu_score ?? userLumiaProfile.lumia.feu_score)),
+          air_score: Math.max(0, Math.min(100, scores.air_score ?? userLumiaProfile.lumia.air_score)),
+          terre_score: Math.max(0, Math.min(100, scores.terre_score ?? userLumiaProfile.lumia.terre_score)),
+          eau_score: Math.max(0, Math.min(100, scores.eau_score ?? userLumiaProfile.lumia.eau_score)),
+        })
+        .eq('id', userLumiaProfile.lumia.id)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
 
       const updatedProfile = {
         ...userLumiaProfile,
         lumia: {
           ...userLumiaProfile.lumia,
-          feu_score: Math.max(0, Math.min(100, scores.feu_score ?? userLumiaProfile.lumia.feu_score)),
-          air_score: Math.max(0, Math.min(100, scores.air_score ?? userLumiaProfile.lumia.air_score)),
-          terre_score: Math.max(0, Math.min(100, scores.terre_score ?? userLumiaProfile.lumia.terre_score)),
-          eau_score: Math.max(0, Math.min(100, scores.eau_score ?? userLumiaProfile.lumia.eau_score)),
-          updated_at: new Date().toISOString(),
+          feu_score: data.feu_score,
+          air_score: data.air_score,
+          terre_score: data.terre_score,
+          eau_score: data.eau_score,
+          updated_at: data.updated_at,
         },
       };
 
-      localStorage.setItem('userLumiaProfile', JSON.stringify(updatedProfile));
       setUserLumiaProfile(updatedProfile);
-
-      // En production, mettre à jour dans Supabase
-      // await supabase
-      //   .from('user_lumia_profiles')
-      //   .update(updatedProfile.lumia)
-      //   .eq('id', updatedProfile.lumia.id);
-
       return updatedProfile;
     } catch (err) {
       console.error('Erreur lors de la mise à jour des scores:', err);
@@ -168,28 +192,34 @@ export function useLumia() {
     }
   }, [userLumiaProfile]);
 
-  // Changer de territoire
   const changeTerritory = useCallback(async (territory) => {
     try {
       setLoading(true);
       setError(null);
 
-      if (!userLumiaProfile) {
+      if (!userLumiaProfile?.lumia?.id) {
         throw new Error('Profil LUMIA non trouvé');
       }
+
+      const { data, error: updateError } = await supabase
+        .from('user_lumia_profiles')
+        .update({ territoire: territory })
+        .eq('id', userLumiaProfile.lumia.id)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
 
       const updatedProfile = {
         ...userLumiaProfile,
         lumia: {
           ...userLumiaProfile.lumia,
-          territoire: territory,
-          updated_at: new Date().toISOString(),
+          territoire: data.territoire,
+          updated_at: data.updated_at,
         },
       };
 
-      localStorage.setItem('userLumiaProfile', JSON.stringify(updatedProfile));
       setUserLumiaProfile(updatedProfile);
-
       return updatedProfile;
     } catch (err) {
       console.error('Erreur lors du changement de territoire:', err);
@@ -200,7 +230,6 @@ export function useLumia() {
     }
   }, [userLumiaProfile]);
 
-  // Calculer l'équilibre énergétique
   const calculateBalance = useCallback(() => {
     if (!userLumiaProfile?.lumia) return 0;
     
@@ -213,7 +242,6 @@ export function useLumia() {
     return Math.round(100 - Math.sqrt(variance));
   }, [userLumiaProfile]);
 
-  // Obtenir la zone dominante
   const getDominantZone = useCallback(() => {
     if (!userLumiaProfile?.lumia) return null;
     
@@ -228,10 +256,25 @@ export function useLumia() {
     return Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b);
   }, [userLumiaProfile]);
 
-  // Réinitialiser le profil
-  const resetProfile = useCallback(() => {
-    localStorage.removeItem('userLumiaProfile');
-    setUserLumiaProfile(DEFAULT_LUMIA_PROFILE);
+  const resetProfile = useCallback(async () => {
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        throw new Error('Utilisateur non authentifié');
+      }
+
+      const { error: deleteError } = await supabase
+        .from('user_lumia_profiles')
+        .delete()
+        .eq('user_id', user.id);
+
+      if (deleteError) throw deleteError;
+
+      setUserLumiaProfile(DEFAULT_LUMIA_PROFILE);
+    } catch (err) {
+      console.error('Erreur lors de la réinitialisation du profil:', err);
+      setError('Impossible de réinitialiser votre profil');
+    }
   }, []);
 
   return {
