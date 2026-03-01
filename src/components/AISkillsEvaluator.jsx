@@ -53,7 +53,7 @@ export default function AISkillsEvaluator({ userId }) {
     fetchVideos();
   }, [userId]);
 
-  // Analyze selected video
+  // Analyze selected video with robust error handling
   const analyzeVideo = async () => {
     if (!selectedVideo) {
       toast.error('Veuillez sélectionner une vidéo');
@@ -72,11 +72,19 @@ export default function AISkillsEvaluator({ userId }) {
         throw new Error('Session expirée. Veuillez vous reconnecter.');
       }
 
-      // Call the analyze function
+      // Call the analyze function with proper error handling
       const apiUrl = import.meta.env.VITE_SUPABASE_URL;
       if (!apiUrl) {
         throw new Error('Configuration manquante');
       }
+
+      const requestBody = {
+        videoId: selectedVideo.id,
+        context: 'lumia_skills_evaluation',
+        elements: ['FEU', 'AIR', 'TERRE', 'EAU'],
+      };
+
+      console.log('Envoi de la requête d\'analyse:', requestBody);
 
       const response = await fetch(
         `${apiUrl}/functions/v1/analyze-pitch-recording`,
@@ -86,29 +94,43 @@ export default function AISkillsEvaluator({ userId }) {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({
-            videoId: selectedVideo.id,
-            context: 'lumia_skills_evaluation',
-            elements: ['FEU', 'AIR', 'TERRE', 'EAU'],
-          }),
+          body: JSON.stringify(requestBody),
         }
       );
 
+      // Log response status
+      console.log('Réponse API status:', response.status);
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          errorData?.message || `Erreur API: ${response.status}`
-        );
+        let errorMessage = `Erreur API: ${response.status}`;
+        
+        try {
+          const errorData = await response.json();
+          console.error('Détails erreur API:', errorData);
+          errorMessage = errorData?.message || errorData?.error || errorMessage;
+        } catch (parseError) {
+          console.error('Impossible de parser la réponse d\'erreur:', parseError);
+          const textError = await response.text();
+          console.error('Réponse brute:', textError);
+        }
+
+        // Si erreur 400, proposer une solution
+        if (response.status === 400) {
+          errorMessage = 'Erreur de validation : Vérifiez que la vidéo est valide et complète.';
+        }
+
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
+      console.log('Données d\'analyse reçues:', data);
 
       // Extract scores with fallback
       const scores = {
-        feu: data.analysis?.elements?.FEU || 0,
-        air: data.analysis?.elements?.AIR || 0,
-        terre: data.analysis?.elements?.TERRE || 0,
-        eau: data.analysis?.elements?.EAU || 0,
+        feu: data.analysis?.elements?.FEU || data.analysis?.feu || 0,
+        air: data.analysis?.elements?.AIR || data.analysis?.air || 0,
+        terre: data.analysis?.elements?.TERRE || data.analysis?.terre || 0,
+        eau: data.analysis?.elements?.EAU || data.analysis?.eau || 0,
       };
 
       const analysisResult = {
