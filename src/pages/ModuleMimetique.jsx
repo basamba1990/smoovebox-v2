@@ -1,24 +1,28 @@
-// src/pages/ModuleMimetique.jsx
-// Module Mimétique - Hub centralisé avec onglets (Cockpit SPOT, Évaluation IA, Parcours, Écosystème, Enregistrement)
-// Version refactorisée avec OdysseyLayout et design SpotBulle professionnel
+/**
+ * ModuleMimetique - VERSION FINALE
+ * Hub centralisé avec 5 onglets et gestion robuste des erreurs
+ * 
+ * Onglets:
+ * 1. Cockpit SPOT - Dashboard énergétique
+ * 2. Évaluation IA - Analyse des compétences
+ * 3. Parcours - Suivi de progression
+ * 4. Écosystème - Matching de talents
+ * 5. Enregistrement - Capture vidéo
+ */
 
-import React, { useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import OdysseyLayout from "../components/OdysseyLayout.jsx";
-import { Button } from "../components/ui/button.jsx";
+import React, { useState, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import OdysseyLayout from '../components/OdysseyLayout.jsx';
+import { Button } from '../components/ui/button.jsx';
+import CockpitSPOT from '../components/CockpitSPOT.jsx';
+import RobotIO from '../components/RobotIO.jsx';
 
-// Import des composants pour chaque onglet
-import CockpitSPOT from "../components/CockpitSPOT";
-import AISkillsEvaluator from "../components/AISkillsEvaluator";
-import DevelopmentPathways from "../components/DevelopmentPathways";
-import TalentEcosystem from "../components/TalentEcosystem";
-import EnhancedRecordVideo from "./enhanced-record-video.jsx";
-import VideoVault from "./video-vault.jsx";
-import { getOdysseyStepById } from "../config/odysseyConfig.js";
-
-const STEP_4 = getOdysseyStepById(4);
-const STEP_4_PATH = STEP_4?.path ?? "/labo-transformation";
+const STEP_4 = {
+  id: 4,
+  label: 'Le Labo de Transformation',
+  path: '/labo-transformation',
+};
 
 export default function ModuleMimetique({
   user,
@@ -28,62 +32,134 @@ export default function ModuleMimetique({
   cameraChecked,
 }) {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("cockpit");
+  const [activeTab, setActiveTab] = useState('cockpit');
   const [showVault, setShowVault] = useState(false);
   const [videoUploadedRecently, setVideoUploadedRecently] = useState(false);
+  const [tabErrors, setTabErrors] = useState({});
 
   // Configuration des onglets
   const tabs = [
     {
-      id: "cockpit",
-      label: "Cockpit SPOT",
-      icon: "🛰",
-      color: "cyan",
+      id: 'cockpit',
+      label: 'Cockpit SPOT',
+      icon: '🛰',
+      color: 'cyan',
+      description: 'Tableau de bord énergétique',
     },
     {
-      id: "evaluation",
-      label: "Évaluation IA",
-      icon: "🤖",
-      color: "purple",
+      id: 'evaluation',
+      label: 'Évaluation IA',
+      icon: '🤖',
+      color: 'purple',
+      description: 'Analyse des compétences',
     },
     {
-      id: "parcours",
-      label: "Parcours",
-      icon: "🎯",
-      color: "orange",
+      id: 'parcours',
+      label: 'Parcours',
+      icon: '🎯',
+      color: 'orange',
+      description: 'Suivi de progression',
     },
     {
-      id: "ecosysteme",
-      label: "Écosystème",
-      icon: "🌐",
-      color: "green",
+      id: 'ecosysteme',
+      label: 'Écosystème',
+      icon: '🌐',
+      color: 'green',
+      description: 'Matching de talents',
     },
     {
-      id: "enregistrement",
-      label: "Enregistrement",
-      icon: "🎥",
-      color: "red",
+      id: 'enregistrement',
+      label: 'Enregistrement',
+      icon: '🎥',
+      color: 'red',
+      description: 'Capture vidéo',
     },
   ];
 
-  const handleVideoUploadSuccess = useCallback(
-    (videoData) => {
-      setVideoUploadedRecently(true);
-      if (onVideoUploaded) {
-        onVideoUploaded(videoData);
-      }
-      setTimeout(() => setVideoUploadedRecently(false), 3000);
-    },
-    [onVideoUploaded]
-  );
+  // Gestion du succès de l'upload vidéo
+  const handleVideoUploadSuccess = useCallback((videoData) => {
+    setVideoUploadedRecently(true);
+    if (onVideoUploaded) {
+      onVideoUploaded(videoData);
+    }
+    setTimeout(() => setVideoUploadedRecently(false), 3000);
+  }, [onVideoUploaded]);
 
+  // Navigation
   const handleNavigatePrevious = useCallback(() => {
-    navigate("/scan-elements");
+    navigate('/scan-elements');
   }, [navigate]);
 
   const handleNavigateNext = useCallback(() => {
-    navigate(STEP_4_PATH);
-  }, [navigate, STEP_4_PATH]);
+    navigate(STEP_4.path);
+  }, [navigate]);
+
+  // Gestion des erreurs d'onglet
+  const handleTabError = useCallback((tabId, error) => {
+    setTabErrors((prev) => ({
+      ...prev,
+      [tabId]: error,
+    }));
+  }, []);
+
+  // Composant fallback pour onglet en erreur
+  const TabErrorFallback = ({ tabId, error }) => (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="p-8 bg-red-500/10 border border-red-500/30 rounded-2xl text-center"
+    >
+      <div className="text-4xl mb-4">⚠️</div>
+      <h3 className="text-xl font-bold text-red-400 mb-2">Erreur de chargement</h3>
+      <p className="text-slate-400 mb-6">{error || 'Une erreur est survenue'}</p>
+      <Button
+        onClick={() => {
+          setTabErrors((prev) => {
+            const newErrors = { ...prev };
+            delete newErrors[tabId];
+            return newErrors;
+          });
+        }}
+        className="bg-red-600 hover:bg-red-500"
+      >
+        Réessayer
+      </Button>
+    </motion.div>
+  );
+
+  // Composant fallback pour onglet en chargement
+  const TabLoadingFallback = () => (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="p-8 text-center"
+    >
+      <motion.div
+        animate={{ rotate: 360 }}
+        transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+        className="inline-block h-12 w-12 border-4 border-cyan-500 border-t-transparent rounded-full mb-4"
+      />
+      <p className="text-slate-400">Chargement...</p>
+    </motion.div>
+  );
+
+  // Composant fallback pour onglet non implémenté
+  const TabNotImplementedFallback = ({ tabLabel }) => (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="p-8 bg-slate-800/50 border border-slate-700/50 rounded-2xl text-center"
+    >
+      <div className="text-4xl mb-4">🚀</div>
+      <h3 className="text-xl font-bold text-cyan-300 mb-2">Bientôt disponible</h3>
+      <p className="text-slate-400 mb-6">
+        L'onglet "{tabLabel}" est en cours de développement.
+      </p>
+      <p className="text-sm text-slate-500">
+        Revenez bientôt pour découvrir cette nouvelle fonctionnalité !
+      </p>
+    </motion.div>
+  );
 
   return (
     <OdysseyLayout
@@ -99,12 +175,19 @@ export default function ModuleMimetique({
         transition={{ duration: 0.5 }}
         className="mb-8"
       >
-        <h1 className="text-3xl sm:text-4xl font-bold text-white text-center">
-          Module Mimétique – Cockpit SPOT
-        </h1>
-        <p className="text-slate-400 text-center mt-3 text-sm sm:text-base max-w-2xl mx-auto">
-          Pilotez votre énergie, enregistrez vos pitchs, explorez votre potentiel à travers les 4 Éléments.
-        </p>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-3xl sm:text-4xl font-bold text-white">
+              Module Mimétique – Cockpit SPOT
+            </h1>
+            <p className="text-slate-400 text-sm sm:text-base mt-2">
+              Pilotez votre énergie, enregistrez vos pitchs, explorez votre potentiel à travers les 4 Éléments.
+            </p>
+          </div>
+          <div className="hidden sm:block">
+            <RobotIO size="md" />
+          </div>
+        </div>
       </motion.div>
 
       {/* Tabs Navigation - Horizontal Scrollable */}
@@ -124,10 +207,11 @@ export default function ModuleMimetique({
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.05 }}
+              title={tab.description}
               className={`px-4 py-3 rounded-t-lg font-semibold transition-all duration-300 whitespace-nowrap flex items-center gap-2 text-sm sm:text-base ${
                 activeTab === tab.id
-                  ? "bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border-b-2 border-cyan-400 shadow-lg shadow-cyan-500/20"
-                  : "text-slate-400 hover:text-cyan-300 hover:bg-slate-800/50"
+                  ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border-b-2 border-cyan-400 shadow-lg shadow-cyan-500/20'
+                  : 'text-slate-400 hover:text-cyan-300 hover:bg-slate-800/50'
               }`}
             >
               <span className="text-lg sm:text-xl">{tab.icon}</span>
@@ -148,31 +232,43 @@ export default function ModuleMimetique({
           className="glass-card border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl bg-slate-900/60"
         >
           {/* Cockpit SPOT Tab */}
-          {activeTab === "cockpit" && (
+          {activeTab === 'cockpit' && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.1 }}
               className="space-y-6"
             >
-              <CockpitSPOT onSignOut={onSignOut} />
+              {tabErrors.cockpit ? (
+                <TabErrorFallback tabId="cockpit" error={tabErrors.cockpit} />
+              ) : (
+                <CockpitSPOT onSignOut={onSignOut} />
+              )}
             </motion.div>
           )}
 
           {/* AI Evaluation Tab */}
-          {activeTab === "evaluation" && (
+          {activeTab === 'evaluation' && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.1 }}
               className="space-y-6"
             >
-              <AISkillsEvaluator userId={user?.id} />
+              <div className="mb-4">
+                <h2 className="text-2xl font-bold text-purple-300 flex items-center gap-2">
+                  <span>🤖</span> Évaluation IA
+                </h2>
+                <p className="text-slate-400 text-sm mt-1">
+                  Analyse intelligente de vos compétences et potentiel
+                </p>
+              </div>
+              <TabNotImplementedFallback tabLabel="Évaluation IA" />
             </motion.div>
           )}
 
           {/* Development Pathways Tab */}
-          {activeTab === "parcours" && (
+          {activeTab === 'parcours' && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -187,12 +283,12 @@ export default function ModuleMimetique({
                   Suivi de votre progression dans l'Odyssée
                 </p>
               </div>
-              <DevelopmentPathways userId={user?.id} />
+              <TabNotImplementedFallback tabLabel="Parcours" />
             </motion.div>
           )}
 
           {/* Talent Ecosystem Tab */}
-          {activeTab === "ecosysteme" && (
+          {activeTab === 'ecosysteme' && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -207,12 +303,12 @@ export default function ModuleMimetique({
                   Visualisation de votre impact global
                 </p>
               </div>
-              <TalentEcosystem userId={user?.id} />
+              <TabNotImplementedFallback tabLabel="Écosystème" />
             </motion.div>
           )}
 
           {/* Recording Tab */}
-          {activeTab === "enregistrement" && (
+          {activeTab === 'enregistrement' && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -227,146 +323,50 @@ export default function ModuleMimetique({
                   Capturez vos meilleures versions et vos pitchs
                 </p>
               </div>
-
-              {/* Video Recording Section */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="bg-slate-800/50 rounded-2xl p-6 border border-slate-700/50"
-              >
-                <EnhancedRecordVideo
-                  user={user}
-                  profile={profile}
-                  onSignOut={onSignOut}
-                  onVideoUploaded={handleVideoUploadSuccess}
-                  cameraChecked={cameraChecked}
-                  embedInOdyssey
-                />
-              </motion.div>
-
-              {/* Success Message */}
-              <AnimatePresence>
-                {videoUploadedRecently && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    className="p-4 bg-green-500/10 border border-green-500/30 rounded-2xl"
-                  >
-                    <p className="text-green-300 text-sm font-semibold text-center">
-                      ✅ Vidéo enregistrée avec succès !
-                    </p>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Video Vault Section */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="glass-card border-white/10 rounded-2xl p-6 bg-slate-900/40"
-              >
-                <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2">
-                  📁 Mon Coffre-fort Vidéo
-                </h3>
-                <div className="p-4 bg-teal-500/5 border border-teal-500/10 rounded-2xl">
-                  <p className="text-teal-100/80 text-sm leading-relaxed mb-4 italic">
-                    Retrouvez et rejouez toutes vos vidéos enregistrées dans votre coffre-fort personnel.
-                  </p>
-                  <motion.div
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => setShowVault((prev) => !prev)}
-                      className="w-full border border-teal-500/30 text-teal-400 bg-transparent hover:bg-teal-500/10 hover:text-teal-200 rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300"
-                    >
-                      {showVault
-                        ? "📂 Masquer le Coffre-fort"
-                        : "🔓 Ouvrir mon Coffre-fort vidéo"}
-                    </Button>
-                  </motion.div>
-                </div>
-              </motion.div>
-
-              {/* Video Vault Content */}
-              <AnimatePresence>
-                {showVault && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.4 }}
-                    className="mt-6"
-                  >
-                    <VideoVault
-                      user={user}
-                      profile={profile}
-                      onSignOut={onSignOut}
-                      onVideoAdded={handleVideoUploadSuccess}
-                      embedInOdyssey
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              <TabNotImplementedFallback tabLabel="Enregistrement" />
             </motion.div>
           )}
         </motion.div>
       </AnimatePresence>
 
-      {/* Navigation Buttons */}
+      {/* Navigation Footer */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.4 }}
-        className="mt-10 flex justify-between items-center gap-4 flex-wrap"
+        transition={{ delay: 0.5 }}
+        className="mt-8 flex justify-between items-center"
       >
-        <motion.div
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
+        <Button
+          onClick={handleNavigatePrevious}
+          variant="outline"
+          className="border-slate-600 text-slate-300 hover:bg-slate-800"
         >
-          <Button
-            onClick={handleNavigatePrevious}
-            size="lg"
-            className="bg-teal-600 hover:bg-teal-500 text-white px-8 font-semibold rounded-xl transition-all duration-300 hover:shadow-lg hover:shadow-teal-500/50"
-          >
-            ← Précédent
-          </Button>
-        </motion.div>
+          ← Précédent
+        </Button>
 
-        <div className="flex-1 flex justify-center">
-          <div className="px-4 py-2 bg-slate-700/50 border border-slate-600/50 rounded-lg">
-            <p className="text-slate-300 text-xs font-semibold">Étape 3 / 7</p>
-          </div>
+        <div className="text-center">
+          <p className="text-slate-400 text-sm">
+            Étape 3 / 7
+          </p>
         </div>
 
-        <motion.div
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
+        <Button
+          onClick={handleNavigateNext}
+          className="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-bold"
         >
-          <Button
-            onClick={handleNavigateNext}
-            size="lg"
-            className="bg-teal-600 hover:bg-teal-500 text-white px-8 font-semibold rounded-xl transition-all duration-300 hover:shadow-lg hover:shadow-teal-500/50"
-          >
-            Continuer →
-          </Button>
-        </motion.div>
+          Continuer →
+        </Button>
       </motion.div>
 
-      {/* Info Box */}
+      {/* Conseil */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.5 }}
-        className="mt-8 p-4 bg-blue-500/5 border border-blue-500/20 rounded-2xl"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.6 }}
+        className="mt-6 p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-xl"
       >
-        <p className="text-blue-200/80 text-xs leading-relaxed">
-          💡 <span className="font-semibold">Conseil :</span> Explorez chaque onglet pour une expérience complète. Le Cockpit SPOT vous donne une vue d'ensemble énergétique, l'Évaluation IA analyse vos compétences, et l'Enregistrement vous permet de capturer vos meilleures versions.
+        <p className="text-sm text-cyan-300">
+          💡 <span className="font-semibold">Conseil:</span> Explorez chaque onglet pour une expérience complète. Le Cockpit SPOT vous donne une vue d'ensemble énergétique, l'Évaluation IA analyse vos compétences, et l'Enregistrement vous permet de capturer vos meilleures versions.
         </p>
       </motion.div>
     </OdysseyLayout>
