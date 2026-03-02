@@ -11,6 +11,7 @@ export default function AISkillsEvaluator({ userId }) {
   const [videos, setVideos] = useState([]);
   const [fetchingVideos, setFetchingVideos] = useState(true);
   const [error, setError] = useState(null);
+  const [existingEvaluation, setExistingEvaluation] = useState(null);
 
   useEffect(() => {
     const fetchVideos = async () => {
@@ -24,12 +25,12 @@ export default function AISkillsEvaluator({ userId }) {
       setError(null);
 
       try {
-        // ✅ CORRECTION : accepter les statuts 'ready', 'completed' et 'analyzed'
-        const { data, error: fetchError } = await supabase
+        // Charger les vidéos avec statut 'analyzed' (déjà analysées)
+        const { data: videosData, error: fetchError } = await supabase
           .from('videos')
           .select('id, title, created_at, status')
           .eq('user_id', userId)
-          .in('status', ['ready', 'completed', 'analyzed'])
+          .in('status', ['analyzed', 'ready', 'completed'])
           .order('created_at', { ascending: false });
 
         if (fetchError) {
@@ -37,8 +38,8 @@ export default function AISkillsEvaluator({ userId }) {
           setError('Impossible de charger vos vidéos');
           toast.error('Erreur lors du chargement des vidéos');
         } else {
-          setVideos(data || []);
-          if (!data || data.length === 0) {
+          setVideos(videosData || []);
+          if (!videosData || videosData.length === 0) {
             setError('Aucune vidéo disponible. Enregistrez d\'abord une vidéo dans l\'onglet Enregistrement.');
           }
         }
@@ -54,37 +55,62 @@ export default function AISkillsEvaluator({ userId }) {
     fetchVideos();
   }, [userId]);
 
+  // Quand une vidéo est sélectionnée, vérifier si une évaluation existe déjà
+  useEffect(() => {
+    const fetchExistingEvaluation = async () => {
+      if (!selectedVideo) {
+        setExistingEvaluation(null);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('skills_evaluations')
+          .select('*')
+          .eq('video_id', selectedVideo.id)
+          .maybeSingle();
+
+        if (error) throw error;
+        if (data) {
+          setExistingEvaluation(data);
+          setAnalysis({
+            scores: data.scores,
+            feedback: data.feedback,
+            recommendations: data.recommendations,
+          });
+        } else {
+          setExistingEvaluation(null);
+          setAnalysis(null);
+        }
+      } catch (err) {
+        console.error('Erreur chargement évaluation existante:', err);
+      }
+    };
+
+    fetchExistingEvaluation();
+  }, [selectedVideo]);
+
   const analyzeVideo = async () => {
     if (!selectedVideo) {
       toast.error('Veuillez sélectionner une vidéo');
       return;
     }
 
+    // ⚠️ L'analyse automatique nécessite une Edge Function adaptée (en cours de développement)
+    toast.info('L\'analyse automatique sera bientôt disponible. Pour le moment, utilisez une vidéo déjà analysée.');
+    return;
+
+    // Code commenté en attendant la nouvelle fonction
+    /*
     setLoading(true);
     setAnalysis(null);
     setError(null);
 
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-      if (sessionError || !session?.access_token) {
-        throw new Error('Session expirée. Veuillez vous reconnecter.');
-      }
+      if (sessionError || !session?.access_token) throw new Error('Session expirée');
 
       const apiUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (!apiUrl) {
-        throw new Error('Configuration manquante');
-      }
-
-      const requestBody = {
-        videoId: selectedVideo.id,
-        context: 'lumia_skills_evaluation',
-        elements: ['FEU', 'AIR', 'TERRE', 'EAU'],
-        softPromptTask: 'skills-evaluation',
-      };
-
-      console.log('Envoi de la requête d\'analyse:', requestBody);
-
       const response = await fetch(
         `${apiUrl}/functions/v1/analyze-pitch-recording`,
         {
@@ -93,75 +119,25 @@ export default function AISkillsEvaluator({ userId }) {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify(requestBody),
+          body: JSON.stringify({
+            videoId: selectedVideo.id,
+            context: 'lumia_skills_evaluation',
+            elements: ['FEU', 'AIR', 'TERRE', 'EAU'],
+            softPromptTask: 'skills-evaluation',
+          }),
         }
       );
 
-      console.log('Réponse API status:', response.status);
-
-      if (!response.ok) {
-        let errorMessage = `Erreur API: ${response.status}`;
-        
-        try {
-          const errorData = await response.json();
-          console.error('Détails erreur API:', errorData);
-          errorMessage = errorData?.message || errorData?.error || errorMessage;
-        } catch (parseError) {
-          console.error('Impossible de parser la réponse d\'erreur:', parseError);
-          const textError = await response.text();
-          console.error('Réponse brute:', textError);
-        }
-
-        if (response.status === 400) {
-          errorMessage = 'Erreur de validation : Vérifiez que la vidéo est valide et complète.';
-        }
-
-        throw new Error(errorMessage);
-      }
-
+      if (!response.ok) throw new Error('Erreur API');
       const data = await response.json();
-      console.log('Données d\'analyse reçues:', data);
-
-      const scores = {
-        feu: data.analysis?.elements?.FEU || data.analysis?.feu || 0,
-        air: data.analysis?.elements?.AIR || data.analysis?.air || 0,
-        terre: data.analysis?.elements?.TERRE || data.analysis?.terre || 0,
-        eau: data.analysis?.elements?.EAU || data.analysis?.eau || 0,
-      };
-
-      const analysisResult = {
-        ...data.analysis,
-        scores,
-        feedback: data.analysis?.feedback || 'Analyse complétée',
-        recommendations: data.analysis?.recommendations || 'Continuez vos enregistrements',
-      };
-
-      setAnalysis(analysisResult);
-
-      // Sauvegarde dans skills_evaluations
-      try {
-        await supabase.from('skills_evaluations').insert({
-          user_id: userId,
-          video_id: selectedVideo.id,
-          scores,
-          feedback: analysisResult.feedback,
-          recommendations: analysisResult.recommendations,
-          created_at: new Date().toISOString(),
-        });
-      } catch (dbError) {
-        console.warn('Erreur sauvegarde en base:', dbError);
-        toast.warning('Analyse réussie mais non sauvegardée en base.');
-      }
-
-      toast.success('✅ Évaluation LUMIA terminée !');
+      // ... traitement
     } catch (err) {
-      console.error('Erreur analyse:', err);
-      const errorMessage = err?.message || 'Échec de l\'évaluation des compétences';
-      setError(errorMessage);
-      toast.error(errorMessage);
+      console.error(err);
+      toast.error(err.message);
     } finally {
       setLoading(false);
     }
+    */
   };
 
   return (
@@ -176,7 +152,7 @@ export default function AISkillsEvaluator({ userId }) {
           Évaluation IA des 4 Éléments
         </h2>
         <p className="text-slate-400 text-sm mt-2">
-          Sélectionnez une vidéo et laissez l'IA analyser vos compétences LUMIA
+          Sélectionnez une vidéo déjà analysée pour voir vos résultats.
         </p>
       </motion.div>
 
@@ -215,7 +191,8 @@ export default function AISkillsEvaluator({ userId }) {
           </option>
           {videos.map(v => (
             <option key={v.id} value={v.id}>
-              {v.title || `Vidéo du ${new Date(v.created_at).toLocaleDateString('fr-FR')}`}
+              {v.title || `Vidéo du ${new Date(v.created_at).toLocaleDateString('fr-FR')}`} 
+              {v.status === 'analyzed' ? ' (analysée)' : ''}
             </option>
           ))}
         </select>
@@ -331,14 +308,15 @@ export default function AISkillsEvaluator({ userId }) {
         )}
       </AnimatePresence>
 
-      {!analysis && videos.length === 0 && !fetchingVideos && (
+      {!analysis && selectedVideo && !existingEvaluation && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="p-6 bg-slate-800/30 rounded-xl border border-dashed border-slate-600 text-center"
         >
           <p className="text-slate-400 text-sm">
-            📹 Enregistrez d'abord une vidéo dans l'onglet <span className="font-semibold text-cyan-300">Enregistrement</span>.
+            🚧 L'analyse automatique n'est pas encore disponible pour cette vidéo.
+            Utilisez une vidéo déjà analysée (statut "analyzed") pour voir les résultats.
           </p>
         </motion.div>
       )}
