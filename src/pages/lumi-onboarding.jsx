@@ -11,7 +11,14 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/card.jsx";
-import { startLumiSession, submitAnswer, computeProfile, getMyLumiProfile, getSessionAgeRange } from "../services/lumiService.js";
+import {
+  startLumiSession,
+  submitAnswer,
+  computeProfile,
+  getMyLumiProfile,
+  getSessionAgeRange,
+  deleteLumiProfileAndAnswers,
+} from "../services/lumiService.js";
 import HobbyFlow from "../components/HobbyFlow.jsx";
 import { checkVideoProfileInformation } from "../services/videoService.js";
 import { useUser, useSupabaseClient } from "@supabase/auth-helpers-react";
@@ -99,6 +106,7 @@ export default function LumiOnboarding({ onSignOut }) {
   const [computingProfile, setComputingProfile] = useState(false);
   const [computedProfile, setComputedProfile] = useState(null);
   const [profileAvatarUrl, setProfileAvatarUrl] = useState(null);
+  const [deletingProfile, setDeletingProfile] = useState(false);
   const hasCheckedVideoAge = useRef(false);
 
   const MAX_MULTI_ANSWERS = 2;
@@ -557,6 +565,60 @@ export default function LumiOnboarding({ onSignOut }) {
                 )}
               </div>
 
+              {/* Supprimer le profil DISC - juste sous la carte profil */}
+              <div className="pt-2 border-t border-white/10">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800"
+                  disabled={deletingProfile}
+                  onClick={async () => {
+                    if (
+                      !window.confirm(
+                        "Êtes-vous sûr de vouloir supprimer ton profil DISC ? Tu devras refaire le questionnaire pour en créer un nouveau.",
+                      )
+                    ) {
+                      return;
+                    }
+
+                    setDeletingProfile(true);
+                    try {
+                      const result = await deleteLumiProfileAndAnswers();
+                      if (!result.success) {
+                        toast.error(
+                          result.error ||
+                            "Erreur lors de la suppression du profil DISC",
+                        );
+                        return;
+                      }
+
+                      setComputedProfile(null);
+                      setSessionId(null);
+                      setCurrentQuestion(null);
+                      setCurrentAnswer(null);
+                      setCurrentAnswers([]);
+                      setDisplayOptions([]);
+                      setComputingProfile(false);
+
+                      toast.success("Profil DISC supprimé. Tu peux refaire le scan.");
+                    } catch (error) {
+                      console.error(
+                        "[LumiOnboarding] Erreur suppression profil DISC:",
+                        error,
+                      );
+                      toast.error(
+                        error?.message ||
+                          "Erreur inattendue lors de la suppression du profil DISC",
+                      );
+                    } finally {
+                      setDeletingProfile(false);
+                    }
+                  }}
+                >
+                  {deletingProfile ? "Suppression..." : "Supprimer le profil DISC"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -573,14 +635,14 @@ export default function LumiOnboarding({ onSignOut }) {
          {computedProfile && (
            <div className="mt-8 flex justify-between items-center">
              <Button
-               onClick={() => navigate('/embark')}
+               onClick={() => navigate("/embark")}
                size="lg"
                className="bg-teal-600 hover:bg-teal-500 text-white px-8"
              >
                ← Précédent
              </Button>
              <Button
-               onClick={() => navigate('/module-mimetique')}
+               onClick={() => navigate("/module-mimetique")}
                size="lg"
                className="bg-teal-600 hover:bg-teal-500 text-white px-8"
              >

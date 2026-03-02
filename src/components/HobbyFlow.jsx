@@ -17,6 +17,7 @@ import {
   getMyHobbyProfile,
   getSessionAgeRange,
   getMyLumiProfile,
+  deleteHobbyProfile,
 } from "../services/lumiService.js";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
@@ -281,6 +282,7 @@ export default function HobbyFlow({ computedProfile, ageRange, userName, avatarU
   const [gettingHobbyRecommendation, setGettingHobbyRecommendation] =
     useState(false);
   const [hobbyProfile, setHobbyProfile] = useState(null);
+  const [deletingHobbyProfile, setDeletingHobbyProfile] = useState(false);
   const [loadingExisting, setLoadingExisting] = useState(true);
   const [currentHobbyDisplayOptions, setCurrentHobbyDisplayOptions] = useState(
     [],
@@ -886,6 +888,57 @@ export default function HobbyFlow({ computedProfile, ageRange, userName, avatarU
                       </div>
                     </div>
                   )}
+
+                  {/* Supprimer le profil loisir - juste sous la carte */}
+                  <div className="pt-2 mt-2 border-t border-white/10">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800"
+                      disabled={deletingHobbyProfile}
+                      onClick={async () => {
+                        if (
+                          !window.confirm(
+                            `Êtes-vous sûr de vouloir supprimer ton profil ${selectedHobby} ? Tu pourras refaire le questionnaire pour ce loisir.`,
+                          )
+                        ) {
+                          return;
+                        }
+                        setDeletingHobbyProfile(true);
+                        try {
+                          const result = await deleteHobbyProfile(selectedHobby);
+                          if (!result.success) {
+                            toast.error(
+                              result.error ||
+                                "Erreur lors de la suppression du profil loisir",
+                            );
+                            return;
+                          }
+                          setHobbyProfile(null);
+                          setSelectedHobby(null);
+                          toast.success(
+                            "Profil loisir supprimé. Tu peux choisir un autre loisir ou refaire celui-ci.",
+                          );
+                        } catch (error) {
+                          console.error(
+                            "[HobbyFlow] Erreur suppression profil loisir:",
+                            error,
+                          );
+                          toast.error(
+                            error?.message ||
+                              "Erreur inattendue lors de la suppression.",
+                          );
+                        } finally {
+                          setDeletingHobbyProfile(false);
+                        }
+                      }}
+                    >
+                      {deletingHobbyProfile
+                        ? "Suppression..."
+                        : `Supprimer le profil ${selectedHobby}`}
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
