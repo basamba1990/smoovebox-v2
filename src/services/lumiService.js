@@ -441,3 +441,47 @@ export async function getMyHobbyProfile(hobbyName = null) {
     return { success: false, error: error.message };
   }
 }
+
+/**
+ * Delete the user's Lumi profile and the underlying DISC answers/sessions.
+ * Uses an Edge Function (service role) to bypass RLS and actually delete the rows.
+ * Removes: lumi_answers, lumi_sessions, lumi_profiles for the current user.
+ */
+export async function deleteLumiProfileAndAnswers() {
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      return { success: false, error: 'Not authenticated' };
+    }
+
+    const { data, error } = await supabase.functions.invoke('lumi-delete-profile', {
+      body: {},
+    });
+
+    if (error) {
+      console.error('[LumiService] Error invoking lumi-delete-profile:', error);
+      return { success: false, error: error.message };
+    }
+
+    if (data?.success === true) {
+      return { success: true };
+    }
+
+    return {
+      success: false,
+      error: data?.error || 'Failed to delete Lumi profile',
+    };
+  } catch (error) {
+    console.error(
+      '[LumiService] Exception deleting Lumi profile & answers:',
+      error,
+    );
+    return {
+      success: false,
+      error: error.message || 'Failed to delete Lumi profile',
+    };
+  }
+}
