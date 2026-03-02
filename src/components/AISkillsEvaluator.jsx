@@ -24,10 +24,12 @@ export default function AISkillsEvaluator({ userId }) {
       setError(null);
 
       try {
+        // ✅ CORRECTION : ne charger que les vidéos avec status = 'completed'
         const { data, error: fetchError } = await supabase
           .from('videos')
           .select('id, title, created_at, status')
           .eq('user_id', userId)
+          .eq('status', 'completed')
           .order('created_at', { ascending: false });
 
         if (fetchError) {
@@ -37,7 +39,7 @@ export default function AISkillsEvaluator({ userId }) {
         } else {
           setVideos(data || []);
           if (!data || data.length === 0) {
-            setError('Aucune vidéo disponible. Enregistrez d\'abord une vidéo dans l\'onglet Enregistrement.');
+            setError('Aucune vidéo complétée. Enregistrez et validez d\'abord une vidéo dans l\'onglet Enregistrement.');
           }
         }
       } catch (err) {
@@ -136,6 +138,7 @@ export default function AISkillsEvaluator({ userId }) {
 
       setAnalysis(analysisResult);
 
+      // ✅ CORRECTION : insertion dans skills_evaluations (table à créer)
       try {
         await supabase.from('skills_evaluations').insert({
           user_id: userId,
@@ -146,7 +149,8 @@ export default function AISkillsEvaluator({ userId }) {
           created_at: new Date().toISOString(),
         });
       } catch (dbError) {
-        console.warn('Erreur sauvegarde en base:', dbError);
+        console.warn('Erreur sauvegarde en base (table manquante ?):', dbError);
+        toast.warning('Analyse réussie mais non sauvegardée en base.');
       }
 
       toast.success('✅ Évaluation LUMIA terminée !');
@@ -172,7 +176,7 @@ export default function AISkillsEvaluator({ userId }) {
           Évaluation IA des 4 Éléments
         </h2>
         <p className="text-slate-400 text-sm mt-2">
-          Sélectionnez une vidéo et laissez l'IA analyser vos compétences LUMIA
+          Sélectionnez une vidéo complétée et laissez l'IA analyser vos compétences LUMIA
         </p>
       </motion.div>
 
@@ -206,7 +210,7 @@ export default function AISkillsEvaluator({ userId }) {
             {fetchingVideos
               ? '⏳ Chargement des vidéos...'
               : videos.length === 0
-              ? '❌ Aucune vidéo disponible'
+              ? '❌ Aucune vidéo complétée'
               : '📹 Sélectionnez une vidéo'}
           </option>
           {videos.map(v => (
@@ -220,7 +224,8 @@ export default function AISkillsEvaluator({ userId }) {
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={analyzeVideo}
-          disabled={!selectedVideo || loading || fetchingVideos}
+          // ✅ CORRECTION : désactiver si la vidéo n'est pas complétée (status !== 'completed')
+          disabled={!selectedVideo || selectedVideo.status !== 'completed' || loading || fetchingVideos}
           className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 disabled:from-slate-600 disabled:to-slate-700 px-6 py-3 rounded-lg font-semibold text-white transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
         >
           {loading ? (
@@ -334,7 +339,7 @@ export default function AISkillsEvaluator({ userId }) {
           className="p-6 bg-slate-800/30 rounded-xl border border-dashed border-slate-600 text-center"
         >
           <p className="text-slate-400 text-sm">
-            📹 Enregistrez d'abord une vidéo dans l'onglet <span className="font-semibold text-cyan-300">Enregistrement</span> pour pouvoir l'analyser.
+            📹 Enregistrez d'abord une vidéo et assurez-vous qu'elle soit complétée dans l'onglet <span className="font-semibold text-cyan-300">Enregistrement</span>.
           </p>
         </motion.div>
       )}

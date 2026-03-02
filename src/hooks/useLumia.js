@@ -49,13 +49,14 @@ export function useLumia() {
           throw new Error('Utilisateur non authentifié');
         }
 
+        // ✅ CORRECTION : utiliser maybeSingle() au lieu de single()
         const { data, error: fetchError } = await supabase
           .from('user_lumia_profiles')
           .select('*')
           .eq('user_id', user.id)
-          .single();
+          .maybeSingle();
 
-        if (fetchError && fetchError.code !== 'PGRST116') {
+        if (fetchError) {
           throw fetchError;
         }
 
