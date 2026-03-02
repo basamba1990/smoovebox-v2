@@ -13,6 +13,7 @@ export default function AISkillsEvaluator({ userId }) {
   const [error, setError] = useState(null);
   const [existingEvaluation, setExistingEvaluation] = useState(null);
 
+  // Charger les vidéos de l'utilisateur avec statut 'ready' ou 'analyzed'
   useEffect(() => {
     const fetchVideos = async () => {
       if (!userId) {
@@ -25,12 +26,11 @@ export default function AISkillsEvaluator({ userId }) {
       setError(null);
 
       try {
-        // Charger les vidéos avec statut 'analyzed' (déjà analysées)
         const { data: videosData, error: fetchError } = await supabase
           .from('videos')
           .select('id, title, created_at, status')
           .eq('user_id', userId)
-          .in('status', ['analyzed', 'ready', 'completed'])
+          .in('status', ['ready', 'analyzed'])
           .order('created_at', { ascending: false });
 
         if (fetchError) {
@@ -60,6 +60,7 @@ export default function AISkillsEvaluator({ userId }) {
     const fetchExistingEvaluation = async () => {
       if (!selectedVideo) {
         setExistingEvaluation(null);
+        setAnalysis(null);
         return;
       }
 
@@ -90,29 +91,33 @@ export default function AISkillsEvaluator({ userId }) {
     fetchExistingEvaluation();
   }, [selectedVideo]);
 
+  // Analyser la vidéo via l'Edge Function (basée sur videoId)
   const analyzeVideo = async () => {
     if (!selectedVideo) {
       toast.error('Veuillez sélectionner une vidéo');
       return;
     }
 
-    // ⚠️ L'analyse automatique nécessite une Edge Function adaptée (en cours de développement)
-    toast.info('L\'analyse automatique sera bientôt disponible. Pour le moment, utilisez une vidéo déjà analysée.');
-    return;
+    // Si une évaluation existe déjà, on l'affiche
+    if (existingEvaluation) {
+      toast.info('Affichage des résultats existants');
+      return;
+    }
 
-    // Code commenté en attendant la nouvelle fonction
-    /*
     setLoading(true);
     setAnalysis(null);
     setError(null);
 
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session?.access_token) throw new Error('Session expirée');
+      if (sessionError || !session?.access_token) {
+        throw new Error('Session expirée. Veuillez vous reconnecter.');
+      }
 
       const apiUrl = import.meta.env.VITE_SUPABASE_URL;
+      // Appel à la nouvelle Edge Function (à déployer sous le nom 'analyze-pitch-video')
       const response = await fetch(
-        `${apiUrl}/functions/v1/analyze-pitch-recording`,
+        `${apiUrl}/functions/v1/analyze-pitch-video`,
         {
           method: 'POST',
           headers: {
@@ -121,23 +126,59 @@ export default function AISkillsEvaluator({ userId }) {
           },
           body: JSON.stringify({
             videoId: selectedVideo.id,
-            context: 'lumia_skills_evaluation',
-            elements: ['FEU', 'AIR', 'TERRE', 'EAU'],
+            personaId: 'young-talent',
             softPromptTask: 'skills-evaluation',
+            agentName: 'spot-coach',
           }),
         }
       );
 
-      if (!response.ok) throw new Error('Erreur API');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Erreur API: ${response.status}`);
+      }
+
       const data = await response.json();
-      // ... traitement
+
+      // Adapter la structure des données selon la réponse de l'Edge Function
+      // On suppose que data.analysis contient les éléments FEU/AIR/TERRE/EAU
+      const scores = {
+        feu: data.analysis?.elements?.FEU || data.analysis?.feu || 0,
+        air: data.analysis?.elements?.AIR || data.analysis?.air || 0,
+        terre: data.analysis?.elements?.TERRE || data.analysis?.terre || 0,
+        eau: data.analysis?.elements?.EAU || data.analysis?.eau || 0,
+      };
+
+      const feedbackMessage = data.feedback?.message || data.analysis?.feedback || 'Analyse complétée';
+      const recommendationsText = data.feedback?.suggestions?.join(', ') || data.analysis?.recommendations || 'Continuez vos enregistrements';
+
+      const analysisResult = {
+        scores,
+        feedback: feedbackMessage,
+        recommendations: recommendationsText,
+      };
+
+      setAnalysis(analysisResult);
+
+      // Sauvegarder dans skills_evaluations
+      await supabase.from('skills_evaluations').insert({
+        user_id: userId,
+        video_id: selectedVideo.id,
+        scores,
+        feedback: feedbackMessage,
+        recommendations: recommendationsText,
+        created_at: new Date().toISOString(),
+      });
+
+      toast.success('✅ Évaluation LUMIA terminée !');
     } catch (err) {
-      console.error(err);
-      toast.error(err.message);
+      console.error('Erreur analyse:', err);
+      const errorMessage = err?.message || 'Échec de l\'évaluation des compétences';
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
-    */
   };
 
   return (
@@ -152,7 +193,7 @@ export default function AISkillsEvaluator({ userId }) {
           Évaluation IA des 4 Éléments
         </h2>
         <p className="text-slate-400 text-sm mt-2">
-          Sélectionnez une vidéo déjà analysée pour voir vos résultats.
+          Sélectionnez une vidéo et lancez l'analyse automatique.
         </p>
       </motion.div>
 
@@ -191,8 +232,8 @@ export default function AISkillsEvaluator({ userId }) {
           </option>
           {videos.map(v => (
             <option key={v.id} value={v.id}>
-              {v.title || `Vidéo du ${new Date(v.created_at).toLocaleDateString('fr-FR')}`} 
-              {v.status === 'analyzed' ? ' (analysée)' : ''}
+              {v.title || `Vidéo du ${new Date(v.created_at).toLocaleDateString('fr-FR')}`}
+              {v.status === 'analyzed' ? ' (déjà analysée)' : ''}
             </option>
           ))}
         </select>
@@ -315,8 +356,7 @@ export default function AISkillsEvaluator({ userId }) {
           className="p-6 bg-slate-800/30 rounded-xl border border-dashed border-slate-600 text-center"
         >
           <p className="text-slate-400 text-sm">
-            🚧 L'analyse automatique n'est pas encore disponible pour cette vidéo.
-            Utilisez une vidéo déjà analysée (statut "analyzed") pour voir les résultats.
+            🚀 Cliquez sur "Analyser" pour lancer l'évaluation automatique de cette vidéo.
           </p>
         </motion.div>
       )}
