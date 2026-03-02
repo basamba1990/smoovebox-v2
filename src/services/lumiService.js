@@ -443,6 +443,59 @@ export async function getMyHobbyProfile(hobbyName = null) {
 }
 
 /**
+ * Delete the user's hobby profile for a given hobby (and its answers/sessions).
+ * Uses Edge Function to bypass RLS.
+ * @param {string} hobbyName - Hobby name (e.g. 'Football', 'Handball')
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export async function deleteHobbyProfile(hobbyName) {
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      return { success: false, error: 'Not authenticated' };
+    }
+
+    if (!hobbyName || typeof hobbyName !== 'string' || !hobbyName.trim()) {
+      return { success: false, error: 'hobby_name is required' };
+    }
+
+    const { data, error } = await supabase.functions.invoke(
+      'lumi-delete-hobby-profile',
+      { body: { hobby_name: hobbyName.trim() } },
+    );
+
+    if (error) {
+      console.error(
+        '[LumiService] Error invoking lumi-delete-hobby-profile:',
+        error,
+      );
+      return { success: false, error: error.message };
+    }
+
+    if (data?.success === true) {
+      return { success: true };
+    }
+
+    return {
+      success: false,
+      error: data?.error || 'Failed to delete hobby profile',
+    };
+  } catch (error) {
+    console.error(
+      '[LumiService] Exception deleting hobby profile:',
+      error,
+    );
+    return {
+      success: false,
+      error: error.message || 'Failed to delete hobby profile',
+    };
+  }
+}
+
+/**
  * Delete the user's Lumi profile and the underlying DISC answers/sessions.
  * Uses an Edge Function (service role) to bypass RLS and actually delete the rows.
  * Removes: lumi_answers, lumi_sessions, lumi_profiles for the current user.
