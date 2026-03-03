@@ -64,7 +64,6 @@ function errorResponse(msg: string, status: number = 400) {
 async function getVideoFromStorage(
   videoId: string,
 ): Promise<{ buffer: ArrayBuffer; duration: number }> {
-  // Lire directement la clé Storage depuis la table videos
   const { data: video, error } = await supabase
     .from("videos")
     .select("storage_bucket, storage_path, duration, url")
@@ -75,7 +74,6 @@ async function getVideoFromStorage(
     console.error("DB error fetching video:", error.message);
   }
 
-  // Chemin prioritaire: storage_bucket + storage_path
   if (video?.storage_bucket && video?.storage_path) {
     const { data: file, error: dlError } = await supabase.storage
       .from(video.storage_bucket)
@@ -94,11 +92,7 @@ async function getVideoFromStorage(
     return { buffer, duration };
   }
 
-  // Fallback temporaire: si storage_path non encore déployé, tenter via l'URL
   if (video?.url) {
-    console.warn(
-      "Fallback URL utilisé: veuillez migrer vers storage_bucket/storage_path",
-    );
     const resp = await fetch(video.url);
     if (!resp.ok) throw new Error("Impossible de télécharger la vidéo");
     const buffer = await resp.arrayBuffer();
@@ -153,7 +147,6 @@ async function transcribeAudio(audioBase64: string): Promise<TranscriptionResult
     return { text: String(data.text ?? "").trim(), confidence: 0.95, language: "fr" };
   } catch (err) {
     clearTimeout(timeoutId);
-    // deno-lint-ignore no-explicit-any
     if ((err as any).name === "AbortError") throw new Error("Transcription timeout (45s)");
     throw err;
   }
@@ -168,12 +161,10 @@ async function loadSoftPrompt(taskName: string): Promise<string | null> {
       .eq("is_active", true)
       .maybeSingle();
     if (error || !data) {
-      console.warn(`Soft prompt not found for ${taskName}:`, error?.message || "No data");
       return null;
     }
     return data.prompt_text;
   } catch (err) {
-    console.warn(`Error loading soft prompt:`, err);
     return null;
   }
 }
@@ -189,12 +180,10 @@ async function loadAgentConfig(
       .eq("is_active", true)
       .maybeSingle();
     if (error || !data) {
-      console.warn(`Agent config not found for ${agentName}:`, error?.message || "No data");
       return null;
     }
     return data;
   } catch (err) {
-    console.warn(`Error loading agent config:`, err);
     return null;
   }
 }
@@ -206,7 +195,6 @@ function safeJsonExtractObject(text: string): any {
   try {
     return JSON.parse(match[0]);
   } catch (err) {
-    console.warn("Failed to parse JSON from text:", err);
     return {};
   }
 }
@@ -267,8 +255,6 @@ Répondez en JSON avec la structure suivante:
     clearTimeout(timeoutId);
 
     if (!resp.ok) {
-      const errorText = await resp.text();
-      console.error(`OpenAI API error ${resp.status}: ${errorText}`);
       throw new Error(`Analysis failed: ${resp.status}`);
     }
 
@@ -300,7 +286,6 @@ Répondez en JSON avec la structure suivante:
     return { analysis, tokensUsed };
   } catch (err) {
     clearTimeout(timeoutId);
-    // deno-lint-ignore no-explicit-any
     if ((err as any).name === "AbortError") throw new Error("Analysis timeout (30s)");
     throw err;
   }
@@ -323,77 +308,39 @@ Générez un feedback encourageant et constructif en JSON:
 {
   "message": "message principal",
   "suggestions": ["suggestion1", "suggestion2"],
-  "encouragement": "phrase d'encouragement"
+  "encouragement": "mot de la fin"
 }`;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 20_000);
+  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${openaiApiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+      response_format: { type: "json_object" },
+    }),
+  });
 
+  const data = await resp.json();
+  const content = data.choices?.[0]?.message?.content ?? "{}";
+  let parsed: any;
   try {
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${openaiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage },
-        ],
-        temperature: 0.8,
-        max_tokens: 300,
-        response_format: { type: "json_object" },
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    if (!resp.ok) {
-      const errorText = await resp.text();
-      console.warn(`OpenAI feedback error ${resp.status}: ${errorText}`);
-      return {
-        message: analysis.strengths.length > 0
-          ? `Bon pitch ! Vos points forts : ${analysis.strengths.slice(0, 2).join(", ")}`
-          : "Merci pour votre pitch !",
-        suggestions: analysis.improvements.length > 0
-          ? analysis.improvements.slice(0, 3)
-          : [
-            "Pratiquez devant un miroir",
-            "Enregistrez-vous régulièrement",
-            "Respirez profondément avant de commencer",
-          ],
-        encouragement: "Continuez à vous entraîner ! Chaque pitch est un pas vers le succès.",
-      };
-    }
-
-    const data = await resp.json();
-    const content = data.choices?.[0]?.message?.content ?? "{}";
-    let parsed: any;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      parsed = safeJsonExtractObject(content);
-    }
-
-    return {
-      message: String(parsed.message ?? "Excellent pitch !"),
-      suggestions: Array.isArray(parsed.suggestions)
-        ? parsed.suggestions.map(String).slice(0, 5)
-        : ["Continuez à pratiquer", "Enregistrez-vous régulièrement"],
-      encouragement: String(parsed.encouragement ?? "Continuez comme ça !"),
-    };
-  } catch (err) {
-    clearTimeout(timeoutId);
-    // deno-lint-ignore no-explicit-any
-    if ((err as any).name === "AbortError") console.warn("Feedback generation timeout");
-    return {
-      message: "Merci pour votre pitch !",
-      suggestions: ["Pratiquez régulièrement", "Soyez vous-même"],
-      encouragement: "Vous progressez bien !",
-    };
+    parsed = JSON.parse(content);
+  } catch {
+    parsed = safeJsonExtractObject(content);
   }
+
+  return {
+    message: String(parsed.message ?? ""),
+    suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.map(String) : [],
+    encouragement: String(parsed.encouragement ?? ""),
+  };
 }
 
 async function logExecution(
@@ -439,15 +386,6 @@ Deno.serve(async (req: Request) => {
         "Access-Control-Max-Age": "86400",
       },
     });
-  }
-
-  if (req.method !== "POST") {
-    return errorResponse("Method not allowed. Use POST.", 405);
-  }
-
-  const contentType = req.headers.get("content-type");
-  if (!contentType?.includes("application/json")) {
-    return errorResponse("Content-Type must be application/json", 415);
   }
 
   let body: AnalyzePitchRequest;
@@ -500,8 +438,6 @@ Deno.serve(async (req: Request) => {
       config_id: agentConfig.id,
     };
 
-    // Logging asynchrone
-    // deno-lint-ignore no-floating-promises
     (async () => {
       try {
         await logExecution(body, response);
