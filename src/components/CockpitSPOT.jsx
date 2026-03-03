@@ -7,7 +7,7 @@ import RobotIO from './RobotIO.jsx';
 /**
  * Composant Cockpit SPOT
  * Dashboard énergétique LUMIA en temps réel
- * Avec RobotIO Joueur Numéro 10
+ * Avec RobotIO et missions dynamiques basées sur les scores faibles
  */
 export default function CockpitSPOT() {
   const { userLumiaProfile, calculateBalance, territories, loading } = useLumia();
@@ -16,34 +16,41 @@ export default function CockpitSPOT() {
     return <div className="p-10 text-center text-cyan-400">Chargement du cockpit...</div>;
   }
 
-  // Memoiser le calcul de l'équilibre
   const balance = useMemo(() => calculateBalance(), [userLumiaProfile]);
 
-  // Memoiser le territoire
   const territory = useMemo(() => {
-    return (userLumiaProfile?.lumia?.territoire &&
-      territories.find(t => t.name === userLumiaProfile.lumia.territoire)) || territories[0];
+    return (userLumiaProfile?.lumia?.territoire && territories.find(t => t.name === userLumiaProfile.lumia.territoire)) || territories[0];
   }, [userLumiaProfile, territories]);
 
-  // Scores LUMIA avec fallback
-  const scores = useMemo(() => ({
-    feu: userLumiaProfile?.lumia?.feu_score ?? 50,
-    air: userLumiaProfile?.lumia?.air_score ?? 50,
-    terre: userLumiaProfile?.lumia?.terre_score ?? 50,
-    eau: userLumiaProfile?.lumia?.eau_score ?? 50,
-  }), [userLumiaProfile]);
-
-  // Générer missions recommandées selon le score le plus faible
-  const recommendedMissions = useMemo(() => {
-    const sorted = Object.entries(scores).sort((a, b) => a[1] - b[1]);
-    const [lowest, secondLowest] = sorted;
-    const missionsMap = {
-      feu: { title: 'Pitch de Leadership', desc: 'Renforce l\'action sur ton territoire.', color: 'orange', icon: '🔥' },
-      air: { title: 'Atelier Communication', desc: 'Améliore ton impact et ton réseau.', color: 'cyan', icon: '💨' },
-      terre: { title: 'Projet Solidaire', desc: 'Consolide ta stabilité locale.', color: 'yellow', icon: '🌍' },
-      eau: { title: 'Atelier de Cohésion', desc: 'Améliore l\'impact social local.', color: 'blue', icon: '💧' },
+  // Scores dynamiques LUMIA
+  const scores = useMemo(() => {
+    const l = userLumiaProfile?.lumia || {};
+    return {
+      feu: l.feu_score ?? 50,
+      air: l.air_score ?? 50,
+      terre: l.terre_score ?? 50,
+      eau: l.eau_score ?? 50,
     };
-    return [missionsMap[lowest[0]], missionsMap[secondLowest[0]]];
+  }, [userLumiaProfile]);
+
+  // Déterminer missions dynamiques selon les scores faibles
+  const missions = useMemo(() => {
+    const list = [];
+    if (scores.feu < 70) {
+      list.push({ element: 'FEU', title: 'Pitch de Leadership', desc: 'Renforce l\'action sur ton territoire.', color: 'orange' });
+    }
+    if (scores.air < 70) {
+      list.push({ element: 'AIR', title: 'Exercice de Créativité', desc: 'Stimule l\'innovation et l\'agilité.', color: 'cyan' });
+    }
+    if (scores.terre < 70) {
+      list.push({ element: 'TERRE', title: 'Mission Logistique', desc: 'Optimise la stabilité locale.', color: 'green' });
+    }
+    if (scores.eau < 70) {
+      list.push({ element: 'EAU', title: 'Atelier de Cohésion', desc: 'Améliore l\'impact social.', color: 'blue' });
+    }
+    return list.length > 0 ? list : [
+      { element: 'FEU', title: 'Pitch de Leadership', desc: 'Renforce l\'action sur ton territoire.', color: 'orange' }
+    ]; // fallback
   }, [scores]);
 
   return (
@@ -83,30 +90,22 @@ export default function CockpitSPOT() {
           <div className="glass-card p-6 rounded-3xl border border-slate-800 bg-slate-900/20">
             <h3 className="text-sm font-semibold text-slate-400 mb-4 uppercase">Zones Énergétiques</h3>
             <div className="space-y-4">
-              {Object.entries(scores).map(([key, value]) => {
-                const colors = {
-                  feu: 'from-orange-400 to-orange-500',
-                  air: 'from-cyan-400 to-cyan-500',
-                  terre: 'from-yellow-400 to-yellow-500',
-                  eau: 'from-blue-400 to-blue-500',
-                };
-                const labelMap = { feu: 'FEU', air: 'AIR', terre: 'TERRE', eau: 'EAU' };
-                return (
-                  <div key={key} className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span>{labelMap[key]}</span>
-                      <span className="text-cyan-400">{value}%</span>
-                    </div>
-                    <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                      <motion.div 
-                        initial={{ width: 0 }}
-                        animate={{ width: `${value}%` }}
-                        className={`h-full bg-gradient-to-r ${colors[key]}`}
-                      />
-                    </div>
+              {Object.entries(scores).map(([zone, value]) => (
+                <div key={zone} className="space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span>{zone.toUpperCase()}</span>
+                    <span className="text-cyan-400">{value}%</span>
                   </div>
-                );
-              })}
+                  <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${value}%` }}
+                      transition={{ duration: 1 }}
+                      className="h-full bg-gradient-to-r from-cyan-500 to-blue-500"
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -120,17 +119,17 @@ export default function CockpitSPOT() {
             </div>
           </div>
 
-          {/* Missions Recommandées */}
+          {/* Missions Dynamiques */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {recommendedMissions.map((mission, idx) => (
+            {missions.map(m => (
               <motion.div
-                key={idx}
+                key={m.element}
                 whileHover={{ scale: 1.05, translateY: -4 }}
-                className={`p-4 rounded-2xl border border-${mission.color}-500/20 bg-${mission.color}-500/5 hover:bg-${mission.color}-500/10 transition-colors cursor-pointer`}
+                className={`p-4 rounded-2xl border transition-colors cursor-pointer border-${m.color}-500/20 bg-${m.color}-500/5 hover:bg-${m.color}-500/10`}
               >
-                <div className={`text-${mission.color}-400 text-xs font-bold mb-1`}>MISSION {mission.icon}</div>
-                <div className="font-semibold">{mission.title}</div>
-                <p className="text-xs text-slate-400 mt-1">{mission.desc}</p>
+                <div className={`text-${m.color}-400 text-xs font-bold mb-1`}>MISSION {m.element}</div>
+                <div className="font-semibold">{m.title}</div>
+                <p className="text-xs text-slate-400 mt-1">{m.desc}</p>
               </motion.div>
             ))}
           </div>
