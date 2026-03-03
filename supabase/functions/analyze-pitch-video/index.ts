@@ -21,6 +21,13 @@ interface AnalysisResult {
   improvements: string[];
 }
 
+interface LumiaScores {
+  feu_score: number;
+  air_score: number;
+  terre_score: number;
+  eau_score: number;
+}
+
 interface FeedbackResult {
   message: string;
   suggestions: string[];
@@ -31,311 +38,221 @@ interface AnalyzePitchResponse {
   transcription: string;
   analysis: AnalysisResult;
   feedback: FeedbackResult;
+  lumia_scores: LumiaScores;
   tokens_used: number;
   latency_ms: number;
   config_id: string | null;
 }
 
-const supabaseUrl = Deno.env.get("SUPABASE_URL");
-const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
+const supabase = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+);
 
-if (!supabaseUrl || !supabaseServiceRoleKey || !openaiApiKey) {
-  throw new Error(
-    "Variables d'environnement manquantes: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY",
-  );
+const openaiApiKey = Deno.env.get("OPENAI_API_KEY")!;
+
+/* ===============================
+   🔥 CALCUL DES SCORES LUMIA
+=================================*/
+
+function calculateLumiaScores(analysis: AnalysisResult): LumiaScores {
+
+  let feu = 50;
+  let air = 50;
+  let terre = 50;
+  let eau = 50;
+
+  // FEU = Leadership / Ton affirmé
+  if (analysis.tone.toLowerCase().includes("inspirant")) feu += 15;
+  if (analysis.confidence > 0.85) feu += 10;
+  feu += analysis.strengths.length * 2;
+
+  // AIR = Communication / Clarté
+  if (analysis.tone.toLowerCase().includes("clair")) air += 10;
+  air += analysis.emotions.length * 3;
+
+  // TERRE = Structure / Stabilité
+  if (analysis.improvements.length < 3) terre += 15;
+  terre += Math.max(0, 10 - analysis.improvements.length * 2);
+
+  // EAU = Impact émotionnel
+  if (analysis.emotions.includes("empathie")) eau += 15;
+  eau += analysis.emotions.length * 4;
+
+  // Clamp 0-100
+  const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
+
+  return {
+    feu_score: clamp(feu),
+    air_score: clamp(air),
+    terre_score: clamp(terre),
+    eau_score: clamp(eau),
+  };
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+/* ===============================
+   🔄 MISE À JOUR PROFIL LUMIA
+=================================*/
 
-function errorResponse(msg: string, status: number = 400) {
-  return new Response(JSON.stringify({ error: msg, success: false }), {
-    status: status,
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers":
-        "authorization, x-client-info, apikey, content-type",
-    },
-  });
-}
-
-async function getVideoFromStorage(
+async function updateUserLumiaProfile(
   videoId: string,
-): Promise<{ buffer: ArrayBuffer; duration: number }> {
-  const { data: video, error } = await supabase
+  scores: LumiaScores
+) {
+  // récupérer user_id depuis video
+  const { data: video } = await supabase
     .from("videos")
-    .select("storage_bucket, storage_path, duration, url")
+    .select("user_id")
     .eq("id", videoId)
+    .single();
+
+  if (!video?.user_id) return;
+
+  // récupérer profil actuel
+  const { data: profile } = await supabase
+    .from("user_lumia_profiles")
+    .select("lumia")
+    .eq("user_id", video.user_id)
     .maybeSingle();
 
-  if (error) {
-    console.error("DB error fetching video:", error.message);
-  }
+  const current = profile?.lumia || {};
 
-  if (!video) {
-    throw new Error("Vidéo introuvable dans la base de données");
-  }
-
-  // CORRECTION: Si storage_bucket est nul, on utilise le bucket par défaut 'videos'
-  const bucket = video.storage_bucket || "videos";
-  const path = video.storage_path;
-
-  if (path) {
-    console.log(`Tentative de téléchargement depuis le bucket: ${bucket}, chemin: ${path}`);
-    const { data: file, error: dlError } = await supabase.storage
-      .from(bucket)
-      .download(path);
-
-    if (!dlError && file) {
-      const buffer = await file.arrayBuffer();
-      const duration = video.duration || 120;
-      return { buffer, duration };
-    }
-    
-    console.warn(`Échec du téléchargement depuis Storage (${dlError?.message}), tentative via URL...`);
-  }
-
-  // Fallback via l'URL si le storage échoue ou si path est manquant
-  if (video.url) {
-    const resp = await fetch(video.url);
-    if (resp.ok) {
-      const buffer = await resp.arrayBuffer();
-      const duration = video.duration || 120;
-      return { buffer, duration };
-    }
-  }
-
-  throw new Error(`Vidéo introuvable (ID: ${videoId}). Vérifiez que storage_path ou url est renseigné.`);
-}
-
-function bufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-async function transcribeAudio(audioBase64: string): Promise<TranscriptionResult> {
-  if (audioBase64.length > 25_000_000) {
-    throw new Error("Audio trop volumineux pour Whisper (max 25MB)");
-  }
-
-  const bytes = Uint8Array.from(atob(audioBase64), (c) => c.charCodeAt(0));
-  const audioBlob = new Blob([bytes], { type: "audio/webm" });
-
-  const formData = new FormData();
-  formData.append("file", audioBlob, "audio.webm");
-  formData.append("model", "whisper-1");
-  formData.append("language", "fr");
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60_000);
-
-  try {
-    const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${openaiApiKey}` },
-      body: formData,
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    if (!resp.ok) {
-      const errorText = await resp.text();
-      console.error(`Whisper API error ${resp.status}: ${errorText}`);
-      throw new Error(`Transcription failed: ${resp.status}`);
-    }
-
-    const data = await resp.json();
-    return { text: String(data.text ?? "").trim(), confidence: 0.95, language: "fr" };
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if ((err as any).name === "AbortError") throw new Error("Transcription timeout (60s)");
-    throw err;
-  }
-}
-
-async function loadSoftPrompt(taskName: string): Promise<string | null> {
-  try {
-    const { data, error } = await supabase
-      .from("llm_soft_prompts")
-      .select("prompt_text")
-      .eq("task_name", taskName)
-      .eq("is_active", true)
-      .maybeSingle();
-    return data?.prompt_text || null;
-  } catch {
-    return null;
-  }
-}
-
-async function loadAgentConfig(
-  agentName: string,
-): Promise<{ id: string; configuration: any } | null> {
-  try {
-    const { data, error } = await supabase
-      .from("agent_configurations")
-      .select("id, configuration")
-      .eq("agent_name", agentName)
-      .eq("is_active", true)
-      .maybeSingle();
-    return data || null;
-  } catch {
-    return null;
-  }
-}
-
-async function analyzePitch(
-  transcription: string,
-  softPromptText: string | null,
-  agentConfig: any,
-  personaId: string,
-): Promise<{ analysis: AnalysisResult; tokensUsed: number }> {
-  let systemPrompt = agentConfig?.configuration?.system_prompt ??
-    "Tu es SpotCoach, un expert coach analysant le pitch d'un jeune talent. Réponds en JSON.";
-
-  if (personaId === "young-talent") {
-    systemPrompt += `\n\nInstructions: Sois encourageant, utilise un langage simple.`;
-  }
-
-  if (softPromptText) {
-    systemPrompt += `\n\nContexte: ${softPromptText}`;
-  }
-
-  const userMessage = `Analyse ce pitch : "${transcription.substring(0, 3000)}"`;
-
-  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${openaiApiKey}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      response_format: { type: "json_object" },
-    }),
-  });
-
-  if (!resp.ok) throw new Error("Erreur OpenAI Analysis");
-
-  const data = await resp.json();
-  const content = JSON.parse(data.choices[0].message.content);
-
-  return {
-    analysis: {
-      tone: content.tone || "Neutre",
-      emotions: content.emotions || [],
-      confidence: content.confidence || 0.8,
-      strengths: content.strengths || [],
-      improvements: content.improvements || [],
-    },
-    tokensUsed: data.usage.total_tokens,
+  const merged = {
+    feu_score: Math.round((current.feu_score ?? 50 + scores.feu_score) / 2),
+    air_score: Math.round((current.air_score ?? 50 + scores.air_score) / 2),
+    terre_score: Math.round((current.terre_score ?? 50 + scores.terre_score) / 2),
+    eau_score: Math.round((current.eau_score ?? 50 + scores.eau_score) / 2),
+    territoire: current.territoire ?? "Casablanca"
   };
-}
 
-async function generateFeedback(analysis: AnalysisResult, agentConfig: any): Promise<FeedbackResult> {
-  const systemPrompt = "Tu es SpotCoach. Génère un feedback constructif en JSON.";
-  const userMessage = `Analyse: ${JSON.stringify(analysis)}`;
-
-  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${openaiApiKey}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      response_format: { type: "json_object" },
-    }),
-  });
-
-  const data = await resp.json();
-  const content = JSON.parse(data.choices[0].message.content);
-
-  return {
-    message: content.message || "",
-    suggestions: content.suggestions || [],
-    encouragement: content.encouragement || "",
-  };
-}
-
-async function logExecution(request: AnalyzePitchRequest, result: AnalyzePitchResponse): Promise<void> {
-  try {
-    await supabase.from("agent_execution_logs").insert({
-      input_data: request,
-      output_data: result,
-      status: "success"
+  await supabase
+    .from("user_lumia_profiles")
+    .upsert({
+      user_id: video.user_id,
+      lumia: merged
     });
-  } catch (e) {
-    console.error("Log error:", e);
-  }
 }
+
+/* ===============================
+   🚀 EDGE FUNCTION
+=================================*/
 
 Deno.serve(async (req: Request) => {
+
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-      },
-    });
+    return new Response(null, { status: 204 });
   }
 
   try {
+
     const body: AnalyzePitchRequest = await req.json();
     const start = Date.now();
 
-    // 1. Récupération Vidéo
-    const { buffer } = await getVideoFromStorage(body.videoId);
+    /* 1️⃣ Récupération vidéo */
+    const { data: video } = await supabase
+      .from("videos")
+      .select("storage_bucket, storage_path")
+      .eq("id", body.videoId)
+      .single();
 
-    // 2. Transcription
-    const audioBase64 = bufferToBase64(buffer);
-    const transcription = await transcribeAudio(audioBase64);
+    const { data: file } = await supabase.storage
+      .from(video.storage_bucket || "videos")
+      .download(video.storage_path);
 
-    // 3. Configuration & Prompts
-    const softPromptText = await loadSoftPrompt(body.softPromptTask);
-    const agentConfig = await loadAgentConfig(body.agentName);
+    const buffer = await file!.arrayBuffer();
 
-    if (!agentConfig) throw new Error(`Config non trouvée: ${body.agentName}`);
+    /* 2️⃣ Transcription */
+    const audioBlob = new Blob([buffer], { type: "audio/webm" });
+    const formData = new FormData();
+    formData.append("file", audioBlob, "audio.webm");
+    formData.append("model", "whisper-1");
 
-    // 4. Analyse & Feedback
-    const { analysis, tokensUsed } = await analyzePitch(transcription.text, softPromptText, agentConfig, body.personaId);
-    const feedback = await generateFeedback(analysis, agentConfig);
+    const transcriptionResp = await fetch(
+      "https://api.openai.com/v1/audio/transcriptions",
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${openaiApiKey}` },
+        body: formData,
+      }
+    );
 
-    const response: AnalyzePitchResponse = {
-      transcription: transcription.text,
-      analysis,
-      feedback,
-      tokens_used: tokensUsed,
-      latency_ms: Date.now() - start,
-      config_id: agentConfig.id,
+    const transcriptionData = await transcriptionResp.json();
+    const transcriptionText = transcriptionData.text || "";
+
+    /* 3️⃣ Analyse GPT */
+    const analysisResp = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${openaiApiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: "Analyse ce pitch et réponds en JSON.",
+            },
+            {
+              role: "user",
+              content: transcriptionText.substring(0, 3000),
+            },
+          ],
+          response_format: { type: "json_object" },
+        }),
+      }
+    );
+
+    const analysisData = await analysisResp.json();
+    const analysis: AnalysisResult = JSON.parse(
+      analysisData.choices[0].message.content
+    );
+
+    /* 4️⃣ Calcul Scores LUMIA */
+    const lumiaScores = calculateLumiaScores(analysis);
+
+    /* 5️⃣ Mise à jour profil énergétique */
+    await updateUserLumiaProfile(body.videoId, lumiaScores);
+
+    /* 6️⃣ Feedback */
+    const feedback: FeedbackResult = {
+      message: "Analyse complétée avec succès.",
+      suggestions: analysis.improvements || [],
+      encouragement: "Continue à développer ton potentiel 🔥",
     };
 
-    // Logging & Update
-    await logExecution(body, response);
-    await supabase.from("videos").update({ status: "analyzed", transcription_text: transcription.text, analysis: analysis }).eq("id", body.videoId);
+    /* 7️⃣ Update vidéo */
+    await supabase
+      .from("videos")
+      .update({
+        status: "analyzed",
+        transcription_text: transcriptionText,
+        analysis,
+        lumia_scores: lumiaScores
+      })
+      .eq("id", body.videoId);
+
+    const response: AnalyzePitchResponse = {
+      transcription: transcriptionText,
+      analysis,
+      feedback,
+      lumia_scores: lumiaScores,
+      tokens_used: analysisData.usage?.total_tokens || 0,
+      latency_ms: Date.now() - start,
+      config_id: null,
+    };
 
     return new Response(JSON.stringify({ ...response, success: true }), {
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      headers: { "Content-Type": "application/json" },
       status: 200,
     });
 
   } catch (err) {
-    console.error("analyze-pitch-video error:", err);
-    return errorResponse(err.message, 500);
+    console.error(err);
+    return new Response(
+      JSON.stringify({ error: (err as Error).message }),
+      { status: 500 }
+    );
   }
 });
