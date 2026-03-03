@@ -1,15 +1,25 @@
+import { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { useMemo } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import LumiaRadar from './LumiaRadar.jsx';
 import { useLumia } from '../hooks/useLumia.js';
 import RobotIO from './RobotIO.jsx';
 
+// Initialisation Supabase client (Edge Function)
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
 export default function CockpitSPOT() {
   const { userLumiaProfile, calculateBalance, territories, loading } = useLumia();
+  const [scores, setScores] = useState({ feu_score: 50, air_score: 50, terre_score: 50, eau_score: 50 });
+  const [updating, setUpdating] = useState(false);
 
-  if (loading) {
-    return <div className="p-10 text-center text-cyan-400">Chargement du cockpit...</div>;
-  }
+  useEffect(() => {
+    if (userLumiaProfile?.lumia) {
+      setScores(userLumiaProfile.lumia);
+    }
+  }, [userLumiaProfile]);
 
   const balance = calculateBalance();
 
@@ -21,30 +31,39 @@ export default function CockpitSPOT() {
     );
   }, [userLumiaProfile, territories]);
 
-  const scores = useMemo(() => {
-    return userLumiaProfile?.lumia || { feu_score: 50, air_score: 50, terre_score: 50, eau_score: 50 };
-  }, [userLumiaProfile]);
-
   // Missions dynamiques selon scores faibles (<70)
   const missions = useMemo(() => {
     const arr = [];
-    if (scores.feu_score < 70)
-      arr.push({ element: 'FEU', title: 'Pitch de Leadership', desc: 'Renforce l’action sur ton territoire' });
-    if (scores.air_score < 70)
-      arr.push({ element: 'AIR', title: 'Communication Express', desc: 'Améliore ton impact oral' });
-    if (scores.terre_score < 70)
-      arr.push({ element: 'TERRE', title: 'Atelier Structuré', desc: 'Consolide ta méthodologie' });
-    if (scores.eau_score < 70)
-      arr.push({ element: 'EAU', title: 'Atelier Cohésion', desc: 'Renforce l’esprit d’équipe' });
+    if (scores.feu_score < 70) arr.push({ element: 'FEU', title: 'Pitch de Leadership', desc: 'Renforce l’action sur ton territoire' });
+    if (scores.air_score < 70) arr.push({ element: 'AIR', title: 'Communication Express', desc: 'Améliore ton impact oral' });
+    if (scores.terre_score < 70) arr.push({ element: 'TERRE', title: 'Atelier Structuré', desc: 'Consolide ta méthodologie' });
+    if (scores.eau_score < 70) arr.push({ element: 'EAU', title: 'Atelier Cohésion', desc: 'Renforce l’esprit d’équipe' });
     return arr.length > 0 ? arr : [{ element: 'FEU', title: 'Mission Bonus', desc: 'Continue tes progrès' }];
   }, [scores]);
 
-  const colorMap = {
-    FEU: 'orange-500',
-    AIR: 'cyan-500',
-    TERRE: 'green-500',
-    EAU: 'blue-500',
+  const colorMap = { FEU: 'orange-500', AIR: 'cyan-500', TERRE: 'green-500', EAU: 'blue-500' };
+
+  // Fonction pour lancer mission et mettre à jour les scores via Edge Function
+  const launchMission = async (element) => {
+    if (!userLumiaProfile?.id) return;
+    setUpdating(true);
+    try {
+      const response = await supabase.functions.invoke('update-lumia-score', {
+        body: { userId: userLumiaProfile.id, element },
+      });
+      if (response.data?.newScores) {
+        setScores(response.data.newScores);
+      }
+    } catch (err) {
+      console.error('Erreur mise à jour scores:', err);
+    } finally {
+      setUpdating(false);
+    }
   };
+
+  if (loading) {
+    return <div className="p-10 text-center text-cyan-400">Chargement du cockpit...</div>;
+  }
 
   return (
     <div className="bg-[#020617] text-white p-6 font-sans">
@@ -95,7 +114,7 @@ export default function CockpitSPOT() {
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${score}%` }}
-                        className={`h-full bg-gradient-to-r from-cyan-500 to-blue-500`}
+                        className="h-full bg-gradient-to-r from-cyan-500 to-blue-500"
                       />
                     </div>
                   </div>
@@ -129,7 +148,10 @@ export default function CockpitSPOT() {
                 <motion.div
                   key={m.element}
                   whileHover={{ scale: 1.05, translateY: -4 }}
-                  className={`p-4 rounded-2xl border transition-colors cursor-pointer border-${tailwindColor}/20 bg-${tailwindColor}/5 hover:bg-${tailwindColor}/10`}
+                  className={`p-4 rounded-2xl border transition-colors cursor-pointer border-${tailwindColor}/20 bg-${tailwindColor}/5 hover:bg-${tailwindColor}/10 ${
+                    updating ? 'opacity-50 pointer-events-none' : ''
+                  }`}
+                  onClick={() => launchMission(m.element)}
                 >
                   <div className={`text-${tailwindColor} text-xs font-bold mb-1`}>MISSION {m.element}</div>
                   <div className="font-semibold">{m.title}</div>
