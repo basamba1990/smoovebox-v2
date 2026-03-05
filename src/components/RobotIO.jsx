@@ -6,11 +6,12 @@ import { motion } from 'framer-motion';
  * Design étoilé, innovant, intelligent et animé
  * Guidé par l'utilisateur avec interactions intelligentes
  */
-export default function RobotIO({ 
-  size = 'md', 
-  interactive = true, 
+export default function RobotIO({
+  size = 'md',
+  interactive = true,
   message = null,
-  onInteraction = null 
+  onInteraction = null,
+  useGif = false // Option pour utiliser le GIF animé au lieu du SVG
 }) {
   const [isHovered, setIsHovered] = useState(false);
   const [blink, setBlink] = useState(false);
@@ -58,7 +59,7 @@ export default function RobotIO({
       setParticlesActive(true);
       setTimeout(() => setIsKicking(false), 600);
       setTimeout(() => setParticlesActive(false), 1000);
-      
+
       if (onInteraction) {
         onInteraction('kick');
       }
@@ -73,6 +74,36 @@ export default function RobotIO({
   };
 
   const currentSize = sizes[size];
+
+  if (useGif) {
+    return (
+      <motion.div
+        onHoverStart={() => interactive && setIsHovered(true)}
+        onHoverEnd={() => interactive && setIsHovered(false)}
+        onClick={handleClick}
+        className={`flex flex-col items-center gap-4 ${interactive ? 'cursor-pointer' : ''}`}
+      >
+        <motion.div
+          animate={{
+            y: isHovered ? -10 : 0,
+            scale: isHovered ? 1.05 : 1,
+          }}
+          className={`${currentSize} relative flex items-center justify-center`}
+        >
+          <img 
+            src="/robot_spotbulle_animation.gif" 
+            alt="Robot SpotBulle" 
+            className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(6,182,212,0.5)]"
+          />
+        </motion.div>
+        {message && (
+          <div className="bg-slate-800/90 backdrop-blur-md border border-cyan-500/40 p-3 rounded-xl max-w-xs text-center text-cyan-100 text-sm">
+            {message}
+          </div>
+        )}
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
@@ -100,15 +131,15 @@ export default function RobotIO({
             {[...Array(8)].map((_, i) => (
               <motion.div
                 key={i}
-                initial={{ 
-                  x: 0, 
-                  y: 0, 
+                initial={{
+                  x: 0,
+                  y: 0,
                   opacity: 1,
                   scale: 1
                 }}
-                animate={{ 
-                  x: Math.cos((i / 8) * Math.PI * 2) * 100, 
-                  y: Math.sin((i / 8) * Math.PI * 2) * 100, 
+                animate={{
+                  x: Math.cos((i / 8) * Math.PI * 2) * 100,
+                  y: Math.sin((i / 8) * Math.PI * 2) * 100,
                   opacity: 0,
                   scale: 0
                 }}
@@ -174,11 +205,11 @@ export default function RobotIO({
           >
             <line x1="100" y1="30" x2="100" y2="0" stroke="#4A90E2" strokeWidth="8" strokeLinecap="round" filter="url(#glow)" />
             {/* Boule antenne lumineuse */}
-            <motion.circle 
-              cx="100" 
-              cy="-5" 
-              r="14" 
-              fill="url(#eyeGlowGradient)" 
+            <motion.circle
+              cx="100"
+              cy="-5"
+              r="14"
+              fill="url(#eyeGlowGradient)"
               filter="url(#shadow)"
               animate={{
                 r: [14, 16, 14],
@@ -191,27 +222,27 @@ export default function RobotIO({
 
           {/* Tête - Sphère bleue brillante */}
           <circle cx="100" cy="60" r="48" fill="url(#headGradient)" filter="url(#shadow)" />
-          
+
           {/* Reflet tête */}
           <ellipse cx="85" cy="45" rx="18" ry="15" fill="#FFFFFF" opacity="0.25" />
 
           {/* Sourcils expressifs */}
-          <motion.path 
-            d="M 75 42 Q 80 38 90 40" 
-            stroke="#2C5AA0" 
-            strokeWidth="4" 
-            fill="none" 
+          <motion.path
+            d="M 75 42 Q 80 38 90 40"
+            stroke="#2C5AA0"
+            strokeWidth="4"
+            fill="none"
             strokeLinecap="round"
             animate={{
               d: isHovered ? "M 75 38 Q 80 34 90 36" : "M 75 42 Q 80 38 90 40",
             }}
             transition={{ duration: 0.3 }}
           />
-          <motion.path 
-            d="M 110 40 Q 120 38 125 42" 
-            stroke="#2C5AA0" 
-            strokeWidth="4" 
-            fill="none" 
+          <motion.path
+            d="M 110 40 Q 120 38 125 42"
+            stroke="#2C5AA0"
+            strokeWidth="4"
+            fill="none"
             strokeLinecap="round"
             animate={{
               d: isHovered ? "M 110 36 Q 120 34 125 38" : "M 110 40 Q 120 38 125 42",
@@ -232,10 +263,10 @@ export default function RobotIO({
             {/* Iris bleu foncé */}
             <circle cx="80" cy="60" r="10" fill="#000080" />
             {/* Pupille */}
-            <motion.circle 
-              cx="80" 
-              cy="60" 
-              r="6" 
+            <motion.circle
+              cx="80"
+              cy="60"
+              r="6"
               fill="url(#eyeGlowGradient)"
               animate={{
                 cx: 80 + (mousePosition.x - 0.5) * 4,
@@ -259,10 +290,10 @@ export default function RobotIO({
             {/* Iris bleu foncé */}
             <circle cx="120" cy="60" r="10" fill="#000080" />
             {/* Pupille */}
-            <motion.circle 
-              cx="120" 
-              cy="60" 
-              r="6" 
+            <motion.circle
+              cx="120"
+              cy="60"
+              r="6"
               fill="url(#eyeGlowGradient)"
               animate={{
                 cx: 120 + (mousePosition.x - 0.5) * 4,
@@ -294,13 +325,13 @@ export default function RobotIO({
             <rect x="62" y="110" width="5" height="55" fill="#87CEEB" opacity="0.7" />
             <rect x="133" y="110" width="5" height="55" fill="#87CEEB" opacity="0.7" />
             {/* Numéro 10 - Brillant */}
-            <text 
-              x="100" 
-              y="150" 
-              fontSize="36" 
-              fontWeight="bold" 
-              fill="#FFFFFF" 
-              textAnchor="middle" 
+            <text
+              x="100"
+              y="150"
+              fontSize="36"
+              fontWeight="bold"
+              fill="#FFFFFF"
+              textAnchor="middle"
               fontFamily="Arial, sans-serif"
               filter="url(#glow)"
             >
@@ -322,7 +353,6 @@ export default function RobotIO({
             <circle cx="69" cy="185" r="14" fill="#87CEEB" />
             <circle cx="63" cy="191" r="6" fill="#4A90E2" />
             <circle cx="75" cy="191" r="6" fill="#4A90E2" />
-            <circle cx="69" cy="200" r="5" fill="#4A90E2" />
           </motion.g>
 
           {/* Bras droit - Articulé */}
@@ -387,7 +417,7 @@ export default function RobotIO({
           rotate: isKicking ? 720 : isHovered ? 360 : 0,
         }}
         transition={{
-          y: isKicking 
+          y: isKicking
             ? { duration: 0.8, ease: 'easeInOut' }
             : { duration: 2, repeat: isHovered ? Infinity : 0, ease: 'easeInOut' },
           rotate: { duration: isKicking ? 0.8 : 2, repeat: isHovered ? Infinity : 0 },
@@ -405,20 +435,20 @@ export default function RobotIO({
               </feMerge>
             </filter>
           </defs>
-          
+
           {/* Ballon principal */}
           <circle cx="50" cy="50" r="48" fill="url(#ballGradient)" filter="url(#ballGlow)" />
-          
+
           {/* Pentagones noirs */}
           <circle cx="50" cy="25" r="7" fill="#000000" />
           <circle cx="72" cy="37" r="7" fill="#000000" />
           <circle cx="68" cy="63" r="7" fill="#000000" />
           <circle cx="32" cy="63" r="7" fill="#000000" />
           <circle cx="28" cy="37" r="7" fill="#000000" />
-          
+
           {/* Reflet doré */}
           <ellipse cx="35" cy="35" rx="18" ry="14" fill="#FFD700" opacity="0.4" />
-          
+
           {/* Glow doré autour */}
           <circle cx="50" cy="50" r="48" fill="none" stroke="#FFD700" strokeWidth="2" opacity="0.3" />
         </svg>

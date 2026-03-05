@@ -15,6 +15,7 @@ import DevelopmentPathways from "../components/DevelopmentPathways.jsx";
 import TalentEcosystem from "../components/TalentEcosystem.jsx";
 import EnhancedRecordVideo from "./enhanced-record-video.jsx";
 import VideoVault from "./video-vault.jsx";
+import RobotIO from "../components/RobotIO.jsx";
 import { getOdysseyStepById } from "../config/odysseyConfig.js";
 
 const STEP_4 = getOdysseyStepById(4);
@@ -156,9 +157,24 @@ export default function ModuleMimetique({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.1 }}
-              className="space-y-6"
+              className="space-y-8"
             >
-              <CockpitSPOT onSignOut={onSignOut} />
+              <div className="flex flex-col lg:flex-row gap-8 items-start">
+                <div className="flex-1 w-full">
+                  <CockpitSPOT onSignOut={onSignOut} />
+                </div>
+                <motion.div 
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="hidden lg:block sticky top-8"
+                >
+                  <RobotIO 
+                    size="lg" 
+                    interactive={true} 
+                    message="Bienvenue dans ton Cockpit SPOT ! Ici, tu pilotes ton énergie et tes talents. 🚀"
+                  />
+                </motion.div>
+              </div>
             </motion.div>
           )}
 
