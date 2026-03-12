@@ -616,7 +616,7 @@ export default function LumiOnboarding({ onSignOut }) {
                     }
                   }}
                 >
-                  {deletingProfile ? "Suppression..." : "Supprimer le profil DISC"}
+                  {deletingProfile ? "Suppression.." : "Supprimer le profil DISC"}
                 </Button>
               </div>
             </CardContent>
