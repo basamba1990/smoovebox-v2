@@ -2,20 +2,21 @@
 -- Moteur d'acquisition des compétences Spotbulle (Univers Lumia)
 
 -- 1. Table des compétences
-CREATE TABLE public.skills (
+CREATE TABLE IF NOT EXISTS public.skills (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL UNIQUE,
   territory TEXT NOT NULL CHECK (territory IN ('Calyxis', 'Cattleya', 'Sylvara', 'Neptunus')),
   element TEXT NOT NULL CHECK (element IN ('Feu', 'Air', 'Terre', 'Eau')),
   energy TEXT NOT NULL,
+  sub_energy TEXT,
   pure_score REAL DEFAULT 0.0,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX idx_skills_territory ON public.skills(territory);
+CREATE INDEX IF NOT EXISTS idx_skills_territory ON public.skills(territory);
 
 -- 2. Table des prérequis (graphe orienté)
-CREATE TABLE public.skill_prerequisites (
+CREATE TABLE IF NOT EXISTS public.skill_prerequisites (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   skill_id UUID NOT NULL REFERENCES public.skills(id) ON DELETE CASCADE,
   prerequisite_id UUID NOT NULL REFERENCES public.skills(id) ON DELETE CASCADE,
@@ -24,27 +25,25 @@ CREATE TABLE public.skill_prerequisites (
 );
 
 -- 3. Matrice de compatibilité (pondération P=0.35 C=0.35 T=0.2 D=0.1)
-CREATE TABLE public.skill_compatibility (
+CREATE TABLE IF NOT EXISTS public.skill_compatibility (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  skill_a UUID NOT NULL REFERENCES public.skills(id) ON DELETE CASCADE,
-  skill_b UUID NOT NULL REFERENCES public.skills(id) ON DELETE CASCADE,
-  score_p REAL NOT NULL CHECK (score_p BETWEEN 0 AND 10),
-  score_c REAL NOT NULL CHECK (score_c BETWEEN 0 AND 10),
-  score_t REAL NOT NULL CHECK (score_t BETWEEN 0 AND 10),
-  score_d REAL NOT NULL CHECK (score_d BETWEEN 0 AND 10),
-  total_score REAL GENERATED ALWAYS AS (
-    (0.35 * score_p) + (0.35 * score_c) + (0.20 * score_t) + (0.10 * score_d)
-  ) STORED,
+  skill_a_id UUID NOT NULL REFERENCES public.skills(id) ON DELETE CASCADE,
+  skill_b_id UUID NOT NULL REFERENCES public.skills(id) ON DELETE CASCADE,
+  score_p REAL CHECK (score_p BETWEEN 0 AND 10),
+  score_c REAL CHECK (score_c BETWEEN 0 AND 10),
+  score_t REAL CHECK (score_t BETWEEN 0 AND 10),
+  score_d REAL CHECK (score_d BETWEEN 0 AND 10),
+  total_score REAL,
   is_forbidden BOOLEAN DEFAULT FALSE,
-  UNIQUE(skill_a, skill_b),
-  CHECK (skill_a <> skill_b)
+  UNIQUE(skill_a_id, skill_b_id),
+  CHECK (skill_a_id <> skill_b_id)
 );
 
-CREATE INDEX idx_compatibility_skill_a ON public.skill_compatibility(skill_a);
-CREATE INDEX idx_compatibility_skill_b ON public.skill_compatibility(skill_b);
+CREATE INDEX IF NOT EXISTS idx_compatibility_skill_a ON public.skill_compatibility(skill_a_id);
+CREATE INDEX IF NOT EXISTS idx_compatibility_skill_b ON public.skill_compatibility(skill_b_id);
 
 -- 4. Progression utilisateur (acumul des acquis A_t)
-CREATE TABLE public.user_skill_progress (
+CREATE TABLE IF NOT EXISTS public.user_skill_progress (
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   skill_id UUID NOT NULL REFERENCES public.skills(id) ON DELETE CASCADE,
   acquired_at TIMESTAMPTZ DEFAULT now(),
@@ -54,7 +53,7 @@ CREATE TABLE public.user_skill_progress (
 );
 
 -- 5. Missions générées (résultat du solveur)
-CREATE TABLE public.user_missions (
+CREATE TABLE IF NOT EXISTS public.user_missions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   skill_a UUID REFERENCES public.skills(id) ON DELETE SET NULL,
@@ -67,7 +66,7 @@ CREATE TABLE public.user_missions (
   territory TEXT NOT NULL
 );
 
-CREATE INDEX idx_missions_user_id ON public.user_missions(user_id);
+CREATE INDEX IF NOT EXISTS idx_missions_user_id ON public.user_missions(user_id);
 
 -- RLS Policies
 ALTER TABLE public.skills ENABLE ROW LEVEL SECURITY;

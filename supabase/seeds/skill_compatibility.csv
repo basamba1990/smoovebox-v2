@@ -1,0 +1,60 @@
+skill_a,skill_b,score_p,score_c,score_t,score_d,total_score
+Imagination,Créativité,8.0,10.0,9.0,8.0,8.9
+Imagination,Innovation,8.0,9.0,9.0,8.0,8.6
+Imagination,Initiative,4.0,5.0,6.0,7.0,5.1
+Imagination,Résilience,3.0,5.0,5.0,6.0,4.4
+Créativité,Imagination,2.0,5.0,4.0,6.0,3.9
+Créativité,Innovation,9.0,9.0,8.0,8.0,8.7
+Créativité,Initiative,5.0,6.0,7.0,7.0,6.0
+Créativité,Résilience,4.0,5.0,6.0,7.0,5.1
+Innovation,Imagination,1.0,4.0,3.0,7.0,3.1
+Innovation,Créativité,4.0,6.0,5.0,5.0,5.0
+Innovation,Initiative,8.0,8.0,8.0,7.0,7.9
+Innovation,Résilience,7.0,8.0,7.0,8.0,7.5
+Initiative,Imagination,3.0,4.0,4.0,5.0,3.8
+Initiative,Créativité,5.0,4.0,5.0,5.0,4.7
+Initiative,Innovation,8.0,8.0,8.0,7.0,7.9
+Initiative,Résilience,9.0,9.0,8.0,8.0,8.7
+Résilience,Imagination,2.0,4.0,3.0,6.0,3.3
+Pitch,Prise de parole,9.0,9.0,9.0,8.0,8.9
+Pitch,Argumentation,8.0,10.0,9.0,8.0,8.9
+Pitch,Analyse,6.0,7.0,7.0,8.0,6.8
+Pitch,Esprit critique,6.0,7.0,7.0,7.0,6.7
+Prise de parole,Pitch,3.0,5.0,4.0,6.0,4.2
+Prise de parole,Argumentation,10.0,10.0,9.0,8.0,9.6
+Prise de parole,Analyse,6.0,7.0,7.0,8.0,6.8
+Prise de parole,Esprit critique,5.0,6.0,7.0,7.0,6.0
+Argumentation,Pitch,2.0,4.0,3.0,6.0,3.3
+Argumentation,Prise de parole,4.0,6.0,5.0,5.0,5.0
+Argumentation,Analyse,9.0,9.0,9.0,8.0,8.9
+Argumentation,Esprit critique,9.0,10.0,9.0,8.0,9.3
+Analyse,Pitch,3.0,4.0,5.0,6.0,4.1
+Analyse,Prise de parole,4.0,5.0,5.0,6.0,4.8
+Analyse,Argumentation,6.0,7.0,6.0,7.0,6.5
+Analyse,Esprit critique,10.0,10.0,10.0,8.0,9.8
+Esprit critique,Pitch,2.0,5.0,4.0,7.0,4.0
+Esprit critique,Prise de parole,3.0,5.0,5.0,6.0,4.4
+Organisation,Gestion de projet,,,,,9.7
+Organisation,Leadership,,,,,7.2
+Organisation,Résolution de problèmes,,,,,7.9
+Gestion de projet,Organisation,,,,,5.1
+Gestion de projet,Leadership,,,,,8.2
+Gestion de projet,Résolution de problèmes,,,,,8.0
+Leadership,Organisation,,,,,4.2
+Leadership,Gestion de projet,,,,,5.5
+Leadership,Résolution de problèmes,,,,,6.2
+Résolution de problèmes,Organisation,,,,,4.9
+Résolution de problèmes,Gestion de projet,,,,,5.8
+Résolution de problèmes,Leadership,,,,,6.6
+Travail d'équipe,Écoute,,,,,9.7
+Travail d'équipe,Contribution,,,,,9.3
+Travail d'équipe,Autonomie,,,,,6.0
+Écoute,Travail d'équipe,,,,,5.7
+Écoute,Contribution,,,,,8.9
+Écoute,Autonomie,,,,,6.0
+Contribution,Travail d'équipe,,,,,5.8
+Contribution,Écoute,,,,,8.9
+Contribution,Autonomie,,,,,7.1
+Autonomie,Travail d'équipe,,,,,6.0
+Autonomie,Écoute,,,,,6.0
+Autonomie,Contribution,,,,,7.1

@@ -1,0 +1,19 @@
+name,territory,element,energy,sub_energy,pure_score
+Créativité,Calyxis,Feu,CRÉATION,CRÉER,0.0
+Innovation,Calyxis,Feu,CRÉATION,CRÉER,0.0
+Imagination,Calyxis,Feu,CRÉATION,CRÉER,0.0
+Initiative,Calyxis,Feu,ACTION,AGIR,0.0
+Persévérance,Calyxis,Feu,ACTION,AGIR,0.0
+Pitch,Sylvara,Terre,COOPERATION_COMMUNICATION,COMMUNIQUER,0.0
+Prise de parole,Sylvara,Terre,COOPERATION_COMMUNICATION,COMMUNIQUER,0.0
+Argumentation,Sylvara,Terre,COOPERATION_COMMUNICATION,COMMUNIQUER,0.0
+Analyse,Sylvara,Terre,ACTION,RÉSOUDRE,0.0
+Esprit critique,Sylvara,Terre,ACTION,RÉSOUDRE,0.0
+Organisation,Cattleya,Air,CRÉATION,PILOTER,0.0
+Gestion de projet,Cattleya,Air,CRÉATION,PILOTER,0.0
+Leadership,Cattleya,Air,CRÉATION,PILOTER,0.0
+Résolution de problèmes,Cattleya,Air,ACTION,RÉSOUDRE,0.0
+Travail d'équipe,Neptunus,Eau,COOPERATION_COMMUNICATION,COOPÉRER,0.0
+Écoute,Neptunus,Eau,COOPERATION_COMMUNICATION,COOPÉRER,0.0
+Contribution,Neptunus,Eau,COOPERATION_COMMUNICATION,COOPÉRER,0.0
+Autonomie,Neptunus,Eau,ACTION,AGIR,0.0
