@@ -45,7 +45,7 @@ export const ODYSSEY_STEPS = [
     id: 6,
     key: 'journal-mission',
     title: 'Le journal de mission',
-    path: null,
+    path: '/journal-mission',
     Icon: BookOpen,
   },
   {
