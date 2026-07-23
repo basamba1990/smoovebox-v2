@@ -18,6 +18,9 @@ import {
   Wind,
   Award,
   ArrowLeft,
+  RefreshCw,
+  CheckCircle2,
+  Clock,
 } from 'lucide-react';
 import OdysseyLayout from './OdysseyLayout.jsx';
 
@@ -44,16 +47,20 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
   const [currentTerritory, setCurrentTerritory] = useState('Calyxis');
   const [error, setError] = useState(null);
   const [stats, setStats] = useState(null);
+  const [generatingFresh, setGeneratingFresh] = useState(false);
 
-  // Charger les missions existantes de l'utilisateur
+  // Charger les missions de l'utilisateur pour le territoire actuel
   const loadMissions = useCallback(async () => {
     if (!userId) return;
     try {
       setLoading(true);
+
+      // FIX: Filtrer par territoire pour éviter de montrer les missions d'autres territoires
       const { data, error: queryError } = await supabase
         .from('user_missions')
         .select('*')
         .eq('user_id', userId)
+        .eq('territory', currentTerritory)
         .order('created_at', { ascending: false });
 
       if (queryError) throw queryError;
@@ -73,8 +80,17 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
 
         const skillNameMap = new Map((skills || []).map((s) => [s.id, s.name]));
 
+        // FIX: Mapper mission_type → type et dédupliquer par combinaison (skill_a, skill_b, mission_type)
+        const seen = new Set();
+        const deduped = (data || []).filter((m) => {
+          const key = `${m.skill_a || ''}-${m.skill_b || ''}-${m.mission_type || m.type}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
         setMissions(
-          (data || []).map((m) => ({
+          deduped.map((m) => ({
             ...m,
             // FIX: mapper mission_type → type pour la cohérence frontend
             type: m.mission_type || m.type || 'pure',
@@ -86,7 +102,6 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
         setMissions(
           (data || []).map((m) => ({
             ...m,
-            // FIX: mapper mission_type → type pour la cohérence frontend
             type: m.mission_type || m.type || 'pure',
           }))
         );
@@ -97,12 +112,13 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, [userId, currentTerritory]);
 
   // Générer de nouvelles missions via l'Edge Function
   const generateMissions = async () => {
     console.log('🚀 Lancement de la génération des missions pour:', currentTerritory);
     setGenerating(true);
+    setGeneratingFresh(true);
     setError(null);
 
     try {
@@ -121,30 +137,62 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
 
       console.log('✅ Missions générées avec succès:', data);
 
-      // FIX: Calculer les stats côté frontend car l'Edge Function ne les retourne pas
+      // FIX: Calculer les stats côté frontend
       const missionsFromResponse = data?.missions || [];
       const totalCombinations = missionsFromResponse.length;
-      const acquiredCount = 0; // Les missions générées ne sont pas encore acquises
 
       setStats({
-        acquired_count: acquiredCount,
+        acquired_count: 0, // Les missions générées ne sont pas encore acquises
         total_combinations: totalCombinations,
         objective_score: data?.objective_score || 0,
       });
 
-      // Recharger les missions depuis la DB
+      // Recharger les missions depuis la DB (l'Edge Function a nettoyé les doublons)
       await loadMissions();
     } catch (err) {
       console.error('Erreur génération missions:', err);
       setError(err.message || 'Erreur inconnue lors de la génération');
     } finally {
       setGenerating(false);
+      setGeneratingFresh(false);
+    }
+  };
+
+  // Mettre à jour le statut d'une mission
+  const toggleMissionStatus = async (mission) => {
+    try {
+      const newStatus = mission.status === 'completed'
+        ? 'pending'
+        : mission.status === 'in_progress'
+        ? 'completed'
+        : 'in_progress';
+
+      const { error } = await supabase
+        .from('user_missions')
+        .update({ status: newStatus })
+        .eq('id', mission.id);
+
+      if (error) throw error;
+
+      // Mettre à jour localement
+      setMissions((prev) =>
+        prev.map((m) => (m.id === mission.id ? { ...m, status: newStatus } : m))
+      );
+    } catch (err) {
+      console.error('Erreur mise à jour statut:', err);
+      setError('Impossible de mettre à jour le statut');
     }
   };
 
   useEffect(() => {
     loadMissions();
   }, [loadMissions]);
+
+  // Statistiques de progression pour le territoire actuel
+  const pureMissions = missions.filter((m) => m.type === 'pure');
+  const hybridMissions = missions.filter((m) => m.type === 'hybrid');
+  const pureCompleted = pureMissions.filter((m) => m.status === 'completed').length;
+  const hybridCompleted = hybridMissions.filter((m) => m.status === 'completed').length;
 
   return (
     <OdysseyLayout
@@ -218,8 +266,8 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
           >
             {generating ? (
               <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Génération en cours...
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                {generatingFresh ? 'Nouvelle génération...' : 'Chargement...'}
               </>
             ) : (
               <>
@@ -259,10 +307,19 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
           <div className="space-y-3">
             {missions.map((mission, index) => {
               const MissionIcon = mission.type === 'hybrid' ? Star : Shield;
+              const StatusIcon = mission.status === 'completed'
+                ? CheckCircle2
+                : mission.status === 'in_progress'
+                ? Clock
+                : null;
+
               return (
                 <Card
                   key={index}
-                  className="glass-card border-white/10 rounded-2xl overflow-hidden bg-slate-900/70 hover:border-teal-400/30 transition-colors"
+                  className={`glass-card border-white/10 rounded-2xl overflow-hidden bg-slate-900/70 hover:border-teal-400/30 transition-all cursor-pointer ${
+                    mission.status === 'completed' ? 'border-teal-500/30 bg-teal-900/10' : ''
+                  }`}
+                  onClick={() => toggleMissionStatus(mission)}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
@@ -297,23 +354,33 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
                           </p>
                         </div>
                       </div>
-                      {/* FIX: Utiliser variant="secondary" au lieu de "success"/"warning" non supportés */}
-                      <Badge
-                        variant="secondary"
-                        className={
-                          mission.status === 'completed'
-                            ? 'bg-green-900/30 text-green-300'
+                      <div className="flex items-center gap-2">
+                        {StatusIcon && (
+                          <StatusIcon
+                            className={`w-4 h-4 ${
+                              mission.status === 'completed'
+                                ? 'text-green-400'
+                                : 'text-orange-400'
+                            }`}
+                          />
+                        )}
+                        <Badge
+                          variant="secondary"
+                          className={
+                            mission.status === 'completed'
+                              ? 'bg-green-900/30 text-green-300'
+                              : mission.status === 'in_progress'
+                              ? 'bg-orange-900/30 text-orange-300'
+                              : 'bg-slate-700 text-slate-300'
+                          }
+                        >
+                          {mission.status === 'completed'
+                            ? 'Complété'
                             : mission.status === 'in_progress'
-                            ? 'bg-orange-900/30 text-orange-300'
-                            : 'bg-slate-700 text-slate-300'
-                        }
-                      >
-                        {mission.status === 'completed'
-                          ? 'Complété'
-                          : mission.status === 'in_progress'
-                          ? 'En cours'
-                          : 'En attente'}
-                      </Badge>
+                            ? 'En cours'
+                            : 'En attente'}
+                        </Badge>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -335,23 +402,28 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
               <div>
                 <div className="flex justify-between text-sm text-slate-400 mb-1">
                   <span>Compétences pures</span>
-                  <span>{missions.filter((m) => m.type === 'pure').length} / 2</span>
+                  <span>{pureCompleted} / {pureMissions.length}</span>
                 </div>
                 <Progress
-                  value={(missions.filter((m) => m.type === 'pure').length / 2) * 100}
+                  value={pureMissions.length > 0 ? (pureCompleted / pureMissions.length) * 100 : 0}
                   className="bg-slate-700"
                 />
               </div>
               <div>
                 <div className="flex justify-between text-sm text-slate-400 mb-1">
                   <span>Combinaisons hybrides</span>
-                  <span>{missions.filter((m) => m.type === 'hybrid').length} / 3</span>
+                  <span>{hybridCompleted} / {hybridMissions.length}</span>
                 </div>
                 <Progress
-                  value={(missions.filter((m) => m.type === 'hybrid').length / 3) * 100}
+                  value={hybridMissions.length > 0 ? (hybridCompleted / hybridMissions.length) * 100 : 0}
                   className="bg-slate-700"
                 />
               </div>
+            </div>
+            <div className="mt-4 pt-3 border-t border-white/10 text-center">
+              <p className="text-xs text-slate-400">
+                Cliquez sur une mission pour changer son statut (En attente → En cours → Complété)
+              </p>
             </div>
           </CardContent>
         </Card>

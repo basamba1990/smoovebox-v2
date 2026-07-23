@@ -162,14 +162,26 @@ Deno.serve(async (req: Request) => {
       skill_b_name: m.skill_b ? skillNameMap.get(m.skill_b) : null,
     }));
 
-    // 8. Sauvegarde
+    // 8. FIX: Nettoyer les anciennes missions pending du même territoire pour éviter les doublons
+    //    On supprime uniquement les missions avec status='pending' pour ce territoire
+    //    Les missions 'in_progress' ou 'completed' sont conservées
     if (selected.length > 0) {
+      // Supprimer les doublons pending existants pour ce territoire
+      await supabase
+        .from('user_missions')
+        .delete()
+        .eq('user_id', user_id)
+        .eq('territory', targetTerritory)
+        .eq('status', 'pending');
+
+      // Insérer les nouvelles missions avec status explicite
       await supabase.from('user_missions').insert(selected.map(m => ({
         user_id,
         skill_a: m.skill_a,
         skill_b: m.skill_b,
         mission_type: m.type,
         total_score: m.score,
+        status: 'pending',
         territory: m.territory,
       })));
     }
@@ -178,7 +190,10 @@ Deno.serve(async (req: Request) => {
       success: true,
       territory: targetTerritory,
       missions: missionsWithNames,
-      objective_score: totalObjective
+      objective_score: totalObjective,
+      // FIX: Retourner les stats pour le frontend
+      acquired_count: 0,
+      total_combinations: selected.length,
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
