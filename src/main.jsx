@@ -95,3 +95,4 @@ try {
   
   console.error('❌ Erreur critique React:', error);
 }
+// Forced redeploy at Thu Jul 23 13:47:19 UTC 2026
