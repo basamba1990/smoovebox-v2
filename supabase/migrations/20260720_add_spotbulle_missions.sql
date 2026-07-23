@@ -1,106 +1,88 @@
--- 20260720_add_spotbulle_missions.sql
--- Moteur d'acquisition des compétences Spotbulle (Univers Lumia)
+CREATE TABLE IF NOT EXISTS public.skills (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name TEXT NOT NULL UNIQUE, territory TEXT NOT NULL, element TEXT NOT NULL, energy TEXT NOT NULL, sub_energy TEXT, pure_score REAL DEFAULT 0.0, created_at TIMESTAMPTZ DEFAULT now());
+-- SCRIPT DE CONSOLIDATION DES DONNÉES PÉDAGOGIQUES (VALENTINA)
+TRUNCATE public.skill_compatibility CASCADE;
+TRUNCATE public.skills CASCADE;
 
--- 1. Table des compétences
-CREATE TABLE IF NOT EXISTS public.skills (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL UNIQUE,
-  territory TEXT NOT NULL CHECK (territory IN ('Calyxis', 'Cattleya', 'Sylvara', 'Neptunus')),
-  element TEXT NOT NULL CHECK (element IN ('Feu', 'Air', 'Terre', 'Eau')),
-  energy TEXT NOT NULL,
-  sub_energy TEXT,
-  pure_score REAL DEFAULT 0.0,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Imagination', 'Calyxis', 'Feu', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Créativité', 'Calyxis', 'Feu', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Innovation', 'Calyxis', 'Feu', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Initiative', 'Calyxis', 'Feu', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Résilience', 'Calyxis', 'Feu', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Pitch', 'Sylvara', 'Terre', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Prise de parole', 'Sylvara', 'Terre', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Argumentation', 'Sylvara', 'Terre', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Analyse', 'Sylvara', 'Terre', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Esprit critique', 'Sylvara', 'Terre', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Organisation', 'Cattleya', 'Air', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Gestion de projet', 'Cattleya', 'Air', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Leadership', 'Cattleya', 'Air', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Résolution de problèmes', 'Cattleya', 'Air', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Travail d''équipe', 'Neptunus', 'Eau', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Écoute', 'Neptunus', 'Eau', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Contribution', 'Neptunus', 'Eau', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
+INSERT INTO public.skills (name, territory, element, energy, sub_energy) VALUES ('Autonomie', 'Neptunus', 'Eau', 'ACTION', 'AGIR') ON CONFLICT (name) DO NOTHING;
 
-CREATE INDEX IF NOT EXISTS idx_skills_territory ON public.skills(territory);
-
--- 2. Table des prérequis (graphe orienté)
-CREATE TABLE IF NOT EXISTS public.skill_prerequisites (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  skill_id UUID NOT NULL REFERENCES public.skills(id) ON DELETE CASCADE,
-  prerequisite_id UUID NOT NULL REFERENCES public.skills(id) ON DELETE CASCADE,
-  CHECK (skill_id <> prerequisite_id),
-  UNIQUE(skill_id, prerequisite_id)
-);
-
--- 3. Matrice de compatibilité (pondération P=0.35 C=0.35 T=0.2 D=0.1)
-CREATE TABLE IF NOT EXISTS public.skill_compatibility (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  skill_a_id UUID NOT NULL REFERENCES public.skills(id) ON DELETE CASCADE,
-  skill_b_id UUID NOT NULL REFERENCES public.skills(id) ON DELETE CASCADE,
-  score_p REAL CHECK (score_p BETWEEN 0 AND 10),
-  score_c REAL CHECK (score_c BETWEEN 0 AND 10),
-  score_t REAL CHECK (score_t BETWEEN 0 AND 10),
-  score_d REAL CHECK (score_d BETWEEN 0 AND 10),
-  total_score REAL,
-  is_forbidden BOOLEAN DEFAULT FALSE,
-  UNIQUE(skill_a_id, skill_b_id),
-  CHECK (skill_a_id <> skill_b_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_compatibility_skill_a ON public.skill_compatibility(skill_a_id);
-CREATE INDEX IF NOT EXISTS idx_compatibility_skill_b ON public.skill_compatibility(skill_b_id);
-
--- 4. Progression utilisateur (acumul des acquis A_t)
-CREATE TABLE IF NOT EXISTS public.user_skill_progress (
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  skill_id UUID NOT NULL REFERENCES public.skills(id) ON DELETE CASCADE,
-  acquired_at TIMESTAMPTZ DEFAULT now(),
-  territory TEXT NOT NULL,
-  level INTEGER NOT NULL DEFAULT 1,
-  PRIMARY KEY (user_id, skill_id)
-);
-
--- 5. Missions générées (résultat du solveur)
-CREATE TABLE IF NOT EXISTS public.user_missions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  skill_a UUID REFERENCES public.skills(id) ON DELETE SET NULL,
-  skill_b UUID REFERENCES public.skills(id) ON DELETE SET NULL,
-  mission_type TEXT NOT NULL CHECK (mission_type IN ('pure', 'hybrid')),
-  total_score REAL,
-  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'completed', 'failed')),
-  created_at TIMESTAMPTZ DEFAULT now(),
-  completed_at TIMESTAMPTZ,
-  territory TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_missions_user_id ON public.user_missions(user_id);
-
--- RLS Policies
-ALTER TABLE public.skills ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.skill_prerequisites ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.skill_compatibility ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.user_skill_progress ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.user_missions ENABLE ROW LEVEL SECURITY;
-
--- Skills : lecture publique
-DROP POLICY IF EXISTS "skills_read_all" ON public.skills;
-CREATE POLICY "skills_read_all" ON public.skills FOR SELECT USING (true);
-
--- Prerequisites : lecture publique
-DROP POLICY IF EXISTS "prerequisites_read_all" ON public.skill_prerequisites;
-CREATE POLICY "prerequisites_read_all" ON public.skill_prerequisites FOR SELECT USING (true);
-
--- Compatibility : lecture publique
-DROP POLICY IF EXISTS "compatibility_read_all" ON public.skill_compatibility;
-CREATE POLICY "compatibility_read_all" ON public.skill_compatibility FOR SELECT USING (true);
-
--- User progress : lecture/écriture par l'utilisateur
-DROP POLICY IF EXISTS "progress_select_own" ON public.user_skill_progress;
-CREATE POLICY "progress_select_own" ON public.user_skill_progress FOR SELECT USING (auth.uid() = user_id);
-DROP POLICY IF EXISTS "progress_insert_own" ON public.user_skill_progress;
-CREATE POLICY "progress_insert_own" ON public.user_skill_progress FOR INSERT WITH CHECK (auth.uid() = user_id);
-
--- User missions : lecture/écriture par l'utilisateur
-DROP POLICY IF EXISTS "missions_select_own" ON public.user_missions;
-CREATE POLICY "missions_select_own" ON public.user_missions FOR SELECT USING (auth.uid() = user_id);
-DROP POLICY IF EXISTS "missions_insert_own" ON public.user_missions;
-CREATE POLICY "missions_insert_own" ON public.user_missions FOR INSERT WITH CHECK (auth.uid() = user_id);
-DROP POLICY IF EXISTS "missions_update_own" ON public.user_missions;
-CREATE POLICY "missions_update_own" ON public.user_missions FOR UPDATE USING (auth.uid() = user_id);
-
-COMMENT ON TABLE public.skills IS 'Compétences du XXIe siècle associées aux territoires Lumia';
-COMMENT ON TABLE public.skill_compatibility IS 'Matrice de compatibilité pondérée (P=0.35 C=0.35 T=0.2 D=0.1)';
-COMMENT ON TABLE public.user_missions IS 'Missions générées par le solveur d''optimisation Spotbulle';
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Imagination'), (SELECT id FROM public.skills WHERE name = 'Créativité'), 8.0, 10.0, 9.0, 8.0, 8.9);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Imagination'), (SELECT id FROM public.skills WHERE name = 'Innovation'), 8.0, 9.0, 9.0, 8.0, 8.6);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Imagination'), (SELECT id FROM public.skills WHERE name = 'Initiative'), 4.0, 5.0, 6.0, 7.0, 5.1);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Imagination'), (SELECT id FROM public.skills WHERE name = 'Résilience'), 3.0, 5.0, 5.0, 6.0, 4.4);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Créativité'), (SELECT id FROM public.skills WHERE name = 'Imagination'), 2.0, 5.0, 4.0, 6.0, 3.9);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Créativité'), (SELECT id FROM public.skills WHERE name = 'Innovation'), 9.0, 9.0, 8.0, 8.0, 8.7);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Créativité'), (SELECT id FROM public.skills WHERE name = 'Initiative'), 5.0, 6.0, 7.0, 7.0, 6.0);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Créativité'), (SELECT id FROM public.skills WHERE name = 'Résilience'), 4.0, 5.0, 6.0, 7.0, 5.1);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Innovation'), (SELECT id FROM public.skills WHERE name = 'Imagination'), 1.0, 4.0, 3.0, 7.0, 3.1);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Innovation'), (SELECT id FROM public.skills WHERE name = 'Créativité'), 4.0, 6.0, 5.0, 5.0, 5.0);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Innovation'), (SELECT id FROM public.skills WHERE name = 'Initiative'), 8.0, 8.0, 8.0, 7.0, 7.9);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Innovation'), (SELECT id FROM public.skills WHERE name = 'Résilience'), 7.0, 8.0, 7.0, 8.0, 7.5);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Initiative'), (SELECT id FROM public.skills WHERE name = 'Imagination'), 3.0, 4.0, 4.0, 5.0, 3.8);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Initiative'), (SELECT id FROM public.skills WHERE name = 'Créativité'), 5.0, 4.0, 5.0, 5.0, 4.7);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Initiative'), (SELECT id FROM public.skills WHERE name = 'Innovation'), 8.0, 8.0, 8.0, 7.0, 7.9);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Initiative'), (SELECT id FROM public.skills WHERE name = 'Résilience'), 9.0, 9.0, 8.0, 8.0, 8.7);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Résilience'), (SELECT id FROM public.skills WHERE name = 'Imagination'), 2.0, 4.0, 3.0, 6.0, 3.3);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Résilience'), (SELECT id FROM public.skills WHERE name = 'Créativité'), 3.0, 5.0, 4.0, 5.0, 4.1);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Résilience'), (SELECT id FROM public.skills WHERE name = 'Innovation'), 7.0, 6.0, 6.0, 6.0, 6.4);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Résilience'), (SELECT id FROM public.skills WHERE name = 'Initiative'), 7.0, 8.0, 7.0, 6.0, 7.3);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Pitch'), (SELECT id FROM public.skills WHERE name = 'Prise de parole'), 9.0, 9.0, 9.0, 8.0, 8.9);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Pitch'), (SELECT id FROM public.skills WHERE name = 'Argumentation'), 8.0, 10.0, 9.0, 8.0, 8.9);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Pitch'), (SELECT id FROM public.skills WHERE name = 'Analyse'), 6.0, 7.0, 7.0, 8.0, 6.8);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Pitch'), (SELECT id FROM public.skills WHERE name = 'Esprit critique'), 6.0, 7.0, 7.0, 7.0, 6.7);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Prise de parole'), (SELECT id FROM public.skills WHERE name = 'Pitch'), 3.0, 5.0, 4.0, 6.0, 4.2);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Prise de parole'), (SELECT id FROM public.skills WHERE name = 'Argumentation'), 10.0, 10.0, 9.0, 8.0, 9.6);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Prise de parole'), (SELECT id FROM public.skills WHERE name = 'Analyse'), 6.0, 7.0, 7.0, 8.0, 6.8);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Prise de parole'), (SELECT id FROM public.skills WHERE name = 'Esprit critique'), 5.0, 6.0, 7.0, 7.0, 6.0);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Argumentation'), (SELECT id FROM public.skills WHERE name = 'Pitch'), 2.0, 4.0, 3.0, 6.0, 3.3);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Argumentation'), (SELECT id FROM public.skills WHERE name = 'Prise de parole'), 4.0, 6.0, 5.0, 5.0, 5.0);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Argumentation'), (SELECT id FROM public.skills WHERE name = 'Analyse'), 9.0, 9.0, 9.0, 8.0, 8.9);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Argumentation'), (SELECT id FROM public.skills WHERE name = 'Esprit critique'), 9.0, 10.0, 9.0, 8.0, 9.3);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Analyse'), (SELECT id FROM public.skills WHERE name = 'Pitch'), 3.0, 4.0, 5.0, 6.0, 4.1);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Analyse'), (SELECT id FROM public.skills WHERE name = 'Prise de parole'), 4.0, 5.0, 5.0, 6.0, 4.8);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Analyse'), (SELECT id FROM public.skills WHERE name = 'Argumentation'), 6.0, 7.0, 6.0, 7.0, 6.5);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Analyse'), (SELECT id FROM public.skills WHERE name = 'Esprit critique'), 10.0, 10.0, 10.0, 8.0, 9.8);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Esprit critique'), (SELECT id FROM public.skills WHERE name = 'Pitch'), 2.0, 5.0, 4.0, 7.0, 4.0);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Esprit critique'), (SELECT id FROM public.skills WHERE name = 'Prise de parole'), 3.0, 5.0, 5.0, 6.0, 4.4);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Esprit critique'), (SELECT id FROM public.skills WHERE name = 'Argumentation'), 5.0, 6.0, 6.0, 6.0, 5.7);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Esprit critique'), (SELECT id FROM public.skills WHERE name = 'Analyse'), 7.0, 8.0, 8.0, 7.0, 7.6);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Organisation'), (SELECT id FROM public.skills WHERE name = 'Gestion de projet'), 10.0, 10.0, 9.0, 9.0, 9.7);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Organisation'), (SELECT id FROM public.skills WHERE name = 'Leadership'), 7.0, 8.0, 6.0, 7.0, 7.2);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Organisation'), (SELECT id FROM public.skills WHERE name = 'Résolution de problèmes'), 8.0, 8.0, 8.0, 7.0, 7.9);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Gestion de projet'), (SELECT id FROM public.skills WHERE name = 'Organisation'), 4.0, 6.0, 5.0, 6.0, 5.1);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Gestion de projet'), (SELECT id FROM public.skills WHERE name = 'Leadership'), 8.0, 9.0, 7.0, 8.0, 8.2);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Gestion de projet'), (SELECT id FROM public.skills WHERE name = 'Résolution de problèmes'), 8.0, 8.0, 8.0, 8.0, 8.0);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Leadership'), (SELECT id FROM public.skills WHERE name = 'Organisation'), 3.0, 5.0, 4.0, 6.0, 4.2);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Leadership'), (SELECT id FROM public.skills WHERE name = 'Gestion de projet'), 5.0, 6.0, 5.0, 6.0, 5.5);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Leadership'), (SELECT id FROM public.skills WHERE name = 'Résolution de problèmes'), 6.0, 6.0, 7.0, 6.0, 6.2);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Résolution de problèmes'), (SELECT id FROM public.skills WHERE name = 'Organisation'), 4.0, 5.0, 6.0, 5.0, 4.9);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Résolution de problèmes'), (SELECT id FROM public.skills WHERE name = 'Gestion de projet'), 5.0, 6.0, 6.0, 7.0, 5.8);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Résolution de problèmes'), (SELECT id FROM public.skills WHERE name = 'Leadership'), 6.0, 7.0, 7.0, 6.0, 6.6);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Travail d''équipe'), (SELECT id FROM public.skills WHERE name = 'Écoute'), 10.0, 10.0, 9.0, 9.0, 9.7);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Travail d''équipe'), (SELECT id FROM public.skills WHERE name = 'Contribution'), 9.0, 10.0, 9.0, 8.0, 9.3);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Travail d''équipe'), (SELECT id FROM public.skills WHERE name = 'Autonomie'), 5.0, 6.0, 7.0, 7.0, 6.0);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Écoute'), (SELECT id FROM public.skills WHERE name = 'Travail d''équipe'), 5.0, 6.0, 6.0, 6.0, 5.7);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Écoute'), (SELECT id FROM public.skills WHERE name = 'Contribution'), 9.0, 9.0, 9.0, 8.0, 8.9);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Écoute'), (SELECT id FROM public.skills WHERE name = 'Autonomie'), 5.0, 6.0, 7.0, 7.0, 6.0);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Contribution'), (SELECT id FROM public.skills WHERE name = 'Travail d''équipe'), 4.0, 5.0, 9.0, 8.0, 5.8);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Contribution'), (SELECT id FROM public.skills WHERE name = 'Écoute'), 9.0, 9.0, 9.0, 8.0, 8.9);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Contribution'), (SELECT id FROM public.skills WHERE name = 'Autonomie'), 7.0, 7.0, 7.0, 8.0, 7.1);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Autonomie'), (SELECT id FROM public.skills WHERE name = 'Travail d''équipe'), 5.0, 6.0, 7.0, 7.0, 6.0);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Autonomie'), (SELECT id FROM public.skills WHERE name = 'Écoute'), 5.0, 6.0, 7.0, 7.0, 6.0);
+INSERT INTO public.skill_compatibility (skill_a_id, skill_b_id, score_p, score_c, score_t, score_d, total_score) VALUES ((SELECT id FROM public.skills WHERE name = 'Autonomie'), (SELECT id FROM public.skills WHERE name = 'Contribution'), 7.0, 7.0, 7.0, 8.0, 7.1);
