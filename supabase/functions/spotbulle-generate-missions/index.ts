@@ -129,11 +129,17 @@ Deno.serve(async (req: Request) => {
       skillUsageCount.set(skill.id, (skillUsageCount.get(skill.id) || 0) + 1);
     }
 
-    // Hybrides
-    for (const combo of validCombinations) {
+    // Hybrides (Triées par score décroissant pour l'optimisation)
+    const sortedHybrids = [...validCombinations].sort((a, b) => b.total_score - a.total_score);
+    
+    for (const combo of sortedHybrids) {
       if (selected.length >= config.N) break;
+      if (hybridCount >= config.H && selected.length >= config.N) break;
+      
       const usageA = skillUsageCount.get(combo.skill_a_id) || 0;
       const usageB = skillUsageCount.get(combo.skill_b_id) || 0;
+      
+      // Éviter la surexploitation d'une compétence
       if (usageA >= config.R_MAX || usageB >= config.R_MAX) continue;
 
       selected.push({
