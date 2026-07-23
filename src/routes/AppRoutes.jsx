@@ -226,7 +226,7 @@ export default function AppRoutes({
         path="/journal-mission"
         element={
           <RequireAuth>
-            <SpotbulleMissions userId={user?.id} userProfile={profile} />
+            <SpotbulleMissions userId={user?.id} userProfile={profile} onSignOut={onSignOut} />
           </RequireAuth>
         }
       />

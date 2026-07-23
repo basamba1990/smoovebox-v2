@@ -10,7 +10,6 @@ import {
   Target,
   Shield,
   Star,
-  ChevronRight,
   Loader2,
   Zap,
   Compass,
@@ -37,7 +36,7 @@ const TERRITORY_COLORS = {
   Neptunus: 'from-indigo-500 to-purple-500',
 };
 
-const SpotbulleMissions = ({ userId, userProfile }) => {
+const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
   const navigate = useNavigate();
   const [missions, setMissions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -77,12 +76,20 @@ const SpotbulleMissions = ({ userId, userProfile }) => {
         setMissions(
           (data || []).map((m) => ({
             ...m,
+            // FIX: mapper mission_type → type pour la cohérence frontend
+            type: m.mission_type || m.type || 'pure',
             skill_a_name: m.skill_a ? skillNameMap.get(m.skill_a) || 'Inconnue' : null,
             skill_b_name: m.skill_b ? skillNameMap.get(m.skill_b) || 'Inconnue' : null,
           }))
         );
       } else {
-        setMissions(data || []);
+        setMissions(
+          (data || []).map((m) => ({
+            ...m,
+            // FIX: mapper mission_type → type pour la cohérence frontend
+            type: m.mission_type || m.type || 'pure',
+          }))
+        );
       }
     } catch (err) {
       console.error('Erreur chargement missions:', err);
@@ -113,17 +120,23 @@ const SpotbulleMissions = ({ userId, userProfile }) => {
       if (invokeError) throw invokeError;
 
       console.log('✅ Missions générées avec succès:', data);
+
+      // FIX: Calculer les stats côté frontend car l'Edge Function ne les retourne pas
+      const missionsFromResponse = data?.missions || [];
+      const totalCombinations = missionsFromResponse.length;
+      const acquiredCount = 0; // Les missions générées ne sont pas encore acquises
+
       setStats({
-        acquired_count: data.acquired_count,
-        total_combinations: data.total_combinations_evaluated,
-        objective_score: data.objective_score,
+        acquired_count: acquiredCount,
+        total_combinations: totalCombinations,
+        objective_score: data?.objective_score || 0,
       });
 
-      // Recharger les missions
+      // Recharger les missions depuis la DB
       await loadMissions();
     } catch (err) {
       console.error('Erreur génération missions:', err);
-      setError(err.message);
+      setError(err.message || 'Erreur inconnue lors de la génération');
     } finally {
       setGenerating(false);
     }
@@ -133,13 +146,12 @@ const SpotbulleMissions = ({ userId, userProfile }) => {
     loadMissions();
   }, [loadMissions]);
 
-  const TerritoryIcon = TERRITORY_ICONS[currentTerritory] || Compass;
-
   return (
     <OdysseyLayout
       currentStep={6}
       title=""
       maxWidthClass="max-w-6xl"
+      onSignOut={onSignOut}
     >
       <div className="w-full max-w-4xl mx-auto space-y-6">
         {/* Header */}
@@ -168,7 +180,9 @@ const SpotbulleMissions = ({ userId, userProfile }) => {
                   <p className="text-xs text-slate-400">Combinaisons évaluées</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-yellow-400">{stats.objective_score?.toFixed(1)}</p>
+                  <p className="text-2xl font-bold text-yellow-400">
+                    {Number.isFinite(stats.objective_score) ? stats.objective_score.toFixed(1) : '0.0'}
+                  </p>
                   <p className="text-xs text-slate-400">Score objectif</p>
                 </div>
               </div>
@@ -279,18 +293,13 @@ const SpotbulleMissions = ({ userId, userProfile }) => {
                           </div>
                           <p className="text-xs text-slate-400 mt-1">
                             Type: {mission.type === 'hybrid' ? 'Hybride' : 'Pure'} — Score:{' '}
-                            {mission.total_score?.toFixed(1)}
+                            {Number.isFinite(mission.total_score) ? mission.total_score.toFixed(1) : '0.0'}
                           </p>
                         </div>
                       </div>
+                      {/* FIX: Utiliser variant="secondary" au lieu de "success"/"warning" non supportés */}
                       <Badge
-                        variant={
-                          mission.status === 'completed'
-                            ? 'success'
-                            : mission.status === 'in_progress'
-                            ? 'warning'
-                            : 'secondary'
-                        }
+                        variant="secondary"
                         className={
                           mission.status === 'completed'
                             ? 'bg-green-900/30 text-green-300'
