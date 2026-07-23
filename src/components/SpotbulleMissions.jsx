@@ -90,10 +90,12 @@ const SpotbulleMissions = ({ userId, userProfile }) => {
 
   // Générer de nouvelles missions via l'Edge Function
   const generateMissions = async () => {
+    console.log('🚀 Lancement de la génération des missions pour:', currentTerritory);
     setGenerating(true);
     setError(null);
 
     try {
+      console.log('📡 Appel de l\'Edge Function spotbulle-generate-missions...');
       const { data, error: invokeError } = await supabase.functions.invoke(
         'spotbulle-generate-missions',
         {
