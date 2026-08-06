@@ -227,7 +227,8 @@ const AppContentProtected = () => {
   }, [user, queryClient]);
 
   // ✅ Rendre l'UI de diagnostic si erreur critique
-  if (hasNetworkError && connectionStatus !== "connected") {
+  // Désactivé temporairement pour les tests d'optimisation
+  if (false && hasNetworkError && connectionStatus !== "connected") {
     const errorMessage = 
       connectionStatus === "offline" 
         ? "Pas de connexion internet. Vérifiez votre réseau."

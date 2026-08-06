@@ -44,6 +44,7 @@ import QuickActions from "../components/QuickActions.jsx";
 import GalacticMap from "../pages/galactic-map.jsx";
 import AstroEnginePlayground from "../pages/AstroEnginePlayground.jsx";
 import SpotCoachPreview from "../pages/SpotCoachPreview.jsx";
+import SpotbulleMissions from "../components/SpotbulleMissions.jsx";
 
 export default function AppRoutes({
   user,
@@ -218,6 +219,14 @@ export default function AppRoutes({
         element={
           <RequireAuth>
             <GalacticMap user={user} profile={profile} onSignOut={onSignOut} />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/journal-mission"
+        element={
+          <RequireAuth>
+            <SpotbulleMissions userId={user?.id} userProfile={profile} onSignOut={onSignOut} />
           </RequireAuth>
         }
       />
