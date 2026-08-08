@@ -9,7 +9,6 @@ import {
   Sparkles,
   Target,
   Shield,
-  Star,
   Loader2,
   Zap,
   Compass,
@@ -386,7 +385,7 @@ const SpotbulleMissions = ({ userId, onSignOut }) => {
         ) : (
           <div className="space-y-3">
             {missions.map((mission, index) => {
-              const MissionIcon = mission.type === 'hybrid' ? Star : Shield;
+              const MissionIcon = Shield;
               const StatusIcon = mission.status === 'completed'
                 ? CheckCircle2
                 : mission.status === 'in_progress'
@@ -405,9 +404,7 @@ const SpotbulleMissions = ({ userId, onSignOut }) => {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <MissionIcon
-                          className={`w-5 h-5 ${
-                            mission.type === 'hybrid' ? 'text-yellow-400' : 'text-blue-400'
-                          }`}
+                          className="w-5 h-5 text-blue-400"
                         />
                         <div>
                           <div className="flex items-center gap-2">
@@ -428,9 +425,6 @@ const SpotbulleMissions = ({ userId, onSignOut }) => {
                               </>
                             )}
                           </div>
-                          <p className="text-xs text-slate-400 mt-1">
-                            {mission.type === 'hybrid' ? 'Mission de synergie' : 'Mission individuelle'}
-                          </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
