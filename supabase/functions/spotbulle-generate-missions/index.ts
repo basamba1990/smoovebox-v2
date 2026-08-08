@@ -53,14 +53,43 @@ Deno.serve(async (req: Request) => {
     if (!user_id) throw new Error('user_id est requis');
 
     const config = { ...DEFAULT_PARAMS, ...(params || {}) };
-    const targetTerritory = territory || 'Calyxis';
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
-    // 1. Acquis utilisateur
+    const { data: territoryConfigs, error: territoryError } = await supabase
+      .from('spotbulle_territories')
+      .select('territory, order_index, required_missions')
+      .order('order_index', { ascending: true });
+    if (territoryError) throw territoryError;
+    if (!territoryConfigs?.length) throw new Error('La configuration territoriale est vide');
+
+    const territoryOrder = territoryConfigs.map((item: any) => item.territory);
+    const targetTerritory = territory || territoryOrder[0];
+    if (!territoryOrder.includes(targetTerritory)) {
+      throw new Error(`Territoire inconnu: ${targetTerritory}`);
+    }
+
+    // 1. Le territoire suivant n'est accessible qu'après validation des cinq missions précédentes.
+    const territoryIndex = territoryOrder.indexOf(targetTerritory);
+    if (territoryIndex > 0) {
+      const previousTerritory = territoryOrder[territoryIndex - 1];
+      const requiredMissions = territoryConfigs[territoryIndex - 1]?.required_missions || config.N;
+      const { data: previousMissions, error: previousError } = await supabase
+        .from('user_missions')
+        .select('status')
+        .eq('user_id', user_id)
+        .eq('territory', previousTerritory);
+      if (previousError) throw previousError;
+      const completedPrevious = (previousMissions || []).filter((mission: any) => mission.status === 'completed').length;
+      if (completedPrevious < requiredMissions) {
+        throw new Error(`Le territoire ${targetTerritory} est verrouillé. Terminez les cinq missions de ${previousTerritory}.`);
+      }
+    }
+
+    // 2. Acquis utilisateur
     const { data: acquiredSkills, error: acqError } = await supabase
       .from('user_skill_progress')
       .select('skill_id')
@@ -68,17 +97,17 @@ Deno.serve(async (req: Request) => {
     if (acqError) throw acqError;
     const acquiredIds = new Set((acquiredSkills || []).map((s: any) => s.skill_id));
 
-    // 2. Compétences du territoire
+    // 3. Compétences du territoire
     const { data: skills, error: skillsError } = await supabase
       .from('skills')
-      .select('id, name, territory, pure_score')
+      .select('id, name, territory, energy, sub_energy, pure_score')
       .eq('territory', targetTerritory);
     if (skillsError) throw skillsError;
     const skillIds = new Set(skills.map((s: any) => s.id));
     const skillNameMap = new Map<string, string>();
     skills.forEach((s: any) => skillNameMap.set(s.id, s.name));
 
-    // 3. Prérequis
+    // 4. Prérequis
     const { data: prerequisites, error: prereqError } = await supabase
       .from('skill_prerequisites')
       .select('skill_id, prerequisite_id');
@@ -89,7 +118,7 @@ Deno.serve(async (req: Request) => {
       prereqMap.get(p.skill_id)!.push(p.prerequisite_id);
     });
 
-    // 4. Matrice de compatibilité
+    // 5. Matrice de compatibilité
     const { data: compatMatrix, error: compatError } = await supabase
       .from('skill_compatibility')
       .select('*')
@@ -97,7 +126,7 @@ Deno.serve(async (req: Request) => {
       .order('total_score', { ascending: false });
     if (compatError) throw compatError;
 
-    // 5. Filtrage
+    // 6. Filtrage
     const validCombinations: SkillCompatibility[] = (compatMatrix || []).filter(row => {
       if (!skillIds.has(row.skill_a_id) || !skillIds.has(row.skill_b_id)) return false;
       if (row.total_score < config.S_MIN) return false;
@@ -105,9 +134,11 @@ Deno.serve(async (req: Request) => {
       return prereqsB.every(pre => acquiredIds.has(pre));
     });
 
-    // 6. Sélection
+    // 7. Sélection
     const skillUsageCount = new Map<string, number>();
     const selected: GeneratedMission[] = [];
+    const requiredEnergies = new Set(skills.map((skill: any) => skill.energy).filter(Boolean));
+    const coveredEnergies = new Set<string>();
     let pureCount = 0;
     let hybridCount = 0;
 
@@ -126,11 +157,18 @@ Deno.serve(async (req: Request) => {
         territory: skill.territory,
       });
       pureCount++;
+      if (skill.energy) coveredEnergies.add(skill.energy);
       skillUsageCount.set(skill.id, (skillUsageCount.get(skill.id) || 0) + 1);
     }
 
     // Hybrides (Triées par score décroissant pour l'optimisation)
-    const sortedHybrids = [...validCombinations].sort((a, b) => b.total_score - a.total_score);
+    const sortedHybrids = [...validCombinations].sort((a, b) => {
+      const aSkills = skills.filter((skill: any) => skill.id === a.skill_a_id || skill.id === a.skill_b_id);
+      const bSkills = skills.filter((skill: any) => skill.id === b.skill_a_id || skill.id === b.skill_b_id);
+      const aNewEnergies = aSkills.filter((skill: any) => skill.energy && !coveredEnergies.has(skill.energy)).length;
+      const bNewEnergies = bSkills.filter((skill: any) => skill.energy && !coveredEnergies.has(skill.energy)).length;
+      return bNewEnergies - aNewEnergies || b.total_score - a.total_score;
+    });
     
     for (const combo of sortedHybrids) {
       if (selected.length >= config.N) break;
@@ -150,11 +188,15 @@ Deno.serve(async (req: Request) => {
         territory: targetTerritory,
       });
       hybridCount++;
+      const comboSkills = skills.filter((skill: any) => skill.id === combo.skill_a_id || skill.id === combo.skill_b_id);
+      comboSkills.forEach((skill: any) => {
+        if (skill.energy) coveredEnergies.add(skill.energy);
+      });
       skillUsageCount.set(combo.skill_a_id, usageA + 1);
       skillUsageCount.set(combo.skill_b_id, usageB + 1);
     }
 
-    // 7. Résultat
+    // 8. Résultat
     const totalObjective = selected.reduce((sum, m) => sum + m.score, 0);
     const missionsWithNames = selected.map((m) => ({
       ...m,
@@ -162,7 +204,7 @@ Deno.serve(async (req: Request) => {
       skill_b_name: m.skill_b ? skillNameMap.get(m.skill_b) : null,
     }));
 
-    // 8. FIX: Nettoyer les anciennes missions pending du même territoire pour éviter les doublons
+    // 9. FIX: Nettoyer les anciennes missions pending du même territoire pour éviter les doublons
     //    On supprime uniquement les missions avec status='pending' pour ce territoire
     //    Les missions 'in_progress' ou 'completed' sont conservées
     if (selected.length > 0) {
@@ -192,8 +234,11 @@ Deno.serve(async (req: Request) => {
       missions: missionsWithNames,
       objective_score: totalObjective,
       // FIX: Retourner les stats pour le frontend
-      acquired_count: 0,
+      acquired_count: acquiredIds.size,
       total_combinations: selected.length,
+      covered_energies: [...coveredEnergies],
+      required_energies: [...requiredEnergies],
+      energy_coverage_complete: [...requiredEnergies].every((energy) => coveredEnergies.has(energy)),
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
