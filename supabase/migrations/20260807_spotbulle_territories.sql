@@ -18,9 +18,9 @@ INSERT INTO public.spotbulle_territories
   (territory, display_name, element, energy, icon_key, color_class, order_index, required_missions)
 VALUES
   ('Calyxis', 'Calyxis', 'Feu', 'CRÉATION', 'mountain', 'from-red-500 to-orange-500', 1, 5),
-  ('Sylvara', 'Sylvara', 'Terre', 'ACTION', 'compass', 'from-green-500 to-emerald-500', 2, 5),
-  ('Cattleya', 'Cattleya', 'Air', 'COOPERATION_COMMUNICATION', 'wind', 'from-blue-500 to-cyan-500', 3, 5),
-  ('Neptunus', 'Neptunus', 'Eau', 'RÉSILIENCE', 'droplets', 'from-indigo-500 to-purple-500', 4, 5)
+  ('Sylvara', 'Sylvara', 'Air', 'COOPERATION_COMMUNICATION', 'compass', 'from-green-500 to-emerald-500', 2, 5),
+  ('Cattleya', 'Cattleya', 'Terre', 'CRÉATION', 'wind', 'from-blue-500 to-cyan-500', 3, 5),
+  ('Neptunus', 'Neptunus', 'Eau', 'COOPERATION_COMMUNICATION', 'droplets', 'from-indigo-500 to-purple-500', 4, 5)
 ON CONFLICT (territory) DO UPDATE SET
   display_name = EXCLUDED.display_name,
   element = EXCLUDED.element,
