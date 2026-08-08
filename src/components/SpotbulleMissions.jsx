@@ -9,7 +9,6 @@ import {
   Sparkles,
   Target,
   Shield,
-  Star,
   Loader2,
   Zap,
   Compass,
@@ -21,6 +20,7 @@ import {
   RefreshCw,
   CheckCircle2,
   Clock,
+  Lock,
 } from 'lucide-react';
 import OdysseyLayout from './OdysseyLayout.jsx';
 
@@ -32,26 +32,51 @@ const TERRITORY_ICONS = {
   Neptunus: Droplets,
 };
 
-const TERRITORY_COLORS = {
-  Calyxis: 'from-red-500 to-orange-500',
-  Cattleya: 'from-blue-500 to-cyan-500',
-  Sylvara: 'from-green-500 to-emerald-500',
-  Neptunus: 'from-indigo-500 to-purple-500',
-};
-
-const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
+const SpotbulleMissions = ({ userId, onSignOut }) => {
   const navigate = useNavigate();
   const [missions, setMissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [currentTerritory, setCurrentTerritory] = useState('Calyxis');
+  const [territories, setTerritories] = useState([]);
+  const [currentTerritory, setCurrentTerritory] = useState(null);
   const [error, setError] = useState(null);
   const [stats, setStats] = useState(null);
   const [generatingFresh, setGeneratingFresh] = useState(false);
+  const [territoryProgress, setTerritoryProgress] = useState({});
+  const [selectedEnergy, setSelectedEnergy] = useState(null);
+  const autoGenerationAttempted = React.useRef(new Set());
+
+  // Charger la progression de déblocage pour tous les territoires.
+  const loadTerritoryProgress = useCallback(async () => {
+    if (!userId) return;
+    const { data, error: progressError } = await supabase
+      .from('user_missions')
+      .select('territory, status')
+      .eq('user_id', userId);
+    if (progressError) throw progressError;
+
+    const progress = {};
+    territories.forEach(({ territory }) => {
+      const rows = (data || []).filter((mission) => mission.territory === territory);
+      progress[territory] = {
+        total: rows.length,
+        completed: rows.filter((mission) => mission.status === 'completed').length,
+      };
+    });
+    setTerritoryProgress(progress);
+  }, [userId, territories]);
+
+  const isTerritoryUnlocked = (territory) => {
+    const index = territories.findIndex((item) => item.territory === territory);
+    if (index <= 0) return true;
+    const previous = territoryProgress[territories[index - 1].territory];
+    const required = territories[index - 1].required_missions || 5;
+    return Boolean(previous && previous.total >= required && previous.completed >= required);
+  };
 
   // Charger les missions de l'utilisateur pour le territoire actuel
   const loadMissions = useCallback(async () => {
-    if (!userId) return;
+    if (!userId || !currentTerritory) return;
     try {
       setLoading(true);
 
@@ -75,10 +100,10 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
       if (skillIds.size > 0) {
         const { data: skills } = await supabase
           .from('skills')
-          .select('id, name')
+          .select('id, name, energy, sub_energy')
           .in('id', [...skillIds]);
 
-        const skillNameMap = new Map((skills || []).map((s) => [s.id, s.name]));
+        const skillMap = new Map((skills || []).map((s) => [s.id, s]));
 
         // FIX: Mapper mission_type → type et dédupliquer par combinaison (skill_a, skill_b, mission_type)
         const seen = new Set();
@@ -94,8 +119,12 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
             ...m,
             // FIX: mapper mission_type → type pour la cohérence frontend
             type: m.mission_type || m.type || 'pure',
-            skill_a_name: m.skill_a ? skillNameMap.get(m.skill_a) || 'Inconnue' : null,
-            skill_b_name: m.skill_b ? skillNameMap.get(m.skill_b) || 'Inconnue' : null,
+            skill_a_name: m.skill_a ? skillMap.get(m.skill_a)?.name || 'Inconnue' : null,
+            skill_b_name: m.skill_b ? skillMap.get(m.skill_b)?.name || 'Inconnue' : null,
+            skill_a_energy: m.skill_a ? skillMap.get(m.skill_a)?.energy : null,
+            skill_b_energy: m.skill_b ? skillMap.get(m.skill_b)?.energy : null,
+            skill_a_sub_energy: m.skill_a ? skillMap.get(m.skill_a)?.sub_energy : null,
+            skill_b_sub_energy: m.skill_b ? skillMap.get(m.skill_b)?.sub_energy : null,
           }))
         );
       } else {
@@ -116,6 +145,10 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
 
   // Générer de nouvelles missions via l'Edge Function
   const generateMissions = async () => {
+    if (!isTerritoryUnlocked(currentTerritory)) {
+      setError('Ce territoire est verrouillé. Validez les cinq missions du territoire précédent pour continuer.');
+      return;
+    }
     console.log('🚀 Lancement de la génération des missions pour:', currentTerritory);
     setGenerating(true);
     setGeneratingFresh(true);
@@ -142,9 +175,8 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
       const totalCombinations = missionsFromResponse.length;
 
       setStats({
-        acquired_count: 0, // Les missions générées ne sont pas encore acquises
-        total_combinations: totalCombinations,
-        objective_score: data?.objective_score || 0,
+        acquired_count: data?.acquired_count ?? 0,
+        total_combinations: data?.total_combinations ?? totalCombinations,
       });
 
       // Recharger les missions depuis la DB (l'Edge Function a nettoyé les doublons)
@@ -185,14 +217,57 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
   };
 
   useEffect(() => {
+    if (!userId) return;
+    supabase
+      .from('spotbulle_territories')
+      .select('territory, display_name, element, energy, icon_key, color_class, order_index, required_missions')
+      .order('order_index', { ascending: true })
+      .then(({ data, error: territoryError }) => {
+        if (territoryError) throw territoryError;
+        setTerritories(data || []);
+        setCurrentTerritory((previous) => previous || data?.[0]?.territory || null);
+      })
+      .catch((err) => {
+        console.error('Erreur chargement configuration territoriale:', err);
+        setError(err.message || 'Configuration territoriale indisponible');
+      });
+  }, [userId]);
+
+  useEffect(() => {
+    if (!currentTerritory) return;
     loadMissions();
-  }, [loadMissions]);
+    loadTerritoryProgress().catch((err) => {
+      console.error('Erreur chargement progression territoriale:', err);
+      setError(err.message || 'Erreur lors du chargement de la progression');
+    });
+  }, [loadMissions, loadTerritoryProgress]);
+
+  // Toute sélection d’un territoire débloqué charge ses missions existantes,
+  // puis les génère automatiquement si le territoire n’en possède aucune.
+  useEffect(() => {
+    if (!userId || !currentTerritory || !isTerritoryUnlocked(currentTerritory)) return;
+    if (loading || missions.length > 0 || generating || autoGenerationAttempted.current.has(currentTerritory)) return;
+    autoGenerationAttempted.current.add(currentTerritory);
+    generateMissions();
+  }, [userId, currentTerritory, loading, missions.length, generating, territoryProgress, territories]);
 
   // Statistiques de progression pour le territoire actuel
-  const pureMissions = missions.filter((m) => m.type === 'pure');
-  const hybridMissions = missions.filter((m) => m.type === 'hybrid');
-  const pureCompleted = pureMissions.filter((m) => m.status === 'completed').length;
-  const hybridCompleted = hybridMissions.filter((m) => m.status === 'completed').length;
+  const energyProgress = Object.entries(
+    missions.reduce((acc, mission) => {
+      const entries = [
+        [mission.skill_a_energy, mission.skill_a_sub_energy],
+        [mission.type === 'hybrid' ? mission.skill_b_energy : null, mission.type === 'hybrid' ? mission.skill_b_sub_energy : null],
+      ];
+      entries.forEach(([energy, subEnergy]) => {
+        if (!energy) return;
+        if (!acc[energy]) acc[energy] = { total: 0, completed: 0, subEnergies: new Set() };
+        acc[energy].total += 1;
+        if (mission.status === 'completed') acc[energy].completed += 1;
+        if (subEnergy) acc[energy].subEnergies.add(subEnergy);
+      });
+      return acc;
+    }, {})
+  );
 
   return (
     <OdysseyLayout
@@ -227,12 +302,6 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
                   <p className="text-2xl font-bold text-green-400">{stats.total_combinations}</p>
                   <p className="text-xs text-slate-400">Combinaisons évaluées</p>
                 </div>
-                <div>
-                  <p className="text-2xl font-bold text-yellow-400">
-                    {Number.isFinite(stats.objective_score) ? stats.objective_score.toFixed(1) : '0.0'}
-                  </p>
-                  <p className="text-xs text-slate-400">Score objectif</p>
-                </div>
               </div>
             </CardContent>
           </Card>
@@ -240,21 +309,29 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
 
         {/* Territoire selector */}
         <div className="flex gap-2 justify-center flex-wrap">
-          {Object.entries(TERRITORY_ICONS).map(([name, Icon]) => (
-            <Button
-              key={name}
-              variant={currentTerritory === name ? 'default' : 'outline'}
-              className={`flex items-center gap-2 ${
-                currentTerritory === name
-                  ? `bg-gradient-to-r ${TERRITORY_COLORS[name]}`
-                  : 'border-white/20 text-slate-300 hover:bg-white/10'
-              }`}
-              onClick={() => setCurrentTerritory(name)}
-            >
-              <Icon className="w-4 h-4" />
-              {name}
-            </Button>
-          ))}
+          {territories.map((territoryConfig) => {
+            const name = territoryConfig.territory;
+            const Icon = TERRITORY_ICONS[name];
+            const unlocked = isTerritoryUnlocked(name);
+            const previous = territories[territories.findIndex((item) => item.territory === name) - 1]?.display_name;
+            return (
+              <Button
+                key={name}
+                variant={currentTerritory === name ? 'default' : 'outline'}
+                disabled={!unlocked}
+                title={!unlocked ? `Terminez les cinq missions de ${previous} pour débloquer ce territoire` : `Ouvrir ${name}`}
+                className={`flex items-center gap-2 ${
+                  currentTerritory === name
+                    ? `bg-gradient-to-r ${territoryConfig.color_class}`
+                    : 'border-white/20 text-slate-300 hover:bg-white/10'
+                } ${!unlocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                onClick={() => unlocked && setCurrentTerritory(name)}
+              >
+                {unlocked ? <Icon className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                {territoryConfig.display_name}
+              </Button>
+            );
+          })}
         </div>
 
         {/* Generate button */}
@@ -262,7 +339,7 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
           <Button
             className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold"
             onClick={generateMissions}
-            disabled={generating || !userId}
+            disabled={generating || !userId || !isTerritoryUnlocked(currentTerritory)}
           >
             {generating ? (
               <>
@@ -299,14 +376,16 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
               <p className="text-slate-400">
                 Aucune mission pour le moment.
                 <br />
-                Cliquez sur "Générer mes missions" pour démarrer.
+                {currentTerritory === territories[0]?.territory
+                  ? 'Les missions sont générées automatiquement à l’ouverture du territoire.'
+                  : 'Validez le territoire précédent pour débloquer ce parcours.'}
               </p>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-3">
             {missions.map((mission, index) => {
-              const MissionIcon = mission.type === 'hybrid' ? Star : Shield;
+              const MissionIcon = Shield;
               const StatusIcon = mission.status === 'completed'
                 ? CheckCircle2
                 : mission.status === 'in_progress'
@@ -325,9 +404,7 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <MissionIcon
-                          className={`w-5 h-5 ${
-                            mission.type === 'hybrid' ? 'text-yellow-400' : 'text-blue-400'
-                          }`}
+                          className="w-5 h-5 text-blue-400"
                         />
                         <div>
                           <div className="flex items-center gap-2">
@@ -348,10 +425,6 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
                               </>
                             )}
                           </div>
-                          <p className="text-xs text-slate-400 mt-1">
-                            Type: {mission.type === 'hybrid' ? 'Hybride' : 'Pure'} — Score:{' '}
-                            {Number.isFinite(mission.total_score) ? mission.total_score.toFixed(1) : '0.0'}
-                          </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -398,31 +471,39 @@ const SpotbulleMissions = ({ userId, userProfile, onSignOut }) => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              <div>
-                <div className="flex justify-between text-sm text-slate-400 mb-1">
-                  <span>Compétences pures</span>
-                  <span>{pureCompleted} / {pureMissions.length}</span>
-                </div>
-                <Progress
-                  value={pureMissions.length > 0 ? (pureCompleted / pureMissions.length) * 100 : 0}
-                  className="bg-slate-700"
-                />
-              </div>
-              <div>
-                <div className="flex justify-between text-sm text-slate-400 mb-1">
-                  <span>Combinaisons hybrides</span>
-                  <span>{hybridCompleted} / {hybridMissions.length}</span>
-                </div>
-                <Progress
-                  value={hybridMissions.length > 0 ? (hybridCompleted / hybridMissions.length) * 100 : 0}
-                  className="bg-slate-700"
-                />
-              </div>
+            <div className="space-y-4">
+              {energyProgress.length === 0 ? (
+                <p className="text-sm text-slate-400">La progression par énergie apparaîtra dès que les missions seront chargées.</p>
+              ) : energyProgress.map(([energy, progress]) => {
+                const territoryForEnergy = territories.find((territory) => territory.energy === energy);
+                const meta = { label: energy, color: 'bg-primary', track: 'bg-white/10', ...(territoryForEnergy ? { label: territoryForEnergy.energy } : {}) };
+                const value = progress.total > 0 ? (progress.completed / progress.total) * 100 : 0;
+                const expanded = selectedEnergy === energy;
+                return (
+                  <button
+                    type="button"
+                    key={energy}
+                    className="w-full text-left"
+                    onClick={() => setSelectedEnergy(expanded ? null : energy)}
+                    aria-expanded={expanded}
+                  >
+                    <div className="flex justify-between text-sm text-slate-300 mb-1">
+                      <span>{meta.label}</span>
+                      <span>{progress.completed} / {progress.total}</span>
+                    </div>
+                    <Progress value={value} className={meta.track} indicatorClassName={meta.color} />
+                    {expanded && progress.subEnergies.size > 0 && (
+                      <p className="text-xs text-slate-400 mt-2">
+                        Sous-énergies : {[...progress.subEnergies].join(' · ')}
+                      </p>
+                    )}
+                  </button>
+                );
+              })}
             </div>
             <div className="mt-4 pt-3 border-t border-white/10 text-center">
               <p className="text-xs text-slate-400">
-                Cliquez sur une mission pour changer son statut (En attente → En cours → Complété)
+                Cliquez sur une mission pour changer son statut. Les scores détaillés restent réservés à la validation interne.
               </p>
             </div>
           </CardContent>
