@@ -140,14 +140,12 @@ export function applySolverConstraints(combinations, params, acquiredSkills) {
   }
 
   // Sélectionner les combinaisons hybrides
-  let hybridCount = 0;
   for (const combo of combinations) {
     if (result.pure.length + result.hybrid.length >= N) break;
     if (combo.type !== 'hybrid') continue;
     if (getUsage(combo.skillA) >= R_MAX || getUsage(combo.skillB) >= R_MAX) continue;
 
     result.hybrid.push(combo);
-    hybridCount++;
     incrementUsage(combo.skillA);
     incrementUsage(combo.skillB);
   }
@@ -171,14 +169,7 @@ export async function generateMissionsForUser(userId, territory, params = {}) {
       body: {
         user_id: userId,
         territory,
-        params: {
-          N: 5,
-          P: 2,
-          H: 3,
-          S_MIN: 6.0,
-          R_MAX: 3,
-          ...params,
-        },
+        params,
       },
     }
   );
