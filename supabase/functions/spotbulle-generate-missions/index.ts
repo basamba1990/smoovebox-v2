@@ -74,6 +74,12 @@ Deno.serve(async (req: Request) => {
     if (territoryError) throw territoryError;
     if (!territoryConfigs?.length) throw new Error('La configuration territoriale est vide');
 
+    const { data: progressionStages, error: progressionStagesError } = await supabase
+      .from('spotbulle_progression_stages')
+      .select('stage_key, level, level_label, sub_level_start, sub_level_end, territory, element, activated_sub_energy_a, activated_sub_energy_b, unlock_event')
+      .order('level', { ascending: true });
+    if (progressionStagesError) throw progressionStagesError;
+
     const territoryOrder = territoryConfigs.map((item: any) => item.territory);
     const targetTerritory = territory || territoryOrder[0];
     if (!territoryOrder.includes(targetTerritory)) {
@@ -215,7 +221,8 @@ Deno.serve(async (req: Request) => {
     (completedMissions || []).forEach((mission: any) => completedByTerritory.set(mission.territory, (completedByTerritory.get(mission.territory) || 0) + 1));
     const awardedBadges = (badgeDefinitions || []).filter((badge: any) => {
       if (badge.badge_type === 'territory') return (completedByTerritory.get(badge.territory) || 0) >= (badge.required_missions || Number.MAX_SAFE_INTEGER);
-      if (badge.badge_type === 'level') return badge.required_skill_id ? acquiredIds.has(badge.required_skill_id) : false;
+      if (badge.badge_type === 'competence') return Boolean(badge.required_skill_id && acquiredIds.has(badge.required_skill_id));
+      if (badge.badge_type === 'level') return false;
       return territoryOrder.every((item: string) => (completedByTerritory.get(item) || 0) > 0);
     });
     if (awardedBadges.length > 0) {
@@ -233,6 +240,7 @@ Deno.serve(async (req: Request) => {
       required_energies: [...requiredEnergies],
       energy_coverage_complete: [...requiredEnergies].every((energy) => coveredEnergies.has(energy)),
       progression_rules_applied: (progressionRows || []).length > 0,
+      progression_stages: progressionStages || [],
       awarded_badges: awardedBadges.map((badge: any) => badge.badge_key),
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
