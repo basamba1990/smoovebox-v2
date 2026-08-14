@@ -51,9 +51,20 @@ ON CONFLICT (stage_key) DO UPDATE SET
   unlock_event = EXCLUDED.unlock_event,
   source_reference = EXCLUDED.source_reference;
 
-ALTER TABLE public.spotbulle_badges DROP CONSTRAINT IF EXISTS spotbulle_badges_badge_type_check;
-ALTER TABLE public.spotbulle_badges ADD CONSTRAINT spotbulle_badges_badge_type_check
-  CHECK (badge_type IN ('territory', 'level', 'competence', 'six_territories'));
+ALTER TABLE public.spotbulle_badges
+  DROP CONSTRAINT IF EXISTS spotbulle_badges_badge_type_check,
+  DROP CONSTRAINT IF EXISTS spotbulle_badges_check,
+  DROP CONSTRAINT IF EXISTS spotbulle_badges_requirements_check;
+ALTER TABLE public.spotbulle_badges
+  ADD CONSTRAINT spotbulle_badges_badge_type_check
+    CHECK (badge_type IN ('territory', 'level', 'competence', 'six_territories')),
+  ADD CONSTRAINT spotbulle_badges_requirements_check
+    CHECK (
+      (badge_type = 'territory' AND territory IS NOT NULL AND level IS NULL AND required_skill_id IS NULL)
+      OR (badge_type = 'level' AND level IS NOT NULL AND territory IS NULL AND required_skill_id IS NULL)
+      OR (badge_type = 'competence' AND required_skill_id IS NOT NULL AND territory IS NULL AND level IS NULL)
+      OR (badge_type = 'six_territories' AND territory IS NULL AND level IS NULL AND required_skill_id IS NULL)
+    );
 
 INSERT INTO public.spotbulle_badges (badge_key, badge_type, territory, level, required_missions, required_skill_id, source_reference)
 SELECT 'level:' || level::text, 'level', NULL, level, NULL, NULL, 'Matrice Valentina — 6 badges par niveaux'
