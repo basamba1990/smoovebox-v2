@@ -19,18 +19,18 @@ Persévérance,Créativité,3,5,4,5,4.1
 Persévérance,Innovation,7,6,6,6,6.35
 Persévérance,Imagination,2,4,3,6,3.3
 Persévérance,Initiative,7,8,7,6,7.25
-Organisation,Gestion de projet,,,,,9.7
-Organisation,Leadership,,,,,7.2
-Organisation,Résolution de problèmes,,,,,7.9
-Gestion de projet,Organisation,,,,,5.1
-Gestion de projet,Leadership,,,,,8.2
-Gestion de projet,Résolution de problèmes,,,,,8
-Leadership,Organisation,,,,,4.2
-Leadership,Gestion de projet,,,,,5.5
-Leadership,Résolution de problèmes,,,,,6.2
-Résolution de problèmes,Organisation,,,,,4.9
-Résolution de problèmes,Gestion de projet,,,,,5.8
-Résolution de problèmes,Leadership,,,,,6.6
+Organisation,Gestion de projet,10,10,9,9,9.7
+Organisation,Leadership,7,8,6,7,7.15
+Organisation,Résolution de problèmes,8,8,8,7,7.9
+Gestion de projet,Organisation,4,6,5,6,5.1
+Gestion de projet,Leadership,8,9,7,8,8.15
+Gestion de projet,Résolution de problèmes,8,8,8,8,8.0
+Leadership,Organisation,3,5,4,6,4.2
+Leadership,Gestion de projet,5,6,5,6,5.45
+Leadership,Résolution de problèmes,6,6,7,6,6.2
+Résolution de problèmes,Organisation,4,5,6,5,4.85
+Résolution de problèmes,Gestion de projet,5,6,6,7,5.75
+Résolution de problèmes,Leadership,6,7,7,6,6.55
 Pitch,Prise de parole,9,9,9,8,8.9
 Pitch,Argumentation,8,10,9,8,8.9
 Pitch,Analyse,6,7,7,8,6.8
@@ -51,15 +51,15 @@ Esprit critique,Pitch,2,5,4,7,4
 Esprit critique,Prise de parole,3,5,5,6,4.4
 Esprit critique,Argumentation,5,6,6,6,5.65
 Esprit critique,Analyse,7,8,8,7,7.55
-Travail d'équipe,Écoute,,,,,9.7
-Travail d'équipe,Contribution,,,,,9.3
-Travail d'équipe,Autonomie,,,,,6
-Écoute,Travail d'équipe,,,,,5.7
-Écoute,Contribution,,,,,8.9
-Écoute,Autonomie,,,,,6
-Contribution,Travail d'équipe,,,,,5.8
-Contribution,Écoute,,,,,8.9
-Contribution,Autonomie,,,,,7.1
-Autonomie,Travail d'équipe,,,,,6
-Autonomie,Écoute,,,,,6
-Autonomie,Contribution,,,,,7.1
+Travail d'équipe,Écoute,10,10,9,9,9.7
+Travail d'équipe,Contribution,9,10,9,8,9.25
+Travail d'équipe,Autonomie,5,6,7,7,5.95
+Écoute,Travail d'équipe,5,6,6,6,5.65
+Écoute,Contribution,9,9,9,8,8.9
+Écoute,Autonomie,5,6,7,7,5.95
+Contribution,Travail d'équipe,4,5,9,8,5.75
+Contribution,Écoute,9,9,9,8,8.9
+Contribution,Autonomie,7,7,7,8,7.1
+Autonomie,Travail d'équipe,5,6,7,7,5.95
+Autonomie,Écoute,5,6,7,7,5.95
+Autonomie,Contribution,7,7,7,8,7.1
