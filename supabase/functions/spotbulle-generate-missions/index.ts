@@ -189,10 +189,32 @@ Deno.serve(async (req: Request) => {
     if (engineConfigError) throw engineConfigError;
     if (!engineConfig) throw new Error('La configuration du moteur Spotbulle est absente');
 
+    // 1. Acquis utilisateur (déplacé plus haut pour la priorité pure)
+    const { data: acquiredSkills, error: acqError } = await supabase
+      .from('user_skill_progress')
+      .select('skill_id')
+      .eq('user_id', user_id);
+    if (acqError) throw acqError;
+    const acquiredIds = new Set((acquiredSkills || []).map((s: any) => s.skill_id));
+
+    const territoryOrder = ['Calyxis', 'Sylvara', 'Cattleya', 'Neptunus']; // Ordre par défaut si non chargé
+    const targetTerritory = territory || territoryOrder[0];
+
+    // 0. Calculer les compétences pures non acquises pour ce territoire
+    const { data: territorySkills, error: territorySkillsError } = await supabase
+      .from('skills')
+      .select('id, energy')
+      .eq('territory', targetTerritory);
+    if (territorySkillsError) throw territorySkillsError;
+
+    const unacquiredPureIds = (territorySkills || [])
+      .map((s: any) => s.id)
+      .filter(id => !acquiredIds.has(id));
+
     const config: OptimizerParams = {
       N: engineConfig.max_combinations,
-      P: engineConfig.min_pure,
-      H: engineConfig.min_hybrid,
+      P: unacquiredPureIds.length > 0 ? Math.min(unacquiredPureIds.length, engineConfig.max_combinations) : engineConfig.min_pure,
+      H: unacquiredPureIds.length > 0 ? 0 : engineConfig.min_hybrid,
       S_MIN: engineConfig.min_compatibility_score,
       R_MAX: engineConfig.max_skill_repetitions,
       ...(params || {}),
@@ -235,13 +257,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // 2. Acquis utilisateur
-    const { data: acquiredSkills, error: acqError } = await supabase
-      .from('user_skill_progress')
-      .select('skill_id')
-      .eq('user_id', user_id);
-    if (acqError) throw acqError;
-    const acquiredIds = new Set((acquiredSkills || []).map((s: any) => s.skill_id));
+    // 2. Acquis utilisateur (déjà chargés plus haut)
 
     // 3. Compétences du territoire
     const { data: allSkills, error: skillsError } = await supabase
