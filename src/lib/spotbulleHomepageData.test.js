@@ -10,6 +10,12 @@ import {
 } from './spotbulleHomepageData.js';
 
 describe('spotbulleHomepageData', () => {
+  it('ignore une mission sans type plutôt que de la classer comme pure', () => {
+    expect(selectNextMission([
+      { id: 'unknown', territory: 'Cattleya', status: 'pending' },
+    ], [{ territory: 'Cattleya', order_index: 1, required_missions: 1 }])).toBeNull();
+  });
+
   it('bloque les hybrides tant que les missions pures du territoire ne sont pas terminées', () => {
     const mission = selectNextMission([
       { id: 'hybrid', type: 'hybrid', territory: 'Cattleya', status: 'pending' },
@@ -55,6 +61,10 @@ describe('spotbulleHomepageData', () => {
       { type: 'pure', status: 'pending', skillA: { energy: 'Energie1', impact_weight: 2 } },
       { type: 'hybrid', status: 'completed', skillA: { energy: 'Energie2', impact_weight: 1 }, skillB: { energy: 'Energie3', impact_weight: 1 } },
     ]).global).toBe(75);
+    expect(calculateImpact([
+      { type: 'pure', status: 'completed', skillA: { energy: 'Energie1', impact_weight: 1 } },
+      { type: 'pure', status: 'completed', skillA: { energy: 'Energie2', impact_weight: 1 } },
+    ]).global).toBeNull();
   });
 
   it('calcule un niveau et l’XP uniquement avec des définitions de niveau persistées', () => {

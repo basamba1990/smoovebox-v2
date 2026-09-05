@@ -150,7 +150,7 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
     const skillIds = [...new Set(missions.flatMap((mission) => [mission.skill_a, mission.skill_b].filter(Boolean)))];
     let skills = [];
     if (skillIds.length > 0) {
-      const skillsResult = await supabase.from('skills').select('id, name, energy, sub_energy').in('id', skillIds);
+      const skillsResult = await supabase.from('skills').select('*').in('id', skillIds);
       if (!skillsResult.error) skills = skillsResult.data || [];
     }
     const skillMap = new Map(skills.map((skill) => [skill.id, skill]));
@@ -164,7 +164,7 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
     setData({
       missions: missions.map((mission) => ({
         ...mission,
-        type: mission.mission_type || mission.type || 'pure',
+        type: mission.mission_type || mission.type || null,
         skillA: skillMap.get(mission.skill_a),
         skillB: skillMap.get(mission.skill_b),
       })),

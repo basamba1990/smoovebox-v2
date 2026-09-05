@@ -1,13 +1,5 @@
 export const ENERGY_ORDER = ['Energie1', 'Energie2', 'Energie3'];
 
-export const LEVELS = [
-  { key: 'explorateur', label: 'Explorateur' },
-  { key: 'eclaireur', label: 'Éclaireur' },
-  { key: 'ambassadeur', label: 'Ambassadeur' },
-  { key: 'stratege', label: 'Stratège' },
-  { key: 'mentor', label: 'Mentor' },
-];
-
 export function firstValue(source, keys) {
   if (!source) return null;
   for (const key of keys) {
@@ -28,7 +20,7 @@ export function formatName(profile, user) {
 }
 
 function missionType(mission) {
-  return mission?.mission_type || mission?.type || 'pure';
+  return mission?.mission_type || mission?.type || null;
 }
 
 function completedPureCount(missions, territory) {
@@ -40,7 +32,8 @@ export function selectNextMission(missions, territories) {
   if (orderedTerritories.length === 0) return null;
 
   for (const territory of orderedTerritories) {
-    const required = Number(territory.required_missions || 5);
+    const required = Number(territory.required_missions);
+    if (!Number.isFinite(required)) return null;
     const completedPure = completedPureCount(missions, territory.territory);
     const territoryMissions = missions.filter((mission) => mission.territory === territory.territory && mission.status !== 'completed');
     const pureMission = territoryMissions.find((mission) => missionType(mission) === 'pure');
@@ -61,16 +54,24 @@ export function missionSessionCount(mission) {
 }
 
 export function calculateImpact(missions, energyWeights = {}) {
-  const values = new Map(ENERGY_ORDER.map((energy) => [energy, { total: 0, completed: 0, weight: energyWeights[energy] ?? null }]));
+  const values = new Map(ENERGY_ORDER.map((energy) => {
+    const configuredWeight = Number(energyWeights[energy]);
+    return [energy, { total: 0, completed: 0, weight: Number.isFinite(configuredWeight) && configuredWeight > 0 ? configuredWeight : null }];
+  }));
   (missions || []).forEach((mission) => {
-    const entries = [mission.skillA, mission.type === 'hybrid' ? mission.skillB : null].filter(Boolean);
+    const type = missionType(mission);
+    if (type !== 'pure' && type !== 'hybrid') return;
+    const entries = [mission.skillA, type === 'hybrid' ? mission.skillB : null].filter(Boolean);
     entries.forEach((skill) => {
       const energy = skill.energy;
       if (!values.has(energy)) return;
       const current = values.get(energy);
       current.total += 1;
       if (mission.status === 'completed') current.completed += 1;
-      if (current.weight === null) current.weight = Number(skill.impact_weight ?? skill.energy_weight ?? skill.weight) || null;
+      if (current.weight === null) {
+        const skillWeight = Number(skill.impact_weight ?? skill.energy_weight ?? skill.weight);
+        current.weight = Number.isFinite(skillWeight) && skillWeight > 0 ? skillWeight : null;
+      }
     });
   });
   const rows = ENERGY_ORDER.map((label) => {
@@ -79,7 +80,8 @@ export function calculateImpact(missions, energyWeights = {}) {
   });
   const weightedRows = rows.filter((row) => row.value !== null && typeof row.weight === 'number' && row.weight > 0);
   const weightTotal = weightedRows.reduce((sum, row) => sum + row.weight, 0);
-  const global = weightedRows.length === rows.filter((row) => row.value !== null).length && weightTotal > 0
+  const allEnergiesAvailable = rows.every((row) => row.value !== null && typeof row.weight === 'number' && row.weight > 0);
+  const global = allEnergiesAvailable && weightTotal > 0
     ? Math.round(weightedRows.reduce((sum, row) => sum + row.value * row.weight, 0) / weightTotal)
     : null;
   return { rows, global };

@@ -47,3 +47,13 @@ Le fichier Figma reste la référence visuelle principale, mais il n’est pas a
 Après correction, les interactions principales et les branchements de données sont plus proches d’un MVP opérationnel : la roue est manipulable, Lumi réagit au survol, les notifications ont un panneau, les badges et niveaux ne sont plus représentés par des données statiques par défaut, la mission est strictement filtrée, les sessions sont lues lorsqu’elles existent, les vidéos stockées peuvent être résolues par URL signée, et l’impact global ne prétend plus être pondéré lorsque les poids manquent.
 
 La version ne doit toutefois pas être présentée comme totalement finalisée tant que les contrats `notifications`, niveaux, poids d’impact et vue détaillée du radar ne sont pas confirmés dans Supabase, et tant que le rendu n’est pas comparé à un Figma accessible. Les états « indisponible » sont intentionnels : ils protègent contre les fausses données et rendent visibles les dépendances restantes.
+
+## Vérification anti-placeholder de la roue et de l’impact
+
+Les constantes `WHEEL_ITEMS`, `ENERGY_ORDER` et `ENERGY_COLORS` sont des constantes de configuration/design : elles ne représentent pas des données utilisateur et sont cohérentes avec la structure explicitement demandée par le guide. La rotation de 72 degrés est une constante géométrique de parcours de cinq catégories, pas une progression métier.
+
+La roue ne fabrique pas de catégorie depuis une donnée absente : elle parcourt la liste de base définie dans le prototype, affiche le libellé et le message Lumi associés, puis navigue vers la route configurée. Les valeurs utilisateur ne sont pas utilisées pour inventer la sélection.
+
+Le calcul d’impact ne remplit plus une énergie absente avec zéro et ne calcule plus une moyenne partielle. Il ne produit une progression globale que lorsque les trois énergies ont une progression réelle et un poids strictement positif provenant du profil ou d’une compétence chargée depuis la base. Une mission sans type explicite est ignorée pour le calcul et ne peut plus être classée implicitement comme mission pure.
+
+Les textes tels que `Indisponible`, `Nom non renseigné`, `Objectif non renseigné` et `Pondération globale indisponible` sont des états d’absence de donnée explicites ; ils ne prétendent pas être des valeurs métier. Les seuls points à surveiller restent la confirmation des contrats Supabase et le fait que la liste actuelle de catégories est une configuration statique du prototype, appelée à évoluer avec la validation UX.
