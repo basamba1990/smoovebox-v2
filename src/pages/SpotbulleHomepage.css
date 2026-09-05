@@ -174,3 +174,27 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+.notification-anchor { position: relative; }
+.notification-count { position: absolute; top: -3px; right: -3px; min-width: 17px; height: 17px; display: grid; place-items: center; padding: 0 4px; border-radius: 999px; color: #0d2852; background: #a8fff2; font-size: .62rem; font-weight: 900; }
+.notification-popover { position: absolute; top: calc(100% + 10px); right: 0; z-index: 40; width: min(330px, calc(100vw - 30px)); padding: 12px; border: 1px solid rgba(200, 237, 255, .28); border-radius: 16px; background: rgba(20, 36, 85, .98); box-shadow: 0 16px 40px rgba(2, 12, 45, .4); }
+.notification-heading { display: flex; justify-content: space-between; align-items: center; padding: 4px 4px 10px; }
+.notification-heading button { display: grid; place-items: center; border: 0; color: #dffcff; background: transparent; cursor: pointer; }
+.notification-item { display: grid; gap: 4px; padding: 10px 5px; border-top: 1px solid rgba(200, 237, 255, .14); }
+.notification-item strong { font-size: .82rem; }
+.notification-item span { color: rgba(227, 242, 255, .7); font-size: .76rem; }
+
+.wheel-control { touch-action: pan-y; }
+.lumi-context { position: absolute; right: 3%; bottom: -4px; display: flex; align-items: center; gap: 7px; max-width: 210px; padding: 8px 10px; border: 1px solid rgba(168, 255, 242, .4); border-radius: 13px; color: #ecffff; background: rgba(24, 47, 105, .94); font-size: .72rem; box-shadow: 0 10px 24px rgba(3, 16, 53, .28); }
+.lumi-context img { width: 26px; height: 26px; object-fit: contain; }
+.dynamic-empty-icon { width: 54px; height: 54px; display: grid; place-items: center; border: 1px dashed rgba(227, 246, 255, .4); border-radius: 50%; color: rgba(227, 246, 255, .75); }
+.profile-level .dynamic-empty-icon { width: 64px; height: 76px; border-radius: 12px; }
+.level-title, .mission-sessions { color: rgba(227, 242, 255, .72); font-size: .72rem; }
+.xp-hover-target { width: 100%; cursor: help; }
+.impact-unavailable { height: 8px; display: grid; align-items: center; color: rgba(227, 242, 255, .48); font-size: .64rem; }
+.small-asset.dynamic-empty-icon { width: 45px; height: 55px; border-radius: 12px; }
+
+@media (max-width: 680px) {
+  .notification-popover { right: -8px; }
+  .lumi-context { right: -4px; bottom: -18px; }
+}

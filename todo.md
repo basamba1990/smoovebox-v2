@@ -20,3 +20,21 @@
 - [ ] Vérifier le rendu desktop et mobile
 - [ ] Faire valider le périmètre et le rendu avant toute mise à jour distante
 - [ ] Préparer puis pousser uniquement les changements validés vers `feature/spotbulle-motor`
+
+## Corrections Homepage — audit guide Word
+
+- [x] Rendre la roue manipulable par flèches, clavier et glisser horizontal
+- [x] Ajouter le contexte Lumi au survol de la roue
+- [x] Ajouter le panneau de notifications et le compteur non lu si la table existe
+- [x] Utiliser les badges utilisateur persistés sans fallback présenté comme réel
+- [x] Dériver niveau et XP depuis le profil ou les définitions de niveau persistées
+- [x] Filtrer la prochaine mission par territoire et imposer les missions pures avant hybrides
+- [x] Afficher le nombre de sessions lorsqu’un champ réel est présent
+- [x] Résoudre les vidéos stockées via le bucket `videos` et URL signée
+- [x] Afficher trois énergies et refuser une progression globale sans pondération réelle
+- [x] Ajouter les tests des règles de filtrage, niveau, sessions, radar et impact pondéré
+- [x] Exécuter tests, lint ciblé, build et contrôle du diff
+- [ ] Confirmer en environnement Supabase les contrats `notifications`, niveaux, poids d’impact et badges
+- [ ] Confirmer la route détaillée du radar, la banque de badges et la vue impact
+- [ ] Comparer le rendu final avec un Figma public ou un export lisible
+- [ ] Faire valider ces corrections avant toute poussée distante

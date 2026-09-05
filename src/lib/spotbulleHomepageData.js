@@ -1,3 +1,13 @@
+export const ENERGY_ORDER = ['Energie1', 'Energie2', 'Energie3'];
+
+export const LEVELS = [
+  { key: 'explorateur', label: 'Explorateur' },
+  { key: 'eclaireur', label: 'Éclaireur' },
+  { key: 'ambassadeur', label: 'Ambassadeur' },
+  { key: 'stratege', label: 'Stratège' },
+  { key: 'mentor', label: 'Mentor' },
+];
+
 export function firstValue(source, keys) {
   if (!source) return null;
   for (const key of keys) {
@@ -17,25 +27,61 @@ export function formatName(profile, user) {
   return profile?.full_name || profile?.name || user?.user_metadata?.full_name || user?.email || null;
 }
 
-export function pickNextMission(missions) {
-  const available = (missions || []).filter((mission) => mission.status !== 'completed');
-  return available.find((mission) => mission.type === 'pure') || available[0] || null;
+function missionType(mission) {
+  return mission?.mission_type || mission?.type || 'pure';
 }
 
-export function calculateImpact(missions) {
-  const values = new Map();
+function completedPureCount(missions, territory) {
+  return missions.filter((mission) => mission.territory === territory && mission.status === 'completed' && missionType(mission) === 'pure').length;
+}
+
+export function selectNextMission(missions, territories) {
+  const orderedTerritories = [...(territories || [])].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0));
+  if (orderedTerritories.length === 0) return null;
+
+  for (const territory of orderedTerritories) {
+    const required = Number(territory.required_missions || 5);
+    const completedPure = completedPureCount(missions, territory.territory);
+    const territoryMissions = missions.filter((mission) => mission.territory === territory.territory && mission.status !== 'completed');
+    const pureMission = territoryMissions.find((mission) => missionType(mission) === 'pure');
+    if (completedPure < required) return pureMission ? { ...pureMission, type: 'pure', requiredPure: required, completedPure, territoryDisplayName: territory.display_name || territory.territory } : null;
+
+    const hybridMission = territoryMissions.find((mission) => missionType(mission) === 'hybrid');
+    if (hybridMission) return { ...hybridMission, type: 'hybrid', requiredPure: required, completedPure, territoryDisplayName: territory.display_name || territory.territory };
+  }
+  return null;
+}
+
+export function missionSessionCount(mission) {
+  const direct = firstValue(mission, ['sessions_count', 'session_count', 'number_of_sessions', 'sessions']);
+  if (Array.isArray(direct)) return direct.length;
+  if (typeof direct === 'number') return direct;
+  if (typeof direct === 'string' && direct.trim() !== '' && !Number.isNaN(Number(direct))) return Number(direct);
+  return null;
+}
+
+export function calculateImpact(missions, energyWeights = {}) {
+  const values = new Map(ENERGY_ORDER.map((energy) => [energy, { total: 0, completed: 0, weight: energyWeights[energy] ?? null }]));
   (missions || []).forEach((mission) => {
     const entries = [mission.skillA, mission.type === 'hybrid' ? mission.skillB : null].filter(Boolean);
     entries.forEach((skill) => {
-      const key = skill.energy || 'Non renseignée';
-      const current = values.get(key) || { total: 0, completed: 0 };
+      const energy = skill.energy;
+      if (!values.has(energy)) return;
+      const current = values.get(energy);
       current.total += 1;
       if (mission.status === 'completed') current.completed += 1;
-      values.set(key, current);
+      if (current.weight === null) current.weight = Number(skill.impact_weight ?? skill.energy_weight ?? skill.weight) || null;
     });
   });
-  const rows = [...values.entries()].map(([label, value]) => ({ label, value: value.total ? Math.round((value.completed / value.total) * 100) : 0 }));
-  const global = rows.length ? Math.round(rows.reduce((sum, row) => sum + row.value, 0) / rows.length) : null;
+  const rows = ENERGY_ORDER.map((label) => {
+    const value = values.get(label);
+    return { label, value: value.total ? Math.round((value.completed / value.total) * 100) : null, weight: value.weight };
+  });
+  const weightedRows = rows.filter((row) => row.value !== null && typeof row.weight === 'number' && row.weight > 0);
+  const weightTotal = weightedRows.reduce((sum, row) => sum + row.weight, 0);
+  const global = weightedRows.length === rows.filter((row) => row.value !== null).length && weightTotal > 0
+    ? Math.round(weightedRows.reduce((sum, row) => sum + row.value * row.weight, 0) / weightTotal)
+    : null;
   return { rows, global };
 }
 
@@ -48,4 +94,30 @@ export function normalizeRadarValues(row) {
     asPercentage(firstValue(row, ['terre', 'earth', 'earth_score', 'terre_percentage'])),
     asPercentage(firstValue(row, ['equilibre', 'balance', 'balance_score'])),
   ];
+}
+
+export function levelPresentation(profile, missions = [], levelDefinitions = []) {
+  const directLevel = firstValue(profile, ['level', 'current_level', 'niveau']);
+  const directTitle = firstValue(profile, ['level_title', 'niveau_nom', 'level_name', 'title']);
+  const directXp = asPercentage(firstValue(profile, ['experience', 'experience_percentage', 'xp', 'xp_percentage']));
+  const directNextLevel = firstValue(profile, ['next_level', 'next_level_title', 'prochain_niveau']);
+  if (directLevel || directTitle || directXp !== null) return { level: directLevel, title: directTitle, xp: directXp, nextLevel: directNextLevel };
+
+  const definitions = (levelDefinitions || [])
+    .filter((definition) => definition.badge_type === 'level' && Number.isFinite(Number(definition.required_missions)))
+    .sort((a, b) => Number(a.required_missions) - Number(b.required_missions));
+  if (!definitions.length) return { level: null, title: null, xp: null, nextLevel: null };
+
+  const completed = (missions || []).filter((mission) => mission.status === 'completed' && missionType(mission) === 'pure').length;
+  const current = definitions.filter((definition) => completed >= Number(definition.required_missions)).at(-1) || null;
+  const next = definitions.find((definition) => completed < Number(definition.required_missions)) || null;
+  const currentThreshold = Number(current?.required_missions || 0);
+  const nextThreshold = Number(next?.required_missions || 0);
+  const xp = next ? asPercentage((completed - currentThreshold) / Math.max(1, nextThreshold - currentThreshold)) : 100;
+  return {
+    level: current?.level || current?.badge_key || null,
+    title: current?.display_name || current?.name || current?.badge_key || null,
+    xp,
+    nextLevel: next?.display_name || next?.name || next?.level || next?.badge_key || null,
+  };
 }
