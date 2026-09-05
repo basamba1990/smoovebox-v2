@@ -9,7 +9,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "vercel-build": "pnpm run build"
+    "vercel-build": "pnpm run build",
+    "test": "vitest run"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -86,6 +87,7 @@
     "globals": "^15.15.0",
     "terser": "^5.44.0",
     "tw-animate-css": "^1.3.8",
-    "vite": "^5.4.20"
+    "vite": "^5.4.20",
+    "vitest": "^2.1.9"
   }
 }

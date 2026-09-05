@@ -45,6 +45,7 @@ import GalacticMap from "../pages/galactic-map.jsx";
 import AstroEnginePlayground from "../pages/AstroEnginePlayground.jsx";
 import SpotCoachPreview from "../pages/SpotCoachPreview.jsx";
 import SpotbulleMissions from "../components/SpotbulleMissions.jsx";
+import SpotbulleHomepage from "../pages/SpotbulleHomepage.jsx";
 
 export default function AppRoutes({
   user,
@@ -162,6 +163,14 @@ export default function AppRoutes({
         element={
           <RequireAuth>
             <SpotCoach user={user} profile={profile} onSignOut={onSignOut} />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/spotbulle-home"
+        element={
+          <RequireAuth>
+            <SpotbulleHomepage user={user} profile={profile} onSignOut={onSignOut} />
           </RequireAuth>
         }
       />
