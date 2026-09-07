@@ -183,6 +183,9 @@
 .notification-item { display: grid; gap: 4px; padding: 10px 5px; border-top: 1px solid rgba(200, 237, 255, .14); }
 .notification-item strong { font-size: .82rem; }
 .notification-item span { color: rgba(227, 242, 255, .7); font-size: .76rem; }
+.notification-item.is-read { opacity: .68; }
+.notification-read-button { justify-self: start; padding: 0; border: 0; color: #a8fff2; background: transparent; font-size: .68rem; cursor: pointer; }
+.notification-read-button:hover, .notification-read-button:focus-visible { text-decoration: underline; }
 
 .wheel-control { touch-action: pan-y; }
 .lumi-context { position: absolute; right: 3%; bottom: -4px; display: flex; align-items: center; gap: 7px; max-width: 210px; padding: 8px 10px; border: 1px solid rgba(168, 255, 242, .4); border-radius: 13px; color: #ecffff; background: rgba(24, 47, 105, .94); font-size: .72rem; box-shadow: 0 10px 24px rgba(3, 16, 53, .28); }

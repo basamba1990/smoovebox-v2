@@ -99,9 +99,13 @@ export function normalizeRadarValues(row) {
 }
 
 export function levelPresentation(profile, missions = [], levelDefinitions = []) {
-  const directLevel = firstValue(profile, ['level', 'current_level', 'niveau']);
-  const directTitle = firstValue(profile, ['level_title', 'niveau_nom', 'level_name', 'title']);
-  const directXp = asPercentage(firstValue(profile, ['experience', 'experience_percentage', 'xp', 'xp_percentage']));
+  const directLevel = firstValue(profile, ['level', 'current_level', 'niveau', 'level_name']);
+  const directTitle = firstValue(profile, ['level_title', 'niveau_nom', 'title']);
+  const currentXp = Number(firstValue(profile, ['current_xp', 'xp', 'experience']));
+  const nextLevelXp = Number(firstValue(profile, ['next_level_xp', 'xp_to_next_level']));
+  const directXp = Number.isFinite(currentXp) && Number.isFinite(nextLevelXp) && nextLevelXp > 0
+    ? Math.max(0, Math.min(100, Math.round((currentXp / nextLevelXp) * 100)))
+    : asPercentage(firstValue(profile, ['experience_percentage', 'xp_percentage']));
   const directNextLevel = firstValue(profile, ['next_level', 'next_level_title', 'prochain_niveau']);
   if (directLevel || directTitle || directXp !== null) return { level: directLevel, title: directTitle, xp: directXp, nextLevel: directNextLevel };
 

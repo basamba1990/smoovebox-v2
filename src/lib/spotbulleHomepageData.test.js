@@ -78,6 +78,18 @@ describe('spotbulleHomepageData', () => {
     expect(levelPresentation(null, [], [])).toEqual({ level: null, title: null, xp: null, nextLevel: null });
   });
 
+  it('calcule l’XP depuis les colonnes persistées du profil', () => {
+    expect(levelPresentation({ level_name: 'Explorateur', current_xp: 0, next_level_xp: 100 })).toEqual({
+      level: 'Explorateur', title: null, xp: 0, nextLevel: null,
+    });
+    expect(levelPresentation({ level_name: 'Explorateur', current_xp: 42, next_level_xp: 100 })).toEqual({
+      level: 'Explorateur', title: null, xp: 42, nextLevel: null,
+    });
+    expect(levelPresentation({ level_name: 'Explorateur', current_xp: 42, next_level_xp: 0 })).toEqual({
+      level: 'Explorateur', title: null, xp: null, nextLevel: null,
+    });
+  });
+
   it('utilise les premières colonnes disponibles du radar sans inventer de valeur', () => {
     expect(firstValue({ air_score: 0.5 }, ['air', 'air_score'])).toBe(0.5);
     expect(normalizeRadarValues({ air_score: 0.5, water: 20 })).toEqual([50, 20, null, null, null]);

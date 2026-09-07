@@ -55,11 +55,11 @@ function LoadingState({ label = 'Chargement des données…' }) {
   return <div className="spotbulle-loading" role="status"><RefreshCw className="spin" size={18} /> {label}</div>;
 }
 
-function NotificationPanel({ notifications, onClose }) {
+function NotificationPanel({ notifications, error, loading, onClose, onRetry, onMarkRead }) {
   return (
     <div className="notification-popover" role="dialog" aria-label="Notifications">
       <div className="notification-heading"><strong>Notifications</strong><button type="button" onClick={onClose} aria-label="Fermer les notifications"><X size={16} /></button></div>
-      {notifications.length ? notifications.map((notification) => <div className="notification-item" key={notification.id}><strong>{notification.title || notification.name || 'Notification'}</strong><span>{notification.message || notification.body || 'Contenu non renseigné'}</span></div>) : <DataState title="Aucune notification disponible." />}
+      {loading ? <LoadingState label="Chargement des notifications…" /> : error ? <DataState title="Notifications indisponibles." actionLabel="Réessayer" onAction={onRetry} /> : notifications.length ? notifications.map((notification) => <div className={`notification-item${notification.read_at || notification.is_read === true ? ' is-read' : ''}`} key={notification.id}><strong>{notification.title || notification.name || 'Notification'}</strong><span>{notification.message || notification.body || 'Contenu non renseigné'}</span>{!notification.read_at && notification.is_read !== true ? <button type="button" className="notification-read-button" onClick={() => onMarkRead(notification.id)}>Marquer comme lue</button> : null}</div>) : <DataState title="Aucune notification disponible." />}
     </div>
   );
 }
@@ -111,6 +111,8 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [notificationError, setNotificationError] = useState(null);
+  const [notificationLoading, setNotificationLoading] = useState(false);
   const location = useLocation();
   const [data, setData] = useState({ missions: [], territories: [], videos: [], radar: null, badges: [], levelDefinitions: [], notifications: [] });
   const [selectedWheel, setSelectedWheel] = useState(WHEEL_ITEMS[0]);
@@ -124,6 +126,8 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
     if (!user?.id) return;
     setLoading(true);
     setError(null);
+    setNotificationLoading(true);
+    setNotificationError(null);
     const errors = [];
 
     const [missionResult, territoryResult, videoResult, radarResult, questionnaireResult, badgeResult, levelResult, notificationResult] = await Promise.all([
@@ -143,7 +147,7 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
     if (radarResult.error && questionnaireResult.error) errors.push('radar');
     if (badgeResult.error) errors.push('badges');
     if (levelResult.error) errors.push('niveaux');
-    if (notificationResult.error) errors.push('notifications');
+    if (notificationResult.error) setNotificationError(notificationResult.error);
     if (errors.length > 0) setError(`Certaines données ne sont pas disponibles : ${errors.join(', ')}.`);
 
     const missions = missionResult.data || [];
@@ -175,6 +179,7 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
       levelDefinitions: levelResult.data || [],
       notifications: notificationResult.data || [],
     });
+    setNotificationLoading(false);
     setLoading(false);
   }, [user?.id]);
 
@@ -194,6 +199,20 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
   const badgeUrl = badge?.image_url || badge?.icon_url || badge?.asset_url || profile?.badge_url || null;
   const missionBadgeUrl = nextMission && firstValue(nextMission, ['badge_url', 'badge_image_url', 'badge_icon_url']);
   const unreadNotifications = data.notifications.filter((notification) => !notification.read_at && notification.is_read !== true);
+
+  const markNotificationRead = useCallback(async (notificationId) => {
+    if (!notificationId) return;
+    const readAt = new Date().toISOString();
+    const { error: updateError } = await supabase.from('notifications').update({ read_at: readAt }).eq('id', notificationId).eq('user_id', user.id);
+    if (updateError) {
+      setNotificationError(updateError);
+      return;
+    }
+    setData((current) => ({
+      ...current,
+      notifications: current.notifications.map((notification) => notification.id === notificationId ? { ...notification, read_at: readAt } : notification),
+    }));
+  }, [user?.id]);
 
   const handleWheel = (direction) => {
     const offset = direction === 'next' ? 1 : -1;
@@ -237,7 +256,7 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
         <div className="spotbulle-header-actions">
           <div className="notification-anchor">
             <button type="button" className="icon-button" aria-label={`Notifications${unreadNotifications.length ? `, ${unreadNotifications.length} non lues` : ''}`} title="Notifications" onClick={() => setNotificationOpen((open) => !open)}><Bell size={20} />{unreadNotifications.length ? <span className="notification-count">{unreadNotifications.length}</span> : null}</button>
-            {notificationOpen ? <NotificationPanel notifications={data.notifications} onClose={() => setNotificationOpen(false)} /> : null}
+            {notificationOpen ? <NotificationPanel notifications={data.notifications} error={notificationError} loading={notificationLoading} onClose={() => setNotificationOpen(false)} onRetry={loadHomepageData} onMarkRead={markNotificationRead} /> : null}
           </div>
           <button type="button" className="icon-button" aria-label="Se déconnecter" title="Se déconnecter" onClick={onSignOut}><LogOut size={20} /></button>
         </div>
