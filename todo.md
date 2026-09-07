@@ -38,3 +38,10 @@
 - [ ] Confirmer la route détaillée du radar, la banque de badges et la vue impact
 - [ ] Comparer le rendu final avec un Figma public ou un export lisible
 - [ ] Faire valider ces corrections avant toute poussée distante
+
+## Synchronisation XP et notifications
+
+- [x] Lire `current_xp` et `next_level_xp` dans `levelPresentation`
+- [x] Tester XP zéro, XP partiel et XP indisponible
+- [ ] Documenter la migration `public.notifications` et ses politiques RLS
+- [x] Vérifier tests, lint ciblé et build après correction XP

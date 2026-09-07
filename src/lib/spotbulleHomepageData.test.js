@@ -78,14 +78,14 @@ describe('spotbulleHomepageData', () => {
     expect(levelPresentation(null, [], [])).toEqual({ level: null, title: null, xp: null, nextLevel: null });
   });
 
-  it('calcule l’XP depuis les colonnes persistées du profil', () => {
+  it('synchronise current_xp et next_level_xp du profil Supabase', () => {
     expect(levelPresentation({ level_name: 'Explorateur', current_xp: 0, next_level_xp: 100 })).toEqual({
       level: 'Explorateur', title: null, xp: 0, nextLevel: null,
     });
-    expect(levelPresentation({ level_name: 'Explorateur', current_xp: 42, next_level_xp: 100 })).toEqual({
-      level: 'Explorateur', title: null, xp: 42, nextLevel: null,
+    expect(levelPresentation({ level_name: 'Explorateur', current_xp: 25, next_level_xp: 100 })).toEqual({
+      level: 'Explorateur', title: null, xp: 25, nextLevel: null,
     });
-    expect(levelPresentation({ level_name: 'Explorateur', current_xp: 42, next_level_xp: 0 })).toEqual({
+    expect(levelPresentation({ level_name: 'Explorateur', current_xp: 25 })).toEqual({
       level: 'Explorateur', title: null, xp: null, nextLevel: null,
     });
   });
