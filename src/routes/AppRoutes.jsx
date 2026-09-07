@@ -61,12 +61,12 @@ export default function AppRoutes({
 }) {
   return (
     <Routes>
-      {/* Root route: redirect based on auth */}
+      {/* Homepage principale : les utilisateurs connectés voient directement Spotbulle */}
       <Route
         path="/"
         element={
           user
-            ? <Navigate to="/embark" replace />
+            ? <SpotbulleHomepage user={user} profile={profile} onSignOut={onSignOut} />
             : <Navigate to="/login" replace />
         }
       />
