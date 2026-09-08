@@ -17,18 +17,18 @@ const ASSET = '/spotbulle';
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Accueil', asset: 'nav-home.png', route: '/spotbulle-home' },
-  { id: 'missions', label: 'Missions', asset: 'nav-journey.png', route: '/journal-mission' },
-  { id: 'pitch', label: 'Pitch', asset: 'nav-pitch.png', route: '/pitch-recording' },
-  { id: 'impact', label: 'Impact', asset: 'nav-impact.png', route: '/journal-mission' },
+  { id: 'challenges', label: 'Défis', asset: 'nav-challenges.png', route: '/journal-mission' },
+  { id: 'lumi', label: 'Lumi', asset: 'nav-lumi.png', route: null, central: true },
+  { id: 'messages', label: 'Messages', asset: 'nav-messages.png', route: null, disabled: true },
   { id: 'profile', label: 'Profil', asset: 'nav-profile.png', route: '/lumi/profile' },
 ];
 
 const WHEEL_ITEMS = [
-  { id: 'missions', label: 'Missions', description: 'Voir les missions accessibles', lumi: 'Lumi vous montre votre prochaine mission.', route: '/journal-mission', asset: 'menu-missions.png' },
-  { id: 'profile', label: 'Profil', description: 'Consulter votre profil Lumia', lumi: 'Votre profil rassemble vos progrès.', route: '/lumi/profile', asset: 'menu-lumi.png' },
-  { id: 'radar', label: 'Radar', description: 'Mettre à jour votre radar', lumi: 'Votre radar évolue avec vos réponses.', route: '/update-disc', asset: 'menu-ranking.png' },
-  { id: 'pitch', label: 'Pitch', description: 'Enregistrer un pitch', lumi: 'Présentez votre potentiel en vidéo.', route: '/pitch-recording', asset: 'menu-portfolio.png' },
-  { id: 'portfolio', label: 'Portfolio', description: 'Ouvrir votre portfolio', lumi: 'Retrouvez vos réalisations.', route: '/genup-portfolio', asset: 'menu-team.png' },
+  { id: 'missions', label: 'Missions', description: 'Voir les missions accessibles', lumi: 'Lumi vous montre votre prochaine mission.', route: '/journal-mission', asset: 'lumi-missions.png' },
+  { id: 'profile', label: 'Profil', description: 'Consulter votre profil Lumi', lumi: 'Votre profil rassemble vos progrès.', route: '/lumi/profile', asset: 'lumi-center.png' },
+  { id: 'radar', label: 'Radar', description: 'Mettre à jour votre radar', lumi: 'Votre radar évolue avec vos réponses.', route: '/update-disc', asset: 'lumi-radar.png' },
+  { id: 'pitch', label: 'Pitch', description: 'Enregistrer un pitch', lumi: 'Présentez votre potentiel en vidéo.', route: '/pitch-recording', asset: 'lumi-portfolio.png' },
+  { id: 'portfolio', label: 'Portfolio', description: 'Ouvrir votre portfolio', lumi: 'Retrouvez vos réalisations.', route: '/genup-portfolio', asset: 'lumi-team.png' },
 ];
 
 const ENERGY_COLORS = {
@@ -116,11 +116,9 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
   const location = useLocation();
   const [data, setData] = useState({ missions: [], territories: [], videos: [], radar: null, badges: [], levelDefinitions: [], notifications: [] });
   const [selectedWheel, setSelectedWheel] = useState(WHEEL_ITEMS[0]);
-  const [wheelRotation, setWheelRotation] = useState(0);
-  const [wheelHovered, setWheelHovered] = useState(false);
+  const [wheelExpanded, setWheelExpanded] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
-  const pointerStart = useRef(null);
-  const suppressClick = useRef(false);
+  const wheelRef = useRef(null);
 
   const loadHomepageData = useCallback(async () => {
     if (!user?.id) return;
@@ -219,32 +217,33 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
     const currentIndex = WHEEL_ITEMS.findIndex((item) => item.id === selectedWheel.id);
     const nextIndex = (currentIndex + offset + WHEEL_ITEMS.length) % WHEEL_ITEMS.length;
     setSelectedWheel(WHEEL_ITEMS[nextIndex]);
-    setWheelRotation((rotation) => rotation + (direction === 'next' ? 72 : -72));
   };
 
   const openSelectedWheel = () => {
-    if (suppressClick.current) {
-      suppressClick.current = false;
-      return;
-    }
     navigate(selectedWheel.route);
+    setWheelExpanded(false);
   };
-  const handleWheelPointerDown = (event) => {
-    pointerStart.current = event.clientX;
-    suppressClick.current = false;
+
+  const selectWheelItem = (item) => {
+    setSelectedWheel(item);
+    setWheelExpanded(false);
+    navigate(item.route);
   };
-  const handleWheelPointerUp = (event) => {
-    if (pointerStart.current === null) return;
-    const delta = event.clientX - pointerStart.current;
-    pointerStart.current = null;
-    if (Math.abs(delta) >= 20) {
-      suppressClick.current = true;
-      handleWheel(delta < 0 ? 'next' : 'previous');
-    }
+
+  const focusWheel = () => {
+    setWheelExpanded(true);
+    window.requestAnimationFrame(() => wheelRef.current?.focus());
   };
+
   const handleWheelKeyDown = (event) => {
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') handleWheel('next');
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') handleWheel('previous');
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      handleWheel('next');
+    }
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      handleWheel('previous');
+    }
   };
 
   return (
@@ -292,14 +291,21 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
 
           <article className="spotbulle-wheel-card">
             <div className="section-heading"><div><p className="eyebrow">Explorer</p><h2>Votre parcours</h2></div><span className="selection-pill">{selectedWheel.label}</span></div>
-            <div className="wheel-stage" onMouseEnter={() => setWheelHovered(true)} onMouseLeave={() => setWheelHovered(false)}>
+            <div className={`lumi-wheel ${wheelExpanded ? 'expanded' : ''}`} ref={wheelRef} tabIndex={-1} role="menu" aria-label="Parcours Lumi" onKeyDown={handleWheelKeyDown}>
               <button type="button" className="wheel-arrow wheel-arrow-left" onClick={() => handleWheel('previous')} aria-label="Catégorie précédente"><ChevronLeft /></button>
-              <button type="button" className="wheel-control" onClick={openSelectedWheel} onPointerDown={handleWheelPointerDown} onPointerUp={handleWheelPointerUp} onKeyDown={handleWheelKeyDown} aria-label={`Ouvrir ${selectedWheel.label}`}>
-                <img src={`${ASSET}/wheel.png`} alt="" style={{ transform: `rotate(${wheelRotation}deg)` }} />
-                <span>{selectedWheel.label}</span>
+              <button type="button" className="lumi-wheel-center" onClick={() => setWheelExpanded((expanded) => !expanded)} aria-expanded={wheelExpanded} aria-label="Ouvrir ou fermer le parcours Lumi">
+                <img src={`${ASSET}/lumi-center.png`} alt="Lumi" />
               </button>
+              <div className="lumi-wheel-sectors">
+                {WHEEL_ITEMS.map((item, index) => (
+                  <button type="button" key={item.id} className={`lumi-wheel-sector ${selectedWheel.id === item.id ? 'selected' : ''}`} style={{ '--sector-index': index, '--sector-count': WHEEL_ITEMS.length }} onClick={() => selectWheelItem(item)} role="menuitem" aria-label={`${item.label} : ${item.description}`}>
+                    <img src={`${ASSET}/${item.asset}`} alt="" />
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
               <button type="button" className="wheel-arrow wheel-arrow-right" onClick={() => handleWheel('next')} aria-label="Catégorie suivante"><ChevronRight /></button>
-              {wheelHovered ? <div className="lumi-context" role="status"><img src={`${ASSET}/menu-lumi.png`} alt="Lumi" /><span>{selectedWheel.lumi}</span></div> : null}
+              {wheelExpanded ? <div className="lumi-context" role="status"><img src={`${ASSET}/lumi-center.png`} alt="Lumi" /><span>{selectedWheel.lumi}</span></div> : null}
             </div>
             <p className="wheel-description">{selectedWheel.description}</p>
             <button type="button" className="primary-button" onClick={openSelectedWheel}>Ouvrir {selectedWheel.label} <ArrowUpRight size={16} /></button>
@@ -331,7 +337,7 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
         </section>
       </main>
 
-      <nav className="spotbulle-bottom-nav" aria-label="Navigation principale">{NAV_ITEMS.map((item) => { const active = location.pathname === item.route || item.id !== 'home' && location.pathname.startsWith(item.route); return <button type="button" key={item.id} className={active ? 'active' : ''} onClick={() => navigate(item.route)}><img src={`${ASSET}/${item.asset}`} alt="" /><span>{item.label}</span></button>; })}</nav>
+      <nav className="spotbulle-bottom-nav" aria-label="Navigation principale">{NAV_ITEMS.map((item) => { const active = item.id === 'home' ? location.pathname === '/spotbulle-home' : Boolean(item.route) && location.pathname.startsWith(item.route); const className = `spotbulle-nav-item ${item.central ? 'central' : ''} ${active ? 'active' : ''}`; return <button type="button" key={item.id} className={className} disabled={item.disabled} title={item.disabled ? 'Messagerie indisponible : aucune route ni table de messages confirmée' : undefined} onClick={() => item.central ? focusWheel() : item.route ? navigate(item.route) : undefined} aria-label={item.central ? 'Ouvrir le parcours Lumi' : item.label}><img src={`${ASSET}/${item.asset}`} alt="" /><span>{item.label}</span></button>; })}</nav>
     </div>
   );
 }

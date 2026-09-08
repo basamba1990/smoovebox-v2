@@ -45,3 +45,14 @@
 - [x] Tester XP zéro, XP partiel et XP indisponible
 - [ ] Documenter la migration `public.notifications` et ses politiques RLS
 - [x] Vérifier tests, lint ciblé et build après correction XP
+
+## Réalignement maquette — navigation et Lumi
+
+- [x] Utiliser les icônes réellement présentes dans l’archive pour la navigation basse
+- [x] Réaligner les cinq destinations de navigation avec les routes réellement disponibles
+- [x] Transformer la roue actuelle en menu circulaire Lumi autour du centre Lumi
+- [x] Conserver clavier, focus, clic et sélection accessible sur chaque secteur
+- [x] Corriger les routes Impact, Radar et Messages sans créer de destination fictive
+- [ ] Ajouter les tests de navigation et de sélection Lumi
+- [ ] Vérifier le rendu desktop/mobile et les assets manquants
+- [ ] Pousser le commit vérifié vers `feature/spotbulle-motor`
