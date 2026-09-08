@@ -45,3 +45,15 @@ L’URL Vercel fournie redirige vers la connexion Vercel elle-même (`vercel.com
 ## État de référence qualité
 
 L’installation reproductible avec `npm ci --ignore-scripts` réussit. Le build Vite de la branche réussit également. Le lint échoue déjà avant les changements Homepage avec plusieurs erreurs `no-unused-vars` et avertissements de dépendances React Hook dans des fichiers existants, dont `SimplifiedHome.jsx`, `login.jsx`, `lumi-onboarding.jsx`, `record-video.jsx`, `video-success.jsx`, `video-vault.jsx` et `AppRoutes.jsx`. Ces erreurs doivent être distinguées des éventuelles erreurs introduites par la Homepage ; elles ne seront pas masquées par une désactivation globale du lint.
+
+## Vérification Vercel après push du commit 0d624f4c
+
+La branche distante `feature/spotbulle-motor` pointe bien vers le commit `0d624f4c`. L’URL de preview fournie redirige cependant vers `vercel.com/login` avec un flux SSO Vercel. Le rendu de `/spotbulle-home` et l’état du déploiement ne sont donc pas vérifiables depuis cette session sans authentification Vercel ou URL de preview publique.
+
+## Diagnostic preview après push 99e71856
+
+Le commit `99e71856` est présent sur `origin/feature/spotbulle-motor`. L’ouverture de `/spotbulle-home` via le domaine Vercel fourni redirige encore vers `https://vercel.com/login?...`. Le domaine est donc protégé par une authentification Vercel avant que la route applicative puisse être affichée depuis la session actuelle.
+
+## Test interactif du preview le 6 septembre 2026
+
+Deux tentatives d’ouverture de `https://smoovebox-v2-git-feature-spotbulle-motor-samba-bas-projects.vercel.app/spotbulle-home` ont redirigé vers `vercel.com/login`. La Homepage n’est pas inspectable dans cette session sans authentification Vercel. Les observations fonctionnelles disponibles proviennent donc de la vidéo fournie, pas d’un test interactif autonome.
