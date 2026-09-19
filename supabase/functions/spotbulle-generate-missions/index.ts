@@ -197,29 +197,6 @@ Deno.serve(async (req: Request) => {
     if (acqError) throw acqError;
     const acquiredIds = new Set((acquiredSkills || []).map((s: any) => s.skill_id));
 
-    const territoryOrder = ['Calyxis', 'Sylvara', 'Cattleya', 'Neptunus']; // Ordre par défaut si non chargé
-    const targetTerritory = territory || territoryOrder[0];
-
-    // 0. Calculer les compétences pures non acquises pour ce territoire
-    const { data: territorySkills, error: territorySkillsError } = await supabase
-      .from('skills')
-      .select('id, energy')
-      .eq('territory', targetTerritory);
-    if (territorySkillsError) throw territorySkillsError;
-
-    const unacquiredPureIds = (territorySkills || [])
-      .map((s: any) => s.id)
-      .filter(id => !acquiredIds.has(id));
-
-    const config: OptimizerParams = {
-      N: engineConfig.max_combinations,
-      P: unacquiredPureIds.length > 0 ? Math.min(unacquiredPureIds.length, engineConfig.max_combinations) : engineConfig.min_pure,
-      H: unacquiredPureIds.length > 0 ? 0 : engineConfig.min_hybrid,
-      S_MIN: engineConfig.min_compatibility_score,
-      R_MAX: engineConfig.max_skill_repetitions,
-      ...(params || {}),
-    };
-
     const { data: territoryConfigs, error: territoryError } = await supabase
       .from('spotbulle_territories')
       .select('territory, order_index, required_missions')
@@ -257,7 +234,37 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // 2. Acquis utilisateur (déjà chargés plus haut)
+    const currentTerritoryConfig = territoryConfigs[territoryIndex];
+    const requiredPureMissions = Number(currentTerritoryConfig?.required_missions);
+    if (!Number.isFinite(requiredPureMissions)) throw new Error(`Le quota de missions pures de ${targetTerritory} est absent`);
+    const { data: currentMissions, error: currentMissionsError } = await supabase
+      .from('user_missions')
+      .select('status, mission_type')
+      .eq('user_id', user_id)
+      .eq('territory', targetTerritory);
+    if (currentMissionsError) throw currentMissionsError;
+    const completedPureMissions = (currentMissions || []).filter((mission: any) => mission.status === 'completed' && mission.mission_type === 'pure').length;
+    const pureQuotaReached = completedPureMissions >= requiredPureMissions;
+
+    // 2. Compétences pures non acquises : avant le quota, aucune hybride ne peut
+    // être générée, même si des paramètres client demandent des hybrides.
+    const { data: territorySkills, error: territorySkillsError } = await supabase
+      .from('skills')
+      .select('id, energy')
+      .eq('territory', targetTerritory);
+    if (territorySkillsError) throw territorySkillsError;
+    const unacquiredPureIds = (territorySkills || []).map((skill: any) => skill.id).filter((id: string) => !acquiredIds.has(id));
+    if (!pureQuotaReached && unacquiredPureIds.length === 0) {
+      throw new Error(`Le quota de cinq missions pures de ${targetTerritory} n'est pas atteint.`);
+    }
+    const requested = params || {};
+    const config: OptimizerParams = {
+      N: pureQuotaReached ? (requested.N ?? engineConfig.max_combinations) : Math.min(unacquiredPureIds.length, requested.N ?? engineConfig.max_combinations),
+      P: pureQuotaReached ? (requested.P ?? 0) : Math.min(unacquiredPureIds.length, requested.N ?? engineConfig.max_combinations),
+      H: pureQuotaReached ? (requested.H ?? engineConfig.min_hybrid) : 0,
+      S_MIN: requested.S_MIN ?? engineConfig.min_compatibility_score,
+      R_MAX: requested.R_MAX ?? engineConfig.max_skill_repetitions,
+    };
 
     // 3. Compétences du territoire
     const { data: allSkills, error: skillsError } = await supabase
@@ -302,12 +309,12 @@ Deno.serve(async (req: Request) => {
     if (compatError) throw compatError;
 
     // 6. Filtrage
-    const validCombinations: SkillCompatibility[] = (compatMatrix || []).filter(row => {
+    const validCombinations: SkillCompatibility[] = pureQuotaReached ? (compatMatrix || []).filter(row => {
       if (!skillIds.has(row.skill_a_id) || !skillIds.has(row.skill_b_id)) return false;
       if (row.total_score < config.S_MIN) return false;
       const prereqsB = prereqMap.get(row.skill_b_id) || [];
       return prereqsB.every(pre => acquiredIds.has(pre));
-    });
+    }) : [];
 
     // 7. Optimisation exacte : maximise la fonction objectif sous toutes les contraintes.
     const requiredEnergies = new Set(skills.map((skill: any) => skill.energy).filter(Boolean));

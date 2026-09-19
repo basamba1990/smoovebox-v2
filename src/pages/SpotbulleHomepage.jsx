@@ -128,7 +128,7 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
     setNotificationError(null);
     const errors = [];
 
-    const [missionResult, territoryResult, videoResult, radarResult, questionnaireResult, badgeResult, levelResult, notificationResult] = await Promise.all([
+    const [missionResult, territoryResult, videoResult, radarResult, questionnaireResult, badgeResult, levelResult, stageResult, notificationResult] = await Promise.all([
       supabase.from('user_missions').select('*').eq('user_id', user.id).order('created_at', { ascending: true }),
       supabase.from('spotbulle_territories').select('territory, display_name, order_index, required_missions').order('order_index', { ascending: true }),
       supabase.from('videos').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(10),
@@ -136,6 +136,7 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
       supabase.from('questionnaire_responses').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1),
       supabase.from('user_spotbulle_badges').select('badge_id, awarded_at, spotbulle_badges(*)').eq('user_id', user.id).order('awarded_at', { ascending: false }).limit(1),
       supabase.from('spotbulle_badges').select('*'),
+      supabase.from('spotbulle_progression_stages').select('stage_key, level, level_label, sub_level_start, sub_level_end, territory, element').order('level', { ascending: true }),
       supabase.from('notifications').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
     ]);
 
@@ -144,7 +145,7 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
     if (videoResult.error) errors.push('videos');
     if (radarResult.error && questionnaireResult.error) errors.push('radar');
     if (badgeResult.error) errors.push('badges');
-    if (levelResult.error) errors.push('niveaux');
+    if (levelResult.error && stageResult.error) errors.push('niveaux');
     if (notificationResult.error) setNotificationError(notificationResult.error);
     if (errors.length > 0) setError(`Certaines données ne sont pas disponibles : ${errors.join(', ')}.`);
 
@@ -174,7 +175,17 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
       videos,
       radar: radarResult.data?.[0] || questionnaireResult.data?.[0] || null,
       badges: badgeResult.data || [],
-      levelDefinitions: levelResult.data || [],
+      levelDefinitions: [
+        ...(levelResult.data || []),
+        ...(stageResult.data || []).map((stage) => ({
+          badge_type: 'level',
+          badge_key: stage.stage_key,
+          display_name: stage.level_label,
+          level: stage.level,
+          sub_level_start: stage.sub_level_start,
+          sub_level_end: stage.sub_level_end,
+        })),
+      ],
       notifications: notificationResult.data || [],
     });
     setNotificationLoading(false);

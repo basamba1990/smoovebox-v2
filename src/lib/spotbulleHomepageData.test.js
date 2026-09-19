@@ -32,6 +32,14 @@ describe('spotbulleHomepageData', () => {
     expect(mission.id).toBe('hybrid');
   });
 
+  it('n’autorise aucune hybride si le quota de cinq pures n’est pas atteint', () => {
+    expect(selectNextMission([
+      { id: 'hybrid', type: 'hybrid', territory: 'Cattleya', status: 'pending' },
+      { id: 'pure-1', type: 'pure', territory: 'Cattleya', status: 'completed' },
+      { id: 'pure-2', type: 'pure', territory: 'Cattleya', status: 'completed' },
+    ], [{ territory: 'Cattleya', order_index: 1, required_missions: 5 }])).toBeNull();
+  });
+
   it('extrait le nombre de sessions seulement quand il existe réellement', () => {
     expect(missionSessionCount({ sessions_count: 3 })).toBe(3);
     expect(missionSessionCount({})).toBeNull();
@@ -88,6 +96,17 @@ describe('spotbulleHomepageData', () => {
     expect(levelPresentation({ level_name: 'Explorateur', current_xp: 25 })).toEqual({
       level: 'Explorateur', title: null, xp: null, nextLevel: null,
     });
+  });
+
+  it('utilise sub_level_end lorsque les seuils sont portés par les étapes persistées', () => {
+    expect(levelPresentation(null, [
+      { type: 'pure', status: 'completed' },
+      { type: 'pure', status: 'completed' },
+      { type: 'pure', status: 'completed' },
+    ], [
+      { badge_type: 'level', badge_key: 'explorateur', display_name: 'Explorateur', sub_level_end: 2 },
+      { badge_type: 'level', badge_key: 'eclaireur', display_name: 'Éclaireur', sub_level_end: 5 },
+    ])).toEqual({ level: 'explorateur', title: 'Explorateur', xp: 33, nextLevel: 'Éclaireur' });
   });
 
   it('utilise les premières colonnes disponibles du radar sans inventer de valeur', () => {

@@ -110,15 +110,21 @@ export function levelPresentation(profile, missions = [], levelDefinitions = [])
   if (directLevel || directTitle || directXp !== null) return { level: directLevel, title: directTitle, xp: directXp, nextLevel: directNextLevel };
 
   const definitions = (levelDefinitions || [])
-    .filter((definition) => definition.badge_type === 'level' && Number.isFinite(Number(definition.required_missions)))
-    .sort((a, b) => Number(a.required_missions) - Number(b.required_missions));
+    .map((definition) => ({
+      ...definition,
+      threshold: Number.isFinite(Number(definition.required_missions))
+        ? Number(definition.required_missions)
+        : Number(definition.sub_level_end),
+    }))
+    .filter((definition) => definition.badge_type === 'level' && Number.isFinite(definition.threshold))
+    .sort((a, b) => a.threshold - b.threshold);
   if (!definitions.length) return { level: null, title: null, xp: null, nextLevel: null };
 
   const completed = (missions || []).filter((mission) => mission.status === 'completed' && missionType(mission) === 'pure').length;
-  const current = definitions.filter((definition) => completed >= Number(definition.required_missions)).at(-1) || null;
-  const next = definitions.find((definition) => completed < Number(definition.required_missions)) || null;
-  const currentThreshold = Number(current?.required_missions || 0);
-  const nextThreshold = Number(next?.required_missions || 0);
+  const current = definitions.filter((definition) => completed >= definition.threshold).at(-1) || null;
+  const next = definitions.find((definition) => completed < definition.threshold) || null;
+  const currentThreshold = Number(current?.threshold || 0);
+  const nextThreshold = Number(next?.threshold || 0);
   const xp = next ? asPercentage((completed - currentThreshold) / Math.max(1, nextThreshold - currentThreshold)) : 100;
   return {
     level: current?.level || current?.badge_key || null,
