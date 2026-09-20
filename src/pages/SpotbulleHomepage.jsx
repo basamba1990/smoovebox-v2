@@ -119,6 +119,7 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
   const [wheelExpanded, setWheelExpanded] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const wheelRef = useRef(null);
+  const wheelPointerRef = useRef(null);
 
   const loadHomepageData = useCallback(async () => {
     if (!user?.id) return;
@@ -257,6 +258,21 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
     }
   };
 
+  const handleWheelPointerDown = (event) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    wheelPointerRef.current = { pointerId: event.pointerId, startX: event.clientX };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handleWheelPointerUp = (event) => {
+    const gesture = wheelPointerRef.current;
+    wheelPointerRef.current = null;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - gesture.startX;
+    if (Math.abs(deltaX) < 24) return;
+    handleWheel(deltaX < 0 ? 'next' : 'previous');
+  };
+
   return (
     <div className="spotbulle-page">
       <header className="spotbulle-header">
@@ -302,7 +318,7 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
 
           <article className="spotbulle-wheel-card">
             <div className="section-heading"><div><p className="eyebrow">Explorer</p><h2>Votre parcours</h2></div><span className="selection-pill">{selectedWheel.label}</span></div>
-            <div className={`lumi-wheel ${wheelExpanded ? 'expanded' : ''}`} ref={wheelRef} tabIndex={-1} role="menu" aria-label="Parcours Lumi" onKeyDown={handleWheelKeyDown}>
+            <div className={`lumi-wheel ${wheelExpanded ? 'expanded' : ''}`} ref={wheelRef} tabIndex={-1} role="menu" aria-label="Parcours Lumi" onKeyDown={handleWheelKeyDown} onPointerDown={handleWheelPointerDown} onPointerUp={handleWheelPointerUp} onPointerCancel={() => { wheelPointerRef.current = null; }}>
               <button type="button" className="wheel-arrow wheel-arrow-left" onClick={() => handleWheel('previous')} aria-label="Catégorie précédente"><ChevronLeft /></button>
               <button type="button" className="lumi-wheel-center" onClick={() => setWheelExpanded((expanded) => !expanded)} aria-expanded={wheelExpanded} aria-label="Ouvrir ou fermer le parcours Lumi">
                 <img src={`${ASSET}/lumi-center.png`} alt="Lumi" />
