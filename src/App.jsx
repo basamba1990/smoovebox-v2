@@ -122,23 +122,16 @@ const AppContentProtected = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // ✅ Fonction de vérification réseau
+  // ✅ Vérification réseau sans dépendance à une sonde tierce.
+  // La disponibilité du service est vérifiée séparément par checkSupabaseConnection().
   const checkNetworkConnection = async () => {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      const response = await fetch('https://api.cloudflare.com/cdn-cgi/trace', {
-        signal: controller.signal,
-        cache: 'no-cache'
-      });
-      
-      clearTimeout(timeoutId);
-      return response.ok;
-    } catch (error) {
-      console.warn('⚠️ Vérification réseau échouée:', error);
-      return false;
+    if (typeof navigator === "undefined") {
+      return true;
     }
+
+    // navigator.onLine est la seule source utilisée pour l'état « hors ligne ».
+    // Une erreur Supabase est ensuite classée « Service limité », pas « Hors ligne ».
+    return navigator.onLine !== false;
   };
 
   // ✅ Vérification permissions caméra
