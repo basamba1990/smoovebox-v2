@@ -331,17 +331,34 @@ export const getProfile = async (userId, forceRefresh = false) => {
   }
 
   try {
-    const { data, error } = await retryOperation(async () => {
+    const { data: linkedProfile, error: linkedProfileError } = await retryOperation(async () => {
       return await supabase
         .from('profiles')
         .select('*')
-        .eq('id', userId)
+        .eq('user_id', userId)
         .maybeSingle();
     });
 
-    if (error) {
-      console.warn('⚠️ Erreur récupération profil:', error);
+    if (linkedProfileError && linkedProfileError.code !== 'PGRST116') {
+      console.warn('⚠️ Erreur récupération profil par user_id:', linkedProfileError);
       return null;
+    }
+
+    let data = linkedProfile;
+    if (!data) {
+      const { data: legacyProfile, error: legacyProfileError } = await retryOperation(async () => {
+        return await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
+      });
+
+      if (legacyProfileError && legacyProfileError.code !== 'PGRST116') {
+        console.warn('⚠️ Erreur récupération profil legacy:', legacyProfileError);
+        return null;
+      }
+      data = legacyProfile;
     }
     
     if (data) {

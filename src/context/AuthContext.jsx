@@ -54,14 +54,28 @@ export const AuthProvider = ({ children }) => {
     if (!userId) return null;
 
     try {
-      const { data: profile, error: profileError } = await supabase
+      const { data: linkedProfile, error: linkedProfileError } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', userId)
+        .eq('user_id', userId)
         .maybeSingle();
 
-      if (profileError && profileError.code !== 'PGRST116') {
-        console.error('Erreur récupération profil:', profileError);
+      if (linkedProfileError && linkedProfileError.code !== 'PGRST116') {
+        console.error('Erreur récupération profil par user_id:', linkedProfileError);
+      }
+
+      let profile = linkedProfile;
+      if (!profile && !linkedProfileError) {
+        const { data: legacyProfile, error: legacyProfileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (legacyProfileError && legacyProfileError.code !== 'PGRST116') {
+          console.error('Erreur récupération profil legacy:', legacyProfileError);
+        }
+        profile = legacyProfile;
       }
 
       if (!profile && userData) {
