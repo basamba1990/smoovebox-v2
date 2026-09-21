@@ -233,6 +233,9 @@
   display: grid;
   place-items: center;
   outline: none;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .lumi-wheel::before {
   content: '';
