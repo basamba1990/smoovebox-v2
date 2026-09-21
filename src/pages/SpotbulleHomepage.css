@@ -237,6 +237,12 @@
   user-select: none;
   -webkit-user-select: none;
 }
+.lumi-wheel-sectors {
+  position: absolute;
+  inset: 0;
+  transform: rotate(var(--wheel-rotation, 0deg));
+  transition: transform 180ms cubic-bezier(.23, 1, .32, 1);
+}
 .lumi-wheel::before {
   content: '';
   position: absolute;
@@ -259,14 +265,13 @@
   cursor: pointer;
 }
 .lumi-wheel-center img { width: 66%; height: 66%; object-fit: contain; }
-.lumi-wheel-sectors { position: absolute; inset: 0; }
 .lumi-wheel-sector {
   position: absolute;
   top: 50%;
   left: 50%;
   width: 76px;
   min-height: 76px;
-  transform: translate(-50%, -50%) rotate(calc(360deg / var(--sector-count) * var(--sector-index))) translateY(calc(var(--wheel-size) * -.36)) rotate(calc(360deg / var(--sector-count) * var(--sector-index) * -1));
+  transform: translate(-50%, -50%) rotate(calc(360deg / var(--sector-count) * var(--sector-index))) translateY(calc(var(--wheel-size) * -.36)) rotate(calc(360deg / var(--sector-count) * var(--sector-index) * -1)) rotate(var(--wheel-counter-rotation, 0deg));
   display: grid;
   place-items: center;
   gap: 2px;

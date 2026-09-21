@@ -117,6 +117,7 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
   const [data, setData] = useState({ missions: [], territories: [], videos: [], radar: null, badges: [], levelDefinitions: [], notifications: [] });
   const [selectedWheel, setSelectedWheel] = useState(WHEEL_ITEMS[0]);
   const [wheelExpanded, setWheelExpanded] = useState(false);
+  const [wheelRotation, setWheelRotation] = useState(0);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const wheelRef = useRef(null);
   const wheelPointerRef = useRef(null);
@@ -229,6 +230,7 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
     const currentIndex = WHEEL_ITEMS.findIndex((item) => item.id === selectedWheel.id);
     const nextIndex = (currentIndex + offset + WHEEL_ITEMS.length) % WHEEL_ITEMS.length;
     setSelectedWheel(WHEEL_ITEMS[nextIndex]);
+    setWheelRotation((rotation) => rotation + (direction === 'next' ? -72 : 72));
   };
 
   const openSelectedWheel = () => {
@@ -260,17 +262,25 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
 
   const handleWheelPointerDown = (event) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
-    wheelPointerRef.current = { pointerId: event.pointerId, startX: event.clientX };
+    wheelPointerRef.current = { pointerId: event.pointerId, startX: event.clientX, triggered: false };
     event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handleWheelPointerMove = (event) => {
+    const gesture = wheelPointerRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId || gesture.triggered) return;
+    const deltaX = event.clientX - gesture.startX;
+    if (Math.abs(deltaX) < 24) return;
+    gesture.triggered = true;
+    event.preventDefault();
+    handleWheel(deltaX < 0 ? 'next' : 'previous');
   };
 
   const handleWheelPointerUp = (event) => {
     const gesture = wheelPointerRef.current;
     wheelPointerRef.current = null;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
-    const deltaX = event.clientX - gesture.startX;
-    if (Math.abs(deltaX) < 24) return;
-    handleWheel(deltaX < 0 ? 'next' : 'previous');
+    if (gesture.triggered) event.preventDefault();
   };
 
   return (
@@ -318,14 +328,14 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
 
           <article className="spotbulle-wheel-card">
             <div className="section-heading"><div><p className="eyebrow">Explorer</p><h2>Votre parcours</h2></div><span className="selection-pill">{selectedWheel.label}</span></div>
-            <div className={`lumi-wheel ${wheelExpanded ? 'expanded' : ''}`} ref={wheelRef} tabIndex={-1} role="menu" aria-label="Parcours Lumi" onKeyDown={handleWheelKeyDown} onPointerDown={handleWheelPointerDown} onPointerUp={handleWheelPointerUp} onPointerCancel={() => { wheelPointerRef.current = null; }}>
+            <div className={`lumi-wheel ${wheelExpanded ? 'expanded' : ''}`} ref={wheelRef} style={{ '--wheel-rotation': `${wheelRotation}deg` }} tabIndex={-1} role="menu" aria-label="Parcours Lumi" onKeyDown={handleWheelKeyDown} onPointerDown={handleWheelPointerDown} onPointerMove={handleWheelPointerMove} onPointerUp={handleWheelPointerUp} onPointerCancel={() => { wheelPointerRef.current = null; }}>
               <button type="button" className="wheel-arrow wheel-arrow-left" onClick={() => handleWheel('previous')} aria-label="Catégorie précédente"><ChevronLeft /></button>
               <button type="button" className="lumi-wheel-center" onClick={() => setWheelExpanded((expanded) => !expanded)} aria-expanded={wheelExpanded} aria-label="Ouvrir ou fermer le parcours Lumi">
                 <img src={`${ASSET}/lumi-center.png`} alt="Lumi" />
               </button>
               <div className="lumi-wheel-sectors">
                 {WHEEL_ITEMS.map((item, index) => (
-                  <button type="button" key={item.id} className={`lumi-wheel-sector ${selectedWheel.id === item.id ? 'selected' : ''}`} style={{ '--sector-index': index, '--sector-count': WHEEL_ITEMS.length }} onClick={() => selectWheelItem(item)} role="menuitem" aria-label={`${item.label} : ${item.description}`}>
+                    <button type="button" key={item.id} className={`lumi-wheel-sector ${selectedWheel.id === item.id ? 'selected' : ''}`} style={{ '--sector-index': index, '--sector-count': WHEEL_ITEMS.length, '--wheel-counter-rotation': `${-wheelRotation}deg` }} onClick={() => selectWheelItem(item)} role="menuitem" aria-label={`${item.label} : ${item.description}`}>
                     <img src={`${ASSET}/${item.asset}`} alt="" />
                     <span>{item.label}</span>
                   </button>
