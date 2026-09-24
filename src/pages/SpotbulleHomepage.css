@@ -105,7 +105,13 @@
 .primary-button:hover, .primary-button:focus-visible { background: #fff; outline: 2px solid #a8fff2; outline-offset: 2px; }
 
 .spotbulle-panel { padding: 22px; }
-.mission-panel { grid-column: span 5; min-height: 272px; }
+.mission-panel {
+  grid-column: span 5;
+  min-height: 259px;
+  box-sizing: border-box;
+  padding: 12px 20px;
+  gap: 12px;
+}
 .radar-panel { grid-column: span 4; min-height: 272px; }
 .pitch-panel { grid-column: span 3; min-height: 272px; }
 .impact-panel { grid-column: 8 / span 5; min-height: 214px; }
