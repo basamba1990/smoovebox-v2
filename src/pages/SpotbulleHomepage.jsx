@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowUpRight, Bell, ChevronLeft, ChevronRight, CircleHelp, Info, LogOut, Pencil, RefreshCw, X } from 'lucide-react';
+import { ArrowUpRight, ChevronLeft, ChevronRight, CircleHelp, Info, Pencil, RefreshCw, X } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import {
   calculateImpact,
@@ -291,10 +291,10 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
         </button>
         <div className="spotbulle-header-actions">
           <div className="notification-anchor">
-            <button type="button" className="icon-button" aria-label={`Notifications${unreadNotifications.length ? `, ${unreadNotifications.length} non lues` : ''}`} title="Notifications" onClick={() => setNotificationOpen((open) => !open)}><Bell size={20} />{unreadNotifications.length ? <span className="notification-count">{unreadNotifications.length}</span> : null}</button>
+            <button type="button" className="icon-button" aria-label={`Notifications${unreadNotifications.length ? `, ${unreadNotifications.length} non lues` : ''}`} title="Notifications" onClick={() => setNotificationOpen((open) => !open)}><img src={`${ASSET}/header-notifications.png`} alt="" />{unreadNotifications.length ? <span className="notification-count">{unreadNotifications.length}</span> : null}</button>
             {notificationOpen ? <NotificationPanel notifications={data.notifications} error={notificationError} loading={notificationLoading} onClose={() => setNotificationOpen(false)} onRetry={loadHomepageData} onMarkRead={markNotificationRead} /> : null}
           </div>
-          <button type="button" className="icon-button" aria-label="Se déconnecter" title="Se déconnecter" onClick={onSignOut}><LogOut size={20} /></button>
+          <button type="button" className="icon-button" aria-label="Se déconnecter" title="Se déconnecter" onClick={onSignOut}><img src={`${ASSET}/header-signout.png`} alt="" /></button>
         </div>
       </header>
 
@@ -335,14 +335,14 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
               </button>
               <div className="lumi-wheel-sectors">
                 {WHEEL_ITEMS.map((item, index) => (
-                    <button type="button" key={item.id} className={`lumi-wheel-sector ${selectedWheel.id === item.id ? 'selected' : ''}`} style={{ '--sector-index': index, '--sector-count': WHEEL_ITEMS.length, '--wheel-counter-rotation': `${-wheelRotation}deg` }} onClick={() => selectWheelItem(item)} role="menuitem" aria-label={`${item.label} : ${item.description}`}>
+                    <button type="button" key={item.id} className={`lumi-wheel-sector ${selectedWheel.id === item.id ? 'selected' : ''}`} style={{ '--sector-index': index, '--sector-count': WHEEL_ITEMS.length, '--wheel-counter-rotation': `${-wheelRotation}deg` }} onMouseEnter={() => { setSelectedWheel(item); setWheelExpanded(true); }} onFocus={() => setSelectedWheel(item)} onClick={() => selectWheelItem(item)} role="menuitem" aria-label={`${item.label} : ${item.description}`}>
                     <img src={`${ASSET}/${item.asset}`} alt="" />
                     <span>{item.label}</span>
                   </button>
                 ))}
               </div>
               <button type="button" className="wheel-arrow wheel-arrow-right" onClick={() => handleWheel('next')} aria-label="Catégorie suivante"><ChevronRight /></button>
-              {wheelExpanded ? <div className="lumi-context" role="status"><img src={`${ASSET}/lumi-center.png`} alt="Lumi" /><span>{selectedWheel.lumi}</span></div> : null}
+              {wheelExpanded ? <div className="lumi-context" role="status"><img src={`${ASSET}/lumi-hover.png`} alt="Lumi" /><span>{selectedWheel.lumi}</span></div> : null}
             </div>
             <p className="wheel-description">{selectedWheel.description}</p>
             <button type="button" className="primary-button" onClick={openSelectedWheel}>Ouvrir {selectedWheel.label} <ArrowUpRight size={16} /></button>
@@ -353,6 +353,7 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
 
         <section className="spotbulle-data-grid">
           <article className="spotbulle-panel mission-panel">
+            <img className="mission-visual" src={`${ASSET}/mission-card.png`} alt="" aria-hidden="true" />
             <div className="section-heading"><div><p className="eyebrow">Continuer</p><h2>Prochaine mission</h2></div>{missionBadgeUrl ? <img src={missionBadgeUrl} alt="Badge de la mission" className="small-asset" /> : <div className="small-asset dynamic-empty-icon"><Info size={18} /></div>}</div>
             {nextMission ? <><p className="mission-type">{nextMission.type === 'pure' ? 'Compétence pure' : 'Mission hybride'}</p><h3>{nextMission.title || nextMission.name || nextMission.skillA?.name || 'Nom non renseigné'}</h3><p className="mission-sessions">{missionSessionCount(nextMission) !== null ? `${missionSessionCount(nextMission)} session(s)` : 'Nombre de sessions non renseigné'}</p><p className="muted-text">{nextMission.objective || nextMission.description || 'Objectif non renseigné'}</p><button type="button" className="primary-button" onClick={() => navigate('/journal-mission')}>Accéder à la mission <ArrowUpRight size={16} /></button><button type="button" className="link-button" onClick={() => navigate('/journal-mission')}>Voir mes missions <ArrowUpRight size={15} /></button></> : <DataState title="Aucune mission pure accessible pour le territoire courant." actionLabel="Ouvrir mes missions" onAction={() => navigate('/journal-mission')} />}
           </article>
@@ -368,6 +369,7 @@ export default function SpotbulleHomepage({ user, profile, onSignOut }) {
           </article>
 
           <article className="spotbulle-panel impact-panel">
+            <img className="impact-visual" src={`${ASSET}/impact-card.png`} alt="" aria-hidden="true" />
             <div className="section-heading"><div><p className="eyebrow">Progression</p><h2>Mon impact</h2></div><img src={`${ASSET}/impact-planet.png`} alt="" className="impact-planet" /></div>
             <div className="impact-content"><div className="impact-bars">{impact.rows.map((row) => <div className="impact-row" key={row.label}><div><span>{row.label}</span><strong>{row.value !== null ? `${row.value}%` : 'Indisponible'}</strong></div>{row.value !== null ? <ProgressBar value={row.value} color={ENERGY_COLORS[row.label] || '#72d5ca'} /> : <div className="impact-unavailable">Donnée non renseignée</div>}</div>)}</div><div className="impact-global">{impact.global !== null ? <div className="impact-ring" style={{ '--progress': `${impact.global}%` }}><span>{impact.global}%</span></div> : <div className="dynamic-empty-icon"><Info size={20} /></div>}<small>{impact.global !== null ? 'Progression globale pondérée' : 'Pondération globale indisponible'}</small></div></div>
           </article>
